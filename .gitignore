@@ -1,0 +1,75 @@
+# ============================================================
+# .NET
+# ============================================================
+
+**/bin/
+**/obj/
+**/TestResults/
+*.user
+*.suo
+
+# ============================================================
+# Android / Gradle
+# ============================================================
+
+apps/android/.gradle/
+apps/android/**/.gradle/
+apps/android/.kotlin/
+apps/android/**/build/
+apps/android/local.properties
+*.jks
+*.keystore
+
+# ============================================================
+# IDE / OS
+# ============================================================
+
+.idea/
+.vscode/*.local.json
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# Secrets / Local Configuration
+# ============================================================
+
+.env
+.env.*
+!**/.env.example
+docs/environment-info.md
+kura.zip
+**/appsettings.Development.json
+**/appsettings.Production.json
+**/*secret*
+**/*.key
+**/*.pem
+**/*.crt
+**/*.csr
+**/*.srl
+!**/*.example.pem
+
+# ============================================================
+# Test / Generated Files
+# ============================================================
+
+coverage/
+artifacts/
+reports/
+server/tests/performance/results/*
+!server/tests/performance/results/.gitkeep
+
+# ============================================================
+# Logs / Runtime Files
+# ============================================================
+
+*.log
+logs/
+*.pid
+*.sock
+
+# ============================================================
+# Temporary Files
+# ============================================================
+
+*.tmp
+*.temp
