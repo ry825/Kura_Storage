@@ -4,6 +4,11 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repository_root"
 
+if ! command -v rg >/dev/null 2>&1; then
+  echo "rg is required for repository security verification." >&2
+  exit 1
+fi
+
 if git ls-files | rg -n '(^|/)(local\.properties|appsettings\.(Development|Production)\.json|environment-info\.md)$|\.(key|pem|p12|pfx|jks|keystore)$'; then
   echo "A local configuration or private key file is tracked." >&2
   exit 1

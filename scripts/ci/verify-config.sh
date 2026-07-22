@@ -4,10 +4,12 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repository_root"
 
-if ! command -v shellcheck >/dev/null 2>&1; then
-  echo "shellcheck is required for repository configuration verification." >&2
-  exit 1
-fi
+for required_command in rg shellcheck; do
+  if ! command -v "$required_command" >/dev/null 2>&1; then
+    echo "$required_command is required for repository configuration verification." >&2
+    exit 1
+  fi
+done
 
 required_files=(
   .editorconfig
