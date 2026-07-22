@@ -88,9 +88,9 @@
 
 ### 1.5 Pull Request完了
 
-- [ ] PR1が完了している
-  - [ ] 共通Pull Request完了手順をすべて実施する
-  - [ ] PR1の完了記録を本ファイルへ追記する
+- [x] PR1が完了している
+  - [x] 共通Pull Request完了手順をすべて実施する
+  - [x] PR1の完了記録を本ファイルへ追記する
 
 ---
 
@@ -582,6 +582,18 @@
 ## 各Pull Request完了記録
 
 > Pull Request作成後に、対象PRの記録を追記する。後続PRが未完了でも、完了したPRの記録はその時点で行う。
+
+### PR1: MVP再定義と環境前提
+
+- 完了日: `2026-07-22`
+- Pull Request: `https://github.com/ry825/Kura_Storage/pull/1`
+- 対象タスク: `tasklist.md` 1.1〜1.5
+- 実施した自動テスト: PR1文書検証（必須文書の存在、Markdownコードフェンス、文書Version参照、`docs/environment-info.md`のGit除外）成功、`git diff --check`成功
+- 実施した手動・実機確認: 5つの正式文書、Steeringの`requirements.md`・`design.md`、ローカル環境情報の未確定値と秘密情報非保存ルールを確認。実機確認はPR1の対象外
+- 計画と実装の差分: 正式文書のMVP再定義はリポジトリ初期コミットで既に`main`へ収録済みだったため、本PRでは再検証と進捗確定を記録した
+- 実装中に追加したタスクと理由: なし
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続Pull Requestへの引継ぎ: PR2は本PRの`main`へのMerge後に開始する。`NET-LAN-CIDR`とZeroTier関連の未確定値はPR7の実機E2E開始までに確定する
 
 ### PR完了記録Template
 
