@@ -19,6 +19,8 @@ apps/android/**/build/
 apps/android/local.properties
 *.jks
 *.keystore
+*.aab
+*.apk
 
 # ============================================================
 # IDE / OS
@@ -46,6 +48,8 @@ kura.zip
 **/*.crt
 **/*.csr
 **/*.srl
+**/*.p12
+**/*.pfx
 !**/*.example.pem
 
 # ============================================================

@@ -1,0 +1,5 @@
+# Public release-build inputs only. Secret signing values are injected by CI.
+KURA_API_HOSTNAME=api.kurastorage.example
+KURA_ROOT_CA_CERTIFICATE=SET_LOCALLY
+KURA_SIGNING_KEYSTORE=SET_VIA_CI_SECRET
+KURA_SIGNING_KEY_ALIAS=SET_VIA_CI_SECRET

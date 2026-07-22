@@ -1,0 +1,3 @@
+# Copy this file to local.properties and replace the placeholder locally.
+# Do not add signing passwords, private keys, real IP addresses, or ZeroTier IDs.
+sdk.dir=SET_LOCALLY

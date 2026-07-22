@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KuraStorage.Application/KuraStorage.Application.csproj" />
+    <ProjectReference Include="../KuraStorage.Infrastructure/KuraStorage.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

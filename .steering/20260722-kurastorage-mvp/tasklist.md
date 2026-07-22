@@ -101,66 +101,66 @@
 
 ### 2.1 作業開始
 
-- [ ] PR2の作業準備が完了している
-  - [ ] PR1が`main`へMerge済みであることを確認する
-  - [ ] 最新`main`を基点に短命Branchを作成する
-  - [ ] .NET 10、JDK、Android SDK、PostgreSQL、対応するGradle・AGP・Kotlinの利用可能性を確認する
+- [x] PR2の作業準備が完了している
+  - [x] PR1が`main`へMerge済みであることを確認する
+  - [x] 最新`main`を基点に短命Branchを作成する
+  - [x] .NET 10、JDK、Android SDK、PostgreSQL、対応するGradle・AGP・Kotlinの利用可能性を確認する（.NET 10.0.110、JDK 17、Android SDK 36、Gradle 8.13、AGP 8.13.2、Kotlin 2.3.21、PostgreSQL 17を使用する）
 
 ### 2.2 Repository Root
 
-- [ ] Repository Rootの共通設定を作成する
-  - [ ] `.editorconfig`を作成する
-  - [ ] `.gitattributes`を作成する
-  - [ ] `.gitignore`にServer、Android、Local設定、Certificate、Key、Build生成物の除外を追加する
-  - [ ] `global.json`で.NET 10 SDKを固定する
-  - [ ] Lock FileとVersion中央管理の方針を設定する
+- [x] Repository Rootの共通設定を作成する
+  - [x] `.editorconfig`を作成する
+  - [x] `.gitattributes`を作成する
+  - [x] `.gitignore`にServer、Android、Local設定、Certificate、Key、Build生成物の除外を追加する
+  - [x] `global.json`で.NET 10 SDKを固定する
+  - [x] Lock FileとVersion中央管理の方針を設定する
 
 ### 2.3 Server Scaffold
 
-- [ ] Server Solutionの最小構成を作成する
-  - [ ] Domain、Application、Infrastructure、Api、AdminCli Projectを作成する
-  - [ ] Domain、Application、Integration Test Projectを作成する
-  - [ ] Project Referenceが設計した依存方向だけになっている
-  - [ ] Central Package ManagementとNuGet Lock Fileを有効にする
-  - [ ] APIとCLIが最小の起動・Help出力を実行できる
+- [x] Server Solutionの最小構成を作成する
+  - [x] Domain、Application、Infrastructure、Api、AdminCli Projectを作成する
+  - [x] Domain、Application、Integration Test Projectを作成する
+  - [x] Project Referenceが設計した依存方向だけになっている
+  - [x] Central Package ManagementとNuGet Lock Fileを有効にする
+  - [x] APIとCLIが最小の起動・Help出力を実行できる
 
 ### 2.4 Android Scaffold
 
-- [ ] Android Gradle Projectの最小構成を作成する
-  - [ ] Gradle Wrapper、Version Catalog、Compose BOM、Convention Pluginを構成する
-  - [ ] `minSdk 29`とApplication ID・Namespaceを固定する
-  - [ ] `app`、`core-model`、`core-network`、`core-data`、`core-security`、`core-ui`、`feature-connection`、`feature-auth`、`feature-files`を作成する
-  - [ ] Module依存にCycleがなく、Feature間が直接依存しない
-  - [ ] Room、WorkManager、Media3、Coil、PDF Libraryが追加されていない
-  - [ ] 空のDebug AppがBuildできる
+- [x] Android Gradle Projectの最小構成を作成する
+  - [x] Gradle Wrapper、Version Catalog、Compose BOM、Convention Pluginを構成する
+  - [x] `minSdk 29`とApplication ID・Namespaceを固定する
+  - [x] `app`、`core-model`、`core-network`、`core-data`、`core-security`、`core-ui`、`feature-connection`、`feature-auth`、`feature-files`を作成する
+  - [x] Module依存にCycleがなく、Feature間が直接依存しない
+  - [x] Room、WorkManager、Media3、Coil、PDF Libraryが追加されていない
+  - [x] 空のDebug AppがBuildできる
 
 ### 2.5 API契約・設定Template
 
-- [ ] MVPのOpenAPI契約と設定Templateを作成する
-  - [ ] `contracts/openapi/kurastorage-v1.yaml`にMVP Endpoint、DTO、Errorを定義する
-  - [ ] ServerとAndroidで共通の契約Fixtureを用意する
-  - [ ] Serverの`appsettings.example.json`を作成する
-  - [ ] Androidの`local.properties.example`とRelease Build Inputの公開構造を作成する
-  - [ ] ExampleにSecret、Private Key、実IP、ZeroTier Network IDの実値がない
+- [x] MVPのOpenAPI契約と設定Templateを作成する
+  - [x] `contracts/openapi/kurastorage-api.yaml`にMVP Endpoint、DTO、Errorを定義する（正式文書の命名へ統一）
+  - [x] ServerとAndroidで共通の契約Fixtureを用意する
+  - [x] Serverの`appsettings.example.json`を作成する
+  - [x] Androidの`local.properties.example`とRelease Build Inputの公開構造を作成する
+  - [x] ExampleにSecret、Private Key、実IP、ZeroTier Network IDの実値がない
 
 ### 2.6 CI・検証Script
 
-- [ ] Repository統一の検証Scriptを作成する
-  - [ ] `scripts/ci/verify-config.sh`を作成する
-  - [ ] `scripts/ci/verify-server.sh`を作成する
-  - [ ] `scripts/ci/verify-security.sh`を作成する
-  - [ ] `scripts/ci/verify-android.sh`を作成する
-  - [ ] GitHub ActionsでConfig、Server、Security、Android Jobを作成する
-  - [ ] Dependency CacheがLock Fileと対応し、SecretをCacheへ含めない
+- [x] Repository統一の検証Scriptを作成する
+  - [x] `scripts/ci/verify-config.sh`を作成する
+  - [x] `scripts/ci/verify-server.sh`を作成する
+  - [x] `scripts/ci/verify-security.sh`を作成する
+  - [x] `scripts/ci/verify-android.sh`を作成する
+  - [x] GitHub ActionsでConfig、Server、Security、Android Jobを作成する
+  - [x] Dependency CacheがLock Fileと対応し、SecretをCacheへ含めない
 
 ### 2.7 検証
 
 - [ ] PR2の自動検証が完了している
-  - [ ] `./scripts/ci/verify-config.sh`が成功する
-  - [ ] `./scripts/ci/verify-server.sh`が成功する
-  - [ ] `./scripts/ci/verify-security.sh`が成功する
-  - [ ] `./scripts/ci/verify-android.sh`が成功する
-  - [ ] Debug APKとServer Build Artifactが生成できる
+  - [x] `./scripts/ci/verify-config.sh`が成功する
+  - [x] `./scripts/ci/verify-server.sh`が成功する
+  - [x] `./scripts/ci/verify-security.sh`が成功する
+  - [x] `./scripts/ci/verify-android.sh`が成功する
+  - [x] Debug APKとServer Build Artifactが生成できる
   - [ ] CIの必須Jobがすべて成功する
 
 ### 2.8 Pull Request完了

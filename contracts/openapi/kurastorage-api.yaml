@@ -1,0 +1,756 @@
+openapi: 3.1.0
+info:
+  title: KuraStorage API
+  version: 1.0.0
+  description: HTTP contract for the KuraStorage MVP.
+servers:
+  - url: https://api.kurastorage.example/api/v1
+    description: Example deployment; the actual hostname is supplied outside source control.
+tags:
+  - name: System
+  - name: Authentication
+  - name: Files
+  - name: Trash
+paths:
+  /system/health:
+    get:
+      tags: [System]
+      operationId: getSystemHealth
+      summary: Check API and storage availability
+      security: []
+      responses:
+        "200":
+          description: Current minimal service status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemHealthResponse"
+              examples:
+                available:
+                  externalValue: ../fixtures/system-health-response.json
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /auth/register-device:
+    post:
+      tags: [Authentication]
+      operationId: registerDevice
+      summary: Register an Android device from the local direct route
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterDeviceRequest"
+      responses:
+        "200":
+          description: Device registration and authentication succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The request did not use LOCAL_DIRECT or the user cannot register a device.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Authenticate a registered device
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authentication succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      operationId: refreshToken
+      summary: Rotate a refresh token and issue a new token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Token rotation succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      summary: Revoke the current refresh session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+      responses:
+        "204":
+          description: The session was revoked or was already inactive.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /files:
+    get:
+      tags: [Files]
+      operationId: listFiles
+      summary: List active entries owned by the authenticated user
+      parameters:
+        - name: parentId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [name, updatedAt]
+            default: updatedAt
+        - name: order
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/SortOrder"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: A page of active entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntryPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /files/upload:
+    post:
+      tags: [Files]
+      operationId: uploadFile
+      summary: Stream one multipart file into the authenticated user's storage
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/UploadFileRequest"
+            encoding:
+              file:
+                contentType: application/octet-stream
+      responses:
+        "200":
+          description: A completed idempotent request returned its existing result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntry"
+        "201":
+          description: The file was verified and atomically published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          description: The declared or received file size exceeds the configured limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: The received size or optional SHA-256 does not match the declared metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "507":
+          description: The dedicated storage does not have sufficient capacity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /folders:
+    post:
+      tags: [Files]
+      operationId: createFolder
+      summary: Create a folder in the authenticated user's storage
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFolderRequest"
+      responses:
+        "200":
+          description: A completed idempotent request returned its existing result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntry"
+        "201":
+          description: Folder created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /files/{fileId}:
+    parameters:
+      - $ref: "#/components/parameters/FileId"
+    get:
+      tags: [Files]
+      operationId: getFile
+      summary: Get metadata for an owned entry
+      responses:
+        "200":
+          description: Entry metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntry"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    delete:
+      tags: [Files]
+      operationId: moveFileToTrash
+      summary: Move an owned file or folder to trash
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "204":
+          description: The entry was moved to trash.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /files/{fileId}/content:
+    parameters:
+      - $ref: "#/components/parameters/FileId"
+    get:
+      tags: [Files]
+      operationId: downloadFile
+      summary: Download original file content with optional single-range support
+      parameters:
+        - name: Range
+          in: header
+          required: false
+          schema:
+            type: string
+            pattern: ^bytes=[0-9]*-[0-9]*$
+      responses:
+        "200":
+          description: Complete original file.
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                const: bytes
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Requested byte range.
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                const: bytes
+            Content-Range:
+              required: true
+              schema:
+                type: string
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "416":
+          description: The range is invalid or outside the file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    head:
+      tags: [Files]
+      operationId: inspectFileContent
+      summary: Inspect original file size, media type, and range support
+      responses:
+        "200":
+          description: Original file headers without a response body.
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                const: bytes
+            Content-Length:
+              required: true
+              schema:
+                type: integer
+                format: int64
+            Content-Type:
+              required: true
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /trash:
+    get:
+      tags: [Trash]
+      operationId: listTrash
+      summary: List trashed entries owned by the authenticated user
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: A page of trashed entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntryPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /files/{fileId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/FileId"
+    post:
+      tags: [Trash]
+      operationId: restoreFile
+      summary: Restore an owned trashed entry to its original parent
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Entry restored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntry"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    FileId:
+      name: fileId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Authentication is absent, invalid, or expired.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: The authenticated user or device cannot perform the operation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: The owned resource was not found; ownership is not disclosed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: The request conflicts with current state or idempotency metadata.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServiceUnavailable:
+      description: Dedicated storage or a required service is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalServerError:
+      description: An unexpected server error occurred.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    SystemHealthResponse:
+      type: object
+      additionalProperties: false
+      required: [api, protocolVersion, storage]
+      properties:
+        api:
+          type: string
+          enum: [AVAILABLE]
+        protocolVersion:
+          type: integer
+          const: 1
+        storage:
+          type: string
+          enum: [AVAILABLE, UNAVAILABLE]
+    RegisterDeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password, deviceName]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 128
+        password:
+          type: string
+          format: password
+          minLength: 1
+          maxLength: 1024
+        deviceName:
+          type: string
+          minLength: 1
+          maxLength: 128
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password, deviceId]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 128
+        password:
+          type: string
+          format: password
+          minLength: 1
+          maxLength: 1024
+        deviceId:
+          type: string
+          format: uuid
+    RefreshRequest:
+      type: object
+      additionalProperties: false
+      required: [deviceId, refreshToken]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        refreshToken:
+          type: string
+          minLength: 32
+          maxLength: 2048
+    LogoutRequest:
+      type: object
+      additionalProperties: false
+      required: [deviceId, refreshToken]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        refreshToken:
+          type: string
+          minLength: 32
+          maxLength: 2048
+    TokenResponse:
+      type: object
+      additionalProperties: false
+      required: [deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        accessTokenExpiresAt:
+          type: string
+          format: date-time
+        refreshTokenExpiresAt:
+          type: string
+          format: date-time
+    UploadFileRequest:
+      type: object
+      additionalProperties: false
+      required: [destinationFolderId, fileName, size, file]
+      properties:
+        destinationFolderId:
+          type: string
+          format: uuid
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+        contentType:
+          type: string
+          maxLength: 255
+        sha256:
+          type: string
+          pattern: ^[A-Fa-f0-9]{64}$
+        file:
+          type: string
+          format: binary
+    CreateFolderRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        parentId:
+          type: [string, "null"]
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+    FileEntry:
+      type: object
+      additionalProperties: false
+      required: [id, name, entryType, size, status, fileVersion, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        parentId:
+          type: [string, "null"]
+          format: uuid
+        name:
+          type: string
+        entryType:
+          $ref: "#/components/schemas/FileEntryType"
+        mimeType:
+          type: [string, "null"]
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+        status:
+          $ref: "#/components/schemas/FileEntryStatus"
+        fileVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        trashedAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    FileEntryPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, totalCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileEntry"
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 500
+        totalCount:
+          type: integer
+          format: int64
+          minimum: 0
+    FileEntryType:
+      type: string
+      enum: [FILE, FOLDER]
+    FileEntryStatus:
+      type: string
+      enum: [ACTIVE, TRASHED]
+    SortOrder:
+      type: string
+      enum: [asc, desc]
+      default: desc
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, details]
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+          minLength: 1
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        details:
+          type: object
+          additionalProperties: true
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_FAILED
+        - AUTHENTICATION_REQUIRED
+        - DEVICE_REGISTRATION_REQUIRES_LOCAL_DIRECT
+        - DEVICE_REVOKED
+        - REFRESH_TOKEN_REUSED
+        - STORAGE_UNAVAILABLE
+        - STORAGE_CAPACITY_INSUFFICIENT
+        - FILE_NOT_FOUND
+        - FILE_NAME_CONFLICT
+        - FILE_RESTORE_CONFLICT
+        - RANGE_NOT_SATISFIABLE
+        - IDEMPOTENCY_CONFLICT
+        - UPLOAD_SIZE_MISMATCH
+        - UPLOAD_CHECKSUM_MISMATCH
+        - OPERATION_SIZE_LIMIT_EXCEEDED
+        - INTERNAL_ERROR
+security:
+  - bearerAuth: []
