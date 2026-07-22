@@ -25,7 +25,7 @@
 - `tasklist.md`の進捗を更新する。
 - 変更をCommitし、作業BranchをRemoteへPushする。
 - `main`をBaseにPull Requestを作成する。
-- Pull Requestに目的、対象タスク、変更概要、テスト結果、手動確認、未実施事項を記載する。
+- Pull Requestのタイトルと本文を英語で作成し、目的、対象タスク、変更概要、テスト結果、手動確認、未実施事項を記載する。
 - 本ファイルの「各Pull Request完了記録」へ実績を追記する。
 - 完了記録を同じBranchへCommit・Pushし、Pull Requestへ反映されたことを確認する。
 - Pull Request URLと検証結果をユーザーへ報告して停止する。
@@ -88,9 +88,12 @@
 
 ### 1.5 Pull Request完了
 
-- [x] PR1が完了している
+- [ ] PR1が完了している
   - [x] 共通Pull Request完了手順をすべて実施する
   - [x] PR1の完了記録を本ファイルへ追記する
+  - [x] Pull Requestのタイトルと本文を英語へ修正する
+  - [x] 今後のPull Requestのタイトルと本文を英語で作成するルールを文書化する
+  - [x] PR1完了記録に追加修正を反映する
 
 ---
 
@@ -588,10 +591,10 @@
 - 完了日: `2026-07-22`
 - Pull Request: `https://github.com/ry825/Kura_Storage/pull/1`
 - 対象タスク: `tasklist.md` 1.1〜1.5
-- 実施した自動テスト: PR1文書検証（必須文書の存在、Markdownコードフェンス、文書Version参照、`docs/environment-info.md`のGit除外）成功、`git diff --check`成功
+- 実施した自動テスト: PR1文書検証（必須文書の存在、Markdownコードフェンス、文書Version参照、`docs/environment-info.md`のGit除外）成功、Pull Request英語化ルールの記載検査成功、`git diff --check`成功
 - 実施した手動・実機確認: 5つの正式文書、Steeringの`requirements.md`・`design.md`、ローカル環境情報の未確定値と秘密情報非保存ルールを確認。実機確認はPR1の対象外
-- 計画と実装の差分: 正式文書のMVP再定義はリポジトリ初期コミットで既に`main`へ収録済みだったため、本PRでは再検証と進捗確定を記録した
-- 実装中に追加したタスクと理由: なし
+- 計画と実装の差分: 正式文書のMVP再定義はリポジトリ初期コミットで既に`main`へ収録済みだったため、本PRでは再検証と進捗確定を記録した。Pull Request作成後のユーザー指示により、タイトルと本文を英語へ修正した
+- 実装中に追加したタスクと理由: Pull Request #1の英語化と、今後のPull Requestのタイトル・本文を英語で作成するルールの文書化を、ユーザー指示へ対応するため追加した
 - 技術的に不要になったタスク・理由・代替実装: なし
 - 後続Pull Requestへの引継ぎ: PR2は本PRの`main`へのMerge後に開始する。`NET-LAN-CIDR`とZeroTier関連の未確定値はPR7の実機E2E開始までに確定する
 
