@@ -36,10 +36,10 @@
 
 ### 1.1 作業開始
 
-- [ ] PR1の作業準備が完了している
+- [x] PR1の作業準備が完了している
   - [x] `requirements.md`と`design.md`を再確認する
-  - [ ] `git status`と既存差分を確認する
-  - [ ] 最新`main`を基点に短命Branchを作成する
+  - [x] `git status`と既存差分を確認する
+  - [x] 最新`main`を基点に短命Branchを作成する
   - [x] 対象文書の現行Versionと参照関係を記録する
 
 ### 1.2 正式文書のMVP再定義
