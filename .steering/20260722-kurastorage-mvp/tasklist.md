@@ -235,20 +235,20 @@
 
 ### 3.7 Test・検証
 
-- [ ] Server基盤・認証・DeviceのTestが完了している
+- [x] Server基盤・認証・DeviceのTestが完了している
   - [x] Password Hash、Lock、Rehash、Username正規化の単体Testを実装する
   - [x] Device登録、上限、失効、Session Rotation、Reuseの単体Testを実装する
   - [x] PostgreSQLでMigration、Register、Login、Refresh並列実行、Logout、Device失効を結合Testする
   - [x] Local Direct登録成功とRemote Secure登録拒否をTestする
   - [x] Secret、Password、Token、KeyがLogへ出力されないことをTestする
   - [x] `./scripts/ci/verify-config.sh`、`verify-server.sh`、`verify-security.sh`が成功する
-  - [ ] CIの必須Jobがすべて成功する
+  - [x] CIの必須Jobがすべて成功する
 
 ### 3.8 Pull Request完了
 
-- [ ] PR3が完了している
-  - [ ] 共通Pull Request完了手順をすべて実施する
-  - [ ] PR3の完了記録を本ファイルへ追記する
+- [x] PR3が完了している
+  - [x] 共通Pull Request完了手順をすべて実施する
+  - [x] PR3の完了記録を本ファイルへ追記する
 
 ---
 
@@ -609,6 +609,18 @@
 - 実装中に追加したタスクと理由: GitHub Actions実行環境で検証Toolを明示Installする対応と、NuGet Cache PathをRepository内の実Pathへ合わせる対応を、CI失敗の解消と再現性確保のため追加した
 - 技術的に不要になったタスク・理由・代替実装: なし
 - 後続Pull Requestへの引継ぎ: 本追補Pull Requestが`main`へMergeされた後、PR3のServer基盤・認証・Device実装を開始する
+
+### PR3: Server基盤・認証・Device
+
+- 完了日: `2026-07-23`
+- Pull Request: `https://github.com/ry825/Kura_Storage/pull/4`
+- 対象タスク: `tasklist.md` 3.1〜3.8
+- 実施した自動テスト: `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-server.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`が成功。Server検証ではDomain 3件、Application 8件、Integration 11件が成功し、PostgreSQL 17 TestcontainersでMigration、Local Direct登録、Remote Secure登録拒否、Login、並列Refresh、Reuse検知、Logout、Device失効、Log秘密情報非出力を確認。Pull Request #4のGitHub Actions `Config`、`Server`、`Security`、`Android`がすべて成功
+- 実施した手動・実機確認: Release Buildが警告0・Error 0で成功し、Admin CLIのHelp出力を確認。Raspberry Pi配置、実HDD Mount、Nginx Unix Socket、Android実機確認は後続PRの対象
+- 計画と実装の差分: なし。Refresh RotationはPostgreSQLの部分Unique Indexと自己参照外部Keyを維持するため、旧Session使用済み化、新Session作成、置換先設定を同一Transaction内の段階的Saveとして実装した
+- 実装中に追加したタスクと理由: API起動時Migration禁止を運用可能にするためAdmin CLIへ`database migrate`を追加し、Security検証ScriptのPassword検出をHard-coded文字列に限定して正当な変数名を誤検出しないよう更新した
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続Pull Requestへの引継ぎ: PR4は本Pull Requestの`main`へのMerge後に開始し、Identity MigrationへFileEntry・FileOperation用Migrationを追加する。実環境のPostgreSQL、HDD、ES256 Key、Nginx、Raspberry Piでの確認はPR7で行う
 
 ### PR完了記録Template
 
