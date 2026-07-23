@@ -324,7 +324,7 @@
 
 ### 4.8 Test・検証
 
-- [ ] Server File操作のTestが完了している
+- [x] Server File操作のTestが完了している
   - [x] Path、FileName、Owner認可、状態遷移の単体Testを実装する
   - [x] 一覧、Paging、詳細、Folder競合の結合Testを実装する
   - [x] Streaming Uploadの成功、中断、Size、Checksum、Idempotency、同名競合をTestする
@@ -335,13 +335,13 @@
   - [x] IDOR、Path Traversal、Symlink、NUL、不正RangeをSecurity Testする
   - [x] OpenAPI契約Testを更新する
   - [x] `verify-config.sh`、`verify-server.sh`、`verify-security.sh`が成功する
-  - [ ] CIの必須Jobがすべて成功する
+  - [x] CIの必須Jobがすべて成功する
 
 ### 4.9 Pull Request完了
 
-- [ ] PR4が完了している
-  - [ ] 共通Pull Request完了手順をすべて実施する
-  - [ ] PR4の完了記録を本ファイルへ追記する
+- [x] PR4が完了している
+  - [x] 共通Pull Request完了手順をすべて実施する
+  - [x] PR4の完了記録を本ファイルへ追記する
 
 ---
 
@@ -621,6 +621,18 @@
 - 実装中に追加したタスクと理由: API起動時Migration禁止を運用可能にするためAdmin CLIへ`database migrate`を追加し、Security検証ScriptのPassword検出をHard-coded文字列に限定して正当な変数名を誤検出しないよう更新した
 - 技術的に不要になったタスク・理由・代替実装: なし
 - 後続Pull Requestへの引継ぎ: PR4は本Pull Requestの`main`へのMerge後に開始し、Identity MigrationへFileEntry・FileOperation用Migrationを追加する。実環境のPostgreSQL、HDD、ES256 Key、Nginx、Raspberry Piでの確認はPR7で行う
+
+### PR4: Server基本ファイル操作
+
+- 完了日: `2026-07-23`
+- Pull Request: `https://github.com/ry825/Kura_Storage/pull/5`
+- 対象タスク: `tasklist.md` 4.1〜4.9
+- 実施した自動テスト: `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-server.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`が成功。Server検証ではDomain 14件、Application 8件、Integration 23件が成功し、PostgreSQL 17 Testcontainersと一時StorageでMigration、一覧・Paging・詳細・Folder競合、Streaming Uploadの成功・中断・Size・Checksum・Idempotency・同名競合、Rangeの先頭・中間・末尾・範囲外、File・FolderのTrash・Restore・復元競合、Operation復旧、IDOR、Path・Symlink・NUL、Storage異常、OpenAPI契約を確認。Pull Request #5のGitHub Actions `Config`、`Server`、`Security`、`Android`がすべて成功
+- 実施した手動・実機確認: Release Buildが警告0・Error 0で成功し、物理絶対Path・Owner内部ID・運用情報がFile DTOとOpenAPIへ公開されないこと、`server.zip`がPull Requestへ含まれないことを差分確認。Raspberry Pi実HDD、Nginx経由、Android実機確認はPR7の対象
+- 計画と実装の差分: User個人領域とRoot Folderは、HDD未Mount時のOS Root誤書込みを避けるためUser作成時ではなく、認証済みUserが最初にFile Rootへアクセスした際にStorageGuard成功を確認して冪等Provisionする。正式文書に残っていたMVP後の`private/shared/cache`物理構造を、承認済みMVP設計の`users/<user-id>/files|trash`へ統一した
+- 実装中に追加したタスクと理由: Root Folderの並行ProvisionをDBで防ぐ部分Unique Index、専用Mount Point配下を正しく判定するStorageGuard修正、DB一意制約競合の安定した`409 FILE_NAME_CONFLICT`変換、Folder Operation復旧時の子孫状態更新を、セルフレビューで判明した競合・復旧境界を閉じるため追加した
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続Pull Requestへの引継ぎ: PR5は本Pull Requestの`main`へのMerge後に開始し、本PRで確定したOpenAPI契約をAndroid DTO・接続・認証基盤から利用する。実HDD Mount、読取専用化、容量枯渇、Process強制停止を含むRaspberry Pi実構成確認はPR7で再確認する
 
 ### PR完了記録Template
 
