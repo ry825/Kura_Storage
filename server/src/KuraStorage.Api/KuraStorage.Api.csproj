@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../KuraStorage.Application/KuraStorage.Application.csproj" />
+    <ProjectReference Include="../KuraStorage.Infrastructure/KuraStorage.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

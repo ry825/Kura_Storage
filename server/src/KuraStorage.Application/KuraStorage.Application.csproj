@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../KuraStorage.Domain/KuraStorage.Domain.csproj" />
+  </ItemGroup>
+</Project>

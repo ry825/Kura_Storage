@@ -1,0 +1,29 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs,csproj,props,targets,json,jsonc,xml,yaml,yml}]
+indent_style = space
+indent_size = 2
+
+[*.cs]
+indent_size = 4
+dotnet_diagnostic.IDE0005.severity = warning
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_when_type_is_apparent = true:suggestion
+
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+ij_kotlin_code_style_defaults = KOTLIN_OFFICIAL
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.sh]
+indent_style = space
+indent_size = 2
