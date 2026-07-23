@@ -256,92 +256,92 @@
 
 ### 4.1 作業開始
 
-- [ ] PR4の作業準備が完了している
-  - [ ] PR3が`main`へMerge済みであることを確認する
-  - [ ] 最新`main`から短命Branchを作成する
-  - [ ] File API、HDD、Operation Journalの正式設計節を再確認する
+- [x] PR4の作業準備が完了している
+  - [x] PR3が`main`へMerge済みであることを確認する
+  - [x] 最新`main`から短命Branchを作成する
+  - [x] File API、HDD、Operation Journalの正式設計節を再確認する
 
 ### 4.2 File Domain・DB
 
-- [ ] File DomainとDB Schemaを実装する
-  - [ ] `FileEntry`、`FileOperation`、`RelativeStoragePath`、`FileName`、`FileVersion`を実装する
-  - [ ] `ACTIVE`、`TRASHED`とOperation状態遷移を実装する
-  - [ ] Owner・Parent・Nameの部分Unique IndexとIdempotency Indexを実装する
-  - [ ] File Table用Migrationを作成する
-  - [ ] User個人領域とRoot Folderの作成を実装する
+- [x] File DomainとDB Schemaを実装する
+  - [x] `FileEntry`、`FileOperation`、`RelativeStoragePath`、`FileName`、`FileVersion`を実装する
+  - [x] `ACTIVE`、`TRASHED`とOperation状態遷移を実装する
+  - [x] Owner・Parent・Nameの部分Unique IndexとIdempotency Indexを実装する
+  - [x] File Table用Migrationを作成する
+  - [x] User個人領域とRoot Folderの作成を実装する
 
 ### 4.3 Path・所有者認可
 
-- [ ] Fileアクセスの共通防御を実装する
-  - [ ] 物理絶対PathをClient入力またはResponseにしない
-  - [ ] `..`、絶対Path、NUL、不正区切り文字を拒否する
-  - [ ] Rootから解決した実Pathが専用領域内であることを再検証する
-  - [ ] シンボリックリンクを作成・追跡しない
-  - [ ] TokenのUserからOwnerを決定し、Client指定User IDを信頼しない
-  - [ ] 他UserのFile IDに対して共通`FILE_NOT_FOUND`を返す
+- [x] Fileアクセスの共通防御を実装する
+  - [x] 物理絶対PathをClient入力またはResponseにしない
+  - [x] `..`、絶対Path、NUL、不正区切り文字を拒否する
+  - [x] Rootから解決した実Pathが専用領域内であることを再検証する
+  - [x] シンボリックリンクを作成・追跡しない
+  - [x] TokenのUserからOwnerを決定し、Client指定User IDを信頼しない
+  - [x] 他UserのFile IDに対して共通`FILE_NOT_FOUND`を返す
 
 ### 4.4 一覧・詳細・Folder作成
 
-- [ ] File CatalogとFolder作成を実装する
-  - [ ] Paging付き`GET /api/v1/files`を実装する
-  - [ ] `GET /api/v1/files/{fileId}`を実装する
-  - [ ] `POST /api/v1/folders`を実装する
-  - [ ] 同名File・Folder競合をDB制約とApplicationの両方で処理する
-  - [ ] File DTOからOwnerの内部ID、物理Path、運用情報を除外する
+- [x] File CatalogとFolder作成を実装する
+  - [x] Paging付き`GET /api/v1/files`を実装する
+  - [x] `GET /api/v1/files/{fileId}`を実装する
+  - [x] `POST /api/v1/folders`を実装する
+  - [x] 同名File・Folder競合をDB制約とApplicationの両方で処理する
+  - [x] File DTOからOwnerの内部ID、物理Path、運用情報を除外する
 
 ### 4.5 Streaming Upload
 
-- [ ] Streaming Uploadを実装する
-  - [ ] `POST /api/v1/files/upload`をMultipart Streamingで実装する
-  - [ ] `Idempotency-Key`、Metadata、Destination Folder、Owner、空き容量を検証する
-  - [ ] ASP.NET Coreの全Body Bufferingを使用せず、HDDの`upload-temp`へStreamする
-  - [ ] 受信Sizeと任意SHA-256をStream中に検証する
-  - [ ] 検証後だけ同一Filesystem内でatomic renameする
-  - [ ] 同名競合時に既存Fileを上書き・削除しない
-  - [ ] 同じIdempotency Key・Metadataの再送で重複Fileを作成しない
-  - [ ] 中断・検証失敗Fileを通常一覧へ公開しない
+- [x] Streaming Uploadを実装する
+  - [x] `POST /api/v1/files/upload`をMultipart Streamingで実装する
+  - [x] `Idempotency-Key`、Metadata、Destination Folder、Owner、空き容量を検証する
+  - [x] ASP.NET Coreの全Body Bufferingを使用せず、HDDの`upload-temp`へStreamする
+  - [x] 受信Sizeと任意SHA-256をStream中に検証する
+  - [x] 検証後だけ同一Filesystem内でatomic renameする
+  - [x] 同名競合時に既存Fileを上書き・削除しない
+  - [x] 同じIdempotency Key・Metadataの再送で重複Fileを作成しない
+  - [x] 中断・検証失敗Fileを通常一覧へ公開しない
 
 ### 4.6 Range Download
 
-- [ ] Range Downloadを実装する
-  - [ ] `GET /api/v1/files/{fileId}/content`を実装する
-  - [ ] Full Downloadと単一Rangeの`200`・`206`・`416`を正しく返す
-  - [ ] `Content-Length`、`Content-Range`、`Accept-Ranges`、安全な`Content-Disposition`を設定する
-  - [ ] File全体をMemoryへ読み込まずStreamする
-  - [ ] HDD利用不可、File未存在、Owner不一致を正しく拒否する
+- [x] Range Downloadを実装する
+  - [x] `GET /api/v1/files/{fileId}/content`を実装する
+  - [x] Full Downloadと単一Rangeの`200`・`206`・`416`を正しく返す
+  - [x] `Content-Length`、`Content-Range`、`Accept-Ranges`、安全な`Content-Disposition`を設定する
+  - [x] File全体をMemoryへ読み込まずStreamする
+  - [x] HDD利用不可、File未存在、Owner不一致を正しく拒否する
 
 ### 4.7 Trash・Restore・復旧
 
-- [ ] Trash・RestoreとOperation復旧を実装する
-  - [ ] `DELETE /api/v1/files/{fileId}`でゴミ箱へ移動する
-  - [ ] `GET /api/v1/trash`でUserの`TRASHED`項目だけを返す
-  - [ ] `POST /api/v1/files/{fileId}/restore`で元の場所へ復元する
-  - [ ] 復元先の同名競合時に上書きせず`FILE_RESTORE_CONFLICT`を返す
-  - [ ] Folder配下の実File移動とDB状態を一貫して変更する
-  - [ ] `FileOperation` の`PENDING`、`FILESYSTEM_DONE`、`COMPLETED`、`RECOVERY_REQUIRED`を実装する
-  - [ ] API起動時と限定Hosted Serviceで未完了Operationを冪等に復旧する
-  - [ ] 安全に自動判定できないOperationを通常一覧へ公開せず`RECOVERY_REQUIRED`とする
+- [x] Trash・RestoreとOperation復旧を実装する
+  - [x] `DELETE /api/v1/files/{fileId}`でゴミ箱へ移動する
+  - [x] `GET /api/v1/trash`でUserの`TRASHED`項目だけを返す
+  - [x] `POST /api/v1/files/{fileId}/restore`で元の場所へ復元する
+  - [x] 復元先の同名競合時に上書きせず`FILE_RESTORE_CONFLICT`を返す
+  - [x] Folder配下の実File移動とDB状態を一貫して変更する
+  - [x] `FileOperation` の`PENDING`、`FILESYSTEM_DONE`、`COMPLETED`、`RECOVERY_REQUIRED`を実装する
+  - [x] API起動時と限定Hosted Serviceで未完了Operationを冪等に復旧する
+  - [x] 安全に自動判定できないOperationを通常一覧へ公開せず`RECOVERY_REQUIRED`とする
 
 ### 4.8 Test・検証
 
-- [ ] Server File操作のTestが完了している
-  - [ ] Path、FileName、Owner認可、状態遷移の単体Testを実装する
-  - [ ] 一覧、Paging、詳細、Folder競合の結合Testを実装する
-  - [ ] Streaming Uploadの成功、中断、Size、Checksum、Idempotency、同名競合をTestする
-  - [ ] Rangeの先頭、中間、末尾、範囲外をTestする
-  - [ ] File・FolderのTrash、Restore、復元競合をTestする
-  - [ ] Process停止を模擬したOperation復旧Testを実装する
-  - [ ] HDD未Mount、storageId不一致、読取専用、容量不足をTestする
-  - [ ] IDOR、Path Traversal、Symlink、NUL、不正RangeをSecurity Testする
-  - [ ] OpenAPI契約Testを更新する
-  - [ ] `verify-config.sh`、`verify-server.sh`、`verify-security.sh`が成功する
-  - [ ] CIの必須Jobがすべて成功する
+- [x] Server File操作のTestが完了している
+  - [x] Path、FileName、Owner認可、状態遷移の単体Testを実装する
+  - [x] 一覧、Paging、詳細、Folder競合の結合Testを実装する
+  - [x] Streaming Uploadの成功、中断、Size、Checksum、Idempotency、同名競合をTestする
+  - [x] Rangeの先頭、中間、末尾、範囲外をTestする
+  - [x] File・FolderのTrash、Restore、復元競合をTestする
+  - [x] Process停止を模擬したOperation復旧Testを実装する
+  - [x] HDD未Mount、storageId不一致、読取専用、容量不足をTestする
+  - [x] IDOR、Path Traversal、Symlink、NUL、不正RangeをSecurity Testする
+  - [x] OpenAPI契約Testを更新する
+  - [x] `verify-config.sh`、`verify-server.sh`、`verify-security.sh`が成功する
+  - [x] CIの必須Jobがすべて成功する
 
 ### 4.9 Pull Request完了
 
-- [ ] PR4が完了している
-  - [ ] 共通Pull Request完了手順をすべて実施する
-  - [ ] PR4の完了記録を本ファイルへ追記する
+- [x] PR4が完了している
+  - [x] 共通Pull Request完了手順をすべて実施する
+  - [x] PR4の完了記録を本ファイルへ追記する
 
 ---
 
@@ -621,6 +621,18 @@
 - 実装中に追加したタスクと理由: API起動時Migration禁止を運用可能にするためAdmin CLIへ`database migrate`を追加し、Security検証ScriptのPassword検出をHard-coded文字列に限定して正当な変数名を誤検出しないよう更新した
 - 技術的に不要になったタスク・理由・代替実装: なし
 - 後続Pull Requestへの引継ぎ: PR4は本Pull Requestの`main`へのMerge後に開始し、Identity MigrationへFileEntry・FileOperation用Migrationを追加する。実環境のPostgreSQL、HDD、ES256 Key、Nginx、Raspberry Piでの確認はPR7で行う
+
+### PR4: Server基本ファイル操作
+
+- 完了日: `2026-07-23`
+- Pull Request: `https://github.com/ry825/Kura_Storage/pull/5`
+- 対象タスク: `tasklist.md` 4.1〜4.9
+- 実施した自動テスト: `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-server.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`が成功。Server検証ではDomain 14件、Application 8件、Integration 23件が成功し、PostgreSQL 17 Testcontainersと一時StorageでMigration、一覧・Paging・詳細・Folder競合、Streaming Uploadの成功・中断・Size・Checksum・Idempotency・同名競合、Rangeの先頭・中間・末尾・範囲外、File・FolderのTrash・Restore・復元競合、Operation復旧、IDOR、Path・Symlink・NUL、Storage異常、OpenAPI契約を確認。Pull Request #5のGitHub Actions `Config`、`Server`、`Security`、`Android`がすべて成功
+- 実施した手動・実機確認: Release Buildが警告0・Error 0で成功し、物理絶対Path・Owner内部ID・運用情報がFile DTOとOpenAPIへ公開されないこと、`server.zip`がPull Requestへ含まれないことを差分確認。Raspberry Pi実HDD、Nginx経由、Android実機確認はPR7の対象
+- 計画と実装の差分: User個人領域とRoot Folderは、HDD未Mount時のOS Root誤書込みを避けるためUser作成時ではなく、認証済みUserが最初にFile Rootへアクセスした際にStorageGuard成功を確認して冪等Provisionする。正式文書に残っていたMVP後の`private/shared/cache`物理構造を、承認済みMVP設計の`users/<user-id>/files|trash`へ統一した
+- 実装中に追加したタスクと理由: Root Folderの並行ProvisionをDBで防ぐ部分Unique Index、専用Mount Point配下を正しく判定するStorageGuard修正、DB一意制約競合の安定した`409 FILE_NAME_CONFLICT`変換、Folder Operation復旧時の子孫状態更新を、セルフレビューで判明した競合・復旧境界を閉じるため追加した
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続Pull Requestへの引継ぎ: PR5は本Pull Requestの`main`へのMerge後に開始し、本PRで確定したOpenAPI契約をAndroid DTO・接続・認証基盤から利用する。実HDD Mount、読取専用化、容量枯渇、Process強制停止を含むRaspberry Pi実構成確認はPR7で再確認する
 
 ### PR完了記録Template
 

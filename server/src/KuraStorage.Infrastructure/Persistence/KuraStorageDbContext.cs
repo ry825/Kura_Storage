@@ -1,4 +1,5 @@
 using KuraStorage.Domain.Audit;
+using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +16,10 @@ public sealed class KuraStorageDbContext(DbContextOptions<KuraStorageDbContext> 
     public DbSet<AuthenticationAttempt> AuthenticationAttempts => Set<AuthenticationAttempt>();
 
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    public DbSet<FileEntry> FileEntries => Set<FileEntry>();
+
+    public DbSet<FileOperation> FileOperations => Set<FileOperation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

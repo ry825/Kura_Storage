@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Collections.Concurrent;
 using KuraStorage.Application.Identity;
+using KuraStorage.Application.Abstractions;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Testcontainers.PostgreSql;
 
@@ -31,6 +33,7 @@ public sealed class PostgreSqlAuthFlowTests(PostgreSqlAuthFlowFixture fixture)
 
         Assert.Empty(pending);
         Assert.Contains(applied, migration => migration.EndsWith("_InitialIdentity", StringComparison.Ordinal));
+        Assert.Contains(applied, migration => migration.EndsWith("_AddFileOperations", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -265,6 +268,38 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
         return result.Value;
     }
 
+    public async Task<AuthenticatedTestClient> CreateAuthenticatedClientAsync(
+        string username = "alice",
+        string? password = null)
+    {
+        password ??= Password;
+        await using (var scope = Factory.Services.CreateAsyncScope())
+        {
+            var identity = scope.ServiceProvider.GetRequiredService<IdentityService>();
+            var created = await identity.CreateUserAsync(
+                username,
+                username,
+                password,
+                UserRole.Member,
+                CancellationToken.None);
+            Assert.True(created.IsSuccess || created.Failure?.Code == IdentityErrorCodes.UsernameAlreadyExists);
+        }
+
+        var client = Factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/register-device")
+        {
+            Content = JsonContent.Create(
+                new { username, password, deviceName = $"{username}-phone" }),
+        };
+        request.Headers.Add("X-KuraStorage-Route", "LOCAL_DIRECT");
+        using var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        var accessToken = json.RootElement.GetProperty("accessToken").GetString()!;
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        return new AuthenticatedTestClient(client, accessToken);
+    }
+
     private sealed class ConfiguredApiFactory(
         string connectionString,
         string directory,
@@ -274,6 +309,12 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.ConfigureLogging(logging => logging.AddProvider(logger));
+            builder.ConfigureServices(
+                services =>
+                {
+                    services.RemoveAll<IStorageGuard>();
+                    services.AddSingleton<IStorageGuard, AvailableStorageGuard>();
+                });
             builder.ConfigureAppConfiguration(
                 (_, configuration) =>
                 {
@@ -290,6 +331,12 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
                         });
                 });
         }
+    }
+
+    private sealed class AvailableStorageGuard : IStorageGuard
+    {
+        public Task<StorageStatus> InspectAsync(bool requireWrite, CancellationToken cancellationToken) =>
+            Task.FromResult(StorageStatus.Available);
     }
 
     private sealed class CollectingLoggerProvider : ILoggerProvider
@@ -325,3 +372,5 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
         }
     }
 }
+
+public sealed record AuthenticatedTestClient(HttpClient Client, string AccessToken);

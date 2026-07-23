@@ -250,38 +250,25 @@ KuraStorageのDevice失効時はRefresh Sessionを失効する。ネットワー
 
 ```text
 /mnt/KuraStorage-hdd/KuraStorage/
-├── private/
-│   ├── user-<id>/
-│   └── ...
-├── shared/
-├── incoming/
-│   ├── device-<id>/
-│   └── ...
-├── trash/
-│   └── file-<id>/
-├── thumbnails/
-│   └── <file-id>/
-├── cache/
-│   ├── images/
-│   │   └── <file-id>/<source-version>/
-│   └── videos/
-│       └── <file-id>/<source-version>/
-├── versions/
+├── .storage-identity
+├── users/
+│   └── <user-id>/
+│       ├── files/
+│       └── trash/
 └── upload-temp/
+    └── <user-id>/
 ```
 
 ### 4.2 ディレクトリの責務
 
 | ディレクトリ  | 責務                                   | 正式データか |
 | ------------- | -------------------------------------- | ------------ |
-| `private`     | ユーザー個人領域                       | はい         |
-| `shared`      | 家族共有領域                           | はい         |
-| `incoming`    | Syncthing等の外部取り込み・検証前領域  | いいえ       |
-| `trash`       | アプリから削除した元ファイルの一時保管 | はい         |
-| `thumbnails`  | 一覧表示用の小型画像                   | 再生成可能   |
-| `cache`       | 低・中画質の一時派生データ             | 再生成可能   |
-| `versions`    | 過去バージョンを有効化した場合の保存先 | はい         |
-| `upload-temp` | 未完了アップロード                     | いいえ       |
+| `.storage-identity`      | 専用HDDとFormatの識別                  | はい       |
+| `users/<user-id>/files` | ユーザー個人領域                       | はい       |
+| `users/<user-id>/trash` | アプリから削除した元ファイルの一時保管 | はい       |
+| `upload-temp/<user-id>` | 未完了アップロード                     | いいえ     |
+
+共有、外部取り込み、サムネイル、派生キャッシュ、過去Version用DirectoryはMVP後の対象機能と同時に追加する。
 
 ### 4.3 ストレージ利用可否の判定
 
