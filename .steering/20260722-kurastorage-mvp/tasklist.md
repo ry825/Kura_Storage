@@ -155,19 +155,19 @@
 
 ### 2.7 検証
 
-- [ ] PR2の自動検証が完了している
+- [x] PR2の自動検証が完了している
   - [x] `./scripts/ci/verify-config.sh`が成功する
   - [x] `./scripts/ci/verify-server.sh`が成功する
   - [x] `./scripts/ci/verify-security.sh`が成功する
   - [x] `./scripts/ci/verify-android.sh`が成功する
   - [x] Debug APKとServer Build Artifactが生成できる
-  - [ ] CIの必須Jobがすべて成功する
+  - [x] CIの必須Jobがすべて成功する
 
 ### 2.8 Pull Request完了
 
-- [ ] PR2が完了している
-  - [ ] 共通Pull Request完了手順をすべて実施する
-  - [ ] PR2の完了記録を本ファイルへ追記する
+- [x] PR2が完了している
+  - [x] 共通Pull Request完了手順をすべて実施する
+  - [x] PR2の完了記録を本ファイルへ追記する
 
 ---
 
@@ -597,6 +597,18 @@
 - 実装中に追加したタスクと理由: Pull Request #1の英語化と、今後のPull Requestのタイトル・本文を英語で作成するルールの文書化を、ユーザー指示へ対応するため追加した
 - 技術的に不要になったタスク・理由・代替実装: なし
 - 後続Pull Requestへの引継ぎ: PR2は本PRの`main`へのMerge後に開始する。`NET-LAN-CIDR`とZeroTier関連の未確定値はPR7の実機E2E開始までに確定する
+
+### PR2: Repository・Build・CI基盤
+
+- 完了日: `2026-07-23`
+- Pull Request: 実装 `https://github.com/ry825/Kura_Storage/pull/2`、完了記録追補 `https://github.com/ry825/Kura_Storage/pull/3`
+- 対象タスク: `tasklist.md` 2.1〜2.8
+- 実施した自動テスト: `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-server.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-android.sh`、`actionlint .github/workflows/ci.yml`、OpenAPI YAML Parse、`git diff --check`が成功。Pull Request #2のGitHub Actions `Config`、`Server`、`Security`、`Android`がすべて成功
+- 実施した手動・実機確認: Debug APK、APIとAdmin CLIのServer Build Artifactが生成されることを確認。Raspberry Pi配置とAndroid実機確認は後続PRの対象
+- 計画と実装の差分: Repository、Server、Android、API契約、CI基盤の実装範囲に差分なし。Pull Request #2が完了記録の反映前にMergeされたため、本記録と残っていた進捗Checkは追補Pull Requestで`main`へ反映する
+- 実装中に追加したタスクと理由: GitHub Actions実行環境で検証Toolを明示Installする対応と、NuGet Cache PathをRepository内の実Pathへ合わせる対応を、CI失敗の解消と再現性確保のため追加した
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続Pull Requestへの引継ぎ: 本追補Pull Requestが`main`へMergeされた後、PR3のServer基盤・認証・Device実装を開始する
 
 ### PR完了記録Template
 
