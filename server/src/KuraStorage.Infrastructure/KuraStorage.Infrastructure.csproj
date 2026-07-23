@@ -3,4 +3,13 @@
     <ProjectReference Include="../KuraStorage.Application/KuraStorage.Application.csproj" />
     <ProjectReference Include="../KuraStorage.Domain/KuraStorage.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+  </ItemGroup>
 </Project>
