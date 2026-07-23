@@ -203,13 +203,7 @@ paths:
                 contentType: application/octet-stream
       responses:
         "200":
-          description: A completed idempotent request returned its existing result.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FileEntry"
-        "201":
-          description: The file was verified and atomically published.
+          description: The verified file, or the existing result of an idempotent retry.
           content:
             application/json:
               schema:
@@ -245,8 +239,6 @@ paths:
       tags: [Files]
       operationId: createFolder
       summary: Create a folder in the authenticated user's storage
-      parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -255,12 +247,6 @@ paths:
               $ref: "#/components/schemas/CreateFolderRequest"
       responses:
         "200":
-          description: A completed idempotent request returned its existing result.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FileEntry"
-        "201":
           description: Folder created.
           content:
             application/json:
@@ -298,11 +284,13 @@ paths:
       tags: [Files]
       operationId: moveFileToTrash
       summary: Move an owned file or folder to trash
-      parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
       responses:
-        "204":
+        "200":
           description: The entry was moved to trash.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntry"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -440,8 +428,6 @@ paths:
       tags: [Trash]
       operationId: restoreFile
       summary: Restore an owned trashed entry to its original parent
-      parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
       responses:
         "200":
           description: Entry restored.
@@ -689,8 +675,11 @@ components:
     FileEntryPage:
       type: object
       additionalProperties: false
-      required: [items, page, pageSize, totalCount]
+      required: [parentId, items, page, pageSize, totalCount]
       properties:
+        parentId:
+          type: [string, "null"]
+          format: uuid
         items:
           type: array
           items:

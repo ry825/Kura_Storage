@@ -1,14 +1,18 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Globalization;
 using System.Security.Cryptography;
 using KuraStorage.Api;
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Files;
 using KuraStorage.Application.Identity;
 using KuraStorage.Infrastructure;
 using KuraStorage.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables("KURASTORAGE_");
@@ -226,10 +230,165 @@ app.MapPost(
         return Results.NoContent();
     });
 
+app.MapGet(
+    "/api/v1/files",
+    async (
+        Guid? parentId,
+        int? page,
+        int? pageSize,
+        HttpContext context,
+        FileService files,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await files.ListAsync(userId, parentId, page ?? 1, pageSize ?? 100, cancellationToken);
+        return ToFileHttpResult(result, context);
+    });
+
+app.MapGet(
+    "/api/v1/files/{fileId:guid}",
+    async (
+        Guid fileId,
+        HttpContext context,
+        FileService files,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToFileHttpResult(await files.GetAsync(userId, fileId, cancellationToken), context);
+    });
+
+app.MapPost(
+    "/api/v1/folders",
+    async (
+        CreateFolderRequest request,
+        HttpContext context,
+        FileService files,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToFileHttpResult(
+            await files.CreateFolderAsync(userId, request.ParentId, request.Name ?? string.Empty, cancellationToken),
+            context);
+    });
+
+app.MapPost(
+    "/api/v1/files/upload",
+    async (
+        HttpContext context,
+        FileService files,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return await HandleUploadAsync(userId, context, files, cancellationToken);
+    });
+
+app.MapGet(
+    "/api/v1/files/{fileId:guid}/content",
+    async (
+        Guid fileId,
+        HttpContext context,
+        FileService files,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await files.DownloadAsync(userId, fileId, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return ToFileHttpResult(result, context);
+        }
+
+        if (!ValidSingleRange(context.Request.Headers.Range.ToString(), result.Value!.Item.Size))
+        {
+            await result.Value.Content.DisposeAsync();
+            context.Response.Headers.ContentRange = $"bytes */{result.Value.Item.Size}";
+            return Error(StatusCodes.Status416RangeNotSatisfiable, "RANGE_NOT_SATISFIABLE", context);
+        }
+
+        return Results.File(
+            result.Value.Content,
+            result.Value.Item.MimeType ?? "application/octet-stream",
+            result.Value.Item.Name,
+            enableRangeProcessing: true);
+    });
+
+app.MapDelete(
+    "/api/v1/files/{fileId:guid}",
+    async (
+        Guid fileId,
+        HttpContext context,
+        FileService files,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToFileHttpResult(await files.TrashAsync(userId, fileId, cancellationToken), context);
+    });
+
+app.MapGet(
+    "/api/v1/trash",
+    async (
+        int? page,
+        int? pageSize,
+        HttpContext context,
+        FileService files,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToFileHttpResult(
+            await files.ListTrashAsync(userId, page ?? 1, pageSize ?? 100, cancellationToken),
+            context);
+    });
+
+app.MapPost(
+    "/api/v1/files/{fileId:guid}/restore",
+    async (
+        Guid fileId,
+        HttpContext context,
+        FileService files,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToFileHttpResult(await files.RestoreAsync(userId, fileId, cancellationToken), context);
+    });
+
 app.Run();
 
 static bool TryClaimGuid(System.Security.Claims.ClaimsPrincipal? principal, string claimType, out Guid value) =>
     Guid.TryParse(principal?.FindFirst(claimType)?.Value, out value);
+
+static bool TryAuthenticatedUserId(HttpContext context, out Guid value) =>
+    TryClaimGuid(context.User, JwtRegisteredClaimNames.Sub, out value);
 
 static bool ValidUsernamePassword(string? username, string? password) =>
     ValidText(username, 128) && password is not null && password.Length is >= 1 and <= 1024;
@@ -265,6 +424,133 @@ static IResult ToHttpResult(IdentityResult<TokenPair> result, HttpContext contex
     return Error(status, publicCode, context);
 }
 
+static IResult ToFileHttpResult<T>(FileResult<T> result, HttpContext context)
+{
+    if (result.IsSuccess)
+    {
+        return Results.Ok(result.Value);
+    }
+
+    var status = result.Failure!.Kind switch
+    {
+        FileFailureKind.BadRequest => StatusCodes.Status400BadRequest,
+        FileFailureKind.NotFound => StatusCodes.Status404NotFound,
+        FileFailureKind.Conflict => StatusCodes.Status409Conflict,
+        FileFailureKind.Unprocessable => StatusCodes.Status422UnprocessableEntity,
+        FileFailureKind.StorageUnavailable => StatusCodes.Status503ServiceUnavailable,
+        FileFailureKind.CapacityInsufficient => StatusCodes.Status507InsufficientStorage,
+        _ => StatusCodes.Status500InternalServerError,
+    };
+    return Error(status, result.Failure.Code, context);
+}
+
+static async Task<IResult> HandleUploadAsync(
+    Guid userId,
+    HttpContext context,
+    FileService files,
+    CancellationToken cancellationToken)
+{
+    var contentType = context.Request.ContentType;
+    if (string.IsNullOrWhiteSpace(contentType) ||
+        !MediaTypeHeaderValue.TryParse(contentType, out var mediaType) ||
+        !string.Equals(mediaType.MediaType.Value, "multipart/form-data", StringComparison.OrdinalIgnoreCase))
+    {
+        return Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context);
+    }
+
+    var boundary = HeaderUtilities.RemoveQuotes(mediaType.Boundary).Value;
+    var idempotencyKey = context.Request.Headers["Idempotency-Key"].ToString();
+    if (string.IsNullOrWhiteSpace(boundary) || boundary.Length > 256 || string.IsNullOrWhiteSpace(idempotencyKey))
+    {
+        return Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context);
+    }
+
+    var reader = new MultipartReader(boundary, context.Request.Body);
+    var fields = new Dictionary<string, string>(StringComparer.Ordinal);
+    FileResult<FileItem>? uploadResult = null;
+    MultipartSection? section;
+    while ((section = await reader.ReadNextSectionAsync(cancellationToken)) is not null)
+    {
+        if (!ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var disposition))
+        {
+            return Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context);
+        }
+
+        var fieldName = HeaderUtilities.RemoveQuotes(disposition.Name).Value;
+        if (string.IsNullOrWhiteSpace(fieldName))
+        {
+            return Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context);
+        }
+
+        var isFile = disposition.FileName.HasValue || disposition.FileNameStar.HasValue;
+        if (!isFile)
+        {
+            using var textReader = new StreamReader(section.Body, leaveOpen: true);
+            var value = await textReader.ReadToEndAsync(cancellationToken);
+            if (value.Length > 2048)
+            {
+                return Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context);
+            }
+
+            fields[fieldName] = value;
+            continue;
+        }
+
+        if (uploadResult is not null ||
+            !Guid.TryParse(GetField(fields, "destinationFolderId"), out var destinationFolderId) ||
+            !long.TryParse(
+                GetField(fields, "size"),
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var size))
+        {
+            return Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context);
+        }
+
+        uploadResult = await files.UploadAsync(
+            userId,
+            new UploadFileCommand(
+                destinationFolderId,
+                GetField(fields, "fileName") ?? string.Empty,
+                size,
+                GetField(fields, "contentType") ?? section.ContentType,
+                GetField(fields, "sha256"),
+                idempotencyKey,
+                section.Body),
+            cancellationToken);
+    }
+
+    return uploadResult is null
+        ? Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context)
+        : ToFileHttpResult(uploadResult, context);
+}
+
+static string? GetField(IReadOnlyDictionary<string, string> fields, string key) =>
+    fields.TryGetValue(key, out var value) ? value : null;
+
+static bool ValidSingleRange(string rangeHeader, long length)
+{
+    if (string.IsNullOrWhiteSpace(rangeHeader))
+    {
+        return true;
+    }
+
+    if (!System.Net.Http.Headers.RangeHeaderValue.TryParse(rangeHeader, out var parsed) ||
+        !string.Equals(parsed.Unit, "bytes", StringComparison.OrdinalIgnoreCase) ||
+        parsed.Ranges.Count != 1)
+    {
+        return false;
+    }
+
+    var range = parsed.Ranges.Single();
+    if (range.From is null)
+    {
+        return range.To is > 0;
+    }
+
+    return range.From.Value < length && (range.To is null || range.To >= range.From);
+}
+
 static IResult Error(int status, string code, HttpContext context) =>
     Results.Json(
         new ErrorResponse(code, "The request could not be completed.", context.TraceIdentifier, new { }),
@@ -277,6 +563,8 @@ public sealed record LoginRequest(string? Username, string? Password, Guid Devic
 public sealed record RefreshRequest(Guid DeviceId, string? RefreshToken);
 
 public sealed record LogoutRequest(Guid DeviceId, string? RefreshToken);
+
+public sealed record CreateFolderRequest(Guid? ParentId, string? Name);
 
 public sealed record ErrorResponse(string Code, string Message, string RequestId, object Details);
 

@@ -16,5 +16,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="../../../contracts/fixtures/*.json" Link="ContractFixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../contracts/openapi/kurastorage-api.yaml" Link="ContractFixtures/kurastorage-api.yaml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

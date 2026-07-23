@@ -1,5 +1,6 @@
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Identity;
+using KuraStorage.Application.Files;
 using KuraStorage.Infrastructure.Configuration;
 using KuraStorage.Infrastructure.Identity;
 using KuraStorage.Infrastructure.Persistence;
@@ -39,12 +40,18 @@ public static class DependencyInjection
                 options.UseNpgsql(
                     serviceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString));
         services.AddScoped<IIdentityRepository, IdentityRepository>();
+        services.AddScoped<IFileRepository, FileRepository>();
         services.AddScoped<IdentityService>();
+        services.AddScoped<FileService>();
+        services.AddScoped<FileOperationRecoveryService>();
+        services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IRefreshTokenService, RefreshTokenService>();
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
         services.AddSingleton<ISystemClock, SystemClock>();
         services.AddSingleton<IStorageGuard, StorageGuard>();
+        services.AddSingleton<IFileStore, FileStore>();
+        services.AddHostedService<FileRecoveryHostedService>();
         return services;
     }
 
