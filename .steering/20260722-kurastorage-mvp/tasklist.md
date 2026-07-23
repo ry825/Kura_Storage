@@ -601,7 +601,7 @@
 ### PR2: Repository・Build・CI基盤
 
 - 完了日: `2026-07-23`
-- Pull Request: `https://github.com/ry825/Kura_Storage/pull/2`
+- Pull Request: 実装 `https://github.com/ry825/Kura_Storage/pull/2`、完了記録追補 `https://github.com/ry825/Kura_Storage/pull/3`
 - 対象タスク: `tasklist.md` 2.1〜2.8
 - 実施した自動テスト: `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-server.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-android.sh`、`actionlint .github/workflows/ci.yml`、OpenAPI YAML Parse、`git diff --check`が成功。Pull Request #2のGitHub Actions `Config`、`Server`、`Security`、`Android`がすべて成功
 - 実施した手動・実機確認: Debug APK、APIとAdmin CLIのServer Build Artifactが生成されることを確認。Raspberry Pi配置とAndroid実機確認は後続PRの対象
