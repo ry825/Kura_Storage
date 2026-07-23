@@ -175,80 +175,80 @@
 
 ### 3.1 作業開始
 
-- [ ] PR3の作業準備が完了している
-  - [ ] PR2が`main`へMerge済みであることを確認する
-  - [ ] 最新`main`から短命Branchを作成する
-  - [ ] 認証、Token、Route Header、HDDの正式設計節を再確認する
+- [x] PR3の作業準備が完了している
+  - [x] PR2が`main`へMerge済みであることを確認する
+  - [x] 最新`main`から短命Branchを作成する
+  - [x] 認証、Token、Route Header、HDDの正式設計節を再確認する
 
 ### 3.2 Configuration・DB基盤
 
-- [ ] ServerのConfigurationとDB基盤を実装する
-  - [ ] Optionsの起動時Validationを実装する
-  - [ ] Secret Fileと環境変数の読み込み境界を実装する
-  - [ ] EF Core DbContextとPostgreSQL接続を構成する
-  - [ ] User、Device、RefreshSession、AuthenticationAttempt、AuditLogのEntity・Mapping・Indexを実装する
-  - [ ] 初回Migrationを作成する
-  - [ ] API起動時にMigrationを自動適用しない
+- [x] ServerのConfigurationとDB基盤を実装する
+  - [x] Optionsの起動時Validationを実装する
+  - [x] Secret Fileと環境変数の読み込み境界を実装する
+  - [x] EF Core DbContextとPostgreSQL接続を構成する
+  - [x] User、Device、RefreshSession、AuthenticationAttempt、AuditLogのEntity・Mapping・Indexを実装する
+  - [x] 初回Migrationを作成する
+  - [x] API起動時にMigrationを自動適用しない
 
 ### 3.3 StorageGuard・Health・Route
 
-- [ ] Serverの接続・Storage基盤を実装する
-  - [ ] Mount Point、`.storage-identity`、実Path、読み書き、空き容量を検証する`StorageGuard`を実装する
-  - [ ] HDD未Mount時にOS Rootへ書き込まないTestを実装する
-  - [ ] Nginxが上書きするRoute Headerの検証Middlewareを実装する
-  - [ ] Unix Socket以外または不正RouteのDevice登録判定を信頼しない
-  - [ ] `GET /api/v1/system/health`を実装する
-  - [ ] Health ResponseからDB詳細、Path、storageId、OS情報を除外する
+- [x] Serverの接続・Storage基盤を実装する
+  - [x] Mount Point、`.storage-identity`、実Path、読み書き、空き容量を検証する`StorageGuard`を実装する
+  - [x] HDD未Mount時にOS Rootへ書き込まないTestを実装する
+  - [x] Nginxが上書きするRoute Headerの検証Middlewareを実装する
+  - [x] Unix Socket以外または不正RouteのDevice登録判定を信頼しない
+  - [x] `GET /api/v1/system/health`を実装する
+  - [x] Health ResponseからDB詳細、Path、storageId、OS情報を除外する
 
 ### 3.4 Password・User・認証失敗
 
-- [ ] User認証のDomain・Applicationを実装する
-  - [ ] Username正規化と一意性制約を実装する
-  - [ ] Argon2id v1.3、Salt 16Byte、メモリ19MiB、反復2、並列度1のHash生成・検証を実装する
-  - [ ] 弱い保存ParameterのLogin成功時Rehashを実装する
-  - [ ] User存在の有無を過度に公開しないAuthentication Errorを実装する
-  - [ ] 15分以内10回連続失敗のSecurity Lockと成功時Resetを実装する
-  - [ ] AuthenticationAttemptとAuditLogをSecretなしで記録する
+- [x] User認証のDomain・Applicationを実装する
+  - [x] Username正規化と一意性制約を実装する
+  - [x] Argon2id v1.3、Salt 16Byte、メモリ19MiB、反復2、並列度1のHash生成・検証を実装する
+  - [x] 弱い保存ParameterのLogin成功時Rehashを実装する
+  - [x] User存在の有無を過度に公開しないAuthentication Errorを実装する
+  - [x] 15分以内10回連続失敗のSecurity Lockと成功時Resetを実装する
+  - [x] AuthenticationAttemptとAuditLogをSecretなしで記録する
 
 ### 3.5 Device・Session・Token
 
-- [ ] DeviceとSessionのDomain・Applicationを実装する
-  - [ ] Local Direct限定Device登録とUserあたり初期10台上限を実装する
-  - [ ] Deviceと初回Refresh Sessionを単一Transactionで作成する
-  - [ ] ES256 Access Token発行とIssuer、Audience、Expiration、`sub`、`device_id`、`session_family_id`検証を実装する
-  - [ ] 256bit以上のRandom Refresh TokenとSHA-256 Hash保存を実装する
-  - [ ] 15分のAccess Tokenと24時間のRefresh Token有効期限を実装する
-  - [ ] Refresh Tokenの排他Rotation、使用済みToken再利用検知、Session Family失効を実装する
-  - [ ] LogoutとDevice失効時のSession失効を実装する
-  - [ ] 保護APIでUser、Device、Session Familyの有効性を検証する
+- [x] DeviceとSessionのDomain・Applicationを実装する
+  - [x] Local Direct限定Device登録とUserあたり初期10台上限を実装する
+  - [x] Deviceと初回Refresh Sessionを単一Transactionで作成する
+  - [x] ES256 Access Token発行とIssuer、Audience、Expiration、`sub`、`device_id`、`session_family_id`検証を実装する
+  - [x] 256bit以上のRandom Refresh TokenとSHA-256 Hash保存を実装する
+  - [x] 15分のAccess Tokenと24時間のRefresh Token有効期限を実装する
+  - [x] Refresh Tokenの排他Rotation、使用済みToken再利用検知、Session Family失効を実装する
+  - [x] LogoutとDevice失効時のSession失効を実装する
+  - [x] 保護APIでUser、Device、Session Familyの有効性を検証する
 
 ### 3.6 API・Admin CLI
 
-- [ ] 認証APIとAdmin CLIを実装する
-  - [ ] `POST /api/v1/auth/register-device`を実装する
-  - [ ] `POST /api/v1/auth/login`を実装する
-  - [ ] `POST /api/v1/auth/refresh`を実装する
-  - [ ] `POST /api/v1/auth/logout`を実装する
-  - [ ] Error ResponseとHTTP StatusをOpenAPI契約に一致させる
-  - [ ] `user create`、`device list`、`device revoke`、`user unlock`のCLI Commandを実装する
-  - [ ] CLIがApplication Serviceを使用し、SQLを直接実行しない
+- [x] 認証APIとAdmin CLIを実装する
+  - [x] `POST /api/v1/auth/register-device`を実装する
+  - [x] `POST /api/v1/auth/login`を実装する
+  - [x] `POST /api/v1/auth/refresh`を実装する
+  - [x] `POST /api/v1/auth/logout`を実装する
+  - [x] Error ResponseとHTTP StatusをOpenAPI契約に一致させる
+  - [x] `user create`、`device list`、`device revoke`、`user unlock`のCLI Commandを実装する
+  - [x] CLIがApplication Serviceを使用し、SQLを直接実行しない
 
 ### 3.7 Test・検証
 
-- [ ] Server基盤・認証・DeviceのTestが完了している
-  - [ ] Password Hash、Lock、Rehash、Username正規化の単体Testを実装する
-  - [ ] Device登録、上限、失効、Session Rotation、Reuseの単体Testを実装する
-  - [ ] PostgreSQLでMigration、Register、Login、Refresh並列実行、Logout、Device失効を結合Testする
-  - [ ] Local Direct登録成功とRemote Secure登録拒否をTestする
-  - [ ] Secret、Password、Token、KeyがLogへ出力されないことをTestする
-  - [ ] `./scripts/ci/verify-config.sh`、`verify-server.sh`、`verify-security.sh`が成功する
-  - [ ] CIの必須Jobがすべて成功する
+- [x] Server基盤・認証・DeviceのTestが完了している
+  - [x] Password Hash、Lock、Rehash、Username正規化の単体Testを実装する
+  - [x] Device登録、上限、失効、Session Rotation、Reuseの単体Testを実装する
+  - [x] PostgreSQLでMigration、Register、Login、Refresh並列実行、Logout、Device失効を結合Testする
+  - [x] Local Direct登録成功とRemote Secure登録拒否をTestする
+  - [x] Secret、Password、Token、KeyがLogへ出力されないことをTestする
+  - [x] `./scripts/ci/verify-config.sh`、`verify-server.sh`、`verify-security.sh`が成功する
+  - [x] CIの必須Jobがすべて成功する
 
 ### 3.8 Pull Request完了
 
-- [ ] PR3が完了している
-  - [ ] 共通Pull Request完了手順をすべて実施する
-  - [ ] PR3の完了記録を本ファイルへ追記する
+- [x] PR3が完了している
+  - [x] 共通Pull Request完了手順をすべて実施する
+  - [x] PR3の完了記録を本ファイルへ追記する
 
 ---
 
@@ -609,6 +609,18 @@
 - 実装中に追加したタスクと理由: GitHub Actions実行環境で検証Toolを明示Installする対応と、NuGet Cache PathをRepository内の実Pathへ合わせる対応を、CI失敗の解消と再現性確保のため追加した
 - 技術的に不要になったタスク・理由・代替実装: なし
 - 後続Pull Requestへの引継ぎ: 本追補Pull Requestが`main`へMergeされた後、PR3のServer基盤・認証・Device実装を開始する
+
+### PR3: Server基盤・認証・Device
+
+- 完了日: `2026-07-23`
+- Pull Request: `https://github.com/ry825/Kura_Storage/pull/4`
+- 対象タスク: `tasklist.md` 3.1〜3.8
+- 実施した自動テスト: `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-server.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`が成功。Server検証ではDomain 3件、Application 8件、Integration 11件が成功し、PostgreSQL 17 TestcontainersでMigration、Local Direct登録、Remote Secure登録拒否、Login、並列Refresh、Reuse検知、Logout、Device失効、Log秘密情報非出力を確認。Pull Request #4のGitHub Actions `Config`、`Server`、`Security`、`Android`がすべて成功
+- 実施した手動・実機確認: Release Buildが警告0・Error 0で成功し、Admin CLIのHelp出力を確認。Raspberry Pi配置、実HDD Mount、Nginx Unix Socket、Android実機確認は後続PRの対象
+- 計画と実装の差分: なし。Refresh RotationはPostgreSQLの部分Unique Indexと自己参照外部Keyを維持するため、旧Session使用済み化、新Session作成、置換先設定を同一Transaction内の段階的Saveとして実装した
+- 実装中に追加したタスクと理由: API起動時Migration禁止を運用可能にするためAdmin CLIへ`database migrate`を追加し、Security検証ScriptのPassword検出をHard-coded文字列に限定して正当な変数名を誤検出しないよう更新した
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続Pull Requestへの引継ぎ: PR4は本Pull Requestの`main`へのMerge後に開始し、Identity MigrationへFileEntry・FileOperation用Migrationを追加する。実環境のPostgreSQL、HDD、ES256 Key、Nginx、Raspberry Piでの確認はPR7で行う
 
 ### PR完了記録Template
 

@@ -6,4 +6,10 @@
     <ProjectReference Include="../KuraStorage.Application/KuraStorage.Application.csproj" />
     <ProjectReference Include="../KuraStorage.Infrastructure/KuraStorage.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.KeyPerFile" />
+  </ItemGroup>
 </Project>

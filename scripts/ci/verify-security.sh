@@ -24,7 +24,7 @@ scan_paths=(
 
 if rg -n --hidden --glob '!**/build/**' --glob '!**/bin/**' --glob '!**/obj/**' \
   --glob '!**/.gradle/**' --glob '!**/gradle-wrapper.jar' \
-  '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|password\s*[:=]\s*[^S][^E][^T])' \
+  '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|password["'\'']?\s*[:=]\s*["'\''][^"'\'']+["'\''])' \
   "${scan_paths[@]}"; then
   echo "Potential secret material found." >&2
   exit 1
