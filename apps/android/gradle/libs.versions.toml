@@ -12,6 +12,7 @@ datastore = "1.1.7"
 lifecycle = "2.9.2"
 navigation = "2.9.2"
 okhttp = "5.1.0"
+retrofit = "3.0.0"
 serialization = "1.9.0"
 serialization-plugin = "2.3.21"
 androidx-test-ext = "1.2.1"
@@ -37,6 +38,8 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
+retrofit-kotlinx-serialization = { module = "com.squareup.retrofit2:converter-kotlinx-serialization", version.ref = "retrofit" }
 okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
 junit4 = { module = "junit:junit", version.ref = "junit4" }
 
