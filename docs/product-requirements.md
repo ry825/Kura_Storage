@@ -1404,17 +1404,16 @@ KuraStorage専用ルート配下に、少なくとも次の用途を分離する
 
 ```text
 KuraStorage/
-├─ private/       ユーザー個人領域
-├─ shared/        家族共有領域
-├─ incoming/      外部取り込み・受け入れ領域
-├─ trash/         ゴミ箱
-├─ thumbnails/    一覧用サムネイル
-├─ cache/         低・中画質の一時キャッシュ
-├─ versions/      過去バージョン
-└─ upload-temp/   アップロード途中
+├─ .storage-identity
+├─ users/
+│  └─ <user-id>/
+│     ├─ files/       ユーザー個人領域
+│     └─ trash/       ユーザー単位のゴミ箱
+└─ upload-temp/
+   └─ <user-id>/      アップロード途中
 ```
 
-実際のディレクトリ名や配置はアーキテクチャ設計書で確定する。
+MVP後の共有、外部取り込み、サムネイル、派生キャッシュ、過去Version用領域は、対象機能を設計・実装する変更で追加する。
 
 ---
 

@@ -670,23 +670,16 @@ nodev,nosuid,noexec
 ```text
 /mnt/KuraStorage-hdd/KuraStorage/
 ├── .storage-identity
-├── private/
-│   └── user-<id>/
-├── shared/
-├── incoming/
-│   └── device-<id>/
-├── trash/
-│   └── file-<id>/
-├── thumbnails/
-│   └── <file-id>/
-├── cache/
-│   ├── images/<file-id>/<source-version>/
-│   └── videos/<file-id>/<source-version>/
-├── versions/
+├── users/
+│   └── <user-id>/
+│       ├── files/
+│       └── trash/
 └── upload-temp/
+    └── <user-id>/
 ```
 
 `.storage-identity`にはランダムな`storageId`とフォーマットバージョンを保存する。起動時に設定値と一致しない場合はストレージを`UNAVAILABLE`とする。
+共有、外部取り込み、サムネイル、派生キャッシュ、過去Versionの物理領域は、MVP後の各機能を追加する変更で設計・作成する。
 
 ### 9.3 ストレージ利用可否
 

@@ -16,7 +16,7 @@ public sealed class StorageGuard(IOptions<StorageOptions> options) : IStorageGua
         }
 
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.RootPath));
-        if (!await IsMountPointAsync(root, cancellationToken) || ContainsSymbolicLink(root))
+        if (!await IsOnDedicatedMountAsync(root, cancellationToken) || ContainsSymbolicLink(root))
         {
             return StorageStatus.Unavailable;
         }
@@ -27,8 +27,8 @@ public sealed class StorageGuard(IOptions<StorageOptions> options) : IStorageGua
             return StorageStatus.Unavailable;
         }
 
-        var identity = (await File.ReadAllTextAsync(identityPath, cancellationToken)).Trim();
-        if (!string.Equals(identity, options.StorageId, StringComparison.Ordinal))
+        var identity = await File.ReadAllTextAsync(identityPath, cancellationToken);
+        if (!StorageIdentity.Matches(options.StorageId, identity))
         {
             return StorageStatus.Unavailable;
         }
@@ -91,19 +91,36 @@ public sealed class StorageGuard(IOptions<StorageOptions> options) : IStorageGua
         return new FileInfo(path).LinkTarget is not null;
     }
 
-    private static async Task<bool> IsMountPointAsync(string root, CancellationToken cancellationToken)
+    private static async Task<bool> IsOnDedicatedMountAsync(string root, CancellationToken cancellationToken)
     {
         var mountInfo = await File.ReadAllLinesAsync("/proc/self/mountinfo", cancellationToken);
+        string? closestMount = null;
         foreach (var line in mountInfo)
         {
             var fields = line.Split(' ');
-            if (fields.Length > 4 && string.Equals(UnescapeMountPath(fields[4]), root, StringComparison.Ordinal))
+            if (fields.Length <= 4)
             {
-                return true;
+                continue;
+            }
+
+            var mountPath = Path.TrimEndingDirectorySeparator(UnescapeMountPath(fields[4]));
+            if ((string.Equals(root, mountPath, StringComparison.Ordinal) ||
+                 root.StartsWith(mountPath + Path.DirectorySeparatorChar, StringComparison.Ordinal)) &&
+                (closestMount is null || mountPath.Length > closestMount.Length))
+            {
+                closestMount = mountPath;
             }
         }
 
-        return false;
+        if (closestMount is null)
+        {
+            return false;
+        }
+
+        return !string.Equals(
+            Path.GetFullPath(closestMount),
+            Path.GetPathRoot(closestMount),
+            StringComparison.Ordinal);
     }
 
     private static string UnescapeMountPath(string value) =>
