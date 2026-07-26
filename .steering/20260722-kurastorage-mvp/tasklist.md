@@ -405,7 +405,7 @@
 
 ### 5.7 Test・検証
 
-- [ ] Android接続・認証のTestが完了している
+- [x] Android接続・認証のTestが完了している
   - [x] Local Direct、Remote Secure、Disconnected、TLS Failure判定の単体Testを実装する
   - [x] 同一SSIDだがAP Isolationの場合にLocal DirectにしないTestを実装する
   - [x] ZeroTierなしで異なるSubnetから到達できてもLocal DirectにしないTestを実装する
@@ -415,13 +415,13 @@
   - [x] Mock APIまたはTest ServerでRegister・Login・Refresh・LogoutのContract Testを実装する
   - [x] `verify-config.sh`、`verify-security.sh`、`verify-android.sh`が成功する
   - [x] Debug APKが生成できる
-  - [ ] CIの必須Jobがすべて成功する
+  - [x] CIの必須Jobがすべて成功する
 
 ### 5.8 Pull Request完了
 
-- [ ] PR5が完了している
-  - [ ] 共通Pull Request完了手順をすべて実施する
-  - [ ] PR5の完了記録を本ファイルへ追記する
+- [x] PR5が完了している
+  - [x] 共通Pull Request完了手順をすべて実施する
+  - [x] PR5の完了記録を本ファイルへ追記する
 
 ---
 
@@ -633,6 +633,18 @@
 - 実装中に追加したタスクと理由: Root Folderの並行ProvisionをDBで防ぐ部分Unique Index、専用Mount Point配下を正しく判定するStorageGuard修正、DB一意制約競合の安定した`409 FILE_NAME_CONFLICT`変換、Folder Operation復旧時の子孫状態更新を、セルフレビューで判明した競合・復旧境界を閉じるため追加した
 - 技術的に不要になったタスク・理由・代替実装: なし
 - 後続Pull Requestへの引継ぎ: PR5は本Pull Requestの`main`へのMerge後に開始し、本PRで確定したOpenAPI契約をAndroid DTO・接続・認証基盤から利用する。実HDD Mount、読取専用化、容量枯渇、Process強制停止を含むRaspberry Pi実構成確認はPR7で再確認する
+
+### PR5: Android接続・認証基盤
+
+- 完了日: `2026-07-26`
+- Pull Request: `https://github.com/ry825/Kura_Storage/pull/6`
+- 対象タスク: `tasklist.md` 5.1〜5.8
+- 実施した自動テスト: `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-android.sh`、`git diff --check`が成功。Android検証ではDebug APK、App・Connection・AuthのAndroidTest APK、単体・Contract Test 15件、ktlint、Detekt、Android Lintが成功。接続経路、AP Isolation、異なるSubnet、TLS失敗後のRemote Fallback、API契約、AES-GCM改ざん拒否、Credential削除、並列401時の単一Refresh、Device失効、Keystore鍵消失、保存途中失敗を確認。Pull Request #6のGitHub Actions `Config`、`Server`、`Security`、`Android`がすべて成功
+- 実施した手動・実機確認: Debug APKと3種類のAndroidTest APKが生成され、Debug用Test Root CAが有効な公開X.509証明書だけを含むことを確認。対象実機はOPPO CPH2333、Android 13 / API 33、`minSdk 29`として確認した。実環境Root CA、LAN・ZeroTier API Addressを使う実機通信とInstrumented Test実行はPR7の対象
+- 計画と実装の差分: 実環境の公開Root CAとZeroTier AddressはPR7で確定する計画どおり、本PRのDebug Buildは専用Test CAを使用し、Release Buildは公開Root CA Pathの明示入力を必須とした。正式Architectureに指定されたRetrofit 3.0.0とkotlinx.serializationで型付きAPI Clientを実装した
+- 実装中に追加したタスクと理由: App・Connection・AuthのAndroidTest APK生成をAndroid CIへ追加し、Compose UI TestがCIで少なくともCompile・Packageされることを保証した。公開Test CAだけを正確なPathで許可し、有効なX.509証明書かつ秘密鍵非包含を検証するSecurity Checkを追加した
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続Pull Requestへの引継ぎ: PR6は本Pull Requestの`main`へのMerge後に開始し、本PRの認証Repository・接続経路・共通UIへ基本File操作を接続する。Release Root CA、実LAN・ZeroTier Address、実機でのLocal Direct登録・LAN Login・ZeroTier Login・TLS拒否確認はPR7で実施する
 
 ### PR完了記録Template
 
