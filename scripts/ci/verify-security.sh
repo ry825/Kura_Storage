@@ -9,9 +9,24 @@ if ! command -v rg >/dev/null 2>&1; then
   exit 1
 fi
 
-if git ls-files | rg -n '(^|/)(local\.properties|appsettings\.(Development|Production)\.json|environment-info\.md)$|\.(key|pem|p12|pfx|jks|keystore)$'; then
+public_test_ca="apps/android/app/src/debug/res/raw/kurastorage_root_ca.pem"
+tracked_sensitive_files="$(
+  git ls-files |
+    rg '(^|/)(local\.properties|appsettings\.(Development|Production)\.json|environment-info\.md)$|\.(key|pem|p12|pfx|jks|keystore)$' |
+    rg -v "^${public_test_ca}$" || true
+)"
+if [[ -n "$tracked_sensitive_files" ]]; then
+  printf '%s\n' "$tracked_sensitive_files"
   echo "A local configuration or private key file is tracked." >&2
   exit 1
+fi
+
+if git ls-files --error-unmatch "$public_test_ca" >/dev/null 2>&1; then
+  if rg -q 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' "$public_test_ca" ||
+    ! openssl x509 -in "$public_test_ca" -noout >/dev/null 2>&1; then
+    echo "The Android debug test CA must contain only a valid public X.509 certificate." >&2
+    exit 1
+  fi
 fi
 
 scan_paths=(
