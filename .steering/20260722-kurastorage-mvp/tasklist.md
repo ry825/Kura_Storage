@@ -349,72 +349,72 @@
 
 ### 5.1 作業開始
 
-- [ ] PR5の作業準備が完了している
-  - [ ] PR4が`main`へMerge済みであることを確認する
-  - [ ] 最新`main`から短命Branchを作成する
-  - [ ] Android対象端末、API Level、LAN接続と公開Root CA Test Inputを確認する
+- [x] PR5の作業準備が完了している
+  - [x] PR4が`main`へMerge済みであることを確認する
+  - [x] 最新`main`から短命Branchを作成する
+  - [x] Android対象端末、API Level、LAN接続と公開Root CA Test Inputを確認する（OPPO CPH2333、Android 13 / API 33、`minSdk 29`。自動Testは専用Test CAを使用し、実環境Root CAはPR7のRelease入力として確定する）
 
 ### 5.2 Android共通基盤
 
-- [ ] Androidの共通Model・Data・UI基盤を実装する
-  - [ ] API DTOとDomain Modelの変換を`core-model`・`core-data`に実装する
-  - [ ] 共通API Error変換とRequest ID表示用Modelを実装する
-  - [ ] Compose Theme、Navigation、Loading、Empty、Error、Progressの共通UIを実装する
-  - [ ] ApplicationとModuleのDI Compositionを実装する
-  - [ ] DebugとReleaseで設定入力・Log・Certificateの扱いを分離する
+- [x] Androidの共通Model・Data・UI基盤を実装する
+  - [x] API DTOとDomain Modelの変換を`core-model`・`core-data`に実装する
+  - [x] 共通API Error変換とRequest ID表示用Modelを実装する
+  - [x] Compose Theme、Navigation、Loading、Empty、Error、Progressの共通UIを実装する
+  - [x] ApplicationとModuleのDI Compositionを実装する
+  - [x] DebugとReleaseで設定入力・Log・Certificateの扱いを分離する
 
 ### 5.3 Network・TLS・接続判定
 
-- [ ] Androidの接続基盤を実装する
-  - [ ] `NET-API-HOSTNAME`をLANまたはZeroTier API IPへ固定解決するOkHttp DNSを実装する
-  - [ ] Local Direct確認を基盤Wi-Fi・Ethernet Networkへ明示Bindする
-  - [ ] 同一Subnet、HTTPS Health、TLS、Hostnameをすべて検証する
-  - [ ] Local失敗時にZeroTier API IPのHTTPSを確認し`REMOTE_SECURE`を判定する
-  - [ ] LocalとZeroTierが両方利用可能な場合にLocalを優先する
-  - [ ] KuraStorage専用Root CAと`NET-API-HOSTNAME`だけを信頼するNetwork Security Configurationを実装する
-  - [ ] ProductionでCertificate・Hostname検証を回避できる実装を禁止する
+- [x] Androidの接続基盤を実装する
+  - [x] `NET-API-HOSTNAME`をLANまたはZeroTier API IPへ固定解決するOkHttp DNSを実装する
+  - [x] Local Direct確認を基盤Wi-Fi・Ethernet Networkへ明示Bindする
+  - [x] 同一Subnet、HTTPS Health、TLS、Hostnameをすべて検証する
+  - [x] Local失敗時にZeroTier API IPのHTTPSを確認し`REMOTE_SECURE`を判定する
+  - [x] LocalとZeroTierが両方利用可能な場合にLocalを優先する
+  - [x] KuraStorage専用Root CAと`NET-API-HOSTNAME`だけを信頼するNetwork Security Configurationを実装する
+  - [x] ProductionでCertificate・Hostname検証を回避できる実装を禁止する
 
 ### 5.4 Secure Credential・Session
 
-- [ ] Androidの認証情報保護を実装する
-  - [ ] Keystoreの取り出し不可AES-256鍵とAES-GCMを使う`SecureCredentialStore`を実装する
-  - [ ] Refresh Tokenを暗号化して保存し、Access TokenをMemoryだけに保持する
-  - [ ] 非秘密の`deviceId`と最後のUsernameをDataStoreへ保存する
-  - [ ] 401の同時発生時にRefreshを1回だけ実行する排他制御を実装する
-  - [ ] Refresh成功後だけ原Requestを1回再送する
-  - [ ] Logout、Device失効、Refresh失敗、Keystore鍵消失時のCredential削除を実装する
-  - [ ] Android BackupからKeystore関連DataとRefresh Token暗号文を除外する
+- [x] Androidの認証情報保護を実装する
+  - [x] Keystoreの取り出し不可AES-256鍵とAES-GCMを使う`SecureCredentialStore`を実装する
+  - [x] Refresh Tokenを暗号化して保存し、Access TokenをMemoryだけに保持する
+  - [x] 非秘密の`deviceId`と最後のUsernameをDataStoreへ保存する
+  - [x] 401の同時発生時にRefreshを1回だけ実行する排他制御を実装する
+  - [x] Refresh成功後だけ原Requestを1回再送する
+  - [x] Logout、Device失効、Refresh失敗、Keystore鍵消失時のCredential削除を実装する
+  - [x] Android BackupからKeystore関連DataとRefresh Token暗号文を除外する
 
 ### 5.5 Device登録・Login・Logout
 
-- [ ] Androidの認証Flowを実装する
-  - [ ] `LOCAL_DIRECT`かつ有効Credentialなしの場合だけDevice登録を開始する
-  - [ ] `REMOTE_SECURE`で未登録の場合はLocal Directが必要と表示する
-  - [ ] 登録済みDeviceのLogin、Refresh、Logoutを実装する
-  - [ ] Device失効時に認証情報を削除し、Local Directでの再登録案内を表示する
-  - [ ] Password、Token、Certificate情報をLogへ出力しない
+- [x] Androidの認証Flowを実装する
+  - [x] `LOCAL_DIRECT`かつ有効Credentialなしの場合だけDevice登録を開始する
+  - [x] `REMOTE_SECURE`で未登録の場合はLocal Directが必要と表示する
+  - [x] 登録済みDeviceのLogin、Refresh、Logoutを実装する
+  - [x] Device失効時に認証情報を削除し、Local Directでの再登録案内を表示する
+  - [x] Password、Token、Certificate情報をLogへ出力しない
 
 ### 5.6 接続・認証UI
 
-- [ ] MVPの接続・認証画面を実装する
-  - [ ] Splashと接続確認中画面を実装する
-  - [ ] Local Direct、ZeroTier経由、未接続、TLS失敗、HDD利用不可を区別して表示する
-  - [ ] ZeroTier別アプリ確認案内と復帰後・手動の再確認を実装する
-  - [ ] Device登録画面とLogin画面を実装する
-  - [ ] Homeに個人File、Trash、接続状態、Logoutの入口だけを実装する
+- [x] MVPの接続・認証画面を実装する
+  - [x] Splashと接続確認中画面を実装する
+  - [x] Local Direct、ZeroTier経由、未接続、TLS失敗、HDD利用不可を区別して表示する
+  - [x] ZeroTier別アプリ確認案内と復帰後・手動の再確認を実装する
+  - [x] Device登録画面とLogin画面を実装する
+  - [x] Homeに個人File、Trash、接続状態、Logoutの入口だけを実装する
 
 ### 5.7 Test・検証
 
 - [ ] Android接続・認証のTestが完了している
-  - [ ] Local Direct、Remote Secure、Disconnected、TLS Failure判定の単体Testを実装する
-  - [ ] 同一SSIDだがAP Isolationの場合にLocal DirectにしないTestを実装する
-  - [ ] ZeroTierなしで異なるSubnetから到達できてもLocal DirectにしないTestを実装する
-  - [ ] Credential暗号化、削除、Keystore利用不可のTestを実装する
-  - [ ] Refresh排他、成功、失敗、Device失効のTestを実装する
-  - [ ] Connection、Registration、Login、HomeのCompose UI Testを実装する
-  - [ ] Mock APIまたはTest ServerでRegister・Login・Refresh・LogoutのContract Testを実装する
-  - [ ] `verify-config.sh`、`verify-security.sh`、`verify-android.sh`が成功する
-  - [ ] Debug APKが生成できる
+  - [x] Local Direct、Remote Secure、Disconnected、TLS Failure判定の単体Testを実装する
+  - [x] 同一SSIDだがAP Isolationの場合にLocal DirectにしないTestを実装する
+  - [x] ZeroTierなしで異なるSubnetから到達できてもLocal DirectにしないTestを実装する
+  - [x] Credential暗号化、削除、Keystore利用不可のTestを実装する
+  - [x] Refresh排他、成功、失敗、Device失効のTestを実装する
+  - [x] Connection、Registration、Login、HomeのCompose UI Testを実装する
+  - [x] Mock APIまたはTest ServerでRegister・Login・Refresh・LogoutのContract Testを実装する
+  - [x] `verify-config.sh`、`verify-security.sh`、`verify-android.sh`が成功する
+  - [x] Debug APKが生成できる
   - [ ] CIの必須Jobがすべて成功する
 
 ### 5.8 Pull Request完了

@@ -9,4 +9,7 @@ dependencies {
     implementation(project(":core-model"))
     implementation(project(":core-network"))
     implementation(project(":core-security"))
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.kotlinx.coroutines.android)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

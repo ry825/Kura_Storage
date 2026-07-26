@@ -17,6 +17,9 @@ fi
 
 ./apps/android/gradlew -p apps/android \
   :app:assembleDebug \
+  :app:assembleDebugAndroidTest \
+  :feature-auth:assembleDebugAndroidTest \
+  :feature-connection:assembleDebugAndroidTest \
   testDebugUnitTest \
   ktlintCheck \
   detekt \
