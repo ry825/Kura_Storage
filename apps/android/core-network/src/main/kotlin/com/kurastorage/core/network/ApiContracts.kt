@@ -53,3 +53,33 @@ data class ErrorResponseDto(
     val requestId: String,
     val details: JsonObject = buildJsonObject {},
 )
+
+@Serializable
+data class CreateFolderRequestDto(
+    val parentId: String? = null,
+    val name: String,
+)
+
+@Serializable
+data class FileEntryDto(
+    val id: String,
+    val parentId: String? = null,
+    val name: String,
+    val entryType: String,
+    val mimeType: String? = null,
+    val size: Long,
+    val status: String,
+    val fileVersion: Long,
+    val trashedAt: String? = null,
+    val createdAt: String,
+    val updatedAt: String,
+)
+
+@Serializable
+data class FileEntryPageDto(
+    val parentId: String? = null,
+    val items: List<FileEntryDto>,
+    val page: Int,
+    val pageSize: Int,
+    val totalCount: Long,
+)

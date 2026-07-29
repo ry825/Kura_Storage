@@ -429,58 +429,58 @@
 
 ### 6.1 作業開始
 
-- [ ] PR6の作業準備が完了している
-  - [ ] PR5が`main`へMerge済みであることを確認する
-  - [ ] 最新`main`から短命Branchを作成する
-  - [ ] Server File APIが結合Test済みであることを確認する
+- [x] PR6の作業準備が完了している
+  - [x] PR5が`main`へMerge済みであることを確認する
+  - [x] 最新`main`から短命Branchを作成する
+  - [x] Server File APIが結合Test済みであることを確認する
 
 ### 6.2 File Data・Repository
 
-- [ ] AndroidのFile Data層を実装する
-  - [ ] File・Folder・Trash・Paging・Transfer ProgressのModelを実装する
-  - [ ] 一覧、詳細、Folder作成、Trash一覧、Trash、RestoreのRepositoryを実装する
-  - [ ] API ErrorをStorage、Conflict、Authorization、Authentication、Validationへ変換する
-  - [ ] Pagingの初回取得、追加取得、Retryを実装する
-  - [ ] 再接続後に古い絶対PathまたはResponseを保存せずAPIから再取得する
+- [x] AndroidのFile Data層を実装する
+  - [x] File・Folder・Trash・Paging・Transfer ProgressのModelを実装する
+  - [x] 一覧、詳細、Folder作成、Trash一覧、Trash、RestoreのRepositoryを実装する
+  - [x] API ErrorをStorage、Conflict、Authorization、Authentication、Validationへ変換する
+  - [x] Pagingの初回取得、追加取得、Retryを実装する
+  - [x] 再接続後に古い絶対PathまたはResponseを保存せずAPIから再取得する
 
 ### 6.3 Upload・Download
 
-- [ ] AndroidのStreaming Transferを実装する
-  - [ ] SAFでUpload元Fileを選択する
-  - [ ] `ContentResolver` InputStreamをOkHttp Multipart Request BodyへStreamする
-  - [ ] OperationごとにUUIDの`Idempotency-Key`を生成・再利用する
-  - [ ] 送信Byte数と進捗をFlowで公開する
-  - [ ] 中断後のUpload再試行でFile全体を再送する
-  - [ ] SAFでDownload先を選択し、Response StreamをOutputStreamへ書き込む
-  - [ ] Download進捗、Cancel、通信中断、書き込み失敗を扱う
-  - [ ] 失敗した中途Downloadの削除を試み、残る場合は利用者へ表示する
-  - [ ] ダウンロード完了後にOSの対応アプリで開くIntentを提供する
+- [x] AndroidのStreaming Transferを実装する
+  - [x] SAFでUpload元Fileを選択する
+  - [x] `ContentResolver` InputStreamをOkHttp Multipart Request BodyへStreamする
+  - [x] OperationごとにUUIDの`Idempotency-Key`を生成・再利用する
+  - [x] 送信Byte数と進捗をFlowで公開する
+  - [x] 中断後のUpload再試行でFile全体を再送する
+  - [x] SAFでDownload先を選択し、Response StreamをOutputStreamへ書き込む
+  - [x] Download進捗、Cancel、通信中断、書き込み失敗を扱う
+  - [x] 失敗した中途Downloadの削除を試み、残る場合は利用者へ表示する
+  - [x] ダウンロード完了後にOSの対応アプリで開くIntentを提供する
 
 ### 6.4 File UI
 
-- [ ] MVPのFile操作画面を実装する
-  - [ ] 個人領域のFile・Folder一覧とPagingを実装する
-  - [ ] Folder遷移とBack Navigationを実装する
-  - [ ] File・Folder詳細を実装する
-  - [ ] Folder作成Dialogと同名Errorを実装する
-  - [ ] Upload選択、進捗、Cancel、Retry、完了を実装する
-  - [ ] Download保存先選択、進捗、Cancel、Retry、完了を実装する
-  - [ ] Trash前の確認と完了後の一覧更新を実装する
-  - [ ] Trash一覧、Restore確認、復元競合Errorを実装する
-  - [ ] Storage利用不可、認証必要、Device失効、権限拒否を別状態で表示する
+- [x] MVPのFile操作画面を実装する
+  - [x] 個人領域のFile・Folder一覧とPagingを実装する
+  - [x] Folder遷移とBack Navigationを実装する
+  - [x] File・Folder詳細を実装する
+  - [x] Folder作成Dialogと同名Errorを実装する
+  - [x] Upload選択、進捗、Cancel、Retry、完了を実装する
+  - [x] Download保存先選択、進捗、Cancel、Retry、完了を実装する
+  - [x] Trash前の確認と完了後の一覧更新を実装する
+  - [x] Trash一覧、Restore確認、復元競合Errorを実装する
+  - [x] Storage利用不可、認証必要、Device失効、権限拒否を別状態で表示する
 
 ### 6.5 Test・検証
 
 - [ ] Android File操作のTestが完了している
-  - [ ] File Repositoryの一覧、詳細、Folder、Trash、Restoreの単体Testを実装する
-  - [ ] Upload・DownloadのStreaming、進捗、Cancel、RetryをFake StreamでTestする
-  - [ ] Idempotency Keyの再試行時維持をTestする
-  - [ ] Paging、Empty、Error、RetryのViewModel Testを実装する
-  - [ ] File一覧、Folder作成、Transfer進捗、Trash、RestoreのCompose UI Testを実装する
-  - [ ] OpenAPI FixtureとAndroid DTOのContract Testを実装する
-  - [ ] Android Emulatorまたは実機でSAF Upload・DownloadをInstrumented Testする
-  - [ ] `verify-config.sh`、`verify-security.sh`、`verify-android.sh`が成功する
-  - [ ] Debug APKが生成できる
+  - [x] File Repositoryの一覧、詳細、Folder、Trash、Restoreの単体Testを実装する
+  - [x] Upload・DownloadのStreaming、進捗、Cancel、RetryをFake StreamでTestする
+  - [x] Idempotency Keyの再試行時維持をTestする
+  - [x] Paging、Empty、Error、RetryのViewModel Testを実装する
+  - [x] File一覧、Folder作成、Transfer進捗、Trash、RestoreのCompose UI Testを実装する
+  - [x] OpenAPI FixtureとAndroid DTOのContract Testを実装する
+  - [x] Android Emulatorまたは実機でSAF Upload・DownloadをInstrumented Testする
+  - [x] `verify-config.sh`、`verify-security.sh`、`verify-android.sh`が成功する
+  - [x] Debug APKが生成できる
   - [ ] CIの必須Jobがすべて成功する
 
 ### 6.6 Pull Request完了

@@ -82,4 +82,6 @@ enum class AppDestination(
     CONNECTION("connection"),
     AUTHENTICATION("authentication"),
     HOME("home"),
+    FILES("files"),
+    TRASH("trash"),
 }
