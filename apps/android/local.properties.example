@@ -1,3 +1,8 @@
 # Copy this file to local.properties and replace the placeholder locally.
 # Do not add signing passwords, private keys, real IP addresses, or ZeroTier IDs.
 sdk.dir=SET_LOCALLY
+kurastorage.apiHostname=SET_LOCALLY
+kurastorage.lanApiAddress=SET_LOCALLY
+kurastorage.zerotierApiAddress=SET_LOCALLY
+# Public certificate only. Never provide a Root CA private key.
+kurastorage.rootCaCertificate=SET_LOCALLY

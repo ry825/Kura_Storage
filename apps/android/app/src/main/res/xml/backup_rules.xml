@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="kurastorage_secure_credentials.xml" />
+    <exclude domain="file" path="datastore/credential_metadata.preferences_pb" />
+</full-backup-content>
