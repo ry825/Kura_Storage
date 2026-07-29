@@ -471,7 +471,7 @@
 
 ### 6.5 Test・検証
 
-- [ ] Android File操作のTestが完了している
+- [x] Android File操作のTestが完了している
   - [x] File Repositoryの一覧、詳細、Folder、Trash、Restoreの単体Testを実装する
   - [x] Upload・DownloadのStreaming、進捗、Cancel、RetryをFake StreamでTestする
   - [x] Idempotency Keyの再試行時維持をTestする
@@ -481,13 +481,13 @@
   - [x] Android Emulatorまたは実機でSAF Upload・DownloadをInstrumented Testする
   - [x] `verify-config.sh`、`verify-security.sh`、`verify-android.sh`が成功する
   - [x] Debug APKが生成できる
-  - [ ] CIの必須Jobがすべて成功する
+  - [x] CIの必須Jobがすべて成功する
 
 ### 6.6 Pull Request完了
 
-- [ ] PR6が完了している
-  - [ ] 共通Pull Request完了手順をすべて実施する
-  - [ ] PR6の完了記録を本ファイルへ追記する
+- [x] PR6が完了している
+  - [x] 共通Pull Request完了手順をすべて実施する
+  - [x] PR6の完了記録を本ファイルへ追記する
 
 ---
 
@@ -645,6 +645,18 @@
 - 実装中に追加したタスクと理由: App・Connection・AuthのAndroidTest APK生成をAndroid CIへ追加し、Compose UI TestがCIで少なくともCompile・Packageされることを保証した。公開Test CAだけを正確なPathで許可し、有効なX.509証明書かつ秘密鍵非包含を検証するSecurity Checkを追加した
 - 技術的に不要になったタスク・理由・代替実装: なし
 - 後続Pull Requestへの引継ぎ: PR6は本Pull Requestの`main`へのMerge後に開始し、本PRの認証Repository・接続経路・共通UIへ基本File操作を接続する。Release Root CA、実LAN・ZeroTier Address、実機でのLocal Direct登録・LAN Login・ZeroTier Login・TLS拒否確認はPR7で実施する
+
+### PR6: Android基本ファイル操作
+
+- 完了日: `2026-07-29`
+- Pull Request: `https://github.com/ry825/Kura_Storage/pull/7`
+- 対象タスク: `tasklist.md` 6.1〜6.6
+- 実施した自動テスト: `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-android.sh`、`git diff --check`が成功。Android検証ではDebug APK、App・Connection・Auth・Files・Core DataのAndroidTest APK、File Repository・Streaming Transfer・Paging・Empty・Error・Retry・Contractの単体Test、ktlint、Detekt、Android Lintが成功。Pull Request #7のGitHub Actions `Config`、`Server`、`Security`、`Android`がすべて成功
+- 実施した手動・実機確認: Android 10 / API 29のHeadless Emulatorで、MediaStore Content URIを使用したSAF相当のInputStream・OutputStream・削除・Open Intent Test 1件と、File一覧・Folder作成・Transfer進捗・Trash・RestoreのCompose UI Test 3件が成功。約33.6 MBのDebug APK生成、物理絶対Path・秘密情報・一時Emulator資材がPull Requestへ含まれないことを確認
+- 計画と実装の差分: File操作、Streaming Upload・Download、Trash・Restoreの機能範囲に差分なし。小画面でも全操作へ到達できるよう、上部操作を1列4Buttonではなく2段へ分けた。Upload・Downloadの失敗時は共通の再試行表示とし、空FolderでもTransfer再試行Panelを隠さない構成へ調整した
+- 実装中に追加したタスクと理由: API 29 Emulator実行でTest Runner未同梱とCompose Test Activity未登録を検出したため、対象ModuleへAndroidX Test RunnerとCompose UI Test Manifestを明示追加した。Emulatorで初めて検出できるPackage・Manifest・小画面表示境界を閉じるため、Android CIのAPK生成対象へFilesとCore DataのAndroidTest APKを追加した
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続Pull Requestへの引継ぎ: PR7は本Pull Requestの`main`へのMerge後に開始し、Release Root CA・署名・実LAN・ZeroTier Addressを確定してRaspberry PiとAndroid実機へ配置する。本PRのFile UIとStreaming Transferを使用し、実ServerでFolder・Upload・一覧・Detail・Range Download・Trash・Restore・復元競合・再起動後再接続を検証する
 
 ### PR完了記録Template
 
