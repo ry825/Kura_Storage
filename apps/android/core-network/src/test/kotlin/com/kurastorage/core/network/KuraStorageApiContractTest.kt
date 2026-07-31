@@ -9,6 +9,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -71,6 +72,31 @@ class KuraStorageApiContractTest {
             assertEquals(ErrorCode.DEVICE_REVOKED, error.error.code)
             assertEquals("req-42", error.error.requestId)
         }
+
+    @Test
+    fun `file list detail folder trash and restore use the OpenAPI contract`() =
+        runTest {
+            server.enqueue(jsonResponse(resource("file-entry-page-response.json")))
+            server.enqueue(jsonResponse(resource("file-entry-response.json")))
+            server.enqueue(jsonResponse(resource("file-entry-response.json")))
+            server.enqueue(jsonResponse(resource("file-entry-response.json")))
+            server.enqueue(jsonResponse(resource("file-entry-response.json")))
+
+            assertTrue(api.listFiles("token", null, 1, 100) is NetworkCallResult.Success)
+            assertEquals("/api/v1/files?page=1&pageSize=100", server.takeRequest().path)
+            api.getFile("token", DEVICE_ID)
+            assertEquals("/api/v1/files/$DEVICE_ID", server.takeRequest().path)
+            api.createFolder("token", CreateFolderRequestDto(null, "Docs"))
+            assertEquals("/api/v1/folders", server.takeRequest().path)
+            api.trash("token", DEVICE_ID)
+            assertEquals("DELETE", server.takeRequest().method)
+            api.restore("token", DEVICE_ID)
+            assertEquals("/api/v1/files/$DEVICE_ID/restore", server.takeRequest().path)
+        }
+
+    private fun resource(name: String) = checkNotNull(javaClass.classLoader?.getResource(name)).readText()
+
+    private fun jsonResponse(body: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(body)
 
     private companion object {
         const val DEVICE_ID = "11111111-1111-1111-1111-111111111111"

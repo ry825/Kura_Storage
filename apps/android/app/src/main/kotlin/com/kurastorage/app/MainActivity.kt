@@ -4,8 +4,11 @@ package com.kurastorage.app
 
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,14 +33,16 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.kurastorage.core.data.AuthenticationRepository
 import com.kurastorage.core.model.ConnectionStatus
+import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.ui.AppDestination
 import com.kurastorage.core.ui.KuraStorageTheme
 import com.kurastorage.feature.auth.AuthScreen
 import com.kurastorage.feature.auth.AuthViewModel
 import com.kurastorage.feature.connection.ConnectionScreen
 import com.kurastorage.feature.connection.ConnectionViewModel
+import com.kurastorage.feature.files.FileBrowserScreen
+import com.kurastorage.feature.files.FileBrowserViewModel
 
 class MainActivity : ComponentActivity() {
     private lateinit var container: ServiceContainer
@@ -64,7 +69,7 @@ private fun KuraStorageApp(
     val navController = rememberNavController()
     val connectionState by connectionViewModel.state.collectAsStateWithLifecycle()
     var connected by remember { mutableStateOf<ConnectionStatus.Connected?>(null) }
-    var repository by remember { mutableStateOf<AuthenticationRepository?>(null) }
+    var services by remember { mutableStateOf<SessionServices?>(null) }
 
     DisposableEffect(Unit) {
         val observer =
@@ -86,9 +91,9 @@ private fun KuraStorageApp(
                 state = connectionState,
                 onRecheck = connectionViewModel::check,
                 onConnected = { state ->
-                    if (connected?.route != state.route || repository == null) {
+                    if (connected?.route != state.route || services == null) {
                         connected = state
-                        repository = container.authenticationRepository(state.route)
+                        services = container.sessionServices(state.route)
                     }
                     navController.navigate(AppDestination.AUTHENTICATION.route) {
                         launchSingleTop = true
@@ -98,7 +103,7 @@ private fun KuraStorageApp(
         }
         composable(AppDestination.AUTHENTICATION.route) {
             val route = connected?.route
-            val authRepository = repository
+            val authRepository = services?.authentication
             if (route == null || authRepository == null) {
                 navController.navigate(AppDestination.CONNECTION.route)
                 return@composable
@@ -128,7 +133,7 @@ private fun KuraStorageApp(
             )
         }
         composable(AppDestination.HOME.route) {
-            val authRepository = repository
+            val authRepository = services?.authentication
             val route = connected?.route
             if (authRepository == null || route == null) {
                 navController.navigate(AppDestination.CONNECTION.route)
@@ -144,8 +149,8 @@ private fun KuraStorageApp(
                 )
             HomeScreen(
                 connection = connected,
-                onFiles = {},
-                onTrash = {},
+                onFiles = { navController.navigate(AppDestination.FILES.route) },
+                onTrash = { navController.navigate(AppDestination.TRASH.route) },
                 onLogout = {
                     logoutViewModel.logout {
                         navController.navigate(AppDestination.CONNECTION.route) {
@@ -155,7 +160,109 @@ private fun KuraStorageApp(
                 },
             )
         }
+        composable(AppDestination.FILES.route) {
+            val current = services
+            if (current == null) {
+                navController.navigate(AppDestination.CONNECTION.route)
+                return@composable
+            }
+            val filesViewModel: FileBrowserViewModel =
+                viewModel(
+                    key = "files",
+                    factory =
+                        simpleViewModelFactory {
+                            FileBrowserViewModel(current.files, current.transfers)
+                        },
+                )
+            FileRoute(
+                viewModel = filesViewModel,
+                trashMode = false,
+                onExit = { navController.popBackStack() },
+            )
+        }
+        composable(AppDestination.TRASH.route) {
+            val current = services
+            if (current == null) {
+                navController.navigate(AppDestination.CONNECTION.route)
+                return@composable
+            }
+            val trashViewModel: FileBrowserViewModel =
+                viewModel(
+                    key = "trash",
+                    factory =
+                        simpleViewModelFactory {
+                            FileBrowserViewModel(current.files, current.transfers, trashMode = true)
+                        },
+                )
+            FileRoute(
+                viewModel = trashViewModel,
+                trashMode = true,
+                onExit = { navController.popBackStack() },
+            )
+        }
     }
+}
+
+@Composable
+private fun FileRoute(
+    viewModel: FileBrowserViewModel,
+    trashMode: Boolean,
+    onExit: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    var pendingDownload by remember { mutableStateOf<FileEntry?>(null) }
+    val uploadPicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                val metadata =
+                    context.contentResolver
+                        .query(
+                            uri,
+                            arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+                            null,
+                            null,
+                            null,
+                        )?.use { cursor ->
+                            if (!cursor.moveToFirst()) {
+                                null
+                            } else {
+                                cursor.getString(0) to cursor.getLong(1)
+                            }
+                        }
+                metadata?.let { (name, size) ->
+                    viewModel.startUpload(uri.toString(), name, size, context.contentResolver.getType(uri))
+                }
+            }
+        }
+    val downloadPicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+            val file = pendingDownload
+            if (uri != null && file != null) viewModel.startDownload(file, uri.toString())
+            pendingDownload = null
+        }
+    FileBrowserScreen(
+        state = state,
+        trashMode = trashMode,
+        onOpen = viewModel::open,
+        onBack = { if (!viewModel.back()) onExit() },
+        onRefresh = viewModel::refresh,
+        onLoadMore = viewModel::loadMore,
+        onCreateFolder = viewModel::createFolder,
+        onChooseUpload = { uploadPicker.launch(arrayOf("*/*")) },
+        onChooseDownload = { file ->
+            pendingDownload = file
+            downloadPicker.launch(file.name)
+        },
+        onTrash = viewModel::trash,
+        onRestore = viewModel::restore,
+        onDismissDetail = viewModel::dismissDetail,
+        onCancelTransfer = viewModel::cancelTransfer,
+        onRetryTransfer = viewModel::retryTransfer,
+        onOpenDownload = { uri ->
+            runCatching { context.startActivity(viewModel.downloadedFileIntent(uri)) }
+        },
+    )
 }
 
 @Composable

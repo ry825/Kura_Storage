@@ -20,6 +20,8 @@ fi
   :app:assembleDebugAndroidTest \
   :feature-auth:assembleDebugAndroidTest \
   :feature-connection:assembleDebugAndroidTest \
+  :feature-files:assembleDebugAndroidTest \
+  :core-data:assembleDebugAndroidTest \
   testDebugUnitTest \
   ktlintCheck \
   detekt \
