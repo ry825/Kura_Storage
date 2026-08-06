@@ -211,7 +211,8 @@ nginx_output=""
 if ! nginx_output="$(nginx -t -p "${validation_root}" \
     -c "${validation_root}/nginx.conf" 2>&1)"; then
     if grep -q 'syntax is ok' <<<"${nginx_output}" &&
-        grep -q 'socket().*Operation not permitted' <<<"${nginx_output}"; then
+        grep -qE 'socket\(\).*Operation not permitted|bind\(\).*Cannot assign requested address' \
+            <<<"${nginx_output}"; then
         printf 'Nginx syntax parsed; listen socket access is unavailable in this environment.\n'
     else
         printf '%s\n' "${nginx_output}" >&2
