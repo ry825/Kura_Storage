@@ -115,6 +115,15 @@ envsubst "${template_variables}" \
 python3 -m json.tool "${validation_root}/appsettings.Production.json" >/dev/null
 
 envsubst "${template_variables}" \
+    <deployment/config/systemd/storage.mount.template \
+    >"${validation_root}/${KURASTORAGE_STORAGE_MOUNT_UNIT}"
+verify_systemd_unit "${validation_root}/${KURASTORAGE_STORAGE_MOUNT_UNIT}"
+grep -q '^Type=exfat$' "${validation_root}/${KURASTORAGE_STORAGE_MOUNT_UNIT}"
+grep -q 'fmask=0007,dmask=0007' "${validation_root}/${KURASTORAGE_STORAGE_MOUNT_UNIT}"
+grep -q "^Where=${KURASTORAGE_STORAGE_MOUNT_PATH}$" \
+    "${validation_root}/${KURASTORAGE_STORAGE_MOUNT_UNIT}"
+
+envsubst "${template_variables}" \
     <deployment/config/systemd/kurastorage-api.service.template \
     >"${validation_root}/kurastorage-api.service"
 sed -i \
@@ -125,15 +134,6 @@ sed -i \
     -e "s#^ReadWritePaths=.*#ReadWritePaths=${validation_root}#" \
     "${validation_root}/kurastorage-api.service"
 verify_systemd_unit "${validation_root}/kurastorage-api.service"
-
-envsubst "${template_variables}" \
-    <deployment/config/systemd/storage.mount.template \
-    >"${validation_root}/${KURASTORAGE_STORAGE_MOUNT_UNIT}"
-verify_systemd_unit "${validation_root}/${KURASTORAGE_STORAGE_MOUNT_UNIT}"
-grep -q '^Type=exfat$' "${validation_root}/${KURASTORAGE_STORAGE_MOUNT_UNIT}"
-grep -q 'fmask=0007,dmask=0007' "${validation_root}/${KURASTORAGE_STORAGE_MOUNT_UNIT}"
-grep -q "^Where=${KURASTORAGE_STORAGE_MOUNT_PATH}$" \
-    "${validation_root}/${KURASTORAGE_STORAGE_MOUNT_UNIT}"
 
 envsubst "${template_variables}" \
     <deployment/config/systemd/nginx-kurastorage.conf.template \
