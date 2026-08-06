@@ -572,21 +572,21 @@
 
 ### 7.7 運用文書・最終検証
 
-- [ ] MVPの運用文書と最終検証が完了している
+- [x] MVPの運用文書と最終検証が完了している
   - [x] Install、Configuration、Migration、Admin CLI、Start・Stop、Upgrade、Rollback手順をexFAT構成で文書化する
   - [x] ZeroTier参加、Member認可、Managed IP、Member失効はKuraStorage外の運用であることを文書化する
   - [x] Backup・Restore対象とMVPでの手動復旧手順を文書化する
   - [x] `verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-android.sh`が成功する
   - [x] `connectedDebugAndroidTest`またはRelease実機同等Testが成功する（OPPO CPH2333 / Android 13で`connectedDebugAndroidTest --max-workers=1`を実行し、app 1件、core-data 1件、feature-auth 2件、feature-connection 1件、feature-files 4件の計9件が成功。Debugは`.debug`パッケージでReleaseと分離し、Library AndroidTestのTarget SDKとCompose Test Manifest依存を修正）
   - [x] 新Root CA・実機設定値・共有exFAT対応のServer Artifact、Release APK、Checksumを生成できる
-  - [ ] 必須CIがすべて成功する
-  - [ ] `requirements.md`のすべての受け入れ条件を実測・記録により確認する
+  - [x] 必須CIがすべて成功する（GitHub Actions run `31099468412`の`Config`・`Server`・`Security`・`Android`が最終実装HEAD `a66a384`で成功）
+  - [x] `requirements.md`のすべての受け入れ条件を実測・記録により確認する（配置・接続は7.2・7.4・7.6、認証・Deviceは7.4・7.5、ファイル操作は7.5、Android UIは7.5、Build・Test・実機確認は7.3・7.7の完了記録と対応）
 
 ### 7.8 Pull Request完了
 
-- [ ] PR7が完了している
-  - [ ] 共通Pull Request完了手順をすべて実施する
-  - [ ] PR7の完了記録を本ファイルへ追記する
+- [x] PR7が完了している
+  - [x] 共通Pull Request完了手順をすべて実施する
+  - [x] PR7の完了記録を本ファイルへ追記する
 
 ---
 
@@ -666,6 +666,18 @@
 - 技術的に不要になったタスク・理由・代替実装: なし
 - 後続Pull Requestへの引継ぎ: PR7は本Pull Requestの`main`へのMerge後に開始し、Release Root CA・署名・実LAN・ZeroTier Addressを確定してRaspberry PiとAndroid実機へ配置する。本PRのFile UIとStreaming Transferを使用し、実ServerでFolder・Upload・一覧・Detail・Range Download・Trash・Restore・復元競合・再起動後再接続を検証する
 
+### PR7: Raspberry Pi配置・実機MVP完成
+
+- 完了日: `2026-08-06`
+- Pull Request: `https://github.com/ry825/Kura_Storage/pull/8`
+- 対象タスク: `tasklist.md` 7.1〜7.8
+- 実施した自動テスト: `./scripts/ci/verify-server.sh`でDomain 14件・Application 8件・Integration 23件の計45件が成功、`./scripts/ci/verify-security.sh`、AndroidのBuild・単体Test・ktlint・Detekt・Lint、`git diff --check`が成功。OPPO CPH2333の`connectedDebugAndroidTest --max-workers=1`でapp 1件・core-data 1件・feature-auth 2件・feature-connection 1件・feature-files 4件の計9件が成功。GitHub Actions run `31099468412`の`Config`・`Server`・`Security`・`Android`がすべて成功
+- 実施した手動・実機確認: Raspberry Piで新規Install、Migration、Admin User作成、再起動後の起動順序、非root実行、HDD未Mount・読取専用・storageId不一致の拒否、Upgrade・Rollback、UFW/nftables共存、Logの秘密情報非出力を確認。OPPO CPH2333でLAN・ZeroTier登録/認証、File・Folder操作、TLS異常系、Device失効、IDOR・Path Traversal拒否、再起動後再接続、LAN・ZeroTierの基本E2E各10回連続成功を確認
+- 計画と実装の差分: 専用ext4 HDDへの切替ではなく、既存データを保持した共有exFAT HDDのMount Point `/mnt/KuraStorage-hdd`とStorage Root `/mnt/KuraStorage-hdd/KuraStorage`を分離して使用した。旧Databaseに非互換Migrationを重ねず別Databaseへ新規配置した。ZeroTierはController Flow Rulesではなく、管理者によるPrivate Networkの信頼済みMember管理とPi FirewallのHTTPS/443制限を採用した
+- 実装中に追加したタスクと理由: 既存UFWとnftablesの共存処理、exFATのJSON `.storage-identity`検証、Android実機で判明したFolder操作入口の復旧、Debug/Release Package分離、Library AndroidTestのTarget SDK・Compose Test Manifest修正、CIのsystemd依存UnitとNginx bind制約の検証対応を、実機・CIで検出した運用境界を閉じるため追加した
+- 技術的に不要になったタスク・理由・代替実装: ZeroTier Controller Flow Rulesと第2 ClientによるMember間分離試験は、管理者が信頼済みMemberだけを認可する運用方針へ変更したため不要とした。代替としてPi FirewallがZeroTierからPi上のHTTPS/443だけを許可し、Pi経由のLAN Forwardを拒否する
+- 後続Pull Requestへの引継ぎ: なし。Pull Request #8のレビューとMergeはユーザーが行う。Root CA秘密鍵、Server/JWT/Android署名秘密鍵とPasswordは引き続きRepository外で管理する
+
 ### PR完了記録Template
 
 #### PR{N}: {Pull Request名}
@@ -688,24 +700,32 @@
 
 ### 実装完了日
 
-`{YYYY-MM-DD}`
+`2026-08-06`
 
 ### 計画と実績の差分
 
-- `{PRごとの完了記録を基に記入}`
+- PR1〜PR6は、MVP仕様の再定義からRepository・CI、Server認証、File API、Android認証・File UIまでを計画どおりPull Request単位で完了した。PR2の完了記録だけはMerge後の追補Pull Requestとなった
+- PR7は実環境に合わせて専用ext4ではなく共有exFAT HDDを採用し、旧Databaseを保存して新Databaseへ配置した。ZeroTierは必須Flow Rulesから管理者主導の信頼済みMember管理へ変更した
 
 ### 主な設計変更と理由
 
-- `{...}`
+- HDD全体をKuraStorage専用にせず、Mount PointとStorage Rootを分離し、UUID・Mount Option・`.storage-identity`の3層で誤書き込みを防ぐ構成にした
+- APIはUnix Socket経由でNginxのみに公開し、LAN・ZeroTierのListen IPとSource CIDRから接続経路をServer側で確定する構成にした
+- ZeroTierのPeer間通信はKuraStorageの強制境界外と明示し、Pi FirewallとPrivate NetworkのMember運用に責務を分離した
 
 ### 技術的な学び
 
-- `{...}`
+- exFATはDirectoryごとのUnix Permissionを保持しないため、固定UID/GIDとMount Maskを配置Script・systemd・StorageGuardで一貫させる必要がある
+- nftablesが許可しても既存UFWの後段Chainが破棄し得るため、Firewallは個別ではなく実機の合成Rulesetとして検証する必要がある
+- Android実機TestではReleaseとDebugのPackage衝突、Test Target SDK、Compose Test Manifest、OSの保護ダイアログがCIだけでは見えない境界になる
 
 ### プロセス上の改善点
 
-- `{...}`
+- 実環境値、既存Firewall、HDD Filesystemと保存対象を配置Script実装前に読取専用コマンドで収集すると、後半の設計変更を減らせる
+- Raspberry Pi・Android・CIの3環境で同じ検証Scriptを早期に実行し、実機固有とCI固有の制約をPull Request終盤まで残さない運用が必要である
 
 ### 次回への改善提案
 
-- `{...}`
+- 環境情報Templateに「必須値」「機密ではないが非公開の運用値」「絶対に記録しない秘密値」の分類を明示する
+- 共有exFAT運用はJournalがないため、次のフェーズで定期Backupの自動化、安全なUnmount、Filesystem整合性確認の運用監視を追加する
+- Androidの実機Smoke Testをリリース候補ごとに定型化し、接続・認証・File操作の最小シナリオを機械的に再実行できるようにする
