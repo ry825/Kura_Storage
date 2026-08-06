@@ -1,0 +1,21 @@
+table inet kurastorage {
+    chain input {
+        type filter hook input priority 0; policy accept;
+
+        ct state invalid drop
+        ct state established,related accept
+        iifname "lo" accept
+        iifname "${KURASTORAGE_ZEROTIER_INTERFACE}" ip saddr ${KURASTORAGE_ZEROTIER_CIDR} ip daddr ${KURASTORAGE_ZEROTIER_API_IP} tcp dport 443 accept
+        iifname "${KURASTORAGE_ZEROTIER_INTERFACE}" drop
+
+        ip saddr ${KURASTORAGE_LAN_CIDR} ip daddr ${KURASTORAGE_LAN_API_IP} tcp dport 22 accept
+        ip saddr ${KURASTORAGE_LAN_CIDR} ip daddr ${KURASTORAGE_LAN_API_IP} tcp dport 443 accept
+        ip daddr { ${KURASTORAGE_LAN_API_IP}, ${KURASTORAGE_ZEROTIER_API_IP} } drop
+    }
+
+    chain forward {
+        type filter hook forward priority 0; policy accept;
+        iifname "${KURASTORAGE_ZEROTIER_INTERFACE}" drop
+        oifname "${KURASTORAGE_ZEROTIER_INTERFACE}" drop
+    }
+}

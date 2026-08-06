@@ -33,6 +33,8 @@ scan_paths=(
   .github
   apps/android
   contracts
+  deployment
+  docs/operations
   scripts
   server
 )

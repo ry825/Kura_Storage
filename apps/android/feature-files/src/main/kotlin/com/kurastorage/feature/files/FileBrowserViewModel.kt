@@ -67,6 +67,8 @@ class FileBrowserViewModel(
         }
     }
 
+    fun select(entry: FileEntry) = mutableState.update { it.copy(selected = entry) }
+
     fun back(): Boolean {
         if (trashMode || folderStack.size <= 1) return false
         folderStack.removeLast()

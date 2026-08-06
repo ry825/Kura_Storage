@@ -37,7 +37,9 @@ MVPでは、LANまたはZeroTier経由で安全に接続し、ユーザー認証
 - .NET 10でASP.NET Core APIとAdmin CLIを構成する。
 - PostgreSQL 17に管理情報を保存する。
 - NginxでTLSを終端し、KuraStorage APIを直接外部公開しない。
-- Raspberry Piの専用HDDをファイルの正とし、HDD未マウント時の書き込みを拒否する。
+- Raspberry Piの既存exFAT共有HDDをファイルの正とし、`/mnt/KuraStorage-hdd`のMountとDevice UUIDを検証した場合だけ`/mnt/KuraStorage-hdd/KuraStorage`へ書き込む。HDD上の他Directoryは既存用途のまま保持する。
+- exFATの所有権はDirectory単位の`chmod`／`chown`ではなく、API Userの固定UID、共有`kurastorage` GroupのGID、`fmask=0007,dmask=0007`で制御する。APIと明示的にGroupへ追加したOS Userだけに読み書きを許可し、`nodev,nosuid,noexec`を必須とする。
+- exFATはJournalを持たないため、電源断時の破損リスクを運用文書へ明記し、整合性確認とBackupを実機運用条件に含める。
 - APIは非root Userで動作させる。
 - Migration、Nginx、systemd、Firewall、設定Templateと配置・検証Scriptを用意する。
 
@@ -46,6 +48,7 @@ MVPでは、LANまたはZeroTier経由で安全に接続し、ユーザー認証
 - Phase 1のリモート接続はZeroTierを使用する。
 - ZeroTier daemon、Network参加、Member認可、Managed IP、Node IdentityはKuraStorage外で管理する。
 - KuraStorageにZeroTier SDK、Controller API連携、接続・切断機能を実装しない。
+- KuraStorage用ZeroTier NetworkはPrivateとし、管理者が信頼済みMemberのみを認可し、不要・紛失Memberを速やかに失効する。Controller Flow Rulesは必須とせず、PiのFirewallでZeroTierからPi上のHTTPS/443だけを許可し、LANへの転送を拒否する。Piを経由しないMember間通信はKuraStorageの制御対象外とし、ZeroTier管理者の信頼境界で管理する。
 - AndroidはLocal Directを優先し、利用できない場合にZeroTier経由の`REMOTE_SECURE`を確認する。
 - LANとZeroTierで同じ`NET-API-HOSTNAME`を使用し、接続経路に応じて解決先IPを切り替える。
 - ZeroTier未接続時は別アプリでの確認を案内し、KuraStorage復帰後に到達性を再確認できるようにする。
@@ -102,12 +105,14 @@ MVPでは、LANまたはZeroTier経由で安全に接続し、ユーザー認証
 
 ### 5.1 配置・接続
 
+- [ ] 現行MVPとMigration履歴が異なる旧Database・Release・設定を削除または上書きせず、別Databaseへの新規Installと手動復旧を可能にする。
 - [ ] Raspberry Piの再起動後にPostgreSQL、API、Nginxが必要な順序で起動する。
 - [ ] APIが非root Userで動作する。
 - [ ] HDDが正しくマウントされている場合だけ、ファイル書き込みを許可する。
+- [ ] HDDのFilesystemがexFAT、Mount元が設定UUID、Mount OptionがAPI UID・共有Group GID・`fmask=0007,dmask=0007`および`nodev,nosuid,noexec`と一致する。
 - [ ] Androidが`NET-API-HOSTNAME`を使ってLANとZeroTierの両経路からHTTPS接続できる。
 - [ ] TLS証明書またはホスト名が不正な場合、Androidが接続を拒否する。
-- [ ] ZeroTier MemberからKuraStorage HTTPS以外のSSH、PostgreSQL、SMB、LAN端末、他のZeroTier端末へ到達できない。
+- [ ] KuraStorage用ZeroTier Networkで信頼済みMemberのみが認可され、PiのFirewallによりZeroTier MemberからPi上ではKuraStorage HTTPS/443だけへ到達でき、SSH、PostgreSQL、SMBおよびPi経由のLAN転送が拒否される。
 
 ### 5.2 認証・Device
 
@@ -136,6 +141,7 @@ MVPでは、LANまたはZeroTier経由で安全に接続し、ユーザー認証
 - [ ] 他Userが所有するファイルIDを指定しても、存在の有無を過度に公開せず操作を拒否する。
 - [ ] `..`、絶対パス、NUL、不正区切り文字、シンボリックリンクを使って専用ストレージ外へアクセスできない。
 - [ ] HDD未マウント時にOSルートファイルシステムへ誤保存されない。
+- [ ] exFATのMount Pointとその配下のStorage Rootを分離しても、`.storage-identity`不一致、読取専用、別Device Mount時に書き込みを拒否する。
 
 ### 5.4 Android UI
 

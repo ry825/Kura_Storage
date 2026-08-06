@@ -10,8 +10,19 @@ public sealed class StorageGuardTests
     [Fact]
     public void StorageIdentity_WhenConfiguredIdDoesNotMatch_ReturnsFalse()
     {
-        Assert.False(StorageIdentity.Matches("expected-storage", "different-storage\n"));
-        Assert.True(StorageIdentity.Matches("expected-storage", "expected-storage\n"));
+        Assert.False(
+            StorageIdentity.Matches(
+                "expected-storage",
+                """{"storageId":"different-storage","formatVersion":1}"""));
+        Assert.True(
+            StorageIdentity.Matches(
+                "expected-storage",
+                """{"storageId":"expected-storage","formatVersion":1}"""));
+        Assert.False(
+            StorageIdentity.Matches(
+                "expected-storage",
+                """{"storageId":"expected-storage","formatVersion":2}"""));
+        Assert.False(StorageIdentity.Matches("expected-storage", "not-json"));
     }
 
     [Fact]

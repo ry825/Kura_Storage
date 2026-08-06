@@ -1,0 +1,46 @@
+[Unit]
+Description=KuraStorage API
+After=network-online.target postgresql.service ${KURASTORAGE_STORAGE_MOUNT_UNIT}
+Wants=network-online.target
+Requires=postgresql.service ${KURASTORAGE_STORAGE_MOUNT_UNIT}
+Before=nginx.service
+ConditionPathIsMountPoint=${KURASTORAGE_STORAGE_MOUNT_PATH}
+
+[Service]
+Type=simple
+User=kurastorage-api
+Group=www-data
+SupplementaryGroups=${KURASTORAGE_STORAGE_ACCESS_GROUP} kurastorage-secrets
+WorkingDirectory=/opt/kurastorage/current
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://unix:/run/kurastorage/api.sock
+Environment=KURASTORAGE_SECRETS_DIR=/etc/kurastorage/secrets
+Environment=DOTNET_EnableDiagnostics=0
+ExecStart=/opt/kurastorage/current/KuraStorage.Api
+Restart=on-failure
+RestartSec=5s
+RuntimeDirectory=kurastorage
+RuntimeDirectoryMode=0750
+# Kestrel creates the Unix socket from 0777; group write is required by Nginx.
+# Protected parent directories continue to restrict state and secret files.
+UMask=0007
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadOnlyPaths=/etc/kurastorage
+ReadWritePaths=${KURASTORAGE_STORAGE_ROOT} /run/kurastorage /var/lib/kurastorage
+LimitNOFILE=8192
+MemoryMax=1536M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

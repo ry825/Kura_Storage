@@ -15,7 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install configuration validation tools
-        run: sudo apt-get update && sudo apt-get install --yes ripgrep shellcheck
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install --yes
+          gettext-base nftables nginx ripgrep shellcheck
       - name: Verify repository configuration
         run: ./scripts/ci/verify-config.sh
 

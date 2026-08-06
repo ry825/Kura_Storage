@@ -14,6 +14,7 @@ class KuraStorageAndroidLibraryPlugin : Plugin<Project> {
         extensions.configure<LibraryExtension> {
             compileSdk = 36
             defaultConfig.minSdk = 29
+            testOptions.targetSdk = 36
             compileOptions {
                 sourceCompatibility = JavaVersion.VERSION_17
                 targetCompatibility = JavaVersion.VERSION_17

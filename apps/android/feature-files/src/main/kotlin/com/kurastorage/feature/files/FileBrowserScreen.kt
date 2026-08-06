@@ -44,6 +44,7 @@ fun FileBrowserScreen(
     state: FileBrowserState,
     trashMode: Boolean,
     onOpen: (FileEntry) -> Unit,
+    onShowDetails: (FileEntry) -> Unit,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
@@ -83,11 +84,15 @@ fun FileBrowserScreen(
             LazyColumn(Modifier.weight(1f)) {
                 items(state.entries, key = { it.id }) { entry ->
                     Row(
-                        Modifier.fillMaxWidth().clickable { onOpen(entry) }.padding(vertical = 12.dp),
+                        Modifier.fillMaxWidth().clickable { onOpen(entry) }.padding(vertical = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text("${if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File"}: ${entry.name}")
-                        Text(if (entry.entryType == FileEntryType.FILE) "${entry.size} B" else "")
+                        if (entry.entryType == FileEntryType.FOLDER && !trashMode) {
+                            TextButton(onClick = { onShowDetails(entry) }) { Text("Actions") }
+                        } else {
+                            Text(if (entry.entryType == FileEntryType.FILE) "${entry.size} B" else "")
+                        }
                     }
                 }
                 if (state.canLoadMore) {

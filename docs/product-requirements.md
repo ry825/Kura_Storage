@@ -119,7 +119,7 @@ SSIDやBSSIDは`LOCAL_DIRECT`の判定条件に使用しない。異なるIPサ�
 
 以下を最初の正式完成範囲とする。
 
-- Raspberry Pi上の.NET 10 API、Admin CLI、PostgreSQL 17、Nginx、専用HDD
+- Raspberry Pi上の.NET 10 API、Admin CLI、PostgreSQL 17、Nginx、既存データを保持する共有exFAT HDD
 - Android 10以上のネイティブアプリ
 - Local Directまたは外部管理ZeroTier経由のHTTPS接続
 - Local Direct限定の初回Device登録と、登録済みDeviceのLogin・Token更新・Logout・失効
@@ -128,7 +128,7 @@ SSIDやBSSIDは`LOCAL_DIRECT`の判定条件に使用しない。異なるIPサ�
 - Userごとに分離された個人領域、File・Folder一覧、詳細、Folder作成
 - Android SAFからの手動Streaming UploadとRange Download
 - File・Folderのゴミ箱移動と元の場所への復元
-- HDD Mount・storageId・Pathの検証、不完全Fileの非公開、最小の`FileOperation`復旧
+- exFAT HDDのMount Point・Device UUID・Mount Option・storageId・Pathの検証、不完全Fileの非公開、最小の`FileOperation`復旧
 - Server・Android自動Test、Raspberry Pi・Android実機E2E、Release APK、再現可能な配置手順
 
 ### 2.2 MVP後の機能追加
@@ -330,6 +330,7 @@ SSIDやBSSIDは`LOCAL_DIRECT`の判定条件に使用しない。異なるIPサ�
 - **権限逸脱防止**: 権限のないユーザーが他ユーザーの非共有ファイルを閲覧・変更できる事象を0件とする
 - **不完全ファイル公開防止**: アップロード未完了または破損状態のファイルが通常一覧に表示される件数を0件とする
 - **誤保存防止**: HDD未マウント時にOSルートファイルシステムへファイルを保存する事象を0件とする
+- **exFAT整合性**: 電源断後にFilesystem検査とKuraStorage整合性確認を行い、異常時は書き込みを再開しない
 - **実機再現性**: Raspberry PiとAndroid実機でMVP E2Eを10回連続して完了できる
 
 ### 5.2 セカンダリーKPI
@@ -348,7 +349,7 @@ SSIDやBSSIDは`LOCAL_DIRECT`の判定条件に使用しない。異なるIPサ�
 - バックエンド、Webアプリ、DBは一般のインターネットへ直接公開しない
 - ZeroTier経路で到達可能であっても、Access Tokenによるアプリ認証を必須とする
 - Webブラウザ版では、ZeroTier接続はOSまたは別のZeroTierクライアントで事前に行う
-- ZeroTier MemberからはKuraStorage HTTPSエンドポイントだけへ接続可能とし、SSH、PostgreSQL、SMB、他のLAN端末、他のZeroTier端末への通信を拒否する
+- KuraStorage用ZeroTier NetworkはPrivateとし、管理者が信頼済みMemberだけを認可・維持する。Raspberry PiのFirewallでZeroTier MemberからPi上のKuraStorage HTTPS/443だけを許可し、SSH、PostgreSQL、SMB、Pi経由のLAN転送を拒否する。Piを経由しないMember間通信はZeroTier管理者の信頼境界で管理する
 - モバイル通信では自動バックアップを実行しない
 - ローカル直接接続可能なWi-Fiでは、Android端末とKuraStorageサーバーが管理者設定の同一IPサブネットに属することを確認したうえで、ZeroTierを介さない基盤ネットワークへ通信をバインドし、TLS証明書・ホスト名検証とAPI到達確認が成功した場合に自動バックアップを許可する
 - 登録済み外部Wi-Fiでは、ZeroTier接続、TLS検証、User・Device・Session認証がすべて成功した場合に限り自動バックアップを許可する
@@ -1252,7 +1253,7 @@ PDF、テキスト、文書内の文字列を検索する。
 
 - バックエンドとWebアプリを一般のインターネットへ直接公開しない
 - KuraStorage APIは許可したローカルネットワーク範囲およびKuraStorage用ZeroTier Networkだけから受け付ける
-- ZeroTier MemberからはKuraStorage HTTPSだけへ到達可能とし、SSH、PostgreSQL、SMB、他端末への通信を拒否する
+- KuraStorage用ZeroTier Networkでは管理者が信頼済みMemberだけを認可し、Raspberry PiのFirewallによりZeroTier MemberからPi上のKuraStorage HTTPS/443だけへ到達可能とする。SSH、PostgreSQL、SMB、Pi経由のLAN転送を拒否する
 - ZeroTier Network内でもTLSを必須とし、証明書とホスト名を検証する
 - 保護APIは既定で認証必須とし、匿名利用可能なAPIを明示的に限定する
 - ZeroTier接続だけでは認証済みとみなさない

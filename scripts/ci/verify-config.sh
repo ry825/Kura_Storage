@@ -25,6 +25,22 @@ required_files=(
   contracts/openapi/kurastorage-api.yaml
   contracts/fixtures/system-health-response.json
   contracts/fixtures/error-response.json
+  deployment/config/server/environment.example
+  deployment/config/server/appsettings.Production.json.template
+  deployment/config/nginx/kurastorage.conf.template
+  deployment/config/systemd/kurastorage-api.service.template
+  deployment/config/systemd/storage.mount.template
+  deployment/config/firewall/nftables.conf.template
+  deployment/raspberry-pi/install.sh
+  deployment/raspberry-pi/upgrade.sh
+  deployment/raspberry-pi/verify.sh
+  deployment/raspberry-pi/rollback.sh
+  deployment/raspberry-pi/uninstall.sh
+  scripts/ci/build-release.sh
+  scripts/ci/verify-deployment.sh
+  scripts/maintenance/generate-tls-certificates.sh
+  scripts/maintenance/verify-tls-certificates.sh
+  scripts/maintenance/generate-jwt-signing-key.sh
 )
 
 for required_file in "${required_files[@]}"; do
@@ -39,7 +55,7 @@ python3 -m json.tool server/src/KuraStorage.Api/appsettings.example.json >/dev/n
 python3 -m json.tool contracts/fixtures/system-health-response.json >/dev/null
 python3 -m json.tool contracts/fixtures/error-response.json >/dev/null
 
-shellcheck scripts/ci/*.sh
+./scripts/ci/verify-deployment.sh
 
 if ! rg -q '^openapi: 3\.[01]\.' contracts/openapi/kurastorage-api.yaml; then
   echo "The OpenAPI contract must declare OpenAPI 3.0 or 3.1." >&2

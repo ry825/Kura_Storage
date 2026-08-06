@@ -1,5 +1,14 @@
-# Public release-build inputs only. Secret signing values are injected by CI.
-KURA_API_HOSTNAME=api.kurastorage.example
-KURA_ROOT_CA_CERTIFICATE=SET_LOCALLY
-KURA_SIGNING_KEYSTORE=SET_VIA_CI_SECRET
-KURA_SIGNING_KEY_ALIAS=SET_VIA_CI_SECRET
+# Public inputs become Gradle properties; secret signing inputs are environment
+# variables and protected files, never Gradle command-line values.
+kurastorage.apiHostname=api.kurastorage.example
+kurastorage.lanApiAddress=192.0.2.10
+kurastorage.zerotierApiAddress=198.51.100.10
+kurastorage.rootCaCertificate=SET_LOCALLY
+kurastorage.versionName=0.1.0
+kurastorage.versionCode=1
+
+# Environment variable names used by release builds:
+# KURASTORAGE_RELEASE_KEYSTORE
+# KURASTORAGE_RELEASE_KEY_ALIAS
+# KURASTORAGE_RELEASE_STORE_PASSWORD_FILE
+# KURASTORAGE_RELEASE_KEY_PASSWORD_FILE

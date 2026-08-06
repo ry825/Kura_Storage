@@ -210,7 +210,7 @@ KuraStorageのDevice失効時はRefresh Sessionを失効する。ネットワー
 ### 2.4 通信境界
 
 - ZeroTier Network内でもHTTPSを使用し、TLS証明書とホスト名を検証する。
-- ZeroTier Memberから許可する宛先はKuraStorage HTTPSエンドポイントだけとし、SSH、PostgreSQL、SMB、他LAN端末、他ZeroTier端末への通信をファイアウォールで拒否する。
+- ZeroTier MemberからPi上で許可する宛先はKuraStorage HTTPS/443エンドポイントだけとする。PiのFirewallでSSH、PostgreSQL、SMB、LAN Forwardを拒否する。KuraStorage用ZeroTier NetworkのMember認可・失効とPiを経由しないMember間通信は外部管理者の責任範囲とする。
 - PostgreSQLポートとHDD共有ポートはクライアントへ公開しない。
 - クライアントが接続する対象はNginxエンドポイントであり、バックエンドプロセスの内部待ち受けアドレスを直接公開しない。
 - KuraStorage APIはループバック、プライベートポート、またはUNIXソケットで待ち受ける非rootプロセスとする。
@@ -249,21 +249,24 @@ KuraStorageのDevice失効時はRefresh Sessionを失効する。ネットワー
 ### 4.1 HDD上の論理構造
 
 ```text
-/mnt/KuraStorage-hdd/KuraStorage/
-├── .storage-identity
-├── users/
-│   └── <user-id>/
-│       ├── files/
-│       └── trash/
-└── upload-temp/
-    └── <user-id>/
+/mnt/KuraStorage-hdd/                  # exFAT実Mount Point
+└── KuraStorage/                       # KuraStorage Storage Root
+    ├── .storage-identity
+    ├── users/
+    │   └── <user-id>/
+    │       ├── files/
+    │       └── trash/
+    └── upload-temp/
+        └── <user-id>/
 ```
+
+exFATではDirectory・File単位のPOSIX所有権を保持できないため、Mount時のAPI `uid`、共有`kurastorage` Groupの`gid`、`fmask=0007`、`dmask=0007`でAPIと許可Userだけに読み書きを許可する。KuraStorageは既存HDDを再Formatせず、上記Root以外を変更しない。共有Group MemberはexFAT Volume全体へアクセスできるため、追加対象を明示的に管理する。
 
 ### 4.2 ディレクトリの責務
 
 | ディレクトリ  | 責務                                   | 正式データか |
 | ------------- | -------------------------------------- | ------------ |
-| `.storage-identity`      | 専用HDDとFormatの識別                  | はい       |
+| `.storage-identity`      | 共有HDD内のKuraStorage RootとFormatの識別 | はい       |
 | `users/<user-id>/files` | ユーザー個人領域                       | はい       |
 | `users/<user-id>/trash` | アプリから削除した元ファイルの一時保管 | はい       |
 | `upload-temp/<user-id>` | 未完了アップロード                     | いいえ     |
@@ -274,11 +277,12 @@ KuraStorageのDevice失効時はRefresh Sessionを失効する。ネットワー
 
 バックエンド起動時と書き込み操作前に以下を検証する。
 
-1. 設定されたマウントポイントが実際のマウントポイントである。
-2. HDD内の識別ファイルが想定した`storageId`を持つ。
-3. 読み取り・書き込みテストが成功する。
-4. 空き容量が安全閾値を上回る。
-5. ストレージルートの実パスが設定済みルートと一致する。
+1. 設定されたMount Pointが設定UUIDのexFAT実Mount Pointである。
+2. Mount Optionが`rw,nodev,nosuid,noexec`、API `uid`・共有Group `gid`、`fmask=0007`、`dmask=0007`を満たす。
+3. Storage RootがMount Point配下の設定済み実Pathと一致する。
+4. HDD内の識別ファイルが想定した`storageId`を持つ。
+5. 読み取り・書き込みテストに成功する。
+6. 空き容量が安全閾値を上回る。
 
 `UNAVAILABLE`の場合はファイルの`MISSING`判定、アップロード、編集、移動、削除を実行しない。
 
@@ -2550,7 +2554,7 @@ TLS検証失敗と`REMOTE_SECURE`未到達は通信層の状態として扱う�
 ### 14.1 ネットワーク・ZeroTier境界
 
 - KuraStorage APIを一般インターネットへ直接公開しない。
-- ZeroTier MemberからKuraStorage HTTPS以外のSSH、PostgreSQL、SMB、LAN端末、ZeroTier端末へ到達できないようにする。
+- KuraStorage用ZeroTier NetworkはPrivateとして信頼済みMemberだけを管理者が認可する。PiのFirewallでZeroTier MemberからPi上のKuraStorage HTTPS/443だけを許可し、SSH、PostgreSQL、SMB、LAN Forwardを拒否する。
 - ZeroTier Network内でもHTTPSとTLS証明書・ホスト名検証を行う。
 - ZeroTier接続をUserログイン完了として扱わない。
 

@@ -23,6 +23,7 @@ class FileBrowserScreenTest {
                 state = FileBrowserState(loading = false, entries = listOf(file())),
                 trashMode = false,
                 onOpen = {},
+                onShowDetails = {},
                 onBack = {},
                 onRefresh = {},
                 onLoadMore = {},
@@ -51,6 +52,7 @@ class FileBrowserScreenTest {
                 state = FileBrowserState(loading = false),
                 trashMode = false,
                 onOpen = {},
+                onShowDetails = {},
                 onBack = {},
                 onRefresh = {},
                 onLoadMore = {},
@@ -88,6 +90,7 @@ class FileBrowserScreenTest {
                     ),
                 trashMode = true,
                 onOpen = {},
+                onShowDetails = {},
                 onBack = {},
                 onRefresh = {},
                 onLoadMore = {},
@@ -109,6 +112,36 @@ class FileBrowserScreenTest {
         compose.onNodeWithText("Restore this item?").assertIsDisplayed()
     }
 
+    @Test
+    fun activeFolderExposesDetailsAction() {
+        val folder = folder()
+        var selected: FileEntry? = null
+        compose.setContent {
+            FileBrowserScreen(
+                state = FileBrowserState(loading = false, entries = listOf(folder)),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = { selected = it },
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("Folder: Photos").assertIsDisplayed()
+        compose.onNodeWithText("Actions").performClick()
+        compose.runOnIdle { assertEquals(folder, selected) }
+    }
+
     private fun file() =
         FileEntry(
             "file",
@@ -117,6 +150,21 @@ class FileBrowserScreenTest {
             FileEntryType.FILE,
             "text/plain",
             5,
+            FileEntryStatus.ACTIVE,
+            1,
+            null,
+            Instant.EPOCH,
+            Instant.EPOCH,
+        )
+
+    private fun folder() =
+        FileEntry(
+            "folder",
+            "root",
+            "Photos",
+            FileEntryType.FOLDER,
+            null,
+            0,
             FileEntryStatus.ACTIVE,
             1,
             null,
