@@ -22,7 +22,7 @@ flowchart LR
         API["KuraStorage.Api<br/>非root"]
         CLI["KuraStorage.AdminCli"]
         DB["PostgreSQL 17"]
-        HDD["専用HDD"]
+        HDD["共有exFAT HDD"]
     end
 
     User --> Android
@@ -194,18 +194,24 @@ Infrastructure
 
 ### 3.5 HDD構造
 
+実機では既存データを含む共有exFAT HDDを`<storage-mount>`へMountし、その配下の`<storage-root>`だけをKuraStorageのデータ領域とする。
+
 ```text
-<storage-root>/
-├── .storage-identity
-├── users/
-│   └── <user-id>/
-│       ├── files/
-│       └── trash/
-└── upload-temp/
-    └── <user-id>/
+<storage-mount>/                    # /mnt/KuraStorage-hdd、exFAT Mount Point
+└── <storage-root>/                 # /mnt/KuraStorage-hdd/KuraStorage
+    ├── .storage-identity
+    ├── users/
+    │   └── <user-id>/
+    │       ├── files/
+    │       └── trash/
+    └── upload-temp/
+        └── <user-id>/
 ```
 
-- `<storage-root>`が実Mount Pointであり、`.storage-identity`が設定と一致する場合だけ書き込む。
+- `<storage-mount>`が設定UUIDのexFAT実Mount Pointであり、`<storage-root>`がその直下の検証済みDirectoryで、`.storage-identity`が設定と一致する場合だけ書き込む。
+- exFATの所有権・PermissionはMount OptionのAPI `uid`、共有`kurastorage` Groupの`gid`、`fmask=0007`、`dmask=0007`で固定し、APIと明示的な共有Userだけへ読み書きを許可する。`nodev,nosuid,noexec`を必須とし、Directory単位の`chmod`／`chown`には依存しない。
+- exFATではDirectory別のOS権限分離ができないため、共有Group MemberはVolume全体へアクセスできる。KuraStorage APIはPath検証とsystemdの`ReadWritePaths=<storage-root>`により書込先をStorage Rootへ限定し、HDD上の他Directoryを変更しない。
+- exFATはJournalを持たないため、電源断後はFilesystem検査とKuraStorage整合性確認を行い、DatabaseとHDDのBackupを対として管理する。
 - User入力から絶対Pathを生成せず、内部の`RelativeStoragePath`と検証済みRootから解決する。
 - シンボリックリンクを作成・追跡しない。
 - Uploadの一時Fileと正式Fileを同一Filesystem上に置き、atomic renameを使用する。
@@ -234,6 +240,8 @@ APIはNginxのUnix Socketから受け取ったHeaderだけを信頼する。Devi
 6. 成功時は`REMOTE_SECURE`、失敗時は`DISCONNECTED`とする。
 
 SSIDはLocal Directの認証または判定根拠に使用しない。LocalとZeroTierが両方成功する場合はLocalを優先する。
+
+ZeroTier VPNの常駐性はAndroid OSとZeroTier別アプリの運用責務とする。実運用端末ではZeroTierを省電力最適化対象外にし、端末固有設定がある場合はBackground実行と自動起動を許可する。端末再起動後と長時間Background移行後にVPN Interface、Managed IP、`REMOTE_SECURE`接続が維持または自動復帰することを確認する。
 
 ### 4.3 TLS
 
@@ -505,23 +513,35 @@ HomeはMVPで「自分のファイル」「ゴミ箱」「接続状態」「ロ�
 /etc/kurastorage/tls/              # Nginx Server証明書・秘密鍵
 /run/kurastorage/api.sock          # API Unix socket
 /var/lib/kurastorage/              # 非HDDの小さな運用状態
-<storage-root>/                    # 専用HDD
+<storage-mount>/                   # 共有exFAT HDDのMount Point
+└── <storage-root>/                # KuraStorage専用データRoot
 ```
 
 ### 9.2 Service
 
-- `kurastorage-api.service`: PostgreSQLとHDD Mount後に起動し、専用非root Userで動作する。
+- `kurastorage-api.service`: PostgreSQLとexFAT HDD Mount後に起動し、専用非root Userで動作する。
+- systemd Mount Unitは`<storage-mount>`へ依存し、APIの書込許可Pathは`<storage-root>`だけに限定する。
 - NginxはAPI Unix SocketだけへProxyする。
+- NginxはLAN IP、ZeroTier Managed IP、API Unix Socketが利用可能になるまでsystemdの`ExecStartPre`で待機し、再起動時の早期bindとupstream接続失敗を防ぐ。
 - MigrationはAPI起動時に自動実行せず、配置Scriptの明示Stepとする。
 - UpdateはVersion付きDirectoryへ配置し、Migration・Health確認後に`current`を切り替える。
 - Rollbackは直前ArtifactとDB Backupを使用し、破壊的MigrationをMVPで導入しない。
 
 ### 9.3 Firewall
 
-- LANの`NET-LAN-CIDR` -> `NET-LAN-API-IP:443`だけを許可する。
+- LANの`NET-LAN-CIDR` -> `NET-LAN-API-IP:443`と、公開鍵認証に限定した運用SSH `:22`を許可する。
 - ZeroTierの`NET-ZEROTIER-CIDR` -> `NET-ZEROTIER-API-IP:443`だけを許可する。
 - PostgreSQLはlocalhostまたはUnix Socketに限定する。
 - ZeroTier InterfaceからSSH、SMB、LAN Forward、他ZeroTier MemberへのForwardを拒否する。
+- SSH公開鍵認証による運用接続は設定したLAN CIDRからのみ許可し、ZeroTier経由では許可しない。
+- 既存UFWが有効なPiでは、nftablesと同じLAN SSH・LAN HTTPS・ZeroTier HTTPSの許可だけをUFWにも追加する。UFW全体や既存Ruleは無効化・削除しない。
+- KuraStorage用ZeroTier Networkは管理者がPrivate Networkとして運用し、信頼済みMemberだけを認可する。Controller Flow Rulesは必須とせず、PiのFirewallがZeroTier InterfaceからPiのHTTPS/443だけを許可し、SSH、PostgreSQL、SMB、LAN Forwardを拒否する。Piを経由しないMember間通信はKuraStorageの制御対象外とし、管理者がMember認可・失効で信頼境界を維持する。
+
+### 9.4 旧配置からの初回切替
+
+- Migration履歴が現行MVPと異なるDatabaseへはMigrationを重ねない。
+- 旧Databaseは`pg_dump --format=custom`、旧Release・設定・systemd・Nginx・Firewallはroot限定Directoryへ退避し、新MVPは別Database名で新規構築する。
+- 初回切替失敗時は旧Unit・設定・`current`を復元し、旧DatabaseとHDD上の既存データは削除しない。
 
 ## 10. Test戦略
 

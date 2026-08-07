@@ -96,6 +96,7 @@
       "kurastorage.domain": {
         "type": "Project"
       }
-    }
+    },
+    "net10.0/linux-arm64": {}
   }
 }

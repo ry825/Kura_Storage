@@ -245,6 +245,7 @@ private fun FileRoute(
         state = state,
         trashMode = trashMode,
         onOpen = viewModel::open,
+        onShowDetails = viewModel::select,
         onBack = { if (!viewModel.back()) onExit() },
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadMore,

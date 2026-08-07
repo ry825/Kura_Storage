@@ -655,7 +655,9 @@ public void Rotate_UsedTokenIsPresented_RevokesSessionFamily()
 - ApplicationテストではRepository、Clock、Storage、Token、Systemd等をinterfaceでFake化する。
 - EF CoreのInMemory ProviderをPostgreSQL統合テストの代替にしない。
 - PostgreSQL固有制約、再帰CTE、LockはTestcontainersで検証する。
-- ファイル操作は一時Directoryだけでなく、可能な範囲でext4相当環境も検証する。
+- ファイル操作は一時Directoryだけでなく、可能な範囲で実機同等の共有exFATまたはAPI UID・共有Group GID・Maskを含むMount制約を再現した環境でも検証する。
+- exFAT上の権限制御を個別`chmod`／`chown`へ依存させず、Mount Point、Device UUID、Filesystem Type、Mount Option、Storage Rootを配置時に一体で検証する。
+- exFATのJournal非対応を前提に、電源断後のFilesystem検査、DB・HDD整合性確認、Backup復旧手順を省略しない。
 
 ### 9.7 必須失敗系
 

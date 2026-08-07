@@ -1,0 +1,11 @@
+[Unit]
+After=network-online.target zerotier-one.service
+Wants=network-online.target zerotier-one.service
+
+[Service]
+ExecStartPre=
+ExecStartPre=/usr/local/libexec/kurastorage/wait-for-api-addresses ${KURASTORAGE_LAN_API_IP} ${KURASTORAGE_ZEROTIER_API_IP} /run/kurastorage/api.sock 120
+ExecStartPre=/usr/sbin/nginx -t -q -g 'daemon on; master_process on;'
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=180s

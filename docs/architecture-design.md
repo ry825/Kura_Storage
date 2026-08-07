@@ -31,7 +31,7 @@ Phase 1では、OSまたは別アプリが管理するZeroTierをリモート通
 
 ## MVPアーキテクチャ境界
 
-MVPの実行構成は、Androidアプリ、Nginx、`KuraStorage.Api`、`KuraStorage.AdminCli`、PostgreSQL 17、専用HDD、OS・別アプリ管理ZeroTierだけとする。
+MVPの実行構成は、Androidアプリ、Nginx、`KuraStorage.Api`、`KuraStorage.AdminCli`、PostgreSQL 17、共有exFAT HDD、OS・別アプリ管理ZeroTierだけとする。
 
 - APIはNginxのUnix Socketからだけ受信し、非rootで動作する。
 - MVPでは独立`KuraStorage.Worker`を配置しない。API内の期限付きHosted Serviceは、未完了Uploadの清掃と`FileOperation`の起動時・定期復旧だけを担当する。
@@ -655,15 +655,17 @@ LIMIT 1;
 
 ### 9.1 ファイルシステム
 
-KuraStorage専用HDDはLinux上で信頼性が高いファイルシステムを使用し、MVP基準を`ext4`とする。HDDを他OSへ直接接続して編集する運用は前提としない。
+MVPでは他用途の既存データを含むUSB HDDを再Formatせず、ファイルシステムは`exFAT`を使用する。実Mount Pointを`/mnt/KuraStorage-hdd`、KuraStorage専用Storage Rootを`/mnt/KuraStorage-hdd/KuraStorage`として分離する。
+
+exFATはPOSIXのFile・Directory単位所有権、Mode、Journalを提供しない。このため、API Userの固定UID、共有`kurastorage` GroupのGID、`fmask=0007,dmask=0007`をMount Optionへ設定し、個別の`chmod`／`chown`には依存しない。共有Group MemberはVolume全体へアクセスできるため、APIと明示的な運用Userだけを所属させる。電源断や強制切断後はFilesystem検査とKuraStorageのDB・HDD整合性確認が完了するまで書き込みを再開しない。
 
 推奨マウントオプション。
 
 ```text
-nodev,nosuid,noexec
+rw,nodev,nosuid,noexec,noatime,uid=<kurastorage-api-uid>,gid=<kurastorage-shared-gid>,fmask=0007,dmask=0007,iocharset=utf8,errors=remount-ro
 ```
 
-マウントはデバイス名ではなくUUIDでsystemd mount unitまたは`/etc/fstab`へ定義する。APIとWorkerはマウント確認が完了するまで起動しない。
+Mountはデバイス名ではなくUUIDでsystemd Mount Unitへ定義する。APIはMount Point、Device UUID、Filesystem Type、必須Option、Storage Root、`.storage-identity`の確認が完了するまで起動しない。
 
 ### 9.2 物理構造
 
@@ -685,12 +687,14 @@ nodev,nosuid,noexec
 
 書き込み前に次を検証する。
 
-1. 設定パスが実際のマウントポイント配下である。
-2. `.storage-identity`が存在し、期待する`storageId`と一致する。
-3. 実パスが設定済みルートと一致する。
-4. 読み取り・書き込みテストに成功する。
-5. ファイルシステムが読み取り専用でない。
-6. 安全余裕を差し引いた空き容量が要求サイズ以上である。
+1. 設定Mount Pointが実際のMount Pointで、設定UUIDのDeviceをSourceとする。
+2. Filesystem Typeが`exfat`である。
+3. `rw,nodev,nosuid,noexec,noatime`、API UID・共有Group GID、`fmask=0007`、`dmask=0007`、`iocharset=utf8`、`errors=remount-ro`を満たす。
+4. Storage Rootが設定Mount Point配下の実Pathと一致する。
+5. `.storage-identity`が存在し、期待する`storageId`と一致する。
+6. 読み取り・書き込みテストに成功する。
+7. ファイルシステムが読み取り専用でない。
+8. 安全余裕を差し引いた空き容量が要求サイズ以上である。
 
 HDDが利用不可の場合、Raspberry Pi本体側に同名ディレクトリを作って処理を継続してはならない。
 
@@ -927,8 +931,10 @@ sequenceDiagram
 
 ### 13.1 ネットワーク
 
-- ZeroTier Memberから許可する宛先はKuraStorage HTTPSだけとする。
-- SSH、PostgreSQL、SMB、他LAN端末、他ZeroTier端末への転送をnftablesで拒否する。
+- ZeroTier MemberからPi上で許可する宛先はKuraStorage HTTPS/443だけとする。
+- SSH、PostgreSQL、SMB、他LAN端末への接続・転送をPiのnftablesで拒否する。
+- KuraStorage用ZeroTier Networkは外部管理者がPrivate Networkとして信頼済みMemberだけを認可・失効する。Controller Flow RulesはKuraStorageの必須構成とせず、Piを経由しないMember間通信はKuraStorageの制御対象外とする。
+- 運用SSHは公開鍵認証と管理LAN CIDRからの接続に限定し、ZeroTier Interfaceからは拒否する。
 - PostgreSQLはlocalhostまたはUnixソケットだけで待ち受ける。
 - APIはUnixソケットでNginxからのみ接続可能にする。
 
@@ -1035,7 +1041,7 @@ DevelopmentとTestingでPathを省略した場合だけ、Process内に一時的
 | 項目 | 基準 |
 | --- | --- |
 | サーバー | Raspberry Pi 4 Model B、8GB RAM、64-bit OS |
-| ファイルストレージ | USB 3接続HDD、ext4 |
+| ファイルストレージ | USB 3接続HDD、exFAT、`/mnt/KuraStorage-hdd/KuraStorage` |
 | DB | Raspberry Piのシステムストレージ。耐久性のためSSDを推奨 |
 | ネットワーク | Raspberry Piは有線1Gbps、Androidは5GHz Wi-Fi |
 | データ量 | FileEntry 30万件、家族ユーザー10名、Device 20台 |
@@ -1451,7 +1457,7 @@ Phase 1では対象外。将来必要になった場合、次の分離が前提�
 ### 21.2 統合テスト
 
 - PostgreSQLの一意制約、部分Index、再帰CTE
-- 実HDD相当の一時ext4領域を使うファイル操作
+- 実HDD相当のexFAT領域またはexFATのMount制約を再現した環境を使うファイル操作
 - Upload中断・再開・確定
 - atomic rename後のDB失敗と復旧
 - HDD未マウント時の誤保存防止

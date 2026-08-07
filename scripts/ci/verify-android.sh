@@ -9,7 +9,17 @@ if [[ -z "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ]]; then
   exit 1
 fi
 
-java_major="$(java -version 2>&1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+java_command="java"
+if [[ -n "${JAVA_HOME:-}" ]]; then
+  java_command="${JAVA_HOME}/bin/java"
+fi
+
+if [[ ! -x "$java_command" ]] && ! command -v "$java_command" >/dev/null 2>&1; then
+  echo "JAVA_HOME must reference a JDK installation, or java must be available on PATH." >&2
+  exit 1
+fi
+
+java_major="$("$java_command" -version 2>&1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p' | head -n 1)"
 if [[ "$java_major" != "17" ]]; then
   echo "JDK 17 is required; detected: ${java_major:-unknown}." >&2
   exit 1

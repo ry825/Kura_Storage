@@ -19,6 +19,7 @@
 | `NET-LAN-CIDR` | `SET_LOCALLY` | Nginx／Firewall設定 | KuraStorage HTTPSを許可するLAN範囲 |
 | `NET-ZEROTIER-API-IP` | `SET_LOCALLY` | Nginx／Firewall設定、`kurastorage.zerotierApiAddress` | ZeroTier経路で使用するRaspberry Piの固定Managed IP |
 | `NET-ZEROTIER-CIDR` | `SET_LOCALLY` | Nginx／Firewall設定 | KuraStorage HTTPSを許可するZeroTier範囲 |
+| `NET-ZEROTIER-INTERFACE` | `SET_LOCALLY` | Firewall設定 | Raspberry Pi上のZeroTier Interface名 |
 | `NET-ZEROTIER-NETWORK-ID` | `SET_LOCALLY` | KuraStorage外のZeroTier管理面 | 運用照合用Network ID。APK、Server設定、DBへ転記しない |
 | `NET-ZEROTIER-CONTROLLER-TYPE` | `SET_LOCALLY` | KuraStorage外のZeroTier管理面 | `ZEROTIER_CENTRAL`または`SELF_HOSTED`。Tokenや認可情報は記載しない |
 
@@ -30,9 +31,16 @@
 
 | 項目ID | Local値 | 正式な設定入力 | 用途 |
 | --- | --- | --- | --- |
-| `STORAGE-ROOT-PATH` | `SET_LOCALLY` | `KuraStorage__Storage__RootPath` | 専用HDD上のKuraStorage Root。OS Root上の代替DirectoryへFallbackしない |
-| `STORAGE-ID` | `SET_LOCALLY` | `KuraStorage__Storage__ExpectedStorageId` | HDD上の`.storage-identity`と照合する非Secret識別子 |
-| `STORAGE-SAFETY-RESERVE-BYTES` | `SET_LOCALLY` | `KuraStorage__Storage__SafetyReserveBytes` | Upload可否判定で常に残す安全余裕Byte数 |
+| `STORAGE-MOUNT-PATH` | `SET_LOCALLY` | systemd Mount設定 | 共有exFAT HDDの実Mount Point |
+| `STORAGE-ROOT-PATH` | `SET_LOCALLY` | `KURASTORAGE_Storage__RootPath` | `STORAGE-MOUNT-PATH`配下のKuraStorage専用Root。OS Root上の代替DirectoryへFallbackしない |
+| `STORAGE-DEVICE-UUID` | `SET_LOCALLY` | systemd Mount設定 | `/dev/disk/by-uuid`でexFAT HDDを固定するFilesystem UUID |
+| `STORAGE-MOUNT-UNIT` | `SET_LOCALLY` | systemd依存設定 | `STORAGE-MOUNT-PATH`を`systemd-escape --path --suffix=mount`で変換したUnit名 |
+| `STORAGE-ACCESS-GROUP` | `kurastorage` | exFAT Mount設定、OS Group | APIと許可Userが共有HDDへアクセスするGroup |
+| `STORAGE-ACCESS-USER` | `SET_LOCALLY` | OS Group | HDDの既存データへ直接アクセスする運用User |
+| `STORAGE-ID` | `SET_LOCALLY` | `KURASTORAGE_Storage__StorageId` | HDD上の`.storage-identity`と照合する非Secret識別子 |
+| `STORAGE-SAFETY-RESERVE-BYTES` | `SET_LOCALLY` | `KURASTORAGE_Storage__MinimumFreeBytes` | Upload可否判定で常に残す安全余裕Byte数 |
+
+MVPの実機値は`STORAGE-MOUNT-PATH=/mnt/KuraStorage-hdd`、`STORAGE-ROOT-PATH=/mnt/KuraStorage-hdd/KuraStorage`、Filesystem Typeは`exFAT`とする。UIDは配置時に`kurastorage-api` User、GIDは共有Groupから取得してMount Unitへ固定し、本Local文書には数値を記録しない。
 
 ## TLS and signing material
 
@@ -43,9 +51,12 @@
 | `TLS-ROOT-CA-CERT-PATH` | `SET_LOCALLY` | Android Release Build入力／管理端末 | 配布するRoot CA公開証明書のPath |
 | `TLS-ROOT-CA-SHA256` | `SET_LOCALLY` | 手動照合 | Root CA公開証明書のSHA-256 Fingerprint |
 | `TLS-SERVER-CERT-PATH` | `SET_LOCALLY` | Nginx設定 | API Server公開証明書のPath |
+| `TLS-SERVER-CERT-SHA256` | `SET_LOCALLY` | 手動照合 | API Server公開証明書のSHA-256 Fingerprint |
 | `TLS-SERVER-KEY-PATH` | `SET_LOCALLY` | root所有・権限制限File | API Server秘密鍵のPath。鍵本文は記載しない |
-| `JWT-SIGNING-KEY-PATH` | `SET_LOCALLY` | `KuraStorage__Identity__JwtSigningKeyPath` | ES256署名秘密鍵のPath。鍵本文は記載しない |
-| `ANDROID-SIGNING-KEYSTORE-PATH` | `SET_LOCALLY` | `KURASTORAGE_RELEASE_STORE_FILE` | Android署名KeystoreのPath。Passwordと鍵本文は記載しない |
+| `JWT-SIGNING-KEY-PATH` | `SET_LOCALLY` | `KURASTORAGE_Authentication__JwtSigningKeyFile` | ES256署名秘密鍵のPath。鍵本文は記載しない |
+| `JWT-SIGNING-PUBLIC-KEY-SHA256` | `SET_LOCALLY` | 手動照合 | ES256公開鍵DERのSHA-256 Fingerprint |
+| `ANDROID-SIGNING-KEYSTORE-PATH` | `SET_LOCALLY` | `KURASTORAGE_RELEASE_KEYSTORE` | Android署名KeystoreのPath。Passwordと鍵本文は記載しない |
+| `ANDROID-SIGNING-CERT-SHA256` | `SET_LOCALLY` | APK署名照合 | Android署名証明書のSHA-256 Fingerprint |
 
 ## Physical validation environment
 

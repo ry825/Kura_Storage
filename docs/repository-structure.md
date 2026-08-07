@@ -22,6 +22,7 @@ ZeroTier daemonとそのNetwork資格情報はRepository外のOS・別アプリ�
 - 接続経路判定と固定Hostname Resolverは`apps/android/core-network/`へ置く。
 - ZeroTier未接続案内はAndroid Featureへ置くが、ZeroTier操作APIへ依存させない。
 - LAN／ZeroTier HTTPS許可は`deployment/config/firewall/`の公開TemplateとLocal環境情報から生成する。
+- ZeroTier NetworkのMember認可・失効と信頼境界は外部管理とし、RepositoryにController RuleやNode Identityを保存しない。KuraStorageからController APIは呼び出さない。
 - 環境固有値はGit管理外の`docs/environment-info.md`へ置く。詳細なZeroTier運用手順は運用作業時に`docs/operations/`へ追加する。
 
 将来、自己管理WireGuard、VPSを介したVPN、その他の安全なオーバーレイ方式を導入する場合は、その時点のArchitecture ReviewとSteeringで必要な配置を定義する。Phase 1で将来用のHost、Directory、依存ライブラリを先行追加しない。
@@ -1072,23 +1073,22 @@ docs/
 deployment/
 ├── config/
 │   ├── server/
-│   │   ├── appsettings.Development.example.json
-│   │   ├── appsettings.Testing.json
+│   │   ├── appsettings.Production.json.template
 │   │   └── environment.example
 │   ├── nginx/
-│   │   └── kurastorage.conf.example
+│   │   └── kurastorage.conf.template
 │   ├── systemd/
-│   │   ├── kurastorage-api.service
-│   │   ├── kurastorage-worker.service
+│   │   ├── kurastorage-api.service.template
+│   │   ├── storage.mount.template
 │   │   └── README.md
 │   ├── firewall/
-│   │   ├── nftables.conf
+│   │   ├── nftables.conf.template
 │   │   └── README.md
-│   ├── tls/
-│   │   └── network_security_config.example.xml
 │   └── logrotate/
 │       └── kurastorage
 └── raspberry-pi/
+    ├── lib/
+    │   └── common.sh
     ├── install.sh
     ├── upgrade.sh
     ├── rollback.sh
@@ -1100,10 +1100,11 @@ deployment/
 
 | リポジトリ内の原本 | Raspberry Pi上の代表的な実配置先 |
 | --- | --- |
-| `deployment/config/nginx/kurastorage.conf.example` | `/etc/nginx/sites-available/kurastorage.conf` |
+| `deployment/config/nginx/kurastorage.conf.template` | `/etc/nginx/sites-available/kurastorage.conf` |
 | OpenSSL Scriptが生成した`server/server.crt`と`server/server.key` | `/etc/kurastorage/tls/`。生成物とRoot CA秘密鍵はRepository外 |
-| `deployment/config/tls/network_security_config.example.xml` | Android Appの`res/xml/network_security_config.xml`の原本 |
-| `deployment/config/systemd/kurastorage-api.service` | `/etc/systemd/system/kurastorage-api.service` |
+| `TLS-ROOT-CA-CERT-PATH`の公開Root CA | Release Build時に生成するAndroid Appの`res/raw/kurastorage_root_ca.pem` |
+| `deployment/config/systemd/kurastorage-api.service.template` | `/etc/systemd/system/kurastorage-api.service` |
+| `deployment/config/firewall/nftables.conf.template` | `/etc/nftables.d/kurastorage.conf` |
 | `deployment/config/logrotate/kurastorage` | `/etc/logrotate.d/kurastorage` |
 | Server publish成果物 | `/opt/kurastorage/`配下 |
 

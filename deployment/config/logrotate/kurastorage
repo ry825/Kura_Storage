@@ -1,0 +1,12 @@
+/var/log/kurastorage/*.log {
+    daily
+    rotate 14
+    compress
+    missingok
+    notifempty
+    create 0640 kurastorage-api adm
+    sharedscripts
+    postrotate
+        /bin/systemctl kill -s HUP kurastorage-api.service >/dev/null 2>&1 || true
+    endscript
+}

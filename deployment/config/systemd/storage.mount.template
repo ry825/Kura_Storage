@@ -1,0 +1,13 @@
+[Unit]
+Description=KuraStorage shared exFAT HDD
+Before=kurastorage-api.service
+
+[Mount]
+What=/dev/disk/by-uuid/${KURASTORAGE_STORAGE_DEVICE_UUID}
+Where=${KURASTORAGE_STORAGE_MOUNT_PATH}
+Type=exfat
+Options=rw,nodev,nosuid,noexec,noatime,uid=${KURASTORAGE_STORAGE_UID},gid=${KURASTORAGE_STORAGE_GID},fmask=0007,dmask=0007,iocharset=utf8,errors=remount-ro
+TimeoutSec=90s
+
+[Install]
+WantedBy=multi-user.target

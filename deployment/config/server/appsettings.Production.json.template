@@ -1,0 +1,29 @@
+{
+  "AllowedHosts": "${KURASTORAGE_API_HOSTNAME}",
+  "Database": {
+    "ConnectionString": "Host=/var/run/postgresql;Database=${KURASTORAGE_POSTGRES_DATABASE};Username=${KURASTORAGE_POSTGRES_ROLE};Maximum Pool Size=20"
+  },
+  "Storage": {
+    "RootPath": "${KURASTORAGE_STORAGE_ROOT}",
+    "StorageId": "${KURASTORAGE_STORAGE_ID}",
+    "MinimumFreeBytes": ${KURASTORAGE_STORAGE_RESERVE_BYTES}
+  },
+  "Authentication": {
+    "JwtIssuer": "kurastorage",
+    "JwtAudience": "kurastorage-android",
+    "JwtSigningKeyFile": "/etc/kurastorage/secrets/jwt-signing-key.pem",
+    "AccessTokenMinutes": 15,
+    "RefreshTokenHours": 24,
+    "Argon2MemoryKiB": 19456,
+    "Argon2Iterations": 2,
+    "Argon2Parallelism": 1
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore.DataProtection": "Warning",
+      "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+      "Microsoft.Hosting.Lifetime": "Warning"
+    }
+  }
+}
