@@ -38,8 +38,8 @@ MVPの実行構成は、Androidアプリ、Nginx、`KuraStorage.Api`、`KuraStor
 - AndroidはRoom、WorkManager、Media3、Coil、PDF LibraryをMVP依存へ追加しない。ファイルはSAFで手動選択・保存し、アプリ内Media表示は行わない。
 - DBのMVP TableはUser、Device、Refresh Session、Authentication Attempt、Audit Log、File Entry、File Operationに限定する。
 - UploadはStreaming Multipartを同一Filesystem上の一時ファイルへ書き、検証後にatomic renameする。Downloadは元ファイルのHTTP Range配信だけとする。
-- TrashとRestoreは`FileOperation`でDB・HDD間の途中状態を管理し、復元競合では上書きしない。
-- 自動Backup、共有、検索、Rename・Move、Permanent Delete、Chunk Upload、Media変換、派生データ、外部変更監視はMVP後に別Steeringで追加する。
+- Trash、Restore、Rename、Moveは`FileOperation`でDB・HDD間の途中状態を管理し、同名競合では上書きしない。
+- Rename・MoveはMVP完成後の現行Phase 1拡張として既存API・Hosted Service内へ追加する。自動Backup、共有、検索、Permanent Delete、Chunk Upload、Media変換、派生データ、外部変更監視はMVP後に別Steeringで追加する。
 
 後続節に記載したこれらの将来設計は拡張時の参考であり、MVPのHost、Module、Migration、依存、配置Unitへ先行投入しない。
 
@@ -369,7 +369,7 @@ server/tests/
 | --- | --- |
 | Identity | User認証、Argon2id、Device、Refresh Session、Token系列、認証失敗ロック |
 | Authorization | MVPは所有User境界。共有権限はMVP後 |
-| Files | 一覧、詳細、Folder作成、Trash、Restore |
+| Files | 一覧、詳細、Folder作成、Trash、Restore、Rename、Move |
 | Transfer | Streaming Multipart Upload、検証、Range Download |
 | Audit | 監査イベント、認証試行、セキュリティ操作記録 |
 
@@ -711,7 +711,7 @@ HDDが利用不可の場合、Raspberry Pi本体側に同名ディレクトリ�
 
 - アップロードは`upload-temp`へ保存する。
 - サイズ・チェックサム・形式検証後、同一ファイルシステム内でatomic renameする。
-- MVP後の名前変更・移動を追加する場合も同一ファイルシステム内のrenameを基本とする。
+- 名前変更・移動も内容を複製せず、同一ファイルシステム内のrenameを使用する。
 - MVPは同名項目を上書きしない。将来の置換APIは別途atomic replace設計を必要とする。
 - DBを更新する前後の段階を`FileOperation`へ記録する。
 
@@ -772,9 +772,16 @@ sequenceDiagram
 ### 10.5 冪等性
 
 - 同じUser・`Idempotency-Key`・同じMetadataのUpload再送は既存結果を返す。異なるMetadataは`IDEMPOTENCY_CONFLICT`とする。
-- File Commandは対象File・Folder ID単位のPostgreSQL advisory lockで直列化する。
+- Rename・Move・Trash・Restoreは対象、source親、target親のGUIDから安定した64-bit keyを導出し、ソート後のPostgreSQL advisory lockを同一DB Connectionで取得する。要求、取消、例外、Recoveryのどの終了経路でも解放する。
 - Device失効は複数回実行しても同じ最終状態とする。
 - TrashとRestoreの再試行は既存の`FileOperation`と実状態を確認して同じ最終状態へ収束させる。
+
+### 10.6 Rename・Moveの隔離と復旧
+
+- HDD操作前にsource・target・FileEntry IDを持つ`FileOperation(PENDING)`を永続化する。
+- atomic rename後は`FILESYSTEM_DONE`を永続化し、FileEntry・配下Path・成功監査・`COMPLETED`を1 DB Transactionで確定する。
+- Recoveryはsource、target、DB pathの組合せを再確認し、一意に判定できる場合だけHDD renameの再実行またはDB確定を行う。両方存在、両方不存在、DB不一致は`RECOVERY_REQUIRED`とする。
+- 未完了Rename・Moveの対象と子孫は通常一覧から除外し、詳細、Download、追加変更では`RECOVERY_REQUIRED`を返す。
 
 ---
 

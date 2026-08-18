@@ -145,4 +145,51 @@ public sealed class FileEntry
         TrashedAt = null;
         UpdatedAt = now;
     }
+
+    public void Rename(FileName name, RelativeStoragePath targetPath, DateTimeOffset now)
+    {
+        EnsureRelocatable();
+        Name = name.Value;
+        RelativePath = targetPath.Value;
+        UpdatedAt = now;
+    }
+
+    public void MoveTo(Guid parentId, RelativeStoragePath targetPath, DateTimeOffset now)
+    {
+        EnsureRelocatable();
+        if (parentId == Guid.Empty)
+        {
+            throw new ArgumentException("The parent ID is required.", nameof(parentId));
+        }
+
+        ParentId = parentId;
+        RelativePath = targetPath.Value;
+        UpdatedAt = now;
+    }
+
+    public void RelocateDescendant(RelativeStoragePath targetPath, DateTimeOffset now)
+    {
+        if (Status != FileEntryStatus.Active)
+        {
+            throw new InvalidFileOperationException("Only active descendants can be relocated.");
+        }
+
+        RelativePath = targetPath.Value;
+        UpdatedAt = now;
+    }
+
+    private void EnsureRelocatable()
+    {
+        if (Status != FileEntryStatus.Active)
+        {
+            throw new InvalidFileOperationException("Only active entries can be relocated.");
+        }
+
+        if (ParentId is null)
+        {
+            throw new InvalidFileOperationException("The storage root cannot be relocated.");
+        }
+    }
 }
+
+public sealed class InvalidFileOperationException(string message) : InvalidOperationException(message);

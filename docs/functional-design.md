@@ -35,7 +35,7 @@ Phase 1のリモートアクセスは、KuraStorage外で管理されるZeroTier
 | --- | --- | --- |
 | Server Data | `User`、`Device`、`RefreshSession`、`AuthenticationAttempt`、`AuditLog`、`FileEntry`、`FileOperation` | Share、Derived Asset、Media Job、Upload Session、Backup、Recent、Missing索引 |
 | Android Data | Network/Auth状態と画面表示に必要な最小Repository。永続TokenはKeystore保護 | Room、WorkManager、Backup Queue、Offline Cache |
-| File操作 | 一覧、詳細、Folder作成、Streaming Multipart Upload、Range Download、Trash、Restore | Rename、Move、Permanent Delete、Resumable Chunk Upload |
+| File操作 | 一覧、詳細、Folder作成、Streaming Multipart Upload、Range Download、Trash、Restore、Rename、Move | Permanent Delete、Resumable Chunk Upload |
 | 表示 | ファイル情報と転送状態。Download後はOSの対応アプリで開く | アプリ内Photo・Video・Audio・PDF・Text表示編集、Thumbnail、画質変換 |
 | 実行Host | API、Admin CLI。API内の期限付きHosted ServiceはUpload清掃と`FileOperation`復旧だけを担当 | 独立Worker、自動Backup、Media変換、Index監視 |
 
@@ -1850,8 +1850,15 @@ Upload Session、Chunk範囲管理、端末をまたぐ再開はMVP完成後に�
 - `DELETE /api/v1/files/{fileId}`: ゴミ箱へ移動
 - `GET /api/v1/trash`: 認証Userのゴミ箱一覧
 - `POST /api/v1/files/{fileId}/restore`
+- `PATCH /api/v1/files/{fileId}`: `name`または`parentId`の一方だけで名前変更または移動
 
-`PATCH`による名前変更・移動、完全削除、保持期限、自動清掃、`MISSING`削除はMVP後とする。復元先に同名項目がある場合は`409 FILE_RESTORE_CONFLICT`とし、既存項目を上書きしない。
+名前変更と移動は認証User所有の`ACTIVE`かつ非Root項目だけを対象とする。同じ正規化済み名前または同じ親への再実行は副作用のない`200`とする。同名項目は上書きせず、循環移動と深度64超過をHDD操作前に拒否する。File ID、所有者、内容属性、`fileVersion`は変更しない。
+
+Requestは`UpdateFileRequest { name?, parentId? }`とし、両方指定・両方未指定を`400 VALIDATION_FAILED`とする。成功時は更新後の既存`FileItem`を返す。他User、非`ACTIVE`の対象・移動先は`404 FILE_NOT_FOUND`へ統一する。`FILE_NAME_CONFLICT`、`FILE_MOVE_CYCLE`、`FILE_OPERATION_NOT_ALLOWED`、`RECOVERY_REQUIRED`、`STORAGE_UNAVAILABLE`を公開Errorとする。
+
+Rename・Move・Trash・Restoreは、対象、source親、target親のGUIDから安定した64-bit keyを導出し、昇順にPostgreSQL advisory lockを取得する。HDD変更前に`FileOperation(PENDING)`を永続化し、atomic rename後に`FILESYSTEM_DONE`、FileEntry・子孫Path・成功監査と同じDB Transactionで`COMPLETED`へ進める。未完了Rename・Moveの対象と子孫は一覧から除外し、詳細・Download・追加変更を`RECOVERY_REQUIRED`で拒否する。
+
+完全削除、保持期限、自動清掃、`MISSING`削除はMVP後とする。復元先に同名項目がある場合は`409 FILE_RESTORE_CONFLICT`とし、既存項目を上書きしない。
 
 ### 8.10 MVP後: 共有
 
@@ -2513,6 +2520,9 @@ flowchart LR
 | `FILE_NOT_FOUND` | 404 | 未存在と他User所有を同じ結果にする | ファイルが見つかりません |
 | `FILE_NAME_CONFLICT` | 409 | 作成・Upload拒否、既存項目維持 | 同じ名前の項目があります |
 | `FILE_RESTORE_CONFLICT` | 409 | Restore拒否、既存項目維持 | 復元先に同じ名前の項目があります |
+| `FILE_MOVE_CYCLE` | 409 | 自分自身・子孫への移動を拒否 | そのフォルダの配下へは移動できません |
+| `FILE_OPERATION_NOT_ALLOWED` | 409 | Rootまたは変更不可状態を拒否 | この項目は変更できません |
+| `RECOVERY_REQUIRED` | 409 | 対象を通常利用から隔離 | 操作結果を確認中です |
 | `IDEMPOTENCY_CONFLICT` | 409 | 異なるPayloadでのKey再利用拒否 | 転送を最初からやり直してください |
 | `UPLOAD_SIZE_MISMATCH` | 422 | 正式公開しない | ファイルサイズが一致しません |
 | `UPLOAD_CHECKSUM_MISMATCH` | 422 | 正式公開しない | ファイル内容を確認できませんでした |

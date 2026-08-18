@@ -1,5 +1,8 @@
 using System.Data;
+using System.Buffers.Binary;
+using System.Security.Cryptography;
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -21,6 +24,9 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
             entry => entry.OwnerUserId == ownerUserId && entry.Id == entryId,
             cancellationToken);
 
+    public async Task ReloadAsync(FileEntry entry, CancellationToken cancellationToken) =>
+        await dbContext.Entry(entry).ReloadAsync(cancellationToken);
+
     public async Task<FileEntry?> FindRootAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
         await dbContext.FileEntries.SingleOrDefaultAsync(
             entry => entry.OwnerUserId == ownerUserId && entry.ParentId == null && entry.Status == FileEntryStatus.Active,
@@ -39,6 +45,72 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
                 entry.Name == name,
             cancellationToken);
 
+    public async Task<FileEntry?> FindActiveFolderByPathAsync(
+        Guid ownerUserId,
+        string relativePath,
+        CancellationToken cancellationToken) =>
+        await dbContext.FileEntries.SingleOrDefaultAsync(
+            entry =>
+                entry.OwnerUserId == ownerUserId &&
+                entry.RelativePath == relativePath &&
+                entry.Status == FileEntryStatus.Active &&
+                entry.EntryType == FileEntryType.Folder,
+            cancellationToken);
+
+    public async Task<bool> IsRelocationBlockedAsync(
+        Guid ownerUserId,
+        Guid entryId,
+        string relativePath,
+        CancellationToken cancellationToken) =>
+        await IncompleteRelocationTargets(ownerUserId)
+            .AnyAsync(
+                target =>
+                    target.Id == entryId ||
+                    relativePath.StartsWith(target.RelativePath + "/"),
+                cancellationToken);
+
+    public async Task<IFileMutationLock> AcquireMutationLocksAsync(
+        IEnumerable<Guid> entryIds,
+        CancellationToken cancellationToken)
+    {
+        var keys = entryIds
+            .Where(id => id != Guid.Empty)
+            .Select(ToAdvisoryLockKey)
+            .Distinct()
+            .Order()
+            .ToArray();
+        var connection = (NpgsqlConnection)dbContext.Database.GetDbConnection();
+        var closeConnection = connection.State != ConnectionState.Open;
+        if (closeConnection)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        var acquired = new List<long>(keys.Length);
+        try
+        {
+            foreach (var key in keys)
+            {
+                await using var command = new NpgsqlCommand("SELECT pg_advisory_lock(@key)", connection);
+                command.Parameters.AddWithValue("key", key);
+                await command.ExecuteNonQueryAsync(cancellationToken);
+                acquired.Add(key);
+            }
+
+            return new FileMutationLock(connection, acquired, closeConnection);
+        }
+        catch
+        {
+            await ReleaseLocksAsync(connection, acquired);
+            if (closeConnection)
+            {
+                await connection.CloseAsync();
+            }
+
+            throw;
+        }
+    }
+
     public async Task<IReadOnlyList<FileEntry>> ListActiveChildrenAsync(
         Guid ownerUserId,
         Guid parentId,
@@ -50,7 +122,11 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
             .Where(entry =>
                 entry.OwnerUserId == ownerUserId &&
                 entry.ParentId == parentId &&
-                entry.Status == FileEntryStatus.Active)
+                entry.Status == FileEntryStatus.Active &&
+                !IncompleteRelocationTargets(ownerUserId).Any(
+                    target =>
+                        target.Id == entry.Id ||
+                        entry.RelativePath.StartsWith(target.RelativePath + "/")))
             .OrderByDescending(entry => entry.UpdatedAt)
             .ThenBy(entry => entry.Id)
             .Skip(skip)
@@ -65,7 +141,11 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
             entry =>
                 entry.OwnerUserId == ownerUserId &&
                 entry.ParentId == parentId &&
-                entry.Status == FileEntryStatus.Active,
+                entry.Status == FileEntryStatus.Active &&
+                !IncompleteRelocationTargets(ownerUserId).Any(
+                    target =>
+                        target.Id == entry.Id ||
+                        entry.RelativePath.StartsWith(target.RelativePath + "/")),
             cancellationToken);
 
     public async Task<IReadOnlyList<FileEntry>> ListTrashedAsync(
@@ -125,6 +205,8 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
 
     public void Add(FileOperation operation) => dbContext.FileOperations.Add(operation);
 
+    public void Add(AuditLog auditLog) => dbContext.AuditLogs.Add(auditLog);
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try
@@ -138,11 +220,53 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
         }
     }
 
+    private IQueryable<FileEntry> IncompleteRelocationTargets(Guid ownerUserId) =>
+        from operation in dbContext.FileOperations
+        join entry in dbContext.FileEntries on operation.FileEntryId equals entry.Id
+        where
+            operation.OwnerUserId == ownerUserId &&
+            (operation.OperationType == FileOperationType.Rename ||
+             operation.OperationType == FileOperationType.Move) &&
+            operation.Status != FileOperationStatus.Completed
+        select entry;
+
+    private static long ToAdvisoryLockKey(Guid id)
+    {
+        Span<byte> hash = stackalloc byte[32];
+        SHA256.HashData(id.ToByteArray(), hash);
+        return BinaryPrimitives.ReadInt64BigEndian(hash);
+    }
+
+    private static async Task ReleaseLocksAsync(NpgsqlConnection connection, IEnumerable<long> keys)
+    {
+        foreach (var key in keys.Reverse())
+        {
+            await using var command = new NpgsqlCommand("SELECT pg_advisory_unlock(@key)", connection);
+            command.Parameters.AddWithValue("key", key);
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+    }
+
     private sealed class FileTransaction(IDbContextTransaction transaction) : IFileTransaction
     {
         public async Task CommitAsync(CancellationToken cancellationToken) =>
             await transaction.CommitAsync(cancellationToken);
 
         public async ValueTask DisposeAsync() => await transaction.DisposeAsync();
+    }
+
+    private sealed class FileMutationLock(
+        NpgsqlConnection connection,
+        IReadOnlyList<long> keys,
+        bool closeConnection) : IFileMutationLock
+    {
+        public async ValueTask DisposeAsync()
+        {
+            await ReleaseLocksAsync(connection, keys);
+            if (closeConnection)
+            {
+                await connection.CloseAsync();
+            }
+        }
     }
 }

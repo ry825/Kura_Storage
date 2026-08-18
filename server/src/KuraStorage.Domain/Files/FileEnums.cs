@@ -18,6 +18,8 @@ public enum FileOperationType
     CreateFolder,
     Trash,
     Restore,
+    Rename,
+    Move,
 }
 
 public enum FileOperationStatus

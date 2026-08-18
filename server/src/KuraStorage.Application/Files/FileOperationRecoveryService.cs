@@ -1,4 +1,5 @@
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 
 namespace KuraStorage.Application.Files;
@@ -25,6 +26,12 @@ public sealed class FileOperationRecoveryService(
 
     private async Task RecoverOneAsync(FileOperation operation, CancellationToken cancellationToken)
     {
+        if (operation.OperationType is FileOperationType.Rename or FileOperationType.Move)
+        {
+            await RecoverRelocationAsync(operation, cancellationToken);
+            return;
+        }
+
         if (operation.SourceRelativePath is null || operation.TargetRelativePath is null)
         {
             operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
@@ -130,6 +137,189 @@ public sealed class FileOperationRecoveryService(
         operation.Complete(clock.UtcNow);
         await repository.SaveChangesAsync(cancellationToken);
     }
+
+    private async Task RecoverRelocationAsync(
+        FileOperation operation,
+        CancellationToken cancellationToken)
+    {
+        if (operation.FileEntryId is not Guid entryId ||
+            operation.SourceRelativePath is null ||
+            operation.TargetRelativePath is null)
+        {
+            await RequireRecoveryAsync(operation, cancellationToken);
+            return;
+        }
+
+        var entry = await repository.FindOwnedAsync(operation.OwnerUserId, entryId, cancellationToken);
+        if (entry is null)
+        {
+            await RequireRecoveryAsync(operation, cancellationToken);
+            return;
+        }
+
+        var sourceParent = await repository.FindActiveFolderByPathAsync(
+            operation.OwnerUserId,
+            ParentPath(operation.SourceRelativePath),
+            cancellationToken);
+        var targetParent = await repository.FindActiveFolderByPathAsync(
+            operation.OwnerUserId,
+            ParentPath(operation.TargetRelativePath),
+            cancellationToken);
+        if (sourceParent is null || targetParent is null)
+        {
+            await RequireRecoveryAsync(operation, cancellationToken);
+            return;
+        }
+
+        var lockIds = new[] { entry.Id, entry.ParentId, sourceParent?.Id, targetParent?.Id }
+            .OfType<Guid>();
+        await using var mutationLock = await repository.AcquireMutationLocksAsync(lockIds, cancellationToken);
+        await repository.ReloadAsync(entry, cancellationToken);
+
+        var source = RelativeStoragePath.Create(operation.SourceRelativePath);
+        var target = RelativeStoragePath.Create(operation.TargetRelativePath);
+        var directory = entry.EntryType == FileEntryType.Folder;
+        var sourceExists = await fileStore.ExistsAsync(source, directory, cancellationToken);
+        var targetExists = await fileStore.ExistsAsync(target, directory, cancellationToken);
+        var sourceWrongType = await fileStore.ExistsAsync(source, !directory, cancellationToken);
+        var targetWrongType = await fileStore.ExistsAsync(target, !directory, cancellationToken);
+        if (sourceWrongType || targetWrongType)
+        {
+            await RequireRecoveryAsync(operation, cancellationToken);
+            return;
+        }
+        var databaseAtSource = entry.RelativePath == source.Value;
+        var databaseAtTarget = entry.RelativePath == target.Value;
+
+        if (databaseAtSource && sourceExists && !targetExists)
+        {
+            try
+            {
+                await fileStore.MoveAsync(source, target, directory, cancellationToken);
+            }
+            catch (IOException)
+            {
+                sourceExists = await fileStore.ExistsAsync(source, directory, CancellationToken.None);
+                targetExists = await fileStore.ExistsAsync(target, directory, CancellationToken.None);
+                if (sourceExists || !targetExists)
+                {
+                    await RequireRecoveryAsync(operation, CancellationToken.None);
+                    return;
+                }
+            }
+
+            sourceExists = false;
+            targetExists = true;
+        }
+
+        if (databaseAtTarget && !sourceExists && targetExists)
+        {
+            await using var completedTransaction = await repository.BeginTransactionAsync(cancellationToken);
+            operation.Complete(clock.UtcNow);
+            await repository.SaveChangesAsync(cancellationToken);
+            await completedTransaction.CommitAsync(cancellationToken);
+            return;
+        }
+
+        if (!databaseAtSource || sourceExists || !targetExists)
+        {
+            await RequireRecoveryAsync(operation, cancellationToken);
+            return;
+        }
+
+        if (operation.Status == FileOperationStatus.Pending)
+        {
+            operation.MarkFilesystemDone(clock.UtcNow);
+            await repository.SaveChangesAsync(cancellationToken);
+        }
+
+        Guid targetParentId;
+        FileName targetName;
+        if (operation.OperationType == FileOperationType.Rename)
+        {
+            if (entry.ParentId is not Guid currentParentId)
+            {
+                await RequireRecoveryAsync(operation, cancellationToken);
+                return;
+            }
+
+            targetParentId = currentParentId;
+            if (!FileName.TryCreate(FileNamePart(target.Value), out targetName))
+            {
+                await RequireRecoveryAsync(operation, cancellationToken);
+                return;
+            }
+        }
+        else
+        {
+            targetParent = await repository.FindActiveFolderByPathAsync(
+                operation.OwnerUserId,
+                ParentPath(target.Value),
+                cancellationToken);
+            if (targetParent is null)
+            {
+                await RequireRecoveryAsync(operation, cancellationToken);
+                return;
+            }
+
+            targetParentId = targetParent.Id;
+            targetName = FileName.Create(entry.Name);
+        }
+
+        var descendants = directory
+            ? await repository.ListDescendantsAsync(
+                operation.OwnerUserId,
+                source.Value,
+                cancellationToken)
+            : [];
+        var now = clock.UtcNow;
+        await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
+        if (operation.OperationType == FileOperationType.Rename)
+        {
+            entry.Rename(targetName, target, now);
+        }
+        else
+        {
+            entry.MoveTo(targetParentId, target, now);
+        }
+
+        foreach (var descendant in descendants)
+        {
+            descendant.RelocateDescendant(
+                ReplacePrefix(descendant.RelativePath, source.Value, target.Value),
+                now);
+        }
+
+        repository.Add(
+            new AuditLog(
+                Guid.NewGuid(),
+                operation.OwnerUserId,
+                null,
+                null,
+                operation.OperationType == FileOperationType.Rename
+                    ? "FILE_RENAME"
+                    : "FILE_MOVE",
+                "FILE_ENTRY",
+                entry.Id.ToString(),
+                "SUCCESS",
+                operation.Id.ToString(),
+                now));
+        operation.Complete(now);
+        await repository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task RequireRecoveryAsync(
+        FileOperation operation,
+        CancellationToken cancellationToken)
+    {
+        operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+        await repository.SaveChangesAsync(cancellationToken);
+    }
+
+    private static string ParentPath(string value) => value[..value.LastIndexOf('/')];
+
+    private static string FileNamePart(string value) => value[(value.LastIndexOf('/') + 1)..];
 
     private static RelativeStoragePath ReplacePrefix(string value, string source, string target) =>
         RelativeStoragePath.Create(target + value[source.Length..]);

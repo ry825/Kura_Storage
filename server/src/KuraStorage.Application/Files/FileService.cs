@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 
 namespace KuraStorage.Application.Files;
@@ -41,6 +42,11 @@ public sealed class FileService(
             return FileResult<FilePage>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
+        if (await IsBlockedAsync(ownerUserId, parent!, cancellationToken))
+        {
+            return FileResult<FilePage>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
         var skip = checked((page - 1) * pageSize);
         var entries = await repository.ListActiveChildrenAsync(
             ownerUserId,
@@ -59,9 +65,206 @@ public sealed class FileService(
         CancellationToken cancellationToken)
     {
         var entry = await repository.FindOwnedAsync(ownerUserId, entryId, cancellationToken);
-        return entry?.Status == FileEntryStatus.Active
-            ? FileResult<FileItem>.Success(Map(entry))
-            : FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        if (entry?.Status != FileEntryStatus.Active)
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        return await IsBlockedAsync(ownerUserId, entry, cancellationToken)
+            ? FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict)
+            : FileResult<FileItem>.Success(Map(entry));
+    }
+
+    public async Task<FileResult<FileItem>> RenameAsync(
+        RenameFileCommand command,
+        CancellationToken cancellationToken)
+    {
+        if (!FileName.TryCreate(command.Name, out var name) ||
+            command.OwnerUserId == Guid.Empty ||
+            command.ActorDeviceId == Guid.Empty ||
+            command.FileEntryId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(command.RequestId))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.ValidationFailed, FileFailureKind.BadRequest);
+        }
+
+        if (!await StorageAvailableAsync(true, cancellationToken))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.StorageUnavailable, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
+        }
+
+        var initial = await repository.FindOwnedAsync(command.OwnerUserId, command.FileEntryId, cancellationToken);
+        if (initial is null || initial.Status != FileEntryStatus.Active)
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (initial.ParentId is not Guid parentId)
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileOperationNotAllowed, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileOperationNotAllowed, FileFailureKind.Conflict);
+        }
+
+        if (await IsBlockedAsync(command.OwnerUserId, initial, cancellationToken))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
+        await using var mutationLock = await repository.AcquireMutationLocksAsync(
+            [initial.Id, parentId],
+            cancellationToken);
+        await repository.ReloadAsync(initial, cancellationToken);
+        var entry = initial;
+        if (entry is null || entry.Status != FileEntryStatus.Active)
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(command.OwnerUserId, entry, cancellationToken))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
+        if (string.Equals(entry.Name, name.Value, StringComparison.Ordinal))
+        {
+            await AuditSuccessAsync(command, cancellationToken);
+            return FileResult<FileItem>.Success(Map(entry));
+        }
+
+        if (await repository.FindActiveChildAsync(
+                command.OwnerUserId,
+                parentId,
+                name.Value,
+                cancellationToken) is not null)
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileNameConflict, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNameConflict, FileFailureKind.Conflict);
+        }
+
+        var source = RelativeStoragePath.Create(entry.RelativePath);
+        var parentPath = source.Value[..source.Value.LastIndexOf('/')];
+        var target = RelativeStoragePath.Create(parentPath).Append(name);
+        return await RelocateAsync(
+            entry,
+            target,
+            parentId,
+            FileOperationType.Rename,
+            command.ActorDeviceId,
+            command.RequestId,
+            cancellationToken);
+    }
+
+    public async Task<FileResult<FileItem>> MoveAsync(
+        MoveFileCommand command,
+        CancellationToken cancellationToken)
+    {
+        if (command.OwnerUserId == Guid.Empty ||
+            command.ActorDeviceId == Guid.Empty ||
+            command.FileEntryId == Guid.Empty ||
+            command.TargetParentId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(command.RequestId))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.ValidationFailed, FileFailureKind.BadRequest);
+        }
+
+        if (!await StorageAvailableAsync(true, cancellationToken))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.StorageUnavailable, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
+        }
+
+        var initial = await repository.FindOwnedAsync(command.OwnerUserId, command.FileEntryId, cancellationToken);
+        var initialTarget = await repository.FindOwnedAsync(
+            command.OwnerUserId,
+            command.TargetParentId,
+            cancellationToken);
+        if (initial is null || initial.Status != FileEntryStatus.Active || !IsActiveFolder(initialTarget))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (initial.ParentId is not Guid sourceParentId)
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileOperationNotAllowed, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileOperationNotAllowed, FileFailureKind.Conflict);
+        }
+
+        if (await IsBlockedAsync(command.OwnerUserId, initial, cancellationToken) ||
+            await IsBlockedAsync(command.OwnerUserId, initialTarget!, cancellationToken))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
+        await using var mutationLock = await repository.AcquireMutationLocksAsync(
+            [initial.Id, sourceParentId, command.TargetParentId],
+            cancellationToken);
+        await repository.ReloadAsync(initial, cancellationToken);
+        await repository.ReloadAsync(initialTarget!, cancellationToken);
+        var entry = initial;
+        var targetParent = initialTarget;
+        if (entry is null || entry.Status != FileEntryStatus.Active || !IsActiveFolder(targetParent))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(command.OwnerUserId, entry, cancellationToken) ||
+            await IsBlockedAsync(command.OwnerUserId, targetParent!, cancellationToken))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
+        if (entry.ParentId == command.TargetParentId)
+        {
+            await AuditSuccessAsync(command, cancellationToken);
+            return FileResult<FileItem>.Success(Map(entry));
+        }
+
+        if (entry.EntryType == FileEntryType.Folder &&
+            (entry.Id == targetParent!.Id ||
+             targetParent.RelativePath.StartsWith(entry.RelativePath + "/", StringComparison.Ordinal)))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileMoveCycle, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileMoveCycle, FileFailureKind.Conflict);
+        }
+
+        if (await repository.FindActiveChildAsync(
+                command.OwnerUserId,
+                targetParent!.Id,
+                entry.Name,
+                cancellationToken) is not null)
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileNameConflict, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNameConflict, FileFailureKind.Conflict);
+        }
+
+        var target = RelativeStoragePath.Create(targetParent.RelativePath).Append(FileName.Create(entry.Name));
+        var descendants = entry.EntryType == FileEntryType.Folder
+            ? await repository.ListDescendantsAsync(command.OwnerUserId, entry.RelativePath, cancellationToken)
+            : [];
+        if (ExceedsMaximumDepth(target.Value, entry.RelativePath, descendants))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.ValidationFailed, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.ValidationFailed, FileFailureKind.BadRequest);
+        }
+
+        return await RelocateAsync(
+            entry,
+            target,
+            targetParent.Id,
+            FileOperationType.Move,
+            command.ActorDeviceId,
+            command.RequestId,
+            cancellationToken,
+            descendants);
     }
 
     public async Task<FileResult<FileItem>> CreateFolderAsync(
@@ -87,6 +290,11 @@ public sealed class FileService(
         if (!IsActiveFolder(parent))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(ownerUserId, parent!, cancellationToken))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
         if (await repository.FindActiveChildAsync(ownerUserId, parent!.Id, fileName.Value, cancellationToken) is not null)
@@ -169,6 +377,11 @@ public sealed class FileService(
         if (!IsActiveFolder(parent))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(ownerUserId, parent!, cancellationToken))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
         var target = RelativeStoragePath.Create(parent!.RelativePath).Append(fileName);
@@ -331,6 +544,11 @@ public sealed class FileService(
             return FileResult<DownloadFile>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
+        if (await IsBlockedAsync(ownerUserId, entry, cancellationToken))
+        {
+            return FileResult<DownloadFile>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
         if (!await StorageAvailableAsync(false, cancellationToken) ||
             !await fileStore.ExistsAsync(RelativeStoragePath.Create(entry.RelativePath), false, cancellationToken))
         {
@@ -375,9 +593,28 @@ public sealed class FileService(
         }
 
         var entry = await repository.FindOwnedAsync(ownerUserId, entryId, cancellationToken);
+        if (entry is null || entry.Status != FileEntryStatus.Active || entry.ParentId is not Guid parentId)
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(ownerUserId, entry, cancellationToken))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
+        await using var mutationLock = await repository.AcquireMutationLocksAsync(
+            [entry.Id, parentId],
+            cancellationToken);
+        await repository.ReloadAsync(entry, cancellationToken);
         if (entry is null || entry.Status != FileEntryStatus.Active || entry.ParentId is null)
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(ownerUserId, entry, cancellationToken))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
         var source = RelativeStoragePath.Create(entry.RelativePath);
@@ -396,6 +633,11 @@ public sealed class FileService(
             now);
         repository.Add(operation);
         await repository.SaveChangesAsync(cancellationToken);
+        var trashContainer = RelativeStoragePath.Create($"users/{ownerUserId:N}/trash/{entry.Id:N}");
+        if (!await fileStore.ExistsAsync(trashContainer, true, cancellationToken))
+        {
+            await fileStore.CreateDirectoryAsync(trashContainer, cancellationToken);
+        }
         await fileStore.MoveAsync(source, target, entry.EntryType == FileEntryType.Folder, cancellationToken);
         operation.MarkFilesystemDone(clock.UtcNow);
         await repository.SaveChangesAsync(cancellationToken);
@@ -428,10 +670,33 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
+        if (await IsBlockedAsync(ownerUserId, entry, cancellationToken))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
+        await using var mutationLock = await repository.AcquireMutationLocksAsync(
+            [entry.Id, parentId],
+            cancellationToken);
+        await repository.ReloadAsync(entry, cancellationToken);
+        if (entry is null ||
+            entry.Status != FileEntryStatus.Trashed ||
+            entry.OriginalParentId is not Guid lockedParentId ||
+            lockedParentId != parentId ||
+            entry.OriginalRelativePath is null)
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
         var parent = await repository.FindOwnedAsync(ownerUserId, parentId, cancellationToken);
         if (!IsActiveFolder(parent))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileRestoreConflict, FileFailureKind.Conflict);
+        }
+
+        if (await IsBlockedAsync(ownerUserId, parent!, cancellationToken))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
         if (await repository.FindActiveChildAsync(ownerUserId, parentId, entry.Name, cancellationToken) is not null)
@@ -466,6 +731,272 @@ public sealed class FileService(
         operation.Complete(clock.UtcNow);
         await repository.SaveChangesAsync(cancellationToken);
         return FileResult<FileItem>.Success(Map(entry));
+    }
+
+    private async Task<FileResult<FileItem>> RelocateAsync(
+        FileEntry entry,
+        RelativeStoragePath target,
+        Guid targetParentId,
+        FileOperationType operationType,
+        Guid actorDeviceId,
+        string requestId,
+        CancellationToken cancellationToken,
+        IReadOnlyList<FileEntry>? loadedDescendants = null)
+    {
+        var source = RelativeStoragePath.Create(entry.RelativePath);
+        var directory = entry.EntryType == FileEntryType.Folder;
+        var targetParentPath = RelativeStoragePath.Create(
+            target.Value[..target.Value.LastIndexOf('/')]);
+        if (!await fileStore.ExistsAsync(targetParentPath, true, cancellationToken))
+        {
+            await RecordAuditAsync(
+                entry.OwnerUserId,
+                actorDeviceId,
+                entry.Id,
+                operationType,
+                FileErrorCodes.StorageUnavailable,
+                requestId,
+                cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
+        }
+
+        if (await fileStore.ExistsAsync(target, directory, cancellationToken) ||
+            await fileStore.ExistsAsync(target, !directory, cancellationToken))
+        {
+            await RecordAuditAsync(
+                entry.OwnerUserId,
+                actorDeviceId,
+                entry.Id,
+                operationType,
+                FileErrorCodes.FileNameConflict,
+                requestId,
+                cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNameConflict, FileFailureKind.Conflict);
+        }
+
+        if (!await fileStore.ExistsAsync(source, directory, cancellationToken))
+        {
+            await RecordAuditAsync(
+                entry.OwnerUserId,
+                actorDeviceId,
+                entry.Id,
+                operationType,
+                FileErrorCodes.StorageUnavailable,
+                requestId,
+                cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
+        }
+
+        var operation = new FileOperation(
+            Guid.NewGuid(),
+            entry.OwnerUserId,
+            operationType,
+            entry.Id,
+            null,
+            source.Value,
+            target.Value,
+            null,
+            null,
+            clock.UtcNow);
+        repository.Add(operation);
+        await repository.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await fileStore.MoveAsync(source, target, directory, cancellationToken);
+        }
+        catch (IOException)
+        {
+            var sourceExists = await fileStore.ExistsAsync(source, directory, CancellationToken.None);
+            var targetExists = await fileStore.ExistsAsync(target, directory, CancellationToken.None);
+            if (!sourceExists && targetExists)
+            {
+                operation.MarkFilesystemDone(clock.UtcNow);
+                await repository.SaveChangesAsync(CancellationToken.None);
+            }
+            else
+            {
+                operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+                await repository.SaveChangesAsync(CancellationToken.None);
+                var code = sourceExists && targetExists
+                    ? FileErrorCodes.FileNameConflict
+                    : FileErrorCodes.RecoveryRequired;
+                await RecordAuditAsync(
+                    entry.OwnerUserId,
+                    actorDeviceId,
+                    entry.Id,
+                    operationType,
+                    code,
+                    requestId,
+                    CancellationToken.None);
+                return FileResult<FileItem>.Fail(code, FileFailureKind.Conflict);
+            }
+        }
+
+        if (operation.Status == FileOperationStatus.Pending)
+        {
+            operation.MarkFilesystemDone(clock.UtcNow);
+            await repository.SaveChangesAsync(cancellationToken);
+        }
+
+        var descendants = loadedDescendants ??
+            (directory
+                ? await repository.ListDescendantsAsync(entry.OwnerUserId, source.Value, cancellationToken)
+                : []);
+        var now = clock.UtcNow;
+        await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
+        if (operationType == FileOperationType.Rename)
+        {
+            entry.Rename(
+                FileName.Create(target.Value[(target.Value.LastIndexOf('/') + 1)..]),
+                target,
+                now);
+        }
+        else
+        {
+            entry.MoveTo(targetParentId, target, now);
+        }
+
+        foreach (var descendant in descendants)
+        {
+            descendant.RelocateDescendant(
+                RelativeStoragePath.Create(
+                    target.Value + descendant.RelativePath[source.Value.Length..]),
+                now);
+        }
+
+        repository.Add(
+            CreateAudit(
+                entry.OwnerUserId,
+                actorDeviceId,
+                entry.Id,
+                operationType,
+                "SUCCESS",
+                requestId,
+                now));
+        operation.Complete(now);
+        await repository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return FileResult<FileItem>.Success(Map(entry));
+    }
+
+    private async Task<bool> IsBlockedAsync(
+        Guid ownerUserId,
+        FileEntry entry,
+        CancellationToken cancellationToken) =>
+        await repository.IsRelocationBlockedAsync(
+            ownerUserId,
+            entry.Id,
+            entry.RelativePath,
+            cancellationToken);
+
+    private async Task AuditFailureAsync(
+        RenameFileCommand command,
+        string code,
+        CancellationToken cancellationToken) =>
+        await RecordAuditAsync(
+            command.OwnerUserId,
+            command.ActorDeviceId,
+            command.FileEntryId,
+            FileOperationType.Rename,
+            code,
+            command.RequestId,
+            cancellationToken);
+
+    private async Task AuditFailureAsync(
+        MoveFileCommand command,
+        string code,
+        CancellationToken cancellationToken) =>
+        await RecordAuditAsync(
+            command.OwnerUserId,
+            command.ActorDeviceId,
+            command.FileEntryId,
+            FileOperationType.Move,
+            code,
+            command.RequestId,
+            cancellationToken);
+
+    private async Task AuditSuccessAsync(
+        RenameFileCommand command,
+        CancellationToken cancellationToken) =>
+        await RecordAuditAsync(
+            command.OwnerUserId,
+            command.ActorDeviceId,
+            command.FileEntryId,
+            FileOperationType.Rename,
+            "SUCCESS",
+            command.RequestId,
+            cancellationToken);
+
+    private async Task AuditSuccessAsync(
+        MoveFileCommand command,
+        CancellationToken cancellationToken) =>
+        await RecordAuditAsync(
+            command.OwnerUserId,
+            command.ActorDeviceId,
+            command.FileEntryId,
+            FileOperationType.Move,
+            "SUCCESS",
+            command.RequestId,
+            cancellationToken);
+
+    private async Task RecordAuditAsync(
+        Guid ownerUserId,
+        Guid actorDeviceId,
+        Guid entryId,
+        FileOperationType operationType,
+        string result,
+        string requestId,
+        CancellationToken cancellationToken)
+    {
+        repository.Add(
+            CreateAudit(
+                ownerUserId,
+                actorDeviceId,
+                entryId,
+                operationType,
+                result,
+                requestId,
+                clock.UtcNow));
+        await repository.SaveChangesAsync(cancellationToken);
+    }
+
+    private static AuditLog CreateAudit(
+        Guid ownerUserId,
+        Guid actorDeviceId,
+        Guid entryId,
+        FileOperationType operationType,
+        string result,
+        string requestId,
+        DateTimeOffset now) =>
+        new(
+            Guid.NewGuid(),
+            ownerUserId,
+            actorDeviceId,
+            null,
+            operationType == FileOperationType.Rename ? "FILE_RENAME" : "FILE_MOVE",
+            "FILE_ENTRY",
+            entryId.ToString(),
+            result,
+            requestId,
+            now);
+
+    private static bool ExceedsMaximumDepth(
+        string targetPath,
+        string sourcePath,
+        IReadOnlyList<FileEntry> descendants)
+    {
+        var targetDepth = Math.Max(0, targetPath.Count(character => character == '/') - 2);
+        if (targetDepth > 64)
+        {
+            return true;
+        }
+
+        var sourceSegments = sourcePath.Count(character => character == '/');
+        return descendants.Any(
+            descendant =>
+                targetDepth +
+                descendant.RelativePath.Count(character => character == '/') -
+                sourceSegments > 64);
     }
 
     private async Task<bool> StorageAvailableAsync(bool write, CancellationToken cancellationToken) =>
