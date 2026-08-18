@@ -88,6 +88,58 @@ public sealed class FileStoreSecurityTests : IDisposable
     }
 
     [Fact]
+    public async Task Move_WhenTargetExists_DoesNotOverwriteEitherFileOrDirectory()
+    {
+        Directory.CreateDirectory(directory);
+        var owner = Guid.NewGuid();
+        var store = CreateStore();
+        await store.EnsureUserAreaAsync(owner, CancellationToken.None);
+        var files = Path.Combine(directory, "users", owner.ToString("N"), "files");
+        await File.WriteAllTextAsync(Path.Combine(files, "source.txt"), "source");
+        await File.WriteAllTextAsync(Path.Combine(files, "target.txt"), "target");
+
+        await Assert.ThrowsAsync<IOException>(
+            () => store.MoveAsync(
+                RelativeStoragePath.Create($"users/{owner:N}/files/source.txt"),
+                RelativeStoragePath.Create($"users/{owner:N}/files/target.txt"),
+                false,
+                CancellationToken.None));
+
+        Assert.Equal("source", await File.ReadAllTextAsync(Path.Combine(files, "source.txt")));
+        Assert.Equal("target", await File.ReadAllTextAsync(Path.Combine(files, "target.txt")));
+    }
+
+    [Fact]
+    public async Task Move_WhenTargetParentIsSymlink_RejectsStorageEscape()
+    {
+        Directory.CreateDirectory(directory);
+        var outside = Path.Combine(Path.GetTempPath(), $"kurastorage-outside-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outside);
+        try
+        {
+            var owner = Guid.NewGuid();
+            var store = CreateStore();
+            await store.EnsureUserAreaAsync(owner, CancellationToken.None);
+            var files = Path.Combine(directory, "users", owner.ToString("N"), "files");
+            await File.WriteAllTextAsync(Path.Combine(files, "source.txt"), "source");
+            Directory.CreateSymbolicLink(Path.Combine(files, "linked"), outside);
+
+            await Assert.ThrowsAsync<IOException>(
+                () => store.MoveAsync(
+                    RelativeStoragePath.Create($"users/{owner:N}/files/source.txt"),
+                    RelativeStoragePath.Create($"users/{owner:N}/files/linked/target.txt"),
+                    false,
+                    CancellationToken.None));
+            Assert.False(File.Exists(Path.Combine(outside, "target.txt")));
+            Assert.True(File.Exists(Path.Combine(files, "source.txt")));
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task WriteUploadTemp_WhenTemporaryAreaIsReadOnly_DoesNotPublishAFile()
     {
         if (!OperatingSystem.IsLinux())

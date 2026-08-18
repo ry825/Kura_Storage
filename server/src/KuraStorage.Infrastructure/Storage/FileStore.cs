@@ -130,8 +130,13 @@ public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFil
             throw new IOException("The target already exists.");
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
-        EnsureNoSymbolicLink(Path.GetDirectoryName(targetPath)!);
+        var targetDirectory = Path.GetDirectoryName(targetPath)!;
+        if (!Directory.Exists(targetDirectory))
+        {
+            throw new IOException("The target parent directory does not exist.");
+        }
+
+        EnsureNoSymbolicLink(targetDirectory);
         if (sourceIsDirectory)
         {
             Directory.Move(sourcePath, targetPath);

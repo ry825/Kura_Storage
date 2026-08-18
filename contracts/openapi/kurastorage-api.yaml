@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: KuraStorage API
   version: 1.0.0
-  description: HTTP contract for the KuraStorage MVP.
+  description: HTTP contract for the KuraStorage MVP and current Phase 1 file-management extensions.
 servers:
   - url: https://api.kurastorage.example/api/v1
     description: Example deployment; the actual hostname is supplied outside source control.
@@ -278,6 +278,34 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    patch:
+      tags: [Files]
+      operationId: updateFile
+      summary: Rename or move one owned active file or folder
+      description: Exactly one of name and parentId must be supplied. Repeating the current normalized name or parent is a side-effect-free success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFileRequest"
+      responses:
+        "200":
+          description: The renamed or moved entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
     delete:
@@ -636,6 +664,19 @@ components:
           type: string
           minLength: 1
           maxLength: 255
+    UpdateFileRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        parentId:
+          type: string
+          format: uuid
     FileEntry:
       type: object
       additionalProperties: false
@@ -734,7 +775,10 @@ components:
         - STORAGE_CAPACITY_INSUFFICIENT
         - FILE_NOT_FOUND
         - FILE_NAME_CONFLICT
+        - FILE_MOVE_CYCLE
+        - FILE_OPERATION_NOT_ALLOWED
         - FILE_RESTORE_CONFLICT
+        - RECOVERY_REQUIRED
         - RANGE_NOT_SATISFIABLE
         - IDEMPOTENCY_CONFLICT
         - UPLOAD_SIZE_MISMATCH

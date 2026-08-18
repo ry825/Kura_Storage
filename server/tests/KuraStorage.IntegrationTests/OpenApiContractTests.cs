@@ -26,6 +26,12 @@ public sealed class OpenApiContractTests
         }
 
         Assert.Contains("bearerAuth:", contract, StringComparison.Ordinal);
+        Assert.Contains("    patch:", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: updateFile", contract, StringComparison.Ordinal);
+        Assert.Contains("UpdateFileRequest:", contract, StringComparison.Ordinal);
+        Assert.Contains("FILE_MOVE_CYCLE", contract, StringComparison.Ordinal);
+        Assert.Contains("FILE_OPERATION_NOT_ALLOWED", contract, StringComparison.Ordinal);
+        Assert.Contains("RECOVERY_REQUIRED", contract, StringComparison.Ordinal);
         Assert.Contains("RANGE_NOT_SATISFIABLE", contract, StringComparison.Ordinal);
         Assert.Contains("IDEMPOTENCY_CONFLICT", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("ownerUserId:", contract, StringComparison.Ordinal);

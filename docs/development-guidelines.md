@@ -34,7 +34,10 @@
 - Upload中断は同じKeyで先頭から全体再試行する。Chunk Uploadまたは中断位置からの再開をMVPへ混在させない。
 - HDD更新前に`FileOperation(PENDING)`を記録し、`FILESYSTEM_DONE`、`COMPLETED`へ進める。自動判定できない失敗は`RECOVERY_REQUIRED`とする。
 - AndroidのUpload元とDownload先はStorage Access Frameworkの`content://` URIとして扱い、物理Pathへの変換、全体ByteArray化、不要な永続権限取得を禁止する。
-- Trash・Restoreの同名競合では既存項目を上書きしない。Rename、Move、Permanent DeleteはMVP後とする。
+- Trash・Restore・Rename・Moveの同名競合では既存項目を上書きしない。Permanent DeleteはMVP後とする。
+- Rename・Moveは`PATCH /api/v1/files/{fileId}`で一方だけを受け付け、Clientから物理Pathを受け取らない。同じ正規化済み名前または同じ親への再実行は副作用のない成功とする。
+- Rename・Move・Trash・Restoreは、対象・source親・target親のGUIDから導出したPostgreSQL advisory lockを昇順に取得する。Recoveryも同じ規則を使い、全終了経路でlockを解放する。
+- 配置変更はHDD操作前に`FileOperation(PENDING)`を保存し、atomic rename後のFileEntry・配下Path・成功監査・`COMPLETED`を同じDB Transactionで確定する。未完了Rename・Moveの対象と配下は通常利用から隔離する。
 - API内Hosted Serviceは未完了Upload清掃と`FileOperation`復旧だけに限定し、長時間Media処理や自動Backupを実行しない。
 
 ---
@@ -106,6 +109,8 @@ HDD操作とDB更新は単一トランザクションにできない。次を必
 - 再試行しても結果が壊れない冪等な処理にする。
 - 失敗時に元ファイルを削除しない。
 - DBだけ成功、HDDだけ成功の両方を統合テストする。
+- Rename・MoveではRoot、非`ACTIVE`、他User、非Folder移動先、循環、深度64超過、DB・HDD同名競合をHDD変更前に拒否する。
+- 配置変更だけでは対象と配下のFile ID、Owner、内容属性、`fileVersion`を変更しない。
 
 ### 2.4 TDDを基本とする
 
@@ -236,6 +241,7 @@ operation.MarkCompleted(clock.UtcNow);
 - Domain ServiceはEntity単体に置けない純粋な業務ルールに限定する。
 - `FileEntry`に`DELETED`状態を追加しない。完全削除は行削除として扱う。
 - 名前変更・移動だけで`fileVersion`を増加させない。
+- RenameはName・RelativePath・UpdatedAt、MoveはParentId・RelativePath・UpdatedAt、子孫はRelativePath・UpdatedAtだけを変更する。
 
 ```csharp
 public sealed class FileEntry

@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -6,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
+using KuraStorage.Application.Identity;
 using KuraStorage.Domain.Files;
 using KuraStorage.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -195,6 +197,9 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
             var source = RelativeStoragePath.Create(entry.RelativePath);
             var target = RelativeStoragePath.Create(
                 $"users/{entry.OwnerUserId:N}/trash/{entry.Id:N}/{entry.Name}");
+            await store.CreateDirectoryAsync(
+                RelativeStoragePath.Create($"users/{entry.OwnerUserId:N}/trash/{entry.Id:N}"),
+                CancellationToken.None);
             await store.MoveAsync(source, target, false, CancellationToken.None);
             var operation = new FileOperation(
                 Guid.NewGuid(),
@@ -279,6 +284,520 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         await AssertErrorAsync(tooLong, "UPLOAD_SIZE_MISMATCH");
     }
 
+    [Fact]
+    public async Task RenameAndMove_WhenValid_PreserveIdentityVersionContentAndDescendantPaths()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("relocate-user", "relocate-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var source = await CreateFolderAsync(client, rootId, "Source");
+        var destination = await CreateFolderAsync(client, rootId, "Destination");
+        var folder = await CreateFolderAsync(client, source.Id, "Folder");
+        var child = await CreateFolderAsync(client, folder.Id, "Child");
+        var bytes = Encoding.UTF8.GetBytes("content-is-not-renamed");
+        var file = await UploadAsync(
+            client,
+            child.Id,
+            "before.txt",
+            bytes,
+            Guid.NewGuid().ToString());
+
+        using var renameFile = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{file.Id}",
+            new { name = "after.txt" });
+        renameFile.EnsureSuccessStatusCode();
+        var renamedFile = (await renameFile.Content.ReadFromJsonAsync<TestFileItem>())!;
+        Assert.Equal(file.Id, renamedFile.Id);
+        Assert.Equal(file.FileVersion, renamedFile.FileVersion);
+        Assert.Equal(file.Size, renamedFile.Size);
+
+        using var repeatRename = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{file.Id}",
+            new { name = "after.txt" });
+        repeatRename.EnsureSuccessStatusCode();
+        using var repeatMove = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{file.Id}",
+            new { parentId = child.Id });
+        repeatMove.EnsureSuccessStatusCode();
+
+        using var renameFolder = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{folder.Id}",
+            new { name = "RenamedFolder" });
+        renameFolder.EnsureSuccessStatusCode();
+        using var moveFolder = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{folder.Id}",
+            new { parentId = destination.Id });
+        moveFolder.EnsureSuccessStatusCode();
+
+        using var download = await client.GetAsync($"/api/v1/files/{file.Id}/content");
+        download.EnsureSuccessStatusCode();
+        Assert.Equal(bytes, await download.Content.ReadAsByteArrayAsync());
+        Assert.Contains("after.txt", download.Content.Headers.ContentDisposition!.FileName!);
+
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        var entries = await database.FileEntries
+            .Where(entry => entry.Id == folder.Id || entry.Id == child.Id || entry.Id == file.Id)
+            .ToDictionaryAsync(entry => entry.Id);
+        Assert.Equal(destination.Id, entries[folder.Id].ParentId);
+        Assert.Contains("/Destination/RenamedFolder", entries[folder.Id].RelativePath, StringComparison.Ordinal);
+        Assert.Contains("/Destination/RenamedFolder/Child", entries[child.Id].RelativePath, StringComparison.Ordinal);
+        Assert.EndsWith("/Destination/RenamedFolder/Child/after.txt", entries[file.Id].RelativePath, StringComparison.Ordinal);
+        Assert.Equal(file.FileVersion, entries[file.Id].FileVersion);
+        Assert.Equal(bytes.Length, entries[file.Id].Size);
+
+        var audits = await database.AuditLogs
+            .Where(log => log.TargetId == file.Id.ToString() || log.TargetId == folder.Id.ToString())
+            .ToListAsync();
+        Assert.Contains(audits, audit => audit.Action == "FILE_RENAME" && audit.ResultCode == "SUCCESS");
+        Assert.Contains(audits, audit => audit.Action == "FILE_MOVE" && audit.ResultCode == "SUCCESS");
+        Assert.All(audits, audit =>
+        {
+            Assert.DoesNotContain("Destination", audit.ResultCode, StringComparison.Ordinal);
+            Assert.NotNull(audit.ActorUserId);
+            Assert.NotNull(audit.ActorDeviceId);
+            Assert.False(string.IsNullOrWhiteSpace(audit.RequestId));
+        });
+    }
+
+    [Fact]
+    public async Task RenameAndMove_WhenInvalid_RejectWithoutOverwriteOrOwnershipDisclosure()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("reject-user", "reject-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var source = await CreateFolderAsync(client, rootId, "Source");
+        var destination = await CreateFolderAsync(client, rootId, "Destination");
+        var nested = await CreateFolderAsync(client, source.Id, "Nested");
+        _ = await CreateFolderAsync(client, destination.Id, "Nested");
+        var nonFolderTarget = await UploadAsync(
+            client,
+            source.Id,
+            "not-a-folder.bin",
+            [1],
+            Guid.NewGuid().ToString());
+
+        using var both = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{source.Id}",
+            new { name = "Both", parentId = destination.Id });
+        Assert.Equal(HttpStatusCode.BadRequest, both.StatusCode);
+        await AssertErrorAsync(both, "VALIDATION_FAILED");
+
+        using var neither = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{source.Id}",
+            new { });
+        Assert.Equal(HttpStatusCode.BadRequest, neither.StatusCode);
+        await AssertErrorAsync(neither, "VALIDATION_FAILED");
+
+        using var unknownProperty = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{source.Id}",
+            new { name = "Known", path = "/not-accepted" });
+        Assert.Equal(HttpStatusCode.BadRequest, unknownProperty.StatusCode);
+        await AssertErrorAsync(unknownProperty, "VALIDATION_FAILED");
+
+        using var emptyParent = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{source.Id}",
+            new { parentId = Guid.Empty });
+        Assert.Equal(HttpStatusCode.BadRequest, emptyParent.StatusCode);
+        await AssertErrorAsync(emptyParent, "VALIDATION_FAILED");
+
+        using var nonFolder = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{source.Id}",
+            new { parentId = nonFolderTarget.Id });
+        Assert.Equal(HttpStatusCode.NotFound, nonFolder.StatusCode);
+        await AssertErrorAsync(nonFolder, "FILE_NOT_FOUND");
+
+        using var invalidName = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{source.Id}",
+            new { name = "../escape" });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidName.StatusCode);
+        await AssertErrorAsync(invalidName, "VALIDATION_FAILED");
+
+        using var cycle = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{source.Id}",
+            new { parentId = nested.Id });
+        Assert.Equal(HttpStatusCode.Conflict, cycle.StatusCode);
+        await AssertErrorAsync(cycle, "FILE_MOVE_CYCLE");
+
+        using var conflict = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{nested.Id}",
+            new { parentId = destination.Id });
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        await AssertErrorAsync(conflict, "FILE_NAME_CONFLICT");
+
+        using var rootRename = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{rootId}",
+            new { name = "Root" });
+        Assert.Equal(HttpStatusCode.Conflict, rootRename.StatusCode);
+        await AssertErrorAsync(rootRename, "FILE_OPERATION_NOT_ALLOWED");
+
+        var other = await fixture.CreateAuthenticatedClientAsync("reject-other", "reject-other-password");
+        using (other.Client)
+        {
+            var otherRoot = await GetRootIdAsync(other.Client);
+            var otherFolder = await CreateFolderAsync(other.Client, otherRoot, "OtherDestination");
+            using var foreignDestination = await client.PatchAsJsonAsync(
+                $"/api/v1/files/{source.Id}",
+                new { parentId = otherFolder.Id });
+            Assert.Equal(HttpStatusCode.NotFound, foreignDestination.StatusCode);
+            await AssertErrorAsync(foreignDestination, "FILE_NOT_FOUND");
+
+            using var idor = await other.Client.PatchAsJsonAsync(
+                $"/api/v1/files/{source.Id}",
+                new { parentId = destination.Id });
+            Assert.Equal(HttpStatusCode.NotFound, idor.StatusCode);
+            await AssertErrorAsync(idor, "FILE_NOT_FOUND");
+        }
+
+        using var trash = await client.DeleteAsync($"/api/v1/files/{nested.Id}");
+        trash.EnsureSuccessStatusCode();
+        using var trashedRename = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{nested.Id}",
+            new { name = "Nope" });
+        Assert.Equal(HttpStatusCode.NotFound, trashedRename.StatusCode);
+        await AssertErrorAsync(trashedRename, "FILE_NOT_FOUND");
+
+        using var anonymous = fixture.Factory.CreateClient();
+        using var unauthorized = await anonymous.PatchAsJsonAsync(
+            $"/api/v1/files/{source.Id}",
+            new { name = "Denied" });
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+        await AssertErrorAsync(unauthorized, "AUTHENTICATION_REQUIRED");
+
+        var accessToken = new JwtSecurityTokenHandler().ReadJwtToken(authenticated.AccessToken);
+        var userId = Guid.Parse(accessToken.Claims.Single(claim => claim.Type == "sub").Value);
+        var deviceId = Guid.Parse(accessToken.Claims.Single(claim => claim.Type == "device_id").Value);
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var identity = scope.ServiceProvider.GetRequiredService<IdentityService>();
+            Assert.True(
+                await identity.RevokeDeviceAsync(
+                    userId,
+                    deviceId,
+                    "file-patch-integration-test",
+                    CancellationToken.None));
+        }
+
+        using var revokedDevice = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{source.Id}",
+            new { name = "DeniedAfterRevocation" });
+        Assert.Equal(HttpStatusCode.Unauthorized, revokedDevice.StatusCode);
+        await AssertErrorAsync(revokedDevice, "AUTHENTICATION_REQUIRED");
+    }
+
+    [Fact]
+    public async Task IncompleteRename_IsQuarantinedAndFilesystemDoneRecoveryConverges()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("rename-recovery", "recovery-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var folder = await CreateFolderAsync(client, rootId, "Recovery");
+        var file = await UploadAsync(
+            client,
+            folder.Id,
+            "before.bin",
+            [4, 5, 6],
+            Guid.NewGuid().ToString());
+
+        Guid operationId;
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var entry = await database.FileEntries.SingleAsync(candidate => candidate.Id == file.Id);
+            var operation = new FileOperation(
+                Guid.NewGuid(),
+                entry.OwnerUserId,
+                FileOperationType.Rename,
+                entry.Id,
+                null,
+                entry.RelativePath,
+                entry.RelativePath.Replace("before.bin", "after.bin", StringComparison.Ordinal),
+                null,
+                null,
+                DateTimeOffset.UtcNow);
+            operation.RequireRecovery(FileErrorCodes.RecoveryRequired, DateTimeOffset.UtcNow);
+            operationId = operation.Id;
+            database.FileOperations.Add(operation);
+            await database.SaveChangesAsync();
+        }
+
+        using var details = await client.GetAsync($"/api/v1/files/{file.Id}");
+        Assert.Equal(HttpStatusCode.Conflict, details.StatusCode);
+        await AssertErrorAsync(details, "RECOVERY_REQUIRED");
+        using var content = await client.GetAsync($"/api/v1/files/{file.Id}/content");
+        Assert.Equal(HttpStatusCode.Conflict, content.StatusCode);
+        await AssertErrorAsync(content, "RECOVERY_REQUIRED");
+        using var listing = await client.GetAsync($"/api/v1/files?parentId={folder.Id}");
+        listing.EnsureSuccessStatusCode();
+        using (var json = await JsonDocument.ParseAsync(await listing.Content.ReadAsStreamAsync()))
+        {
+            Assert.DoesNotContain(
+                json.RootElement.GetProperty("items").EnumerateArray(),
+                item => item.GetProperty("id").GetGuid() == file.Id);
+        }
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var operation = await database.FileOperations.SingleAsync(item => item.Id == operationId);
+            operation.Retry(DateTimeOffset.UtcNow);
+            await database.SaveChangesAsync();
+        }
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider
+                .GetRequiredService<FileOperationRecoveryService>()
+                .RecoverAsync(CancellationToken.None);
+        }
+
+        using var recovered = await client.GetAsync($"/api/v1/files/{file.Id}");
+        recovered.EnsureSuccessStatusCode();
+        var recoveredItem = (await recovered.Content.ReadFromJsonAsync<TestFileItem>())!;
+        Assert.Equal("after.bin", recoveredItem.Name);
+        Assert.Equal(file.FileVersion, recoveredItem.FileVersion);
+    }
+
+    [Fact]
+    public async Task ConcurrentRenames_AreSerializedWithoutDeadlockOrDuplicateFilesystemEntries()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("parallel-rename", "parallel-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var folder = await CreateFolderAsync(client, rootId, "Parallel");
+        var file = await UploadAsync(
+            client,
+            folder.Id,
+            "initial.txt",
+            [1, 2, 3],
+            Guid.NewGuid().ToString());
+
+        var firstTask = client.PatchAsJsonAsync(
+            $"/api/v1/files/{file.Id}",
+            new { name = "first.txt" });
+        var secondTask = client.PatchAsJsonAsync(
+            $"/api/v1/files/{file.Id}",
+            new { name = "second.txt" });
+        var responses = await Task.WhenAll(firstTask, secondTask).WaitAsync(TimeSpan.FromSeconds(10));
+        using var first = responses[0];
+        using var second = responses[1];
+        first.EnsureSuccessStatusCode();
+        second.EnsureSuccessStatusCode();
+
+        using var details = await client.GetAsync($"/api/v1/files/{file.Id}");
+        details.EnsureSuccessStatusCode();
+        var current = (await details.Content.ReadFromJsonAsync<TestFileItem>())!;
+        Assert.Contains(current.Name, new[] { "first.txt", "second.txt" });
+        Assert.Equal(file.FileVersion, current.FileVersion);
+
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        var storedEntry = await database.FileEntries.SingleAsync(entry => entry.Id == file.Id);
+        var store = scope.ServiceProvider.GetRequiredService<IFileStore>();
+        Assert.True(
+            await store.ExistsAsync(
+                RelativeStoragePath.Create(storedEntry.RelativePath),
+                false,
+                CancellationToken.None));
+        var staleName = current.Name == "first.txt" ? "second.txt" : "first.txt";
+        var stalePath = RelativeStoragePath.Create(storedEntry.RelativePath[..storedEntry.RelativePath.LastIndexOf('/')])
+            .Append(FileName.Create(staleName));
+        Assert.False(await store.ExistsAsync(stalePath, false, CancellationToken.None));
+        Assert.Equal(
+            2,
+            await database.AuditLogs.CountAsync(
+                audit =>
+                    audit.TargetId == file.Id.ToString() &&
+                    audit.Action == "FILE_RENAME" &&
+                audit.ResultCode == "SUCCESS"));
+    }
+
+    [Fact]
+    public async Task RenameRecovery_ConvergesFilesystemDoneAndQuarantinesAmbiguousBothExist()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("recovery-matrix", "matrix-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var folder = await CreateFolderAsync(client, rootId, "Matrix");
+        var moved = await UploadAsync(
+            client,
+            folder.Id,
+            "moved-before.bin",
+            [7, 8, 9],
+            Guid.NewGuid().ToString());
+        var ambiguous = await UploadAsync(
+            client,
+            folder.Id,
+            "ambiguous-before.bin",
+            [1, 3, 5],
+            Guid.NewGuid().ToString());
+        Guid movedOperationId;
+        Guid ambiguousOperationId;
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var store = scope.ServiceProvider.GetRequiredService<IFileStore>();
+            var movedEntry = await database.FileEntries.SingleAsync(entry => entry.Id == moved.Id);
+            var movedSource = RelativeStoragePath.Create(movedEntry.RelativePath);
+            var movedTarget = RelativeStoragePath.Create(
+                movedEntry.RelativePath.Replace("moved-before.bin", "moved-after.bin", StringComparison.Ordinal));
+            await store.MoveAsync(movedSource, movedTarget, false, CancellationToken.None);
+            var movedOperation = new FileOperation(
+                Guid.NewGuid(),
+                movedEntry.OwnerUserId,
+                FileOperationType.Rename,
+                movedEntry.Id,
+                null,
+                movedSource.Value,
+                movedTarget.Value,
+                null,
+                null,
+                DateTimeOffset.UtcNow);
+            movedOperation.MarkFilesystemDone(DateTimeOffset.UtcNow);
+            movedOperationId = movedOperation.Id;
+            database.FileOperations.Add(movedOperation);
+
+            var ambiguousEntry = await database.FileEntries.SingleAsync(entry => entry.Id == ambiguous.Id);
+            var ambiguousSource = RelativeStoragePath.Create(ambiguousEntry.RelativePath);
+            var ambiguousTarget = RelativeStoragePath.Create(
+                ambiguousEntry.RelativePath.Replace("ambiguous-before.bin", "ambiguous-after.bin", StringComparison.Ordinal));
+            var temporary = await store.WriteUploadTempAsync(
+                ambiguousEntry.OwnerUserId,
+                Guid.NewGuid(),
+                new MemoryStream([1, 3, 5]),
+                3,
+                CancellationToken.None);
+            await store.MoveAsync(temporary.Path, ambiguousTarget, false, CancellationToken.None);
+            var ambiguousOperation = new FileOperation(
+                Guid.NewGuid(),
+                ambiguousEntry.OwnerUserId,
+                FileOperationType.Rename,
+                ambiguousEntry.Id,
+                null,
+                ambiguousSource.Value,
+                ambiguousTarget.Value,
+                null,
+                null,
+                DateTimeOffset.UtcNow);
+            ambiguousOperationId = ambiguousOperation.Id;
+            database.FileOperations.Add(ambiguousOperation);
+            await database.SaveChangesAsync();
+        }
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider
+                .GetRequiredService<FileOperationRecoveryService>()
+                .RecoverAsync(CancellationToken.None);
+        }
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.Equal(
+                FileOperationStatus.Completed,
+                (await database.FileOperations.SingleAsync(operation => operation.Id == movedOperationId)).Status);
+            Assert.Equal(
+                "moved-after.bin",
+                (await database.FileEntries.SingleAsync(entry => entry.Id == moved.Id)).Name);
+            Assert.Equal(
+                FileOperationStatus.RecoveryRequired,
+                (await database.FileOperations.SingleAsync(operation => operation.Id == ambiguousOperationId)).Status);
+            Assert.Equal(
+                "ambiguous-before.bin",
+                (await database.FileEntries.SingleAsync(entry => entry.Id == ambiguous.Id)).Name);
+        }
+
+        using var ambiguousDetails = await client.GetAsync($"/api/v1/files/{ambiguous.Id}");
+        Assert.Equal(HttpStatusCode.Conflict, ambiguousDetails.StatusCode);
+        await AssertErrorAsync(ambiguousDetails, "RECOVERY_REQUIRED");
+    }
+
+    [Fact]
+    public async Task Rename_WhenOnlyFilesystemTargetExists_RejectsWithoutOverwrite()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("hdd-conflict", "conflict-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var folder = await CreateFolderAsync(client, rootId, "Conflict");
+        var file = await UploadAsync(
+            client,
+            folder.Id,
+            "source.bin",
+            [1, 2, 3],
+            Guid.NewGuid().ToString());
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var store = scope.ServiceProvider.GetRequiredService<IFileStore>();
+            var entry = await database.FileEntries.SingleAsync(candidate => candidate.Id == file.Id);
+            var temporary = await store.WriteUploadTempAsync(
+                entry.OwnerUserId,
+                Guid.NewGuid(),
+                new MemoryStream([9, 9, 9]),
+                3,
+                CancellationToken.None);
+            var target = RelativeStoragePath.Create(
+                entry.RelativePath.Replace("source.bin", "occupied.bin", StringComparison.Ordinal));
+            await store.MoveAsync(temporary.Path, target, false, CancellationToken.None);
+        }
+
+        using var response = await client.PatchAsJsonAsync(
+            $"/api/v1/files/{file.Id}",
+            new { name = "occupied.bin" });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        await AssertErrorAsync(response, "FILE_NAME_CONFLICT");
+        using var download = await client.GetAsync($"/api/v1/files/{file.Id}/content");
+        download.EnsureSuccessStatusCode();
+        Assert.Equal(new byte[] { 1, 2, 3 }, await download.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentMoveTrashAndRestoreRename_AreSerializedWithoutDeadlock()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("parallel-mutations", "mutations-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var source = await CreateFolderAsync(client, rootId, "Source");
+        var destination = await CreateFolderAsync(client, rootId, "Destination");
+        var file = await UploadAsync(
+            client,
+            source.Id,
+            "item.bin",
+            [2, 4, 6],
+            Guid.NewGuid().ToString());
+
+        var moveTask = client.PatchAsJsonAsync(
+            $"/api/v1/files/{file.Id}",
+            new { parentId = destination.Id });
+        var trashTask = client.DeleteAsync($"/api/v1/files/{file.Id}");
+        var firstPair = await Task.WhenAll(moveTask, trashTask).WaitAsync(TimeSpan.FromSeconds(10));
+        using var move = firstPair[0];
+        using var trash = firstPair[1];
+        Assert.Contains(move.StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.NotFound });
+        Assert.Equal(HttpStatusCode.OK, trash.StatusCode);
+
+        var restoreTask = client.PostAsync($"/api/v1/files/{file.Id}/restore", null);
+        var renameTask = client.PatchAsJsonAsync(
+            $"/api/v1/files/{file.Id}",
+            new { name = "renamed.bin" });
+        var secondPair = await Task.WhenAll(restoreTask, renameTask).WaitAsync(TimeSpan.FromSeconds(10));
+        using var restore = secondPair[0];
+        using var rename = secondPair[1];
+        Assert.Equal(HttpStatusCode.OK, restore.StatusCode);
+        Assert.Contains(rename.StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.NotFound });
+
+        using var details = await client.GetAsync($"/api/v1/files/{file.Id}");
+        details.EnsureSuccessStatusCode();
+        var current = (await details.Content.ReadFromJsonAsync<TestFileItem>())!;
+        Assert.Equal(file.FileVersion, current.FileVersion);
+        using var download = await client.GetAsync($"/api/v1/files/{file.Id}/content");
+        download.EnsureSuccessStatusCode();
+        Assert.Equal(new byte[] { 2, 4, 6 }, await download.Content.ReadAsByteArrayAsync());
+    }
+
     private static async Task<Guid> GetRootIdAsync(HttpClient client)
     {
         using var response = await client.GetAsync("/api/v1/files");
@@ -357,5 +876,13 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("requestId").GetString()));
     }
 
-    private sealed record TestFileItem(Guid Id, Guid? ParentId, string Name, string EntryType);
+    private sealed record TestFileItem(
+        Guid Id,
+        Guid? ParentId,
+        string Name,
+        string EntryType,
+        string? MimeType,
+        long Size,
+        string Status,
+        long FileVersion);
 }

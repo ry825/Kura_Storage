@@ -1,4 +1,5 @@
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Audit;
 
 namespace KuraStorage.Application.Abstractions;
 
@@ -7,11 +8,15 @@ public interface IFileTransaction : IAsyncDisposable
     Task CommitAsync(CancellationToken cancellationToken);
 }
 
+public interface IFileMutationLock : IAsyncDisposable;
+
 public interface IFileRepository
 {
     Task<IFileTransaction> BeginTransactionAsync(CancellationToken cancellationToken);
 
     Task<FileEntry?> FindOwnedAsync(Guid ownerUserId, Guid entryId, CancellationToken cancellationToken);
+
+    Task ReloadAsync(FileEntry entry, CancellationToken cancellationToken);
 
     Task<FileEntry?> FindRootAsync(Guid ownerUserId, CancellationToken cancellationToken);
 
@@ -19,6 +24,21 @@ public interface IFileRepository
         Guid ownerUserId,
         Guid parentId,
         string name,
+        CancellationToken cancellationToken);
+
+    Task<FileEntry?> FindActiveFolderByPathAsync(
+        Guid ownerUserId,
+        string relativePath,
+        CancellationToken cancellationToken);
+
+    Task<bool> IsRelocationBlockedAsync(
+        Guid ownerUserId,
+        Guid entryId,
+        string relativePath,
+        CancellationToken cancellationToken);
+
+    Task<IFileMutationLock> AcquireMutationLocksAsync(
+        IEnumerable<Guid> entryIds,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<FileEntry>> ListActiveChildrenAsync(
@@ -53,6 +73,8 @@ public interface IFileRepository
     void Add(FileEntry entry);
 
     void Add(FileOperation operation);
+
+    void Add(AuditLog auditLog);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

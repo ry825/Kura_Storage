@@ -1,6 +1,8 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using KuraStorage.Api;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
@@ -263,6 +265,53 @@ app.MapGet(
         }
 
         return ToFileHttpResult(await files.GetAsync(userId, fileId, cancellationToken), context);
+    });
+
+app.MapPatch(
+    "/api/v1/files/{fileId:guid}",
+    async (
+        Guid fileId,
+        UpdateFileRequest request,
+        HttpContext context,
+        FileService files,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var hasName = request.Name is not null;
+        var hasParent = request.ParentId is not null;
+        if (hasName == hasParent ||
+            request.AdditionalProperties is { Count: > 0 } ||
+            (hasParent && request.ParentId == Guid.Empty))
+        {
+            return Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context);
+        }
+
+        return hasName
+            ? ToFileHttpResult(
+                await files.RenameAsync(
+                    new RenameFileCommand(
+                        userId,
+                        deviceId,
+                        fileId,
+                        request.Name!,
+                        context.TraceIdentifier),
+                    cancellationToken),
+                context)
+            : ToFileHttpResult(
+                await files.MoveAsync(
+                    new MoveFileCommand(
+                        userId,
+                        deviceId,
+                        fileId,
+                        request.ParentId!.Value,
+                        context.TraceIdentifier),
+                    cancellationToken),
+                context);
     });
 
 app.MapPost(
@@ -565,6 +614,16 @@ public sealed record RefreshRequest(Guid DeviceId, string? RefreshToken);
 public sealed record LogoutRequest(Guid DeviceId, string? RefreshToken);
 
 public sealed record CreateFolderRequest(Guid? ParentId, string? Name);
+
+public sealed class UpdateFileRequest
+{
+    public string? Name { get; init; }
+
+    public Guid? ParentId { get; init; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? AdditionalProperties { get; init; }
+}
 
 public sealed record ErrorResponse(string Code, string Message, string RequestId, object Details);
 

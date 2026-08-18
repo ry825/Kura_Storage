@@ -29,6 +29,20 @@ public sealed record UploadFileCommand(
     string IdempotencyKey,
     Stream Content);
 
+public sealed record RenameFileCommand(
+    Guid OwnerUserId,
+    Guid ActorDeviceId,
+    Guid FileEntryId,
+    string Name,
+    string RequestId);
+
+public sealed record MoveFileCommand(
+    Guid OwnerUserId,
+    Guid ActorDeviceId,
+    Guid FileEntryId,
+    Guid TargetParentId,
+    string RequestId);
+
 public sealed record DownloadFile(FileItem Item, Stream Content);
 
 public enum FileFailureKind
@@ -68,6 +82,8 @@ public static class FileErrorCodes
     public const string FileNotFound = "FILE_NOT_FOUND";
     public const string FileNameConflict = "FILE_NAME_CONFLICT";
     public const string FileRestoreConflict = "FILE_RESTORE_CONFLICT";
+    public const string FileMoveCycle = "FILE_MOVE_CYCLE";
+    public const string FileOperationNotAllowed = "FILE_OPERATION_NOT_ALLOWED";
     public const string IdempotencyConflict = "IDEMPOTENCY_CONFLICT";
     public const string UploadSizeMismatch = "UPLOAD_SIZE_MISMATCH";
     public const string UploadChecksumMismatch = "UPLOAD_CHECKSUM_MISMATCH";

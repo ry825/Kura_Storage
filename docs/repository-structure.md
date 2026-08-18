@@ -81,6 +81,8 @@ kurastorage/
 
 以下の大規模TreeはMVP後を含む配置候補の参考である。MVPとの差分にある`KuraStorage.Worker`、`core-database`、`core-testing`、Media・Sharing・Backup・Settings Feature、専用Performance/Security Project等は、それを必要とする機能のSteeringで追加する。
 
+Rename・Moveは現行のServer File機能を拡張し、Domainは`KuraStorage.Domain/Files/`、Command・契約・Recoveryは`KuraStorage.Application/Files/`、RepositoryとFileStoreは既存Infrastructure、Endpointは既存`KuraStorage.Api/Program.cs`へ配置する。専用Project、Worker、将来用Directory、DB Tableは追加しない。Android側も既存`core-network`、`core-data`、`feature-files`内へ配置する。
+
 ```text
 kurastorage/
 ├── .github/
@@ -858,7 +860,7 @@ feature-files/
 | --- | --- |
 | `feature-connection` | LOCAL_DIRECT/REMOTE_SECURE/DISCONNECTED、Health、RemoteAccessGuidanceController |
 | `feature-auth` | 初回Device登録、Login、Refresh、Logout、Device失効対応 |
-| `feature-files` | Home、一覧、詳細、Folder作成、Streaming Upload、Range Download、Trash、Restore |
+| `feature-files` | Home、一覧、詳細、Folder作成、Streaming Upload、Range Download、Trash、Restore、Rename、Move |
 
 `feature-media`、`feature-sharing`、`feature-backup`、`feature-settings`はMVP後に必要となった時点で追加する。
 
