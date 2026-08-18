@@ -372,15 +372,15 @@
 
 ### PR1: Server・API契約・正式文書
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 主な変更: 未記録
-- 実施した自動Test・Build・静的解析: 未記録
-- 実施した手動・結合・障害確認: 未記録
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク、理由、代替実装: 未記録
-- PR2への引継ぎ事項: 未記録
+- 完了日: 2026-08-18
+- Pull Request: [#9 Add server-side file rename and move support](https://github.com/ry825/Kura_Storage/pull/9)
+- 主な変更: `PATCH /api/v1/files/{fileId}`、Rename・MoveのDomain/Application/Persistence/FileStore/Recovery、PostgreSQL advisory lock、未完了操作の隔離、監査、OpenAPI・正式文書を実装した。File ID、Owner、内容属性、`fileVersion`を維持し、所有境界、非上書き、循環・深度制約、Storage安全性を既存File操作と整合させた。
+- 実施した自動Test・Build・静的解析: ローカルで`verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-android.sh`、`git diff --check`が成功した。Server TestはDomain 17件、Application 12件、Integration 32件の計61件が成功した。`dotnet list ... --vulnerable --include-transitive`で既知脆弱性0件を確認した。GitHub Actions run `32138160746`でConfig、Security、Server、Androidがすべて成功した。
+- 実施した手動・結合・障害確認: Test API ClientとPostgreSQL・実Filesystemを使用し、File・Folder Rename、File・配下を持つFolder Move、同名・循環・Root・他User・失効Device・Storage異常の拒否、HDD競合、並行変更、atomic rename後のRecovery、一覧・詳細・Download隔離、ID・`fileVersion`・SHA-256維持を確認した。
+- 計画と実装の差分: 開始時の依存脆弱性検査でTestcontainers 4.13.0の推移依存`SSH.NET 2025.1.0`にHigh脆弱性が判明したため、Testcontainersを4.14.0へ更新した。API実装の認証Middleware再利用を明示検証するため、失効DeviceのPATCH結合Testを追加した。その他の要求・設計差分はなし。
+- 実装中に追加したタスクと理由: Testcontainers.PostgreSql 4.14.0への更新と推移依存脆弱性解消を1.8へ追加した。理由は開始時Restoreで`GHSA-q939-rpr3-3284`が新たに検出されたため。失効DeviceのPATCH結合Testも受け入れ条件の直接確認として追加した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- PR2への引継ぎ事項: PR #9を`main`へMergeした後、最新`main`からPR2 Branchを作成する。既存OpenAPIとError Codeを使用してAndroid Network・Repository・ViewModel・Compose UIを実装し、Raspberry Pi・共有exFAT HDD・Android実機でLAN/ZeroTier E2Eを完了する。PR1はMergeしないまま停止する。
 
 ### PR2: Android操作・実機E2E
 
