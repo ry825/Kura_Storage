@@ -338,8 +338,8 @@
 
 ### 2.8 文書最終整合・品質確認
 
-- [ ] 実装結果と文書を最終整合する。
-  - [ ] `requirements.md`の全受け入れ条件に対応する実装または検証記録がある。
+- [x] 実装結果と文書を最終整合する。
+  - [x] `requirements.md`の全受け入れ条件に対応する実装または検証記録がある。
   - [x] `design.md`と実装の差分がある場合、理由と確定設計を反映する。
   - [x] 5つの正式文書、OpenAPI、Server、AndroidでEndpoint、DTO、Error、状態名が一致する。
   - [x] Android操作と実機確認手順を必要な運用文書へ反映する。
@@ -351,19 +351,19 @@
   - [x] `./scripts/ci/verify-android.sh`が成功する。
   - [x] `./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が成功する。
   - [x] `git diff --check`が成功する。
-- [ ] CIと成果物確認が完了している。
-  - [ ] GitHub ActionsのConfig、Server、Security、Android必須Jobが最終実装HEADで成功する。
+- [x] CIと成果物確認が完了している。
+  - [x] GitHub ActionsのConfig、Server、Security、Android必須Jobが最終実装HEADで成功する。
   - [x] Server Artifact、Release APK、Checksumを再現可能な既存手順で生成できる。
   - [x] 新しい環境変数、Secret、依存Library、Moduleが不要であることを確認する。
 
 ### 2.9 Pull Request完了
 
-- [ ] PR2が完了している。
-  - [ ] PR2内の2.1〜2.8がすべて`[x]`である。
-  - [ ] 共通Pull Request完了手順をすべて実施する。
-  - [ ] PR2の完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
-  - [ ] PR2のPull Requestへ完了記録Commitが反映されている。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR2が完了している。
+  - [x] PR2内の2.1〜2.8がすべて`[x]`である。
+  - [x] 共通Pull Request完了手順をすべて実施する。
+  - [x] PR2の完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
+  - [x] PR2のPull Requestへ完了記録Commitが反映されている。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -385,15 +385,15 @@
 
 ### PR2: Android操作・実機E2E
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 主な変更: 未記録
-- 実施した自動Test・Build・静的解析: 未記録
-- 実施した手動・実機確認: 未記録
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク、理由、代替実装: 未記録
-- 後続作業への引継ぎ事項: 未記録
+- 完了日: 2026-08-20
+- Pull Request: [#10 Add Android file rename and move support](https://github.com/ry825/Kura_Storage/pull/10)
+- 主な変更: AndroidのNetwork契約、Repository、ViewModel、Compose UIへFile・Folder Rename/Moveを実装した。現在名確認、Client入力検証、移動先選択、自身・子孫の除外、Server再取得、結果不明時の安全側表示、Error別案内を追加した。Wi-Fi再接続後も現在の非VPN Networkを選び直すSocketFactory、契約Fixture、Release Artifact生成時のCA指定、関連設計・運用文書も整合させた。
+- 実施した自動Test・Build・静的解析: ローカルで`verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-android.sh`、`connectedDebugAndroidTest --max-workers=1`、`git diff --check`が成功した。Server TestはDomain 17件、Application 12件、Integration 32件が成功し、Android接続Testは`feature-files` 9件を含め失敗0件だった。Server Artifact、正式署名Release APK 0.2.0、Checksumを生成・確認した。最終実装Commit `bf7d715`のGitHub Actions run `32361601054`でConfig、Server、Security、Androidがすべて成功した。
+- 実施した手動・実機確認: Raspberry Pi、PostgreSQL、共有exFAT HDD、Android実機を使用し、LANとZeroTierでFile・Folder Rename、File・配下を持つFolder Move、各経路10回連続操作、同名競合、循環、Root・Trash・他User拒否、HDD未Mount、通信中断、再起動後利用を確認した。既存のFolder作成、Upload、Download、Range Download、Trash、Restoreも再確認し、HDDとDB、File ID、`fileVersion`、SHA-256の不整合・上書きが0件、Android/Server Logの秘密情報・物理絶対Pathが0件であることを確認した。
+- 計画と実装の差分: 実機のWi-Fi切断・再接続試験で、OkHttpが起動時のAndroid `Network`を保持し続け、再接続後のRefreshに失敗する問題を検出した。現在の非VPN NetworkへSocket作成ごとに委譲する設計へ変更し、単体Testと設計文書を追加した。Release Artifact生成では既存の固定CA既定値に依存せず、検証対象CAを明示できる引数を追加した。要求範囲の削除はない。
+- 実装中に追加したタスクと理由: Wi-Fi再接続後の動的Network再選択と単体Test、実機での通信中断・復帰確認、Release ArtifactのCA引数化を追加した。理由は、物理端末でのみ再現するNetwork handle更新と、正式配布物のTrust Anchor再現性を保証するため。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続作業への引継ぎ事項: PR #10をレビューし、承認後にMergeする。Mergeまでは本PRのBranchと成果物を保持する。Rename/Moveの範囲外であるCopy、一括操作、Drag & Drop、User間移動、Trash内任意移動は将来作業とする。
 
 ---
 
@@ -403,24 +403,24 @@
 
 ### 実装完了日
 
-未完了
+2026-08-20
 
 ### 計画と実績の差分
 
-未記録
+PR1でServer・API・復旧・正式文書、PR2でAndroid操作・実機E2Eを分離する計画どおりに完了した。追加実績として、PR1では開始時に判明したTestcontainers推移依存の脆弱性を更新で解消し、失効DeviceのAPI結合Testを追加した。PR2では実機通信中断試験からWi-Fi Network handleの陳腐化を発見し、動的再選択を追加した。計画した要求・検証の削除はない。
 
 ### 主な設計変更と理由
 
-未記録
+Serverでは同一Filesystem内rename、FileOperation Journal、PostgreSQL advisory lock、Recovery Hosted Serviceを組み合わせ、HDDとDBを安全に収束させた。AndroidではMutation成功を通信例外から推測せず、結果不明として再取得を要求する設計を採用した。さらにOkHttpのSocket作成時に現在の非VPN Networkを取得する委譲方式へ変更し、Wi-Fi再接続後も古いNetwork handleへ固定されないようにした。
 
 ### 技術的な学び
 
-未記録
+Filesystem操作とDB更新を単一Transactionとして扱えないため、操作Journal、可視性の隔離、冪等Recovery、競合直列化を一体で設計する必要がある。Androidの`Network`は接続種別が同じでも再接続で別handleになり得るため、長寿命Clientへ固定参照を渡さず、Socket作成時に現在値を解決する必要がある。通信中断後はClient表示ではなくServer・DB・HDDの三者確認が確定判定になる。
 
 ### プロセス上の改善点
 
-未記録
+実機E2Eを正常系だけで終えず、Wi-Fi切断、VPN経路、HDD unmount、API再起動、端末・Pi再起動まで含めたことで、単体Testでは見えないNetwork handle問題を検出できた。一方、VPN自動起動状態とLAN試験が干渉したため、各シナリオ開始前に端末の有効NetworkとVPN状態を記録する手順を標準化すると切り分けが速くなる。
 
 ### 次回への改善提案
 
-未記録
+Android実機試験の前処理として、Wi-Fi/VPN/Cellularの有効経路、Server到達性、アプリ接続モードを一括取得する診断手順を追加する。通信中断試験では操作前後のアプリProcess IDも記録し、OSによるProcess終了と同一Process内の再接続を区別する。Release Artifact検証ではCA fingerprint、APK署名、Version、Checksumを一つの検証出力へまとめる。
