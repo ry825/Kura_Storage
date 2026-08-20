@@ -9,6 +9,29 @@ namespace KuraStorage.Application.Tests;
 public sealed class FileServiceTests
 {
     [Fact]
+    public async Task ListTrashAsync_UsesConfiguredServerRetentionDeadline()
+    {
+        var now = DateTimeOffset.Parse("2026-08-20T00:00:00Z");
+        var owner = Guid.NewGuid();
+        var entry = FileEntry.CreateFile(
+            Guid.NewGuid(), owner, Guid.NewGuid(), FileName.Create("item.txt"),
+            RelativeStoragePath.Create($"users/{owner:N}/files/item.txt"), null, 1, now);
+        entry.Trash(RelativeStoragePath.Create($"users/{owner:N}/trash/{entry.Id:N}/item.txt"), now);
+        var repository = new FakeFileRepository(entry);
+        var service = new FileService(
+            repository,
+            new FakeFileStore(),
+            new AvailableStorageGuard(),
+            new NoOpProvisioner(),
+            new FixedClock(now),
+            new TrashPurgeOptions { RetentionDays = 45 });
+
+        var result = await service.ListTrashAsync(owner, 1, 100, CancellationToken.None);
+
+        Assert.Equal(now.AddDays(45), Assert.Single(result.Value!.Items).PurgeEligibleAt);
+    }
+
+    [Fact]
     public async Task RenameAsync_ValidFile_MovesStorageAndPreservesVersion()
     {
         var now = DateTimeOffset.UtcNow;
@@ -197,6 +220,12 @@ public sealed class FileServiceTests
             CancellationToken cancellationToken) =>
             Task.FromResult(false);
 
+        public Task<bool> HasIncompleteOperationAsync(
+            Guid ownerUserId,
+            Guid entryId,
+            string relativePath,
+            CancellationToken cancellationToken) => Task.FromResult(false);
+
         public Task<IFileMutationLock> AcquireMutationLocksAsync(
             IEnumerable<Guid> entryIds,
             CancellationToken cancellationToken) =>
@@ -225,10 +254,21 @@ public sealed class FileServiceTests
             int skip,
             int take,
             CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<FileEntry>>([]);
+            Task.FromResult<IReadOnlyList<FileEntry>>(
+                entries.Where(entry =>
+                        entry.OwnerUserId == ownerUserId &&
+                        entry.Status == FileEntryStatus.Trashed &&
+                        entry.ParentId is null)
+                    .Skip(skip)
+                    .Take(take)
+                    .ToArray());
 
         public Task<int> CountTrashedAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
-            Task.FromResult(0);
+            Task.FromResult(
+                entries.Count(entry =>
+                    entry.OwnerUserId == ownerUserId &&
+                    entry.Status == FileEntryStatus.Trashed &&
+                    entry.ParentId is null));
 
         public Task<IReadOnlyList<FileEntry>> ListDescendantsAsync(
             Guid ownerUserId,
@@ -258,6 +298,16 @@ public sealed class FileServiceTests
         }
 
         public void Add(AuditLog auditLog) => Audits.Add(auditLog);
+
+        public void Remove(FileEntry entry) => entries.Remove(entry);
+
+        public void RemoveRange(IEnumerable<FileEntry> removedEntries)
+        {
+            foreach (var entry in removedEntries.ToArray())
+            {
+                entries.Remove(entry);
+            }
+        }
 
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
@@ -309,6 +359,12 @@ public sealed class FileServiceTests
             return Task.CompletedTask;
         }
 
+        public Task DeleteTreeIfExistsAsync(RelativeStoragePath path, CancellationToken cancellationToken)
+        {
+            Paths.RemoveWhere(value => value == path.Value || value.StartsWith(path.Value + "/", StringComparison.Ordinal));
+            return Task.CompletedTask;
+        }
+
         public Task<bool> ExistsAsync(
             RelativeStoragePath path,
             bool directory,
@@ -321,7 +377,7 @@ public sealed class FileServiceTests
 
     private sealed class AvailableStorageGuard : IStorageGuard
     {
-        public Task<StorageStatus> InspectAsync(bool requireWrite, CancellationToken cancellationToken) =>
+        public Task<StorageStatus> InspectAsync(StorageIntent intent, CancellationToken cancellationToken) =>
             Task.FromResult(StorageStatus.Available);
     }
 

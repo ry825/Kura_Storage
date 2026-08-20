@@ -308,7 +308,8 @@ public sealed class FileEntry
 
 - 物理パスの解決は`StorageGuard`だけが行う。
 - `../`、絶対パス、NUL、不正区切り、ストレージルート外、シンボリックリンクを拒否する。
-- すべての書き込みでHDDのmount、`storageId`、書込み可否、空き容量を確認する。
+- Storage検証は`Read`、`CreateOrUpdate`、`Delete` Intentを明示する。作成・更新はmount、`storageId`、書込み可否、`MinimumFreeBytes`を確認し、削除はmount、`storageId`、読取専用状態を確認するが空き容量不足だけでは拒否しない。
+- 再帰削除は検証済み`RelativeStoragePath`だけを受け、Storage Root、User Root、`files`、`trash`等の管理Rootを削除できないよう二重に防御する。対象・祖先・列挙した子孫のSymbolic Linkを拒否し、存在しない対象は冪等成功とする。
 - ファイル全体をメモリへ読み込まない。MVP Uploadは逐次Stream、DownloadはRangeを使用する。
 - 一時ファイルは正式ファイルと同一Filesystemに置き、atomic renameを可能にする。
 - `File.Open`等をPresentation層から直接呼び出さない。
@@ -343,6 +344,7 @@ logger.LogInformation($"token={refreshToken} path={absolutePath}");
 - 物理絶対パスは通常ログへ出さない。
 - 失敗理由はError Codeと例外を分けて記録する。
 - 同じ失敗を複数レイヤーで重複してErrorログへ記録しない。
+- 完全削除の監査にはAction、結果、Actor Type、User/DeviceまたはWorker、Target ID、requestId、時刻だけを保存し、ファイル名、Path、Size、内容、認証情報を含めない。
 
 ### 4.11 パスワードハッシュ
 

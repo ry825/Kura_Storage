@@ -11,6 +11,7 @@
       "status": "ACTIVE",
       "fileVersion": 1,
       "trashedAt": null,
+      "purgeEligibleAt": null,
       "createdAt": "2026-07-29T00:00:00Z",
       "updatedAt": "2026-07-29T00:00:00Z"
     }

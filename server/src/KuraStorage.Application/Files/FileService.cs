@@ -10,8 +10,10 @@ public sealed class FileService(
     IFileStore fileStore,
     IStorageGuard storageGuard,
     IUserStorageProvisioner provisioner,
-    ISystemClock clock)
+    ISystemClock clock,
+    TrashPurgeOptions? purgeOptions = null)
 {
+    private readonly int retentionDays = purgeOptions?.RetentionDays ?? 30;
     public async Task<FileResult<FilePage>> ListAsync(
         Guid ownerUserId,
         Guid? parentId,
@@ -26,7 +28,7 @@ public sealed class FileService(
 
         if (parentId is null)
         {
-            if (!await StorageAvailableAsync(true, cancellationToken))
+            if (!await StorageAvailableAsync(StorageIntent.CreateOrUpdate, cancellationToken))
             {
                 return FileResult<FilePage>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
             }
@@ -88,7 +90,7 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.ValidationFailed, FileFailureKind.BadRequest);
         }
 
-        if (!await StorageAvailableAsync(true, cancellationToken))
+        if (!await StorageAvailableAsync(StorageIntent.CreateOrUpdate, cancellationToken))
         {
             await AuditFailureAsync(command, FileErrorCodes.StorageUnavailable, cancellationToken);
             return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
@@ -172,7 +174,7 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.ValidationFailed, FileFailureKind.BadRequest);
         }
 
-        if (!await StorageAvailableAsync(true, cancellationToken))
+        if (!await StorageAvailableAsync(StorageIntent.CreateOrUpdate, cancellationToken))
         {
             await AuditFailureAsync(command, FileErrorCodes.StorageUnavailable, cancellationToken);
             return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
@@ -278,7 +280,7 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.ValidationFailed, FileFailureKind.BadRequest);
         }
 
-        if (!await StorageAvailableAsync(true, cancellationToken))
+        if (!await StorageAvailableAsync(StorageIntent.CreateOrUpdate, cancellationToken))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
         }
@@ -361,7 +363,7 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.ValidationFailed, FileFailureKind.BadRequest);
         }
 
-        if (!await StorageAvailableAsync(true, cancellationToken))
+        if (!await StorageAvailableAsync(StorageIntent.CreateOrUpdate, cancellationToken))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
         }
@@ -549,7 +551,7 @@ public sealed class FileService(
             return FileResult<DownloadFile>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
-        if (!await StorageAvailableAsync(false, cancellationToken) ||
+        if (!await StorageAvailableAsync(StorageIntent.Read, cancellationToken) ||
             !await fileStore.ExistsAsync(RelativeStoragePath.Create(entry.RelativePath), false, cancellationToken))
         {
             return FileResult<DownloadFile>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
@@ -579,7 +581,7 @@ public sealed class FileService(
             cancellationToken);
         var count = await repository.CountTrashedAsync(ownerUserId, cancellationToken);
         return FileResult<FilePage>.Success(
-            new FilePage(null, entries.Select(Map).ToArray(), page, pageSize, count));
+            new FilePage(null, entries.Select(entry => Map(entry, retentionDays)).ToArray(), page, pageSize, count));
     }
 
     public async Task<FileResult<FileItem>> TrashAsync(
@@ -587,7 +589,7 @@ public sealed class FileService(
         Guid entryId,
         CancellationToken cancellationToken)
     {
-        if (!await StorageAvailableAsync(true, cancellationToken))
+        if (!await StorageAvailableAsync(StorageIntent.CreateOrUpdate, cancellationToken))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
         }
@@ -648,7 +650,7 @@ public sealed class FileService(
         ApplyDescendantPaths(descendants, source.Value, target.Value, true, clock.UtcNow);
         operation.Complete(clock.UtcNow);
         await repository.SaveChangesAsync(cancellationToken);
-        return FileResult<FileItem>.Success(Map(entry));
+        return FileResult<FileItem>.Success(Map(entry, retentionDays));
     }
 
     public async Task<FileResult<FileItem>> RestoreAsync(
@@ -656,7 +658,7 @@ public sealed class FileService(
         Guid entryId,
         CancellationToken cancellationToken)
     {
-        if (!await StorageAvailableAsync(true, cancellationToken))
+        if (!await StorageAvailableAsync(StorageIntent.CreateOrUpdate, cancellationToken))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
         }
@@ -999,8 +1001,8 @@ public sealed class FileService(
                 sourceSegments > 64);
     }
 
-    private async Task<bool> StorageAvailableAsync(bool write, CancellationToken cancellationToken) =>
-        await storageGuard.InspectAsync(write, cancellationToken) == StorageStatus.Available;
+    private async Task<bool> StorageAvailableAsync(StorageIntent intent, CancellationToken cancellationToken) =>
+        await storageGuard.InspectAsync(intent, cancellationToken) == StorageStatus.Available;
 
     private static bool IsActiveFolder(FileEntry? entry) =>
         entry is { Status: FileEntryStatus.Active, EntryType: FileEntryType.Folder };
@@ -1042,7 +1044,7 @@ public sealed class FileService(
         }
     }
 
-    internal static FileItem Map(FileEntry entry) =>
+    internal static FileItem Map(FileEntry entry, int retentionDays = 30) =>
         new(
             entry.Id,
             entry.ParentId,
@@ -1053,6 +1055,9 @@ public sealed class FileService(
             entry.Status.ToString().ToUpperInvariant(),
             entry.FileVersion,
             entry.TrashedAt,
+            entry.Status == FileEntryStatus.Trashed && entry.ParentId is null && entry.TrashedAt is not null
+                ? entry.TrashedAt.Value.AddDays(retentionDays)
+                : null,
             entry.CreatedAt,
             entry.UpdatedAt);
 }

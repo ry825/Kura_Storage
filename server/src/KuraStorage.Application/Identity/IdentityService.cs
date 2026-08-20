@@ -23,7 +23,9 @@ public sealed class IdentityService(
         string displayName,
         string password,
         UserRole role,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        AuditActorType actorType = AuditActorType.System,
+        string? actorOsUser = null)
     {
         var normalized = UsernameNormalizer.Normalize(username);
         if (string.IsNullOrWhiteSpace(normalized) || string.IsNullOrWhiteSpace(displayName) || string.IsNullOrEmpty(password))
@@ -40,7 +42,7 @@ public sealed class IdentityService(
         var now = clock.UtcNow;
         var user = new User(Guid.NewGuid(), normalized, displayName.Trim(), passwordHasher.Hash(password), role, now);
         repository.Add(user);
-        repository.Add(Audit(null, null, "USER_CREATE", "User", user.Id.ToString(), "SUCCESS", now));
+        repository.Add(Audit(null, null, "USER_CREATE", "User", user.Id.ToString(), "SUCCESS", now, actorType: actorType, actorOsUser: actorOsUser));
         await repository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return IdentityResult<Guid>.Success(user.Id);
@@ -77,7 +79,7 @@ public sealed class IdentityService(
         var now = clock.UtcNow;
         var device = new Device(Guid.NewGuid(), user.Id, deviceName.Trim(), now);
         repository.Add(device);
-        var pair = CreateTokenPair(user.Id, device.Id, Guid.NewGuid(), now, out var session);
+        var pair = CreateTokenPair(user.Id, device.Id, Guid.NewGuid(), user.Role, now, out var session);
         repository.Add(session);
         repository.Add(Audit(user.Id, device.Id, "DEVICE_REGISTER", "Device", device.Id.ToString(), "SUCCESS", now, requestId));
         await repository.SaveChangesAsync(cancellationToken);
@@ -113,7 +115,7 @@ public sealed class IdentityService(
 
         var now = clock.UtcNow;
         await repository.RevokeCurrentSessionsAsync(device.Id, now, cancellationToken);
-        var pair = CreateTokenPair(user.Id, device.Id, Guid.NewGuid(), now, out var session);
+        var pair = CreateTokenPair(user.Id, device.Id, Guid.NewGuid(), user.Role, now, out var session);
         repository.Add(session);
         repository.Add(Audit(user.Id, device.Id, "LOGIN", "Device", device.Id.ToString(), "SUCCESS", now, requestId));
         await repository.SaveChangesAsync(cancellationToken);
@@ -153,7 +155,7 @@ public sealed class IdentityService(
                 device?.Status == DeviceStatus.Revoked ? IdentityFailureKind.Forbidden : IdentityFailureKind.Unauthorized);
         }
 
-        var pair = CreateTokenPair(session.UserId, deviceId, session.FamilyId, now, out var replacement);
+        var pair = CreateTokenPair(session.UserId, deviceId, session.FamilyId, user!.Role, now, out var replacement);
         session.MarkUsed(now);
         await repository.SaveChangesAsync(cancellationToken);
         repository.Add(replacement);
@@ -190,7 +192,13 @@ public sealed class IdentityService(
     public async Task<IReadOnlyList<Device>> ListDevicesAsync(Guid userId, CancellationToken cancellationToken) =>
         await repository.ListDevicesAsync(userId, cancellationToken);
 
-    public async Task<bool> RevokeDeviceAsync(Guid userId, Guid deviceId, string? requestId, CancellationToken cancellationToken)
+    public async Task<bool> RevokeDeviceAsync(
+        Guid userId,
+        Guid deviceId,
+        string? requestId,
+        CancellationToken cancellationToken,
+        AuditActorType actorType = AuditActorType.UserDevice,
+        string? actorOsUser = null)
     {
         await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         var device = await repository.FindDeviceAsync(deviceId, cancellationToken);
@@ -202,13 +210,17 @@ public sealed class IdentityService(
         var now = clock.UtcNow;
         device.Revoke(now);
         await repository.RevokeAllDeviceSessionsAsync(deviceId, now, cancellationToken);
-        repository.Add(Audit(userId, deviceId, "DEVICE_REVOKE", "Device", deviceId.ToString(), "SUCCESS", now, requestId));
+        repository.Add(Audit(userId, deviceId, "DEVICE_REVOKE", "Device", deviceId.ToString(), "SUCCESS", now, requestId, actorType, actorOsUser));
         await repository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;
     }
 
-    public async Task<bool> UnlockUserAsync(string username, CancellationToken cancellationToken)
+    public async Task<bool> UnlockUserAsync(
+        string username,
+        CancellationToken cancellationToken,
+        AuditActorType actorType = AuditActorType.System,
+        string? actorOsUser = null)
     {
         await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         var user = await repository.FindUserAsync(UsernameNormalizer.Normalize(username), cancellationToken);
@@ -219,7 +231,7 @@ public sealed class IdentityService(
 
         var now = clock.UtcNow;
         user.Unlock(now);
-        repository.Add(Audit(user.Id, null, "USER_UNLOCK", "User", user.Id.ToString(), "SUCCESS", now));
+        repository.Add(Audit(user.Id, null, "USER_UNLOCK", "User", user.Id.ToString(), "SUCCESS", now, actorType: actorType, actorOsUser: actorOsUser));
         await repository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;
@@ -273,6 +285,7 @@ public sealed class IdentityService(
         Guid userId,
         Guid deviceId,
         Guid familyId,
+        UserRole role,
         DateTimeOffset now,
         out RefreshSession session)
     {
@@ -286,7 +299,7 @@ public sealed class IdentityService(
             refreshTokens.Hash(refreshToken),
             refreshExpiresAt,
             now);
-        var accessToken = accessTokens.Issue(userId, deviceId, familyId, now);
+        var accessToken = accessTokens.Issue(userId, deviceId, familyId, role, now);
         return new TokenPair(deviceId, accessToken.Value, refreshToken, accessToken.ExpiresAt, refreshExpiresAt);
     }
 
@@ -315,6 +328,8 @@ public sealed class IdentityService(
         string? targetId,
         string result,
         DateTimeOffset now,
-        string? requestId = null) =>
-        new(Guid.NewGuid(), userId, deviceId, null, action, targetType, targetId, result, requestId, now);
+        string? requestId = null,
+        AuditActorType? actorType = null,
+        string? actorOsUser = null) =>
+        new(Guid.NewGuid(), userId, deviceId, actorOsUser, action, targetType, targetId, result, requestId, now, actorType);
 }

@@ -16,7 +16,10 @@ public sealed class FileOperation
         string? targetRelativePath,
         long? expectedSize,
         string? expectedSha256,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        Guid? actorDeviceId = null,
+        string? requestId = null,
+        string? trigger = null)
     {
         Id = id;
         OwnerUserId = ownerUserId;
@@ -27,6 +30,9 @@ public sealed class FileOperation
         TargetRelativePath = targetRelativePath;
         ExpectedSize = expectedSize;
         ExpectedSha256 = expectedSha256;
+        ActorDeviceId = actorDeviceId;
+        RequestId = requestId;
+        Trigger = trigger;
         Status = FileOperationStatus.Pending;
         CreatedAt = now;
         UpdatedAt = now;
@@ -41,6 +47,12 @@ public sealed class FileOperation
     public string? IdempotencyKey { get; private set; }
 
     public Guid? FileEntryId { get; private set; }
+
+    public Guid? ActorDeviceId { get; private set; }
+
+    public string? RequestId { get; private set; }
+
+    public string? Trigger { get; private set; }
 
     public string? SourceRelativePath { get; private set; }
 

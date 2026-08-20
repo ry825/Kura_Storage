@@ -335,7 +335,7 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
 
     private sealed class AvailableStorageGuard : IStorageGuard
     {
-        public Task<StorageStatus> InspectAsync(bool requireWrite, CancellationToken cancellationToken) =>
+        public Task<StorageStatus> InspectAsync(StorageIntent intent, CancellationToken cancellationToken) =>
             Task.FromResult(StorageStatus.Available);
     }
 

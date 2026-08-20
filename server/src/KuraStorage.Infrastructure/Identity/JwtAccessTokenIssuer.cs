@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Domain.Identity;
 using KuraStorage.Infrastructure.Configuration;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -20,7 +21,7 @@ public sealed class JwtAccessTokenIssuer : IAccessTokenIssuer, IDisposable
         signingKey.ImportFromPem(File.ReadAllText(this.options.JwtSigningKeyFile));
     }
 
-    public AccessToken Issue(Guid userId, Guid deviceId, Guid sessionFamilyId, DateTimeOffset now)
+    public AccessToken Issue(Guid userId, Guid deviceId, Guid sessionFamilyId, UserRole role, DateTimeOffset now)
     {
         var expiresAt = now.AddMinutes(options.AccessTokenMinutes);
         var descriptor = new SecurityTokenDescriptor
@@ -30,6 +31,7 @@ public sealed class JwtAccessTokenIssuer : IAccessTokenIssuer, IDisposable
                 new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
                 new Claim("device_id", deviceId.ToString()),
                 new Claim("session_family_id", sessionFamilyId.ToString()),
+                new Claim("role", role.ToString().ToUpperInvariant()),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             ]),
             Issuer = options.JwtIssuer,

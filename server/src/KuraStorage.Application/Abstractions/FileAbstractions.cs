@@ -1,5 +1,6 @@
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Audit;
+using KuraStorage.Application.Files;
 
 namespace KuraStorage.Application.Abstractions;
 
@@ -32,6 +33,12 @@ public interface IFileRepository
         CancellationToken cancellationToken);
 
     Task<bool> IsRelocationBlockedAsync(
+        Guid ownerUserId,
+        Guid entryId,
+        string relativePath,
+        CancellationToken cancellationToken);
+
+    Task<bool> HasIncompleteOperationAsync(
         Guid ownerUserId,
         Guid entryId,
         string relativePath,
@@ -70,6 +77,10 @@ public interface IFileRepository
 
     Task<IReadOnlyList<FileOperation>> ListIncompleteOperationsAsync(CancellationToken cancellationToken);
 
+    void Remove(FileEntry entry);
+
+    void RemoveRange(IEnumerable<FileEntry> entries);
+
     void Add(FileEntry entry);
 
     void Add(FileOperation operation);
@@ -102,9 +113,20 @@ public interface IFileStore
 
     Task DeleteIfExistsAsync(RelativeStoragePath path, CancellationToken cancellationToken);
 
+    Task DeleteTreeIfExistsAsync(RelativeStoragePath path, CancellationToken cancellationToken);
+
     Task<bool> ExistsAsync(RelativeStoragePath path, bool directory, CancellationToken cancellationToken);
 
     Task<Stream> OpenReadAsync(RelativeStoragePath path, CancellationToken cancellationToken);
+}
+
+public interface IPermanentDeleteParticipant
+{
+    Task<IReadOnlyList<RelativeStoragePath>> ListPhysicalArtifactsAsync(
+        PermanentDeleteTarget target,
+        CancellationToken cancellationToken);
+
+    Task DeleteManagementDataAsync(PermanentDeleteTarget target, CancellationToken cancellationToken);
 }
 
 public sealed record StoredUpload(RelativeStoragePath Path, long Size, string Sha256);

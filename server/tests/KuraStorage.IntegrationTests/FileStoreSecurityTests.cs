@@ -176,6 +176,126 @@ public sealed class FileStoreSecurityTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task DeleteTreeIfExists_TrashContainer_DeletesNestedTreeAndIsIdempotent()
+    {
+        Directory.CreateDirectory(directory);
+        var owner = Guid.NewGuid();
+        var rootId = Guid.NewGuid();
+        var store = CreateStore();
+        await store.EnsureUserAreaAsync(owner, CancellationToken.None);
+        var container = Path.Combine(directory, "users", owner.ToString("N"), "trash", rootId.ToString("N"));
+        Directory.CreateDirectory(Path.Combine(container, "folder", "nested"));
+        await File.WriteAllTextAsync(Path.Combine(container, "folder", "nested", "file.txt"), "value");
+        var relative = RelativeStoragePath.Create($"users/{owner:N}/trash/{rootId:N}");
+
+        await store.DeleteTreeIfExistsAsync(relative, CancellationToken.None);
+        await store.DeleteTreeIfExistsAsync(relative, CancellationToken.None);
+
+        Assert.False(Directory.Exists(container));
+    }
+
+    [Theory]
+    [InlineData("users/11111111111111111111111111111111")]
+    [InlineData("users/11111111111111111111111111111111/trash")]
+    [InlineData("users/11111111111111111111111111111111/files")]
+    public async Task DeleteTreeIfExists_ManagementRoot_IsRejected(string path)
+    {
+        Directory.CreateDirectory(directory);
+        await Assert.ThrowsAsync<KuraStorage.Application.Files.UnsafeStorageTreeException>(
+            () => CreateStore().DeleteTreeIfExistsAsync(RelativeStoragePath.Create(path), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task DeleteTreeIfExists_WhenTargetIsSymbolicLink_RejectsWithoutFollowingIt()
+    {
+        Directory.CreateDirectory(directory);
+        var outside = Path.Combine(Path.GetTempPath(), $"kurastorage-delete-target-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outside);
+        try
+        {
+            var owner = Guid.NewGuid();
+            var rootId = Guid.NewGuid();
+            var store = CreateStore();
+            await store.EnsureUserAreaAsync(owner, CancellationToken.None);
+            await File.WriteAllTextAsync(Path.Combine(outside, "keep.txt"), "keep");
+            Directory.CreateSymbolicLink(
+                Path.Combine(directory, "users", owner.ToString("N"), "trash", rootId.ToString("N")),
+                outside);
+
+            await Assert.ThrowsAsync<KuraStorage.Application.Files.UnsafeStorageTreeException>(
+                () => store.DeleteTreeIfExistsAsync(
+                    RelativeStoragePath.Create($"users/{owner:N}/trash/{rootId:N}"),
+                    CancellationToken.None));
+
+            Assert.True(File.Exists(Path.Combine(outside, "keep.txt")));
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteTreeIfExists_WhenAncestorIsSymbolicLink_RejectsWithoutFollowingIt()
+    {
+        Directory.CreateDirectory(directory);
+        var outside = Path.Combine(Path.GetTempPath(), $"kurastorage-delete-ancestor-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outside);
+        try
+        {
+            var owner = Guid.NewGuid();
+            var rootId = Guid.NewGuid();
+            var userRoot = Path.Combine(directory, "users", owner.ToString("N"));
+            Directory.CreateDirectory(userRoot);
+            Directory.CreateSymbolicLink(Path.Combine(userRoot, "trash"), outside);
+            var target = Path.Combine(outside, rootId.ToString("N"));
+            Directory.CreateDirectory(target);
+            await File.WriteAllTextAsync(Path.Combine(target, "keep.txt"), "keep");
+
+            await Assert.ThrowsAsync<KuraStorage.Application.Files.UnsafeStorageTreeException>(
+                () => CreateStore().DeleteTreeIfExistsAsync(
+                    RelativeStoragePath.Create($"users/{owner:N}/trash/{rootId:N}"),
+                    CancellationToken.None));
+
+            Assert.True(File.Exists(Path.Combine(target, "keep.txt")));
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteTreeIfExists_WhenDescendantIsSymbolicLink_RejectsWithoutFollowingIt()
+    {
+        Directory.CreateDirectory(directory);
+        var outside = Path.Combine(Path.GetTempPath(), $"kurastorage-delete-outside-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outside);
+        try
+        {
+            var owner = Guid.NewGuid();
+            var rootId = Guid.NewGuid();
+            var store = CreateStore();
+            await store.EnsureUserAreaAsync(owner, CancellationToken.None);
+            var container = Path.Combine(directory, "users", owner.ToString("N"), "trash", rootId.ToString("N"));
+            Directory.CreateDirectory(container);
+            await File.WriteAllTextAsync(Path.Combine(outside, "keep.txt"), "keep");
+            Directory.CreateSymbolicLink(Path.Combine(container, "linked"), outside);
+
+            await Assert.ThrowsAsync<KuraStorage.Application.Files.UnsafeStorageTreeException>(
+                () => store.DeleteTreeIfExistsAsync(
+                    RelativeStoragePath.Create($"users/{owner:N}/trash/{rootId:N}"),
+                    CancellationToken.None));
+
+            Assert.True(File.Exists(Path.Combine(outside, "keep.txt")));
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(directory))

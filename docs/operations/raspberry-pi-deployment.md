@@ -133,6 +133,22 @@ sudo --preserve-env=KURASTORAGE_STORAGE_MOUNT_PATH,KURASTORAGE_STORAGE_ROOT,KURA
 
 ## Upgrade and rollback
 
+Before an upgrade or rollback that includes the permanent-delete migration,
+stop the API and inspect unresolved purge journals without selecting file names
+or paths:
+
+```sql
+SELECT id, owner_user_id, file_entry_id, status, error_code, updated_at
+FROM file_operations
+WHERE operation_type = 'PURGE' AND status <> 'COMPLETED'
+ORDER BY updated_at, id;
+```
+
+Do not roll the schema back while this query returns rows. Restart the matching
+API release so startup recovery can finish `PENDING` or `FILESYSTEM_DONE`
+operations; investigate `RECOVERY_REQUIRED` without manually deleting catalog
+rows or storage paths.
+
 For an upgrade, use a new version and artifact in the protected configuration:
 
 ```bash

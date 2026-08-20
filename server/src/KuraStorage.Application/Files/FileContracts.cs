@@ -1,3 +1,5 @@
+using KuraStorage.Domain.Files;
+
 namespace KuraStorage.Application.Files;
 
 public sealed record FileItem(
@@ -10,6 +12,7 @@ public sealed record FileItem(
     string Status,
     long FileVersion,
     DateTimeOffset? TrashedAt,
+    DateTimeOffset? PurgeEligibleAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
 
@@ -42,6 +45,37 @@ public sealed record MoveFileCommand(
     Guid FileEntryId,
     Guid TargetParentId,
     string RequestId);
+
+public enum PurgeTrigger
+{
+    User,
+    RetentionWorker,
+}
+
+public sealed record PurgeFileCommand(
+    Guid OwnerUserId,
+    Guid? ActorDeviceId,
+    Guid FileEntryId,
+    string IdempotencyKey,
+    string RequestId,
+    PurgeTrigger Trigger = PurgeTrigger.User);
+
+public sealed record PermanentDeleteTarget(
+    Guid RootId,
+    Guid OwnerUserId,
+    string EntryType,
+    RelativeStoragePath TrashContainer,
+    IReadOnlyList<Guid> DescendantIds,
+    long TotalSize);
+
+public sealed class TrashPurgeOptions
+{
+    public const string SectionName = "TrashPurge";
+    public const int MinimumRetentionDays = 30;
+    public int RetentionDays { get; init; } = 30;
+}
+
+public sealed class UnsafeStorageTreeException(string message) : IOException(message);
 
 public sealed record DownloadFile(FileItem Item, Stream Content);
 

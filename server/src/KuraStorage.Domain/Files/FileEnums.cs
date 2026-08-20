@@ -20,6 +20,7 @@ public enum FileOperationType
     Restore,
     Rename,
     Move,
+    Purge,
 }
 
 public enum FileOperationStatus

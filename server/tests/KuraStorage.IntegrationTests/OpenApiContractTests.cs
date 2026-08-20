@@ -19,6 +19,7 @@ public sealed class OpenApiContractTests
             "  /files/{fileId}:",
             "  /files/{fileId}/content:",
             "  /trash:",
+            "  /trash/{fileId}:",
             "  /files/{fileId}/restore:",
         })
         {
@@ -34,6 +35,8 @@ public sealed class OpenApiContractTests
         Assert.Contains("RECOVERY_REQUIRED", contract, StringComparison.Ordinal);
         Assert.Contains("RANGE_NOT_SATISFIABLE", contract, StringComparison.Ordinal);
         Assert.Contains("IDEMPOTENCY_CONFLICT", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: permanentlyDeleteTrashEntry", contract, StringComparison.Ordinal);
+        Assert.Contains("purgeEligibleAt:", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("ownerUserId:", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("relativePath:", contract, StringComparison.Ordinal);
     }

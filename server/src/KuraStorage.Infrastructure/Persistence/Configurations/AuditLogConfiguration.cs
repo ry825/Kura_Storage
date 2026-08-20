@@ -12,6 +12,11 @@ public sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         builder.HasKey(log => log.Id);
         builder.Property(log => log.Id).HasColumnName("id");
         builder.Property(log => log.ActorUserId).HasColumnName("actor_user_id");
+        builder.Property(log => log.ActorType)
+            .HasColumnName("actor_type")
+            .HasConversion(value => ToDatabase(value), value => Enum.Parse<AuditActorType>(value.Replace("_", string.Empty), true))
+            .HasMaxLength(32)
+            .HasDefaultValue(AuditActorType.System);
         builder.Property(log => log.ActorDeviceId).HasColumnName("actor_device_id");
         builder.Property(log => log.ActorOsUser).HasColumnName("actor_os_user").HasMaxLength(128);
         builder.Property(log => log.Action).HasColumnName("action").HasMaxLength(128);
@@ -22,5 +27,17 @@ public sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         builder.Property(log => log.CreatedAt).HasColumnName("created_at");
         builder.HasIndex(log => log.CreatedAt);
         builder.HasIndex(log => new { log.ActorUserId, log.CreatedAt });
+        builder.HasIndex(log => new { log.Action, log.TargetId, log.ResultCode })
+            .IsUnique()
+            .HasFilter("\"action\" IN ('FILE_PURGE_MANUAL', 'FILE_PURGE_RETENTION') AND \"result_code\" = 'SUCCESS'")
+            .HasDatabaseName("ux_audit_logs_purge_success");
     }
+
+    private static string ToDatabase(AuditActorType value) => value switch
+    {
+        AuditActorType.UserDevice => "USER_DEVICE",
+        AuditActorType.SystemWorker => "SYSTEM_WORKER",
+        AuditActorType.AdminCli => "ADMIN_CLI",
+        _ => "SYSTEM",
+    };
 }

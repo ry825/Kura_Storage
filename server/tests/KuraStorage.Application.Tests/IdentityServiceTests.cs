@@ -196,7 +196,7 @@ public sealed class IdentityServiceTests
 
     private sealed class FakeAccessTokenIssuer : IAccessTokenIssuer
     {
-        public AccessToken Issue(Guid userId, Guid deviceId, Guid sessionFamilyId, DateTimeOffset now) =>
+        public AccessToken Issue(Guid userId, Guid deviceId, Guid sessionFamilyId, UserRole role, DateTimeOffset now) =>
             new($"access-{userId}-{deviceId}-{sessionFamilyId}", now.AddMinutes(15));
     }
 
