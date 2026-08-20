@@ -233,12 +233,12 @@
 
 ### 1.11 Pull Request完了
 
-- [ ] PR1が完了している。
+- [x] PR1が完了している。
   - [x] 1.1〜1.10がすべて`[x]`である。
-  - [ ] 共通Pull Request完了手順をすべて実施する。
-  - [ ] PR1完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
-  - [ ] 完了記録CommitがPR1へ反映されている。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+  - [x] 共通Pull Request完了手順をすべて実施する。
+  - [x] PR1完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
+  - [x] 完了記録CommitがPR1へ反映されている。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -621,15 +621,15 @@
 
 ### PR1: Server完全削除・復旧・API契約
 
-- 完了日:
-- Pull Request:
-- 主な変更:
-- 実施した自動Test・Build・静的解析:
-- 実施した手動・結合・障害確認:
-- 計画と実装の差分:
-- 実装中に追加したタスクと理由:
-- 技術的に不要になったタスク、理由、代替実装:
-- PR2への引継ぎ事項:
+- 完了日: 2026-08-20
+- Pull Request: [#11 Add recoverable permanent deletion for trash](https://github.com/ry825/Kura_Storage/pull/11)
+- 主な変更: 手動完全削除API、Purge Journal・advisory lock・隔離・復旧、関連管理情報Participant境界、安全な再帰削除、Storage Intent、最小監査、Actor種別、Role Claim・Admin Policy、Migration、`purgeEligibleAt`、OpenAPI・Fixture・正式文書を追加・更新した。
+- 実施した自動Test・Build・静的解析: `verify-config.sh`、`verify-server.sh`（Domain 17件、Application 20件、Integration 46件）、`verify-security.sh`、`verify-android.sh`（656 tasks）、EF Core pending model changes確認、`git diff --check`が成功した。GitHub ActionsのConfig、Server、Security、Androidも実装Commit `2a464bd`で成功した。
+- 実施した手動・結合・障害確認: API用HttpClient、PostgreSQL Testcontainers、一時実Filesystemを組み合わせ、File・配下Folderの完全削除、204、DB・Audit・Operation、冪等再送、Key競合、Restore競合、容量閾値以下のDelete、物理削除後DB・監査失敗からのRecovery、管理RootおよびTarget・Ancestor・Descendant symlink拒否を確認した。
+- 計画と実装の差分: PR1の範囲変更はない。Android既存契約互換のため、nullable `purgeEligibleAt`は既存必須引数の後ろへ追加した。EF Coreが同一列の複数Indexをモデル化しないため、Snapshotは新しい部分Unique Indexをモデル化し、既存非Unique IndexはDB上で維持する構成とした。
+- 実装中に追加したタスクと理由: 追加なし。セルフレビューでTarget・Ancestor symlinkの例外分類差を検出したため、計画済みのsymlink安全境界内で専用例外化と実Filesystem Testを補強した。
+- 技術的に不要になったタスク、理由、代替実装: 取消なし。Schema棚卸しでShare、Sync、Recent、Backup Receipt、Derivative等は未実装と確認できたため、計画どおり空Table・空Featureを作らず、将来拡張用Participant契約と開発規則を実装した。
+- PR2への引継ぎ事項: PR1 Migration適用後、共有`TrashPurgeOptions`と`TrashPurgeService`の`RetentionWorker` triggerを用いて30日Workerを実装する。Worker候補はTrash Rootだけを取得し、Serviceのlock内で期限・状態を再検証する。容量状態・Run履歴・systemd・運用検証はPR2で追加し、PR1をMergeするまでPR2を開始しない。
 
 ### PR2: 30日Worker・容量管理・運用配置
 
