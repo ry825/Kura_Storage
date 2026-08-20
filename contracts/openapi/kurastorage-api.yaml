@@ -449,6 +449,31 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /trash/{fileId}:
+    parameters:
+      - $ref: "#/components/parameters/FileId"
+    delete:
+      tags: [Trash]
+      operationId: permanentlyDeleteTrashEntry
+      summary: Permanently delete an owned trash root and all descendants
+      description: >-
+        The operation is irreversible. Reusing the same Idempotency-Key for the same entry
+        returns the completed result; reusing it for another entry returns IDEMPOTENCY_CONFLICT.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "204":
+          description: The entry was permanently deleted, or the same request already completed.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /files/{fileId}/restore:
     parameters:
       - $ref: "#/components/parameters/FileId"
@@ -680,7 +705,7 @@ components:
     FileEntry:
       type: object
       additionalProperties: false
-      required: [id, name, entryType, size, status, fileVersion, createdAt, updatedAt]
+      required: [id, name, entryType, size, status, fileVersion, trashedAt, purgeEligibleAt, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -707,6 +732,10 @@ components:
         trashedAt:
           type: [string, "null"]
           format: date-time
+        purgeEligibleAt:
+          type: [string, "null"]
+          format: date-time
+          description: Server-computed retention deadline for a trashed root; null otherwise.
         createdAt:
           type: string
           format: date-time

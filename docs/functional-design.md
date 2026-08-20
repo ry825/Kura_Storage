@@ -1849,6 +1849,7 @@ Upload Session、Chunk範囲管理、端末をまたぐ再開はMVP完成後に�
 - `POST /api/v1/folders`
 - `DELETE /api/v1/files/{fileId}`: ゴミ箱へ移動
 - `GET /api/v1/trash`: 認証Userのゴミ箱一覧
+- `DELETE /api/v1/trash/{fileId}`: 認証User所有のTrash Rootを完全削除
 - `POST /api/v1/files/{fileId}/restore`
 - `PATCH /api/v1/files/{fileId}`: `name`または`parentId`の一方だけで名前変更または移動
 
@@ -1858,7 +1859,9 @@ Requestは`UpdateFileRequest { name?, parentId? }`とし、両方指定・両方
 
 Rename・Move・Trash・Restoreは、対象、source親、target親のGUIDから安定した64-bit keyを導出し、昇順にPostgreSQL advisory lockを取得する。HDD変更前に`FileOperation(PENDING)`を永続化し、atomic rename後に`FILESYSTEM_DONE`、FileEntry・子孫Path・成功監査と同じDB Transactionで`COMPLETED`へ進める。未完了Rename・Moveの対象と子孫は一覧から除外し、詳細・Download・追加変更を`RECOVERY_REQUIRED`で拒否する。
 
-完全削除、保持期限、自動清掃、`MISSING`削除はMVP後とする。復元先に同名項目がある場合は`409 FILE_RESTORE_CONFLICT`とし、既存項目を上書きしない。
+手動完全削除は必須のUUID形式`Idempotency-Key`を受け、同一User・Key・Targetの完了済み再送へ`204`、別Targetへの再利用へ`409 IDEMPOTENCY_CONFLICT`を返す。他User、`ACTIVE`、Root、存在しない対象は`404 FILE_NOT_FOUND`へ統一する。Purgeは対象lock内で再検証し、`FileOperation(PURGE, PENDING)`、関連ArtifactとTrash Containerの冪等削除、`FILESYSTEM_DONE`、関連管理情報・子孫・Root・成功監査・`COMPLETED`の単一DB Transactionの順で進める。未完了Purge対象はTrash一覧とRestoreから隔離する。
+
+`FileEntry.purgeEligibleAt`はTrash Rootだけに設定し、Serverが`trashedAt + TrashPurge.RetentionDays`をUTCで計算する。`ACTIVE`とTrash子孫は`null`とする。自動清掃と容量管理は後続実装とし、復元先に同名項目がある場合は`409 FILE_RESTORE_CONFLICT`として既存項目を上書きしない。
 
 ### 8.10 MVP後: 共有
 

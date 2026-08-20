@@ -18,6 +18,9 @@ public sealed class FileOperationConfiguration : IEntityTypeConfiguration<FileOp
             .HasMaxLength(32);
         builder.Property(operation => operation.IdempotencyKey).HasColumnName("idempotency_key").HasMaxLength(128);
         builder.Property(operation => operation.FileEntryId).HasColumnName("file_entry_id");
+        builder.Property(operation => operation.ActorDeviceId).HasColumnName("actor_device_id");
+        builder.Property(operation => operation.RequestId).HasColumnName("request_id").HasMaxLength(128);
+        builder.Property(operation => operation.Trigger).HasColumnName("trigger").HasMaxLength(32);
         builder.Property(operation => operation.SourceRelativePath).HasColumnName("source_relative_path").HasMaxLength(2048);
         builder.Property(operation => operation.TargetRelativePath).HasColumnName("target_relative_path").HasMaxLength(2048);
         builder.Property(operation => operation.ExpectedSize).HasColumnName("expected_size");
@@ -41,5 +44,9 @@ public sealed class FileOperationConfiguration : IEntityTypeConfiguration<FileOp
             .HasDatabaseName("ux_file_operations_owner_idempotency_key");
         builder.HasIndex(operation => new { operation.Status, operation.UpdatedAt })
             .HasDatabaseName("ix_file_operations_status_updated_at");
+        builder.HasIndex(operation => operation.FileEntryId)
+            .IsUnique()
+            .HasFilter("\"operation_type\" = 'PURGE' AND \"status\" IN ('PENDING', 'FILESYSTEM_DONE', 'RECOVERY_REQUIRED')")
+            .HasDatabaseName("ux_file_operations_incomplete_purge_target");
     }
 }

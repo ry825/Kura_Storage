@@ -1135,7 +1135,12 @@ Worker本体、最大割当、画像処理、将来のLibrary差分を含む余�
 
 - 元の相対パスと名前を保持する。
 - 復元時の同名競合は上書きせず`FILE_RESTORE_CONFLICT`を返す。
-- MVPは保持期限、自動清掃、完全削除を提供しない。30日保持とPurge WorkerはMVP後に別途設計する。
+- Phase 1拡張の手動PurgeはTrash RootをAggregate Rootとし、配下`FileEntry`と`users/<owner>/trash/<root-id>` Containerを同じ削除対象にする。
+- `FileOperation(PURGE)`は削除後も`FileEntry`への外部キーを持たず、物理削除後のDB確定を復旧できる。
+- 関連機能は`IPermanentDeleteParticipant`で物理Artifact列挙とDB管理情報削除へ参加し、DB PhaseはFile catalog削除・成功監査と同じTransactionに含める。未実装機能の空Tableは追加しない。
+- Purge、Restore、Rename、Moveは対象ID由来の同じPostgreSQL advisory lockを使う。未完了Purgeと`RECOVERY_REQUIRED`は通常操作から隔離する。
+- 監査は`AuditActorType`と`FILE_PURGE_MANUAL` / `FILE_PURGE_RETENTION`を使用し、対象名・相対Path・絶対Path・Size・内容を保存しない。
+- 保持期間は`TrashPurge.RetentionDays`（既定30、下限30）で、`purgeEligibleAt`をServer計算する。日次Purge Workerは後続PRで独立Hostとして追加する。
 
 ### 15.4 MVP後: Resumable Upload Session
 

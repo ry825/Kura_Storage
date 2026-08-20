@@ -49,6 +49,7 @@ builder.Services
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero,
             NameClaimType = JwtRegisteredClaimNames.Sub,
+            RoleClaimType = "role",
         };
         options.Events = new JwtBearerEvents
         {
@@ -90,6 +91,7 @@ builder.Services
     });
 builder.Services.AddAuthorization(options =>
 {
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("ADMIN"));
     options.FallbackPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
@@ -118,7 +120,7 @@ app.MapGet(
         "/api/v1/system/health",
         async (IStorageGuard storageGuard, CancellationToken cancellationToken) =>
         {
-            var storage = await storageGuard.InspectAsync(false, cancellationToken);
+            var storage = await storageGuard.InspectAsync(StorageIntent.Read, cancellationToken);
             return Results.Ok(new
             {
                 api = "AVAILABLE",
@@ -413,6 +415,37 @@ app.MapGet(
         return ToFileHttpResult(
             await files.ListTrashAsync(userId, page ?? 1, pageSize ?? 100, cancellationToken),
             context);
+    });
+
+app.MapDelete(
+    "/api/v1/trash/{fileId:guid}",
+    async (
+        Guid fileId,
+        HttpContext context,
+        TrashPurgeService trashPurge,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var idempotencyKey = context.Request.Headers["Idempotency-Key"].ToString();
+        if (!Guid.TryParse(idempotencyKey, out _))
+        {
+            return Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context);
+        }
+
+        var result = await trashPurge.PurgeAsync(
+            new PurgeFileCommand(
+                userId,
+                deviceId,
+                fileId,
+                idempotencyKey,
+                context.TraceIdentifier),
+            cancellationToken);
+        return result.IsSuccess ? Results.NoContent() : ToFileHttpResult(result, context);
     });
 
 app.MapPost(

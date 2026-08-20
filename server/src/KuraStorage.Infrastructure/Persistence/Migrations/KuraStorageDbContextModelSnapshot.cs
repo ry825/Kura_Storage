@@ -45,6 +45,14 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("actor_os_user");
 
+                    b.Property<string>("ActorType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("SYSTEM")
+                        .HasColumnName("actor_type");
+
                     b.Property<Guid?>("ActorUserId")
                         .HasColumnType("uuid")
                         .HasColumnName("actor_user_id");
@@ -79,6 +87,11 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedAt");
 
                     b.HasIndex("ActorUserId", "CreatedAt");
+
+                    b.HasIndex("Action", "TargetId", "ResultCode")
+                        .IsUnique()
+                        .HasDatabaseName("ux_audit_logs_purge_success")
+                        .HasFilter("\"action\" IN ('FILE_PURGE_MANUAL', 'FILE_PURGE_RETENTION') AND \"result_code\" = 'SUCCESS'");
 
                     b.ToTable("audit_logs", (string)null);
                 });
@@ -178,6 +191,9 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
                     b.HasIndex("OwnerUserId", "ParentId", "Status", "UpdatedAt")
                         .HasDatabaseName("ix_file_entries_owner_parent_status_updated_at");
 
+                    b.HasIndex("Status", "ParentId", "TrashedAt", "Id")
+                        .HasDatabaseName("ix_file_entries_trash_purge_candidates");
+
                     b.ToTable("file_entries", null, t =>
                         {
                             t.HasCheckConstraint("ck_file_entries_file_version_positive", "\"file_version\" >= 1");
@@ -192,6 +208,10 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<Guid?>("ActorDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_device_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -230,6 +250,11 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("owner_user_id");
 
+                    b.Property<string>("RequestId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("request_id");
+
                     b.Property<string>("SourceRelativePath")
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)")
@@ -246,6 +271,11 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(2048)")
                         .HasColumnName("target_relative_path");
 
+                    b.Property<string>("Trigger")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("trigger");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -253,7 +283,9 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("FileEntryId")
-                        .HasDatabaseName("ix_file_operations_file_entry_id");
+                        .IsUnique()
+                        .HasDatabaseName("ux_file_operations_incomplete_purge_target")
+                        .HasFilter("\"operation_type\" = 'PURGE' AND \"status\" IN ('PENDING', 'FILESYSTEM_DONE', 'RECOVERY_REQUIRED')");
 
                     b.HasIndex("OwnerUserId", "IdempotencyKey")
                         .IsUnique()

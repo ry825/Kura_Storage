@@ -26,7 +26,7 @@ public interface IRefreshTokenService
 
 public interface IAccessTokenIssuer
 {
-    AccessToken Issue(Guid userId, Guid deviceId, Guid sessionFamilyId, DateTimeOffset now);
+    AccessToken Issue(Guid userId, Guid deviceId, Guid sessionFamilyId, UserRole role, DateTimeOffset now);
 }
 
 public sealed record AccessToken(string Value, DateTimeOffset ExpiresAt);
@@ -75,7 +75,14 @@ public interface IIdentityRepository
 
 public interface IStorageGuard
 {
-    Task<StorageStatus> InspectAsync(bool requireWrite, CancellationToken cancellationToken);
+    Task<StorageStatus> InspectAsync(StorageIntent intent, CancellationToken cancellationToken);
+}
+
+public enum StorageIntent
+{
+    Read,
+    CreateOrUpdate,
+    Delete,
 }
 
 public enum StorageStatus

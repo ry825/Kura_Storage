@@ -38,7 +38,7 @@ public sealed class StorageGuardTests
                     MinimumFreeBytes = 1,
                 }));
 
-        var result = await guard.InspectAsync(true, CancellationToken.None);
+        var result = await guard.InspectAsync(StorageIntent.CreateOrUpdate, CancellationToken.None);
 
         Assert.Equal(StorageStatus.Unavailable, result);
         Assert.False(Directory.Exists(root));

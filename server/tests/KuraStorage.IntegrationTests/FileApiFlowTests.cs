@@ -9,8 +9,11 @@ using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Identity;
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Audit;
 using KuraStorage.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace KuraStorage.IntegrationTests;
@@ -18,6 +21,187 @@ namespace KuraStorage.IntegrationTests;
 public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
     : IClassFixture<PostgreSqlAuthFlowFixture>
 {
+    [Fact]
+    public async Task AdminOnlyPolicy_RequiresAdminRole()
+    {
+        var provider = fixture.Factory.Services.GetRequiredService<IAuthorizationPolicyProvider>();
+        var policy = await provider.GetPolicyAsync("AdminOnly");
+        var roles = Assert.Single(policy!.Requirements.OfType<RolesAuthorizationRequirement>());
+        Assert.Equal(["ADMIN"], roles.AllowedRoles);
+    }
+
+    [Fact]
+    public async Task PermanentDelete_TrashedFolder_RemovesTreeAndKeepsOnlyJournalAndAudit()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("purge-owner", "purge-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var folder = await CreateFolderAsync(client, rootId, "DeleteMe");
+        var child = await UploadAsync(
+            client,
+            folder.Id,
+            "private.txt",
+            [1, 2, 3, 4],
+            Guid.NewGuid().ToString());
+        using (var trash = await client.DeleteAsync($"/api/v1/files/{folder.Id}"))
+        {
+            trash.EnsureSuccessStatusCode();
+            using var json = await JsonDocument.ParseAsync(await trash.Content.ReadAsStreamAsync());
+            var trashedAt = json.RootElement.GetProperty("trashedAt").GetDateTimeOffset();
+            Assert.Equal(trashedAt.AddDays(30), json.RootElement.GetProperty("purgeEligibleAt").GetDateTimeOffset());
+        }
+
+        var key = Guid.NewGuid().ToString();
+        using (var purge = await SendPurgeAsync(client, folder.Id, key))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, purge.StatusCode);
+        }
+        using (var repeated = await SendPurgeAsync(client, folder.Id, key))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, repeated.StatusCode);
+        }
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.False(await database.FileEntries.AnyAsync(entry => entry.Id == folder.Id || entry.Id == child.Id));
+            var operation = await database.FileOperations.SingleAsync(
+                candidate => candidate.FileEntryId == folder.Id && candidate.OperationType == FileOperationType.Purge);
+            Assert.Equal(FileOperationStatus.Completed, operation.Status);
+            var audit = await database.AuditLogs.SingleAsync(
+                candidate => candidate.TargetId == folder.Id.ToString() && candidate.Action == "FILE_PURGE_MANUAL" && candidate.ResultCode == "SUCCESS");
+            Assert.Equal(KuraStorage.Domain.Audit.AuditActorType.UserDevice, audit.ActorType);
+            Assert.DoesNotContain("DeleteMe", string.Join('|', audit.Action, audit.TargetId, audit.ResultCode, audit.RequestId));
+            var store = scope.ServiceProvider.GetRequiredService<IFileStore>();
+            Assert.False(await store.ExistsAsync(
+                RelativeStoragePath.Create($"users/{operation.OwnerUserId:N}/trash/{folder.Id:N}"),
+                true,
+                CancellationToken.None));
+        }
+
+        using var details = await client.GetAsync($"/api/v1/files/{folder.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, details.StatusCode);
+        using var restore = await client.PostAsync($"/api/v1/files/{folder.Id}/restore", null);
+        Assert.Equal(HttpStatusCode.NotFound, restore.StatusCode);
+        using var download = await client.GetAsync($"/api/v1/files/{child.Id}/content");
+        Assert.Equal(HttpStatusCode.NotFound, download.StatusCode);
+    }
+
+    [Fact]
+    public async Task PermanentDelete_WhenSuccessAuditCannotBeSaved_RollsBackCatalogAndRecoveryCompletes()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("purge-recovery", "purge-recovery-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var file = await UploadAsync(
+            client, rootId, "recover.bin", [8, 9], Guid.NewGuid().ToString());
+        using (var trash = await client.DeleteAsync($"/api/v1/files/{file.Id}"))
+        {
+            trash.EnsureSuccessStatusCode();
+        }
+
+        Guid conflictingAuditId;
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            conflictingAuditId = Guid.NewGuid();
+            database.AuditLogs.Add(
+                new AuditLog(
+                    conflictingAuditId,
+                    null,
+                    null,
+                    null,
+                    "FILE_PURGE_MANUAL",
+                    "FILE_ENTRY",
+                    file.Id.ToString(),
+                    "SUCCESS",
+                    "conflict",
+                    DateTimeOffset.UtcNow,
+                    AuditActorType.System));
+            await database.SaveChangesAsync();
+        }
+
+        using (var failed = await SendPurgeAsync(client, file.Id, Guid.NewGuid().ToString()))
+        {
+            Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
+        }
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.True(await database.FileEntries.AnyAsync(entry => entry.Id == file.Id));
+            var operation = await database.FileOperations.SingleAsync(
+                candidate => candidate.FileEntryId == file.Id && candidate.OperationType == FileOperationType.Purge);
+            Assert.Equal(FileOperationStatus.FilesystemDone, operation.Status);
+            database.AuditLogs.Remove(await database.AuditLogs.SingleAsync(audit => audit.Id == conflictingAuditId));
+            await database.SaveChangesAsync();
+        }
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<FileOperationRecoveryService>()
+                .RecoverAsync(CancellationToken.None);
+        }
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.False(await database.FileEntries.AnyAsync(entry => entry.Id == file.Id));
+            Assert.Equal(
+                FileOperationStatus.Completed,
+                await database.FileOperations
+                    .Where(operation => operation.FileEntryId == file.Id && operation.OperationType == FileOperationType.Purge)
+                    .Select(operation => operation.Status)
+                    .SingleAsync());
+            Assert.Single(
+                await database.AuditLogs
+                    .Where(audit => audit.TargetId == file.Id.ToString() && audit.Action == "FILE_PURGE_MANUAL" && audit.ResultCode == "SUCCESS")
+                    .ToListAsync());
+        }
+    }
+
+    [Fact]
+    public async Task PermanentDelete_ConcurrentDuplicateAndRestore_ConvergesWithoutDuplicateAudit()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("purge-parallel", "purge-parallel-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var file = await UploadAsync(
+            client, rootId, "parallel.bin", [7], Guid.NewGuid().ToString());
+        using (var trash = await client.DeleteAsync($"/api/v1/files/{file.Id}"))
+        {
+            trash.EnsureSuccessStatusCode();
+        }
+
+        var key = Guid.NewGuid().ToString();
+        var firstPurge = SendPurgeAsync(client, file.Id, key);
+        var secondPurge = SendPurgeAsync(client, file.Id, key);
+        var restore = client.PostAsync($"/api/v1/files/{file.Id}/restore", null);
+        var responses = await Task.WhenAll(firstPurge, secondPurge, restore).WaitAsync(TimeSpan.FromSeconds(10));
+        using var first = responses[0];
+        using var second = responses[1];
+        using var restored = responses[2];
+        Assert.Equal(first.StatusCode, second.StatusCode);
+        Assert.Contains(first.StatusCode, new[] { HttpStatusCode.NoContent, HttpStatusCode.NotFound });
+        Assert.Contains(restored.StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.NotFound, HttpStatusCode.Conflict });
+
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        var entry = await database.FileEntries.SingleOrDefaultAsync(candidate => candidate.Id == file.Id);
+        if (first.StatusCode == HttpStatusCode.NoContent)
+        {
+            Assert.Null(entry);
+            Assert.Single(
+                await database.AuditLogs
+                    .Where(audit => audit.TargetId == file.Id.ToString() && audit.Action == "FILE_PURGE_MANUAL" && audit.ResultCode == "SUCCESS")
+                    .ToListAsync());
+        }
+        else
+        {
+            Assert.Equal(FileEntryStatus.Active, entry?.Status);
+        }
+    }
+
     [Fact]
     public async Task FileFlow_WhenAuthenticated_StreamsListsRangesTrashesAndRestores()
     {
@@ -804,6 +988,13 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         response.EnsureSuccessStatusCode();
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
         return json.RootElement.GetProperty("parentId").GetGuid();
+    }
+
+    private static Task<HttpResponseMessage> SendPurgeAsync(HttpClient client, Guid fileId, string key)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/trash/{fileId}");
+        request.Headers.Add("Idempotency-Key", key);
+        return client.SendAsync(request);
     }
 
     private static async Task<TestFileItem> CreateFolderAsync(HttpClient client, Guid parentId, string name)

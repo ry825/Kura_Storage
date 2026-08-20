@@ -69,6 +69,18 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
                     relativePath.StartsWith(target.RelativePath + "/"),
                 cancellationToken);
 
+    public async Task<bool> HasIncompleteOperationAsync(
+        Guid ownerUserId,
+        Guid entryId,
+        string relativePath,
+        CancellationToken cancellationToken) =>
+        await IncompleteMutationTargets(ownerUserId)
+            .AnyAsync(
+                target => target.Id == entryId ||
+                    target.RelativePath.StartsWith(relativePath + "/") ||
+                    relativePath.StartsWith(target.RelativePath + "/"),
+                cancellationToken);
+
     public async Task<IFileMutationLock> AcquireMutationLocksAsync(
         IEnumerable<Guid> entryIds,
         CancellationToken cancellationToken)
@@ -158,7 +170,12 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
             .Where(entry =>
                 entry.OwnerUserId == ownerUserId &&
                 entry.Status == FileEntryStatus.Trashed &&
-                entry.ParentId == null)
+                entry.ParentId == null &&
+                !dbContext.FileOperations.Any(operation =>
+                    operation.OwnerUserId == ownerUserId &&
+                    operation.FileEntryId == entry.Id &&
+                    operation.OperationType == FileOperationType.Purge &&
+                    operation.Status != FileOperationStatus.Completed))
             .OrderByDescending(entry => entry.TrashedAt)
             .ThenBy(entry => entry.Id)
             .Skip(skip)
@@ -170,7 +187,12 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
             entry =>
                 entry.OwnerUserId == ownerUserId &&
                 entry.Status == FileEntryStatus.Trashed &&
-                entry.ParentId == null,
+                entry.ParentId == null &&
+                !dbContext.FileOperations.Any(operation =>
+                    operation.OwnerUserId == ownerUserId &&
+                    operation.FileEntryId == entry.Id &&
+                    operation.OperationType == FileOperationType.Purge &&
+                    operation.Status != FileOperationStatus.Completed),
             cancellationToken);
 
     public async Task<IReadOnlyList<FileEntry>> ListDescendantsAsync(
@@ -207,6 +229,10 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
 
     public void Add(AuditLog auditLog) => dbContext.AuditLogs.Add(auditLog);
 
+    public void Remove(FileEntry entry) => dbContext.FileEntries.Remove(entry);
+
+    public void RemoveRange(IEnumerable<FileEntry> entries) => dbContext.FileEntries.RemoveRange(entries);
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try
@@ -226,8 +252,19 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
         where
             operation.OwnerUserId == ownerUserId &&
             (operation.OperationType == FileOperationType.Rename ||
-             operation.OperationType == FileOperationType.Move) &&
+             operation.OperationType == FileOperationType.Move ||
+             operation.OperationType == FileOperationType.Purge) &&
             operation.Status != FileOperationStatus.Completed
+        select entry;
+
+    private IQueryable<FileEntry> IncompleteMutationTargets(Guid ownerUserId) =>
+        from operation in dbContext.FileOperations
+        join entry in dbContext.FileEntries on operation.FileEntryId equals entry.Id
+        where
+            operation.OwnerUserId == ownerUserId &&
+            operation.Status != FileOperationStatus.Completed &&
+            operation.OperationType != FileOperationType.Upload &&
+            operation.OperationType != FileOperationType.CreateFolder
         select entry;
 
     private static long ToAdvisoryLockKey(Guid id)

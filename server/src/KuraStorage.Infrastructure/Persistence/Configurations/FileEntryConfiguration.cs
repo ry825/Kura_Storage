@@ -59,5 +59,7 @@ public sealed class FileEntryConfiguration : IEntityTypeConfiguration<FileEntry>
             .HasDatabaseName("ux_file_entries_trashed_owner_path");
         builder.HasIndex(entry => new { entry.OwnerUserId, entry.ParentId, entry.Status, entry.UpdatedAt })
             .HasDatabaseName("ix_file_entries_owner_parent_status_updated_at");
+        builder.HasIndex(entry => new { entry.Status, entry.ParentId, entry.TrashedAt, entry.Id })
+            .HasDatabaseName("ix_file_entries_trash_purge_candidates");
     }
 }

@@ -8,7 +8,7 @@ public sealed class StorageGuard(IOptions<StorageOptions> options) : IStorageGua
 {
     private readonly StorageOptions options = options.Value;
 
-    public async Task<StorageStatus> InspectAsync(bool requireWrite, CancellationToken cancellationToken)
+    public async Task<StorageStatus> InspectAsync(StorageIntent intent, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsLinux() || !Path.IsPathFullyQualified(options.RootPath) || !Directory.Exists(options.RootPath))
         {
@@ -34,12 +34,13 @@ public sealed class StorageGuard(IOptions<StorageOptions> options) : IStorageGua
         }
 
         var drive = new DriveInfo(root);
-        if (!drive.IsReady || drive.AvailableFreeSpace < options.MinimumFreeBytes)
+        if (!drive.IsReady ||
+            (intent == StorageIntent.CreateOrUpdate && drive.AvailableFreeSpace < options.MinimumFreeBytes))
         {
             return StorageStatus.Unavailable;
         }
 
-        if (!requireWrite)
+        if (intent == StorageIntent.Read)
         {
             return StorageStatus.Available;
         }

@@ -8,18 +8,25 @@ public sealed class FileOperationRecoveryService(
     IFileRepository repository,
     IFileStore fileStore,
     IStorageGuard storageGuard,
+    TrashPurgeService trashPurge,
     ISystemClock clock)
 {
     public async Task RecoverAsync(CancellationToken cancellationToken)
     {
-        if (await storageGuard.InspectAsync(true, cancellationToken) != StorageStatus.Available)
-        {
-            return;
-        }
-
         var operations = await repository.ListIncompleteOperationsAsync(cancellationToken);
         foreach (var operation in operations)
         {
+            if (operation.OperationType == FileOperationType.Purge)
+            {
+                await trashPurge.RecoverAsync(operation, cancellationToken);
+                continue;
+            }
+
+            if (await storageGuard.InspectAsync(StorageIntent.CreateOrUpdate, cancellationToken) != StorageStatus.Available)
+            {
+                return;
+            }
+
             await RecoverOneAsync(operation, cancellationToken);
         }
     }

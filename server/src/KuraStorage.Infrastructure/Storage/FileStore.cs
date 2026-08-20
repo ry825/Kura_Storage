@@ -161,6 +161,26 @@ public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFil
         await Task.CompletedTask;
     }
 
+    public async Task DeleteTreeIfExistsAsync(RelativeStoragePath path, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureDeletableTree(path);
+        var resolved = Resolve(path, false, unsafeSymbolicLink: true);
+        EnsureNoSymbolicLink(resolved, unsafeTree: true);
+        if (File.Exists(resolved))
+        {
+            File.Delete(resolved);
+            return;
+        }
+
+        if (!Directory.Exists(resolved))
+        {
+            return;
+        }
+
+        await DeleteDirectoryAsync(resolved, cancellationToken);
+    }
+
     public async Task<bool> ExistsAsync(
         RelativeStoragePath path,
         bool directory,
@@ -191,7 +211,10 @@ public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFil
         return Task.FromResult(stream);
     }
 
-    private string Resolve(RelativeStoragePath relativePath, bool requireExisting)
+    private string Resolve(
+        RelativeStoragePath relativePath,
+        bool requireExisting,
+        bool unsafeSymbolicLink = false)
     {
         var candidate = Path.GetFullPath(
             Path.Combine(root, relativePath.Value.Replace('/', Path.DirectorySeparatorChar)));
@@ -201,18 +224,56 @@ public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFil
             throw new IOException("The storage path is outside the configured root.");
         }
 
-        EnsureNoSymbolicLink(requireExisting ? candidate : Path.GetDirectoryName(candidate)!);
+        EnsureNoSymbolicLink(
+            requireExisting ? candidate : Path.GetDirectoryName(candidate)!,
+            unsafeSymbolicLink);
         return candidate;
     }
 
-    private void EnsureNoSymbolicLink(string path)
+    private static void EnsureDeletableTree(RelativeStoragePath path)
+    {
+        var segments = path.Value.Split('/');
+        if (segments.Length < 4 ||
+            segments[0] is not ("users" or "derived") ||
+            (segments[0] == "users" && segments[2] is not ("trash" or "derived")))
+        {
+            throw new UnsafeStorageTreeException("The requested tree is a protected storage area.");
+        }
+    }
+
+    private async Task DeleteDirectoryAsync(string directory, CancellationToken cancellationToken)
+    {
+        EnsureNoSymbolicLink(directory);
+        foreach (var child in Directory.EnumerateFileSystemEntries(directory))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var attributes = File.GetAttributes(child);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new UnsafeStorageTreeException("Symbolic links are not allowed in deletion trees.");
+            }
+
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                await DeleteDirectoryAsync(child, cancellationToken);
+            }
+            else
+            {
+                File.Delete(child);
+            }
+        }
+
+        Directory.Delete(directory, false);
+    }
+
+    private void EnsureNoSymbolicLink(string path, bool unsafeTree = false)
     {
         var current = new DirectoryInfo(path);
         while (current.FullName.StartsWith(root, StringComparison.Ordinal))
         {
             if (current.Exists && current.LinkTarget is not null)
             {
-                throw new IOException("Symbolic links are not allowed in storage paths.");
+                ThrowSymbolicLink(unsafeTree);
             }
 
             if (string.Equals(current.FullName, root, StringComparison.Ordinal))
@@ -230,7 +291,17 @@ public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFil
 
         if (File.Exists(path) && new FileInfo(path).LinkTarget is not null)
         {
-            throw new IOException("Symbolic links are not allowed in storage paths.");
+            ThrowSymbolicLink(unsafeTree);
         }
+    }
+
+    private static void ThrowSymbolicLink(bool unsafeTree)
+    {
+        if (unsafeTree)
+        {
+            throw new UnsafeStorageTreeException("Symbolic links are not allowed in deletion trees.");
+        }
+
+        throw new IOException("Symbolic links are not allowed in storage paths.");
     }
 }

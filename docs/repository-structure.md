@@ -449,6 +449,8 @@ Login/
 - API Request/ResponseではなくApplication Contractを置く。
 - HandlerからDbContext、NpgsqlConnection、FileStream、Processを直接使用しない。
 - Module間の更新は公開Application Service/Commandを経由する。
+- 完全削除は`Files/TrashPurgeService.cs`へ置き、`IPermanentDeleteParticipant`、`IFileStore`、`IFileRepository`の境界を通す。APIやWorkerからDbContext・物理絶対Pathを直接扱わない。
+- PurgeのUnit TestはApplication Tests、PostgreSQL制約・Migration・実Filesystem・API契約はIntegration Testsへ配置する。
 - `Shared/`へ業務機能を置かない。
 
 ---

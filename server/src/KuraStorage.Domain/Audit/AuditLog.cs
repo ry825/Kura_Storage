@@ -1,5 +1,13 @@
 namespace KuraStorage.Domain.Audit;
 
+public enum AuditActorType
+{
+    System,
+    UserDevice,
+    SystemWorker,
+    AdminCli,
+}
+
 public sealed class AuditLog
 {
     private AuditLog()
@@ -16,7 +24,8 @@ public sealed class AuditLog
         string? targetId,
         string resultCode,
         string? requestId,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        AuditActorType? actorType = null)
     {
         Id = id;
         ActorUserId = actorUserId;
@@ -28,11 +37,14 @@ public sealed class AuditLog
         ResultCode = resultCode;
         RequestId = requestId;
         CreatedAt = createdAt;
+        ActorType = actorType ?? InferActorType(actorUserId, actorDeviceId, actorOsUser);
     }
 
     public Guid Id { get; private set; }
 
     public Guid? ActorUserId { get; private set; }
+
+    public AuditActorType ActorType { get; private set; }
 
     public Guid? ActorDeviceId { get; private set; }
 
@@ -49,4 +61,11 @@ public sealed class AuditLog
     public string? RequestId { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    private static AuditActorType InferActorType(Guid? userId, Guid? deviceId, string? osUser) =>
+        !string.IsNullOrWhiteSpace(osUser)
+            ? AuditActorType.AdminCli
+            : userId is not null && deviceId is not null
+                ? AuditActorType.UserDevice
+                : AuditActorType.System;
 }

@@ -29,6 +29,12 @@ public static class DependencyInjection
             .ValidateDataAnnotations()
             .Validate(options => Path.IsPathFullyQualified(options.RootPath), "Storage:RootPath must be absolute.")
             .ValidateOnStart();
+        services.AddOptions<TrashPurgeOptions>()
+            .Bind(configuration.GetSection(TrashPurgeOptions.SectionName))
+            .Validate(
+                options => options.RetentionDays >= TrashPurgeOptions.MinimumRetentionDays,
+                "TrashPurge:RetentionDays must be at least 30.")
+            .ValidateOnStart();
         services.AddOptions<AuthenticationOptions>()
             .Bind(configuration.GetSection(AuthenticationOptions.SectionName))
             .ValidateDataAnnotations()
@@ -43,6 +49,9 @@ public static class DependencyInjection
         services.AddScoped<IFileRepository, FileRepository>();
         services.AddScoped<IdentityService>();
         services.AddScoped<FileService>();
+        services.AddScoped<TrashPurgeService>();
+        services.AddSingleton(
+            serviceProvider => serviceProvider.GetRequiredService<IOptions<TrashPurgeOptions>>().Value);
         services.AddScoped<FileOperationRecoveryService>();
         services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();

@@ -1,4 +1,5 @@
 using KuraStorage.Application.Identity;
+using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Infrastructure;
 using KuraStorage.Infrastructure.Persistence;
@@ -89,7 +90,9 @@ static async Task<int> CreateUserAsync(
         displayName,
         password,
         role,
-        CancellationToken.None);
+        CancellationToken.None,
+        AuditActorType.AdminCli,
+        Environment.UserName);
     if (!result.IsSuccess)
     {
         Console.Error.WriteLine($"User creation failed: {result.Failure!.Code}");
@@ -104,7 +107,9 @@ static async Task<int> UnlockUserAsync(IServiceProvider services, string usernam
 {
     var unlocked = await services.GetRequiredService<IdentityService>().UnlockUserAsync(
         username,
-        CancellationToken.None);
+        CancellationToken.None,
+        AuditActorType.AdminCli,
+        Environment.UserName);
     Console.WriteLine(unlocked ? "User unlocked." : "User was not found.");
     return unlocked ? 0 : 1;
 }
@@ -133,7 +138,9 @@ static async Task<int> RevokeDeviceAsync(
         Guid.Parse(userIdValue),
         Guid.Parse(deviceIdValue),
         requestId: null,
-        CancellationToken.None);
+        CancellationToken.None,
+        AuditActorType.AdminCli,
+        Environment.UserName);
     Console.WriteLine(revoked ? "Device revoked." : "Device was not found.");
     return revoked ? 0 : 1;
 }
