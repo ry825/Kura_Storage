@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryType
@@ -53,6 +55,17 @@ fun FileBrowserScreen(
     onChooseDownload: (FileEntry) -> Unit,
     onTrash: (FileEntry) -> Unit,
     onRestore: (FileEntry) -> Unit,
+    onRename: (FileEntry) -> Unit = {},
+    onRenameInput: (String) -> Unit = {},
+    onSubmitRename: () -> Unit = {},
+    onDismissRename: () -> Unit = {},
+    onMove: (FileEntry) -> Unit = {},
+    onOpenMoveFolder: (FileEntry) -> Unit = {},
+    onBackMoveFolder: () -> Unit = {},
+    onLoadMoreMoveFolders: () -> Unit = {},
+    onConfirmMove: () -> Unit = {},
+    onDismissMove: () -> Unit = {},
+    onRefreshPlacement: () -> Unit = {},
     onDismissDetail: () -> Unit,
     onCancelTransfer: () -> Unit,
     onRetryTransfer: () -> Unit,
@@ -77,6 +90,7 @@ fun FileBrowserScreen(
             }
         }
         Text(if (trashMode) "Trash" else "My files", style = MaterialTheme.typography.headlineSmall)
+        state.placementResult?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
         state.error?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
         if (state.entries.isEmpty()) {
             EmptyState(if (trashMode) "Trash is empty." else "This folder is empty.")
@@ -88,7 +102,7 @@ fun FileBrowserScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text("${if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File"}: ${entry.name}")
-                        if (entry.entryType == FileEntryType.FOLDER && !trashMode) {
+                        if (!trashMode) {
                             TextButton(onClick = { onShowDetails(entry) }) { Text("Actions") }
                         } else {
                             Text(if (entry.entryType == FileEntryType.FILE) "${entry.size} B" else "")
@@ -122,11 +136,17 @@ fun FileBrowserScreen(
                         pendingRestore = entry
                         onDismissDetail()
                     }) { Text("Restore") }
-                } else if (entry.entryType == FileEntryType.FILE) {
-                    Button(onClick = {
-                        onChooseDownload(entry)
-                        onDismissDetail()
-                    }) { Text("Download") }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (entry.entryType == FileEntryType.FILE) {
+                            TextButton(onClick = {
+                                onChooseDownload(entry)
+                                onDismissDetail()
+                            }) { Text("Download") }
+                        }
+                        TextButton(onClick = { onRename(entry) }) { Text("Rename") }
+                        Button(onClick = { onMove(entry) }) { Text("Move") }
+                    }
                 }
             },
             dismissButton = {
@@ -159,6 +179,131 @@ fun FileBrowserScreen(
             },
         )
     }
+    state.rename?.let { rename ->
+        RenameDialog(
+            state = rename,
+            onInput = onRenameInput,
+            onDismiss = onDismissRename,
+            onSubmit = onSubmitRename,
+            onRefresh = onRefreshPlacement,
+        )
+    }
+    state.movePicker?.let { picker ->
+        MovePickerDialog(
+            state = picker,
+            onOpenFolder = onOpenMoveFolder,
+            onBack = onBackMoveFolder,
+            onLoadMore = onLoadMoreMoveFolders,
+            onConfirm = onConfirmMove,
+            onDismiss = onDismissMove,
+            onRefresh = onRefreshPlacement,
+        )
+    }
+}
+
+@Composable
+private fun RenameDialog(
+    state: RenameState,
+    onInput: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSubmit: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!state.submitting) onDismiss() },
+        title = { Text("Rename ${state.target.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = state.input,
+                    onValueChange = onInput,
+                    enabled = !state.submitting,
+                    label = { Text("New name") },
+                    singleLine = true,
+                    modifier = Modifier.testTag("rename-input"),
+                )
+                state.error?.let { error ->
+                    Text(error.message, color = MaterialTheme.colorScheme.error)
+                    if (error.resultUnknown) TextButton(onClick = onRefresh) { Text("Refresh to confirm") }
+                }
+                if (state.submitting) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            Button(onClick = onSubmit, enabled = !state.submitting) {
+                Text(if (state.submitting) "Renaming…" else "Rename")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !state.submitting) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun MovePickerDialog(
+    state: MovePickerState,
+    onOpenFolder: (FileEntry) -> Unit,
+    onBack: () -> Unit,
+    onLoadMore: () -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!state.submitting) onDismiss() },
+        title = { Text("Move ${state.target.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Destination: ${state.currentFolderName}")
+                if (state.currentFolderId == state.target.parentId) {
+                    Text("This is the current folder.", color = MaterialTheme.colorScheme.secondary)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onBack, enabled = state.canGoBack && !state.loading) { Text("Up") }
+                    if (state.canLoadMore) {
+                        TextButton(onClick = onLoadMore, enabled = !state.loading && !state.submitting) {
+                            Text("Load more")
+                        }
+                    }
+                }
+                if (state.loading) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                } else if (state.folders.isEmpty()) {
+                    Text("No folders here.")
+                } else {
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 280.dp)) {
+                        items(state.folders, key = { it.id }) { folder ->
+                            TextButton(
+                                onClick = { onOpenFolder(folder) },
+                                enabled = state.canOpen(folder) && !state.submitting,
+                                modifier = Modifier.testTag("move-folder-${folder.id}"),
+                            ) {
+                                Text(
+                                    if (state.canOpen(folder)) {
+                                        "Folder: ${folder.name}"
+                                    } else {
+                                        "Folder: ${folder.name} (unavailable)"
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                state.error?.let { error ->
+                    Text(error.message, color = MaterialTheme.colorScheme.error)
+                    if (error.resultUnknown || error.code == com.kurastorage.core.model.ErrorCode.FILE_NOT_FOUND) {
+                        TextButton(onClick = onRefresh) { Text("Refresh list") }
+                    }
+                }
+                if (state.submitting) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm, enabled = state.canConfirm, modifier = Modifier.testTag("move-confirm")) {
+                Text(if (state.submitting) "Moving…" else "Move here")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !state.submitting) { Text("Cancel") } },
+    )
 }
 
 @Composable

@@ -10,7 +10,10 @@ enum class ErrorCode {
     STORAGE_CAPACITY_INSUFFICIENT,
     FILE_NOT_FOUND,
     FILE_NAME_CONFLICT,
+    FILE_MOVE_CYCLE,
+    FILE_OPERATION_NOT_ALLOWED,
     FILE_RESTORE_CONFLICT,
+    RECOVERY_REQUIRED,
     IDEMPOTENCY_CONFLICT,
     UPLOAD_SIZE_MISMATCH,
     UPLOAD_CHECKSUM_MISMATCH,
@@ -36,8 +39,13 @@ data class ApiError(
     val category: ErrorCategory
         get() =
             when (code) {
-                ErrorCode.STORAGE_UNAVAILABLE, ErrorCode.STORAGE_CAPACITY_INSUFFICIENT -> ErrorCategory.STORAGE
+                ErrorCode.STORAGE_UNAVAILABLE,
+                ErrorCode.STORAGE_CAPACITY_INSUFFICIENT,
+                ErrorCode.RECOVERY_REQUIRED,
+                -> ErrorCategory.STORAGE
                 ErrorCode.FILE_NAME_CONFLICT,
+                ErrorCode.FILE_MOVE_CYCLE,
+                ErrorCode.FILE_OPERATION_NOT_ALLOWED,
                 ErrorCode.FILE_RESTORE_CONFLICT,
                 ErrorCode.IDEMPOTENCY_CONFLICT,
                 -> ErrorCategory.CONFLICT

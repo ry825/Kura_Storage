@@ -219,150 +219,151 @@
 
 ### 2.1 作業開始
 
-- [ ] PR2の作業準備が完了している。
-  - [ ] PR1が`main`へMerge済みであることを確認する。
-  - [ ] 最新の`main`を取得し、PR2用の短命Branchを作成する。
-  - [ ] `requirements.md`、`design.md`、本ファイル、PR1完了記録を確認する。
-  - [ ] `git status`と既存差分を確認する。
-  - [ ] AndroidのFile DTO、API、Repository、ViewModel、Compose UI、Testの既存パターンを再確認する。
-  - [ ] Raspberry Pi、共有exFAT HDD、Android実機、LAN、ZeroTier、Release署名入力が利用可能であることを確認する。
+- [x] PR2の作業準備が完了している。
+  - [x] PR1が`main`へMerge済みであることを確認する。
+  - [x] 最新の`main`を取得し、PR2用の短命Branchを作成する。
+  - [x] `requirements.md`、`design.md`、本ファイル、PR1完了記録を確認する。
+  - [x] `git status`と既存差分を確認する。
+  - [x] AndroidのFile DTO、API、Repository、ViewModel、Compose UI、Testの既存パターンを再確認する。
+  - [x] Raspberry Pi、共有exFAT HDD、Android実機、LAN、ZeroTier、Release署名入力が利用可能であることを確認する。
 
 ### 2.2 Android Network・Data
 
-- [ ] AndroidのAPI契約を実装する。
-  - [ ] `UpdateFileRequestDto`を追加する。
-  - [ ] `FileApi`へ`PATCH /api/v1/files/{fileId}`を追加する。
-  - [ ] Renameでは`name`だけ、Moveでは`parentId`だけを送る。
-  - [ ] 新しいError Codeを既存のValidation、Conflict、Storage分類へ追加する。
-  - [ ] Access Token Refresh、Device失効、Request ID保持を既存Executorで維持する。
-- [ ] AndroidのFile Repositoryを実装する。
-  - [ ] `rename(fileId, name)`を追加する。
-  - [ ] `move(fileId, targetParentId)`を追加する。
-  - [ ] Server Responseを既存`FileEntry` Modelへ変換する。
-  - [ ] 通信結果不明時に成功状態をローカル合成しない。
+- [x] AndroidのAPI契約を実装する。
+  - [x] `UpdateFileRequestDto`を追加する。
+  - [x] `FileApi`へ`PATCH /api/v1/files/{fileId}`を追加する。
+  - [x] Renameでは`name`だけ、Moveでは`parentId`だけを送る。
+  - [x] 新しいError Codeを既存のValidation、Conflict、Storage分類へ追加する。
+  - [x] Access Token Refresh、Device失効、Request ID保持を既存Executorで維持する。
+- [x] AndroidのFile Repositoryを実装する。
+  - [x] `rename(fileId, name)`を追加する。
+  - [x] `move(fileId, targetParentId)`を追加する。
+  - [x] Server Responseを既存`FileEntry` Modelへ変換する。
+  - [x] 通信結果不明時に成功状態をローカル合成しない。
 
 ### 2.3 ViewModel・移動先選択
 
-- [ ] `FileBrowserViewModel`へ名前変更状態と操作を追加する。
-  - [ ] Rename対象、入力、処理中、Error、結果状態を管理する。
-  - [ ] Rename成功後に現在一覧と選択中詳細をServerから再取得する。
-  - [ ] 失敗または通信結果不明時に再取得操作を提供する。
-- [ ] `FileBrowserViewModel`へ移動先Picker状態と操作を追加する。
-  - [ ] Move対象、現在Folder、Folder stack、候補Paging、Loading、Errorを管理する。
-  - [ ] 個人RootからPickerを開始する。
-  - [ ] `ACTIVE` Folderだけを候補として扱う。
-  - [ ] Folder移動時は対象Folderを開けず、配下へNavigationできないようにする。
-  - [ ] 現在親を確定不可または副作用のない選択として扱う。
-  - [ ] Move成功後に元一覧と必要な詳細をServerから再取得する。
-  - [ ] Serverの循環・所有者・状態検証をClient制御で代替しない。
+- [x] `FileBrowserViewModel`へ名前変更状態と操作を追加する。
+  - [x] Rename対象、入力、処理中、Error、結果状態を管理する。
+  - [x] Rename成功後に現在一覧と選択中詳細をServerから再取得する。
+  - [x] 失敗または通信結果不明時に再取得操作を提供する。
+- [x] `FileBrowserViewModel`へ移動先Picker状態と操作を追加する。
+  - [x] Move対象、現在Folder、Folder stack、候補Paging、Loading、Errorを管理する。
+  - [x] 個人RootからPickerを開始する。
+  - [x] `ACTIVE` Folderだけを候補として扱う。
+  - [x] Folder移動時は対象Folderを開けず、配下へNavigationできないようにする。
+  - [x] 現在親を確定不可または副作用のない選択として扱う。
+  - [x] Move成功後に元一覧と必要な詳細をServerから再取得する。
+  - [x] Serverの循環・所有者・状態検証をClient制御で代替しない。
 
 ### 2.4 Compose UI
 
-- [ ] 名前変更UIを実装する。
-  - [ ] 通常一覧または詳細のFile・Folder ActionからRename Dialogを開ける。
-  - [ ] 現在名を入力済みで表示する。
-  - [ ] 空白、明らかな長さ超過、区切り文字をClient側で検証する。
-  - [ ] 実行中の重複送信を防ぎ、成功後の名前を再取得結果から表示する。
-- [ ] 移動UIを実装する。
-  - [ ] 通常一覧または詳細のFile・Folder ActionからMove Pickerを開ける。
-  - [ ] Folder階層を進む、戻る、移動先に確定する操作を提供する。
-  - [ ] 移動対象名と選択した移動先を確定前に確認できる。
-  - [ ] 対象Folderとその配下をUI上で移動先に選択できない。
-  - [ ] 実行中の重複送信を防ぎ、成功後の場所を再取得結果から表示する。
-- [ ] Errorと状態表示を実装する。
-  - [ ] 同名競合では別名または別Folderの選択を案内する。
-  - [ ] 循環移動ではPickerへ戻れる表示を行う。
-  - [ ] 対象・移動先消失では一覧再取得を案内する。
-  - [ ] Storage異常とRecovery要求を成功表示せず区別する。
-  - [ ] 認証切れ、Device失効を既存Flowへ接続する。
-  - [ ] Trash画面にRename・Move Actionを表示しない。
+- [x] 名前変更UIを実装する。
+  - [x] 通常一覧または詳細のFile・Folder ActionからRename Dialogを開ける。
+  - [x] 現在名を入力済みで表示する。
+  - [x] 空白、明らかな長さ超過、区切り文字をClient側で検証する。
+  - [x] 実行中の重複送信を防ぎ、成功後の名前を再取得結果から表示する。
+- [x] 移動UIを実装する。
+  - [x] 通常一覧または詳細のFile・Folder ActionからMove Pickerを開ける。
+  - [x] Folder階層を進む、戻る、移動先に確定する操作を提供する。
+  - [x] 移動対象名と選択した移動先を確定前に確認できる。
+  - [x] 対象Folderとその配下をUI上で移動先に選択できない。
+  - [x] 実行中の重複送信を防ぎ、成功後の場所を再取得結果から表示する。
+- [x] Errorと状態表示を実装する。
+  - [x] 同名競合では別名または別Folderの選択を案内する。
+  - [x] 循環移動ではPickerへ戻れる表示を行う。
+  - [x] 対象・移動先消失では一覧再取得を案内する。
+  - [x] Storage異常とRecovery要求を成功表示せず区別する。
+  - [x] 認証切れ、Device失効を既存Flowへ接続する。
+  - [x] Trash画面にRename・Move Actionを表示しない。
 
 ### 2.5 Android自動Test
 
-- [ ] Network・Repository Testが完了している。
-  - [ ] Rename・Move Request JSONとResponse変換をTestする。
-  - [ ] OpenAPI FixtureとDTO・Endpointの一致をTestする。
-  - [ ] 401 Refresh後の再送、Device失効、各Error Code、通信結果不明をTestする。
-  - [ ] RepositoryがRename・Moveで正しい項目だけを送信することをTestする。
-- [ ] ViewModel Testが完了している。
-  - [ ] Rename成功、競合、失敗、再取得をTestする。
-  - [ ] PickerのRoot開始、Folder遷移、Back、Paging、確定をTestする。
-  - [ ] Folder対象と子孫へのNavigation抑止をTestする。
-  - [ ] Move成功、循環、対象消失、Storage異常、再取得をTestする。
-- [ ] Compose UI Testが完了している。
-  - [ ] File・FolderのRename入口、入力済みDialog、確認、Loading、ErrorをTestする。
-  - [ ] File・FolderのMove入口、Picker遷移、移動先確認、Loading、ErrorをTestする。
-  - [ ] Root、対象Folder、現在親、Trash画面の操作制限をTestする。
-  - [ ] 既存一覧、詳細、Folder作成、Transfer、Trash、Restore UI Testに回帰がない。
-- [ ] Android Instrumented Testが完了している。
-  - [ ] FakeまたはTest ServerでRename・Moveの正常系と主要Errorを確認する。
-  - [ ] `connectedDebugAndroidTest --max-workers=1`が成功する。
+- [x] Network・Repository Testが完了している。
+  - [x] Rename・Move Request JSONとResponse変換をTestする。
+  - [x] OpenAPI FixtureとDTO・Endpointの一致をTestする。
+  - [x] 401 Refresh後の再送、Device失効、各Error Code、通信結果不明をTestする。
+  - [x] RepositoryがRename・Moveで正しい項目だけを送信することをTestする。
+- [x] ViewModel Testが完了している。
+  - [x] Rename成功、競合、失敗、再取得をTestする。
+  - [x] PickerのRoot開始、Folder遷移、Back、Paging、確定をTestする。
+  - [x] Folder対象と子孫へのNavigation抑止をTestする。
+  - [x] Move成功、循環、対象消失、Storage異常、再取得をTestする。
+- [x] Compose UI Testが完了している。
+  - [x] File・FolderのRename入口、入力済みDialog、確認、Loading、ErrorをTestする。
+  - [x] File・FolderのMove入口、Picker遷移、移動先確認、Loading、ErrorをTestする。
+  - [x] Root、対象Folder、現在親、Trash画面の操作制限をTestする。
+  - [x] 既存一覧、詳細、Folder作成、Transfer、Trash、Restore UI Testに回帰がない。
+- [x] Android Instrumented Testが完了している。
+  - [x] FakeまたはTest ServerでRename・Moveの正常系と主要Errorを確認する。
+  - [x] `connectedDebugAndroidTest --max-workers=1`が成功する。
 
 ### 2.6 Artifact・Raspberry Pi配置
 
-- [ ] ServerとAndroidの実機確認用Artifactを生成する。
-  - [ ] PR1 Merge済みServerを既存Release手順でPublishする。
-  - [ ] Server ArtifactのChecksumを生成・検証する。
-  - [ ] 確定済みRoot CA、API設定、Repository外Signing KeyでRelease APKを生成する。
-  - [ ] APKの署名、Package ID、Version、Debuggable無効、Checksumを検証する。
-  - [ ] Secret、Private Key、実環境CredentialをRepositoryへ追加しない。
-- [ ] Raspberry Piへ安全に配置する。
-  - [ ] 配置前にDatabaseとKuraStorage Storage RootのBackupを取得する。
-  - [ ] 既存Install・Upgrade手順でServer Artifactを配置する。
-  - [ ] Migration追加がないことを確認し、既存Databaseを保持する。
-  - [ ] `deployment/raspberry-pi/verify.sh`でAPI、Nginx、PostgreSQL、HDD、Storage IDを確認する。
-  - [ ] Rollback可能な直前Artifactと設定を保持する。
+- [x] ServerとAndroidの実機確認用Artifactを生成する。
+  - [x] PR1 Merge済みServerを既存Release手順でPublishする。
+  - [x] Server ArtifactのChecksumを生成・検証する。
+  - [x] 確定済みRoot CA、API設定、Repository外Signing KeyでRelease APKを生成する。
+  - [x] APKの署名、Package ID、Version、Debuggable無効、Checksumを検証する。
+  - [x] Secret、Private Key、実環境CredentialをRepositoryへ追加しない。
+  - [x] Server publish由来の`appsettings*.json`をRelease Artifactから除外し、実行時に保護設定から生成する既存境界を維持する（Artifactセルフレビューで運用文書との不整合を検出したため追加）。
+- [x] Raspberry Piへ安全に配置する。
+  - [x] 配置前にDatabaseとKuraStorage Storage RootのBackupを取得する。
+  - [x] 既存Install・Upgrade手順でServer Artifactを配置する。
+  - [x] Migration追加がないことを確認し、既存Databaseを保持する。
+  - [x] `deployment/raspberry-pi/verify.sh`でAPI、Nginx、PostgreSQL、HDD、Storage IDを確認する。
+  - [x] Rollback可能な直前Artifactと設定を保持する。
 
 ### 2.7 実機E2E
 
-- [ ] Android実機で正常系を確認する。
-  - [ ] LANでFile名変更とFolder名変更を実行する。
-  - [ ] LANでFile移動と配下を持つFolder移動を実行する。
-  - [ ] ZeroTierでFile名変更、Folder名変更、File移動、Folder移動を実行する。
-  - [ ] 変更前後のFile ID、`fileVersion`、内容SHA-256一致を確認する。
-  - [ ] 変更後の一覧、詳細、Range Downloadを確認する。
-  - [ ] Raspberry PiとAndroid再起動後も変更後の項目を利用できる。
-- [ ] Android実機で拒否・障害系を確認する。
-  - [ ] 同名Renameと同名項目のあるFolderへのMoveが既存項目を上書きしない。
-  - [ ] Folderを自分自身または子孫へ移動できない。
-  - [ ] Root、Trash項目、他User項目を変更できない。
-  - [ ] HDD未MountまたはStorage利用不可時に操作を開始せず、Pi本体へ誤保存しない。
-  - [ ] 通信中断または結果不明時にAndroidが成功表示せず、再取得で確定状態を表示する。
-  - [ ] LogにPassword、Token、Key、ファイル内容、物理絶対Pathがない。
-- [ ] 連続実行と回帰を確認する。
-  - [ ] 名前変更・移動を含む主要シナリオをLANで10回連続成功させる。
-  - [ ] 名前変更・移動を含む主要シナリオをZeroTierで10回連続成功させる。
-  - [ ] Folder作成、Upload、Download、Trash、Restoreを実機で再確認する。
-  - [ ] DB・HDD不整合、上書き、意図しないID・`fileVersion`変更が0件である。
+- [x] Android実機で正常系を確認する。
+  - [x] LANでFile名変更とFolder名変更を実行する。
+  - [x] LANでFile移動と配下を持つFolder移動を実行する。
+  - [x] ZeroTierでFile名変更、Folder名変更、File移動、Folder移動を実行する。
+  - [x] 変更前後のFile ID、`fileVersion`、内容SHA-256一致を確認する。
+  - [x] 変更後の一覧、詳細、Range Downloadを確認する。
+  - [x] Raspberry PiとAndroid再起動後も変更後の項目を利用できる。
+- [x] Android実機で拒否・障害系を確認する。
+  - [x] 同名Renameと同名項目のあるFolderへのMoveが既存項目を上書きしない。
+  - [x] Folderを自分自身または子孫へ移動できない。
+  - [x] Root、Trash項目、他User項目を変更できない。
+  - [x] HDD未MountまたはStorage利用不可時に操作を開始せず、Pi本体へ誤保存しない。
+  - [x] 通信中断または結果不明時にAndroidが成功表示せず、再取得で確定状態を表示する。
+  - [x] LogにPassword、Token、Key、ファイル内容、物理絶対Pathがない。
+- [x] 連続実行と回帰を確認する。
+  - [x] 名前変更・移動を含む主要シナリオをLANで10回連続成功させる。
+  - [x] 名前変更・移動を含む主要シナリオをZeroTierで10回連続成功させる。
+  - [x] Folder作成、Upload、Download、Trash、Restoreを実機で再確認する。
+  - [x] DB・HDD不整合、上書き、意図しないID・`fileVersion`変更が0件である。
 
 ### 2.8 文書最終整合・品質確認
 
-- [ ] 実装結果と文書を最終整合する。
-  - [ ] `requirements.md`の全受け入れ条件に対応する実装または検証記録がある。
-  - [ ] `design.md`と実装の差分がある場合、理由と確定設計を反映する。
-  - [ ] 5つの正式文書、OpenAPI、Server、AndroidでEndpoint、DTO、Error、状態名が一致する。
-  - [ ] Android操作と実機確認手順を必要な運用文書へ反映する。
-  - [ ] 将来の共有・派生データ・検索への拡張境界を損なっていない。
-- [ ] 全自動検証が成功している。
-  - [ ] `./scripts/ci/verify-config.sh`が成功する。
-  - [ ] `./scripts/ci/verify-server.sh`が成功する。
-  - [ ] `./scripts/ci/verify-security.sh`が成功する。
-  - [ ] `./scripts/ci/verify-android.sh`が成功する。
-  - [ ] `./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が成功する。
-  - [ ] `git diff --check`が成功する。
-- [ ] CIと成果物確認が完了している。
-  - [ ] GitHub ActionsのConfig、Server、Security、Android必須Jobが最終実装HEADで成功する。
-  - [ ] Server Artifact、Release APK、Checksumを再現可能な既存手順で生成できる。
-  - [ ] 新しい環境変数、Secret、依存Library、Moduleが不要であることを確認する。
+- [x] 実装結果と文書を最終整合する。
+  - [x] `requirements.md`の全受け入れ条件に対応する実装または検証記録がある。
+  - [x] `design.md`と実装の差分がある場合、理由と確定設計を反映する。
+  - [x] 5つの正式文書、OpenAPI、Server、AndroidでEndpoint、DTO、Error、状態名が一致する。
+  - [x] Android操作と実機確認手順を必要な運用文書へ反映する。
+  - [x] 将来の共有・派生データ・検索への拡張境界を損なっていない。
+- [x] 全自動検証が成功している。
+  - [x] `./scripts/ci/verify-config.sh`が成功する。
+  - [x] `./scripts/ci/verify-server.sh`が成功する。
+  - [x] `./scripts/ci/verify-security.sh`が成功する。
+  - [x] `./scripts/ci/verify-android.sh`が成功する。
+  - [x] `./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が成功する。
+  - [x] `git diff --check`が成功する。
+- [x] CIと成果物確認が完了している。
+  - [x] GitHub ActionsのConfig、Server、Security、Android必須Jobが最終実装HEADで成功する。
+  - [x] Server Artifact、Release APK、Checksumを再現可能な既存手順で生成できる。
+  - [x] 新しい環境変数、Secret、依存Library、Moduleが不要であることを確認する。
 
 ### 2.9 Pull Request完了
 
-- [ ] PR2が完了している。
-  - [ ] PR2内の2.1〜2.8がすべて`[x]`である。
-  - [ ] 共通Pull Request完了手順をすべて実施する。
-  - [ ] PR2の完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
-  - [ ] PR2のPull Requestへ完了記録Commitが反映されている。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR2が完了している。
+  - [x] PR2内の2.1〜2.8がすべて`[x]`である。
+  - [x] 共通Pull Request完了手順をすべて実施する。
+  - [x] PR2の完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
+  - [x] PR2のPull Requestへ完了記録Commitが反映されている。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -384,15 +385,15 @@
 
 ### PR2: Android操作・実機E2E
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 主な変更: 未記録
-- 実施した自動Test・Build・静的解析: 未記録
-- 実施した手動・実機確認: 未記録
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク、理由、代替実装: 未記録
-- 後続作業への引継ぎ事項: 未記録
+- 完了日: 2026-08-20
+- Pull Request: [#10 Add Android file rename and move support](https://github.com/ry825/Kura_Storage/pull/10)
+- 主な変更: AndroidのNetwork契約、Repository、ViewModel、Compose UIへFile・Folder Rename/Moveを実装した。現在名確認、Client入力検証、移動先選択、自身・子孫の除外、Server再取得、結果不明時の安全側表示、Error別案内を追加した。Wi-Fi再接続後も現在の非VPN Networkを選び直すSocketFactory、契約Fixture、Release Artifact生成時のCA指定、関連設計・運用文書も整合させた。
+- 実施した自動Test・Build・静的解析: ローカルで`verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-android.sh`、`connectedDebugAndroidTest --max-workers=1`、`git diff --check`が成功した。Server TestはDomain 17件、Application 12件、Integration 32件が成功し、Android接続Testは`feature-files` 9件を含め失敗0件だった。Server Artifact、正式署名Release APK 0.2.0、Checksumを生成・確認した。最終実装Commit `bf7d715`のGitHub Actions run `32361601054`でConfig、Server、Security、Androidがすべて成功した。
+- 実施した手動・実機確認: Raspberry Pi、PostgreSQL、共有exFAT HDD、Android実機を使用し、LANとZeroTierでFile・Folder Rename、File・配下を持つFolder Move、各経路10回連続操作、同名競合、循環、Root・Trash・他User拒否、HDD未Mount、通信中断、再起動後利用を確認した。既存のFolder作成、Upload、Download、Range Download、Trash、Restoreも再確認し、HDDとDB、File ID、`fileVersion`、SHA-256の不整合・上書きが0件、Android/Server Logの秘密情報・物理絶対Pathが0件であることを確認した。
+- 計画と実装の差分: 実機のWi-Fi切断・再接続試験で、OkHttpが起動時のAndroid `Network`を保持し続け、再接続後のRefreshに失敗する問題を検出した。現在の非VPN NetworkへSocket作成ごとに委譲する設計へ変更し、単体Testと設計文書を追加した。Release Artifact生成では既存の固定CA既定値に依存せず、検証対象CAを明示できる引数を追加した。要求範囲の削除はない。
+- 実装中に追加したタスクと理由: Wi-Fi再接続後の動的Network再選択と単体Test、実機での通信中断・復帰確認、Release ArtifactのCA引数化を追加した。理由は、物理端末でのみ再現するNetwork handle更新と、正式配布物のTrust Anchor再現性を保証するため。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続作業への引継ぎ事項: PR #10をレビューし、承認後にMergeする。Mergeまでは本PRのBranchと成果物を保持する。Rename/Moveの範囲外であるCopy、一括操作、Drag & Drop、User間移動、Trash内任意移動は将来作業とする。
 
 ---
 
@@ -402,24 +403,24 @@
 
 ### 実装完了日
 
-未完了
+2026-08-20
 
 ### 計画と実績の差分
 
-未記録
+PR1でServer・API・復旧・正式文書、PR2でAndroid操作・実機E2Eを分離する計画どおりに完了した。追加実績として、PR1では開始時に判明したTestcontainers推移依存の脆弱性を更新で解消し、失効DeviceのAPI結合Testを追加した。PR2では実機通信中断試験からWi-Fi Network handleの陳腐化を発見し、動的再選択を追加した。計画した要求・検証の削除はない。
 
 ### 主な設計変更と理由
 
-未記録
+Serverでは同一Filesystem内rename、FileOperation Journal、PostgreSQL advisory lock、Recovery Hosted Serviceを組み合わせ、HDDとDBを安全に収束させた。AndroidではMutation成功を通信例外から推測せず、結果不明として再取得を要求する設計を採用した。さらにOkHttpのSocket作成時に現在の非VPN Networkを取得する委譲方式へ変更し、Wi-Fi再接続後も古いNetwork handleへ固定されないようにした。
 
 ### 技術的な学び
 
-未記録
+Filesystem操作とDB更新を単一Transactionとして扱えないため、操作Journal、可視性の隔離、冪等Recovery、競合直列化を一体で設計する必要がある。Androidの`Network`は接続種別が同じでも再接続で別handleになり得るため、長寿命Clientへ固定参照を渡さず、Socket作成時に現在値を解決する必要がある。通信中断後はClient表示ではなくServer・DB・HDDの三者確認が確定判定になる。
 
 ### プロセス上の改善点
 
-未記録
+実機E2Eを正常系だけで終えず、Wi-Fi切断、VPN経路、HDD unmount、API再起動、端末・Pi再起動まで含めたことで、単体Testでは見えないNetwork handle問題を検出できた。一方、VPN自動起動状態とLAN試験が干渉したため、各シナリオ開始前に端末の有効NetworkとVPN状態を記録する手順を標準化すると切り分けが速くなる。
 
 ### 次回への改善提案
 
-未記録
+Android実機試験の前処理として、Wi-Fi/VPN/Cellularの有効経路、Server到達性、アプリ接続モードを一括取得する診断手順を追加する。通信中断試験では操作前後のアプリProcess IDも記録し、OSによるProcess終了と同一Process内の再接続を区別する。Release Artifact検証ではCA fingerprint、APK署名、Version、Checksumを一つの検証出力へまとめる。

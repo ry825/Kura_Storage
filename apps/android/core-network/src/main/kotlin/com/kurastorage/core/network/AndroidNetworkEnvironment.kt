@@ -6,6 +6,9 @@ import android.net.NetworkCapabilities
 import com.kurastorage.core.model.ServerHealth
 import com.kurastorage.core.model.StorageAvailability
 import okhttp3.OkHttpClient
+import java.net.InetAddress
+import java.net.Socket
+import javax.net.SocketFactory
 
 class AndroidLocalNetworkSource(
     private val connectivityManager: ConnectivityManager,
@@ -42,6 +45,44 @@ class AndroidLocalNetworkSource(
     fun network(networkId: String): Network? = networks[networkId]
 
     fun lastNetwork(): Network? = lastBaseNetwork
+
+    fun refreshingSocketFactory(): SocketFactory =
+        RefreshingSocketFactory {
+            currentBaseNetwork()
+            lastBaseNetwork?.socketFactory
+        }
+}
+
+internal class RefreshingSocketFactory(
+    private val delegateProvider: () -> SocketFactory?,
+) : SocketFactory() {
+    private fun delegate(): SocketFactory = requireNotNull(delegateProvider()) { "Local network is unavailable" }
+
+    override fun createSocket(): Socket = delegate().createSocket()
+
+    override fun createSocket(
+        host: String,
+        port: Int,
+    ): Socket = delegate().createSocket(host, port)
+
+    override fun createSocket(
+        host: String,
+        port: Int,
+        localHost: InetAddress,
+        localPort: Int,
+    ): Socket = delegate().createSocket(host, port, localHost, localPort)
+
+    override fun createSocket(
+        host: InetAddress,
+        port: Int,
+    ): Socket = delegate().createSocket(host, port)
+
+    override fun createSocket(
+        address: InetAddress,
+        port: Int,
+        localAddress: InetAddress,
+        localPort: Int,
+    ): Socket = delegate().createSocket(address, port, localAddress, localPort)
 }
 
 class AndroidHealthProbe(

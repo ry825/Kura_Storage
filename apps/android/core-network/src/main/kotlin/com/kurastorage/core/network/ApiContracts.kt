@@ -61,6 +61,12 @@ data class CreateFolderRequestDto(
 )
 
 @Serializable
+data class UpdateFileRequestDto(
+    val name: String? = null,
+    val parentId: String? = null,
+)
+
+@Serializable
 data class FileEntryDto(
     val id: String,
     val parentId: String? = null,

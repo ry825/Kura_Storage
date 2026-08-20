@@ -97,6 +97,13 @@ dotnet publish \
     --output "${server_publish}/cli"
 cp -a "${server_publish}/api/." "${staging_directory}/"
 cp -a "${server_publish}/cli/." "${staging_directory}/"
+rm -f \
+    "${staging_directory}/appsettings.json" \
+    "${staging_directory}/appsettings.example.json"
+if find "${staging_directory}" -maxdepth 1 -type f -name 'appsettings*.json' | grep -q .; then
+    printf 'Server artifact must not contain appsettings files.\n' >&2
+    exit 1
+fi
 for required_server_file in \
     KuraStorage.Api \
     KuraStorage.Api.dll \
