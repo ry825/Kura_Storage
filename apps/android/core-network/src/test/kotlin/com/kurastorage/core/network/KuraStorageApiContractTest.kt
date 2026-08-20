@@ -94,13 +94,91 @@ class KuraStorageApiContractTest {
             assertEquals("/api/v1/files/$DEVICE_ID/restore", server.takeRequest().path)
         }
 
+    @Test
+    fun `rename and move use PATCH with exactly one OpenAPI request field`() =
+        runTest {
+            server.enqueue(jsonResponse(resource("file-entry-response.json")))
+            server.enqueue(jsonResponse(resource("file-entry-response.json")))
+
+            assertTrue(
+                api.updateFile("token", DEVICE_ID, UpdateFileRequestDto(name = "renamed.txt")) is
+                    NetworkCallResult.Success,
+            )
+            val rename = server.takeRequest()
+            assertEquals("PATCH", rename.method)
+            assertEquals("/api/v1/files/$DEVICE_ID", rename.path)
+            assertEquals(compactJson(resource("file-rename-request.json")), compactJson(rename.body.readUtf8()))
+
+            api.updateFile("token", DEVICE_ID, UpdateFileRequestDto(parentId = TARGET_PARENT_ID))
+            val move = server.takeRequest()
+            assertEquals("PATCH", move.method)
+            assertEquals("/api/v1/files/$DEVICE_ID", move.path)
+            assertEquals(compactJson(resource("file-move-request.json")), compactJson(move.body.readUtf8()))
+        }
+
+    @Test
+    fun `rename and move errors preserve every new stable error code`() =
+        runTest {
+            val expected =
+                listOf(
+                    ErrorCode.VALIDATION_FAILED,
+                    ErrorCode.FILE_NOT_FOUND,
+                    ErrorCode.FILE_NAME_CONFLICT,
+                    ErrorCode.FILE_MOVE_CYCLE,
+                    ErrorCode.FILE_OPERATION_NOT_ALLOWED,
+                    ErrorCode.RECOVERY_REQUIRED,
+                    ErrorCode.STORAGE_UNAVAILABLE,
+                    ErrorCode.DEVICE_REVOKED,
+                )
+            expected.forEach { code ->
+                val status =
+                    when (code) {
+                        ErrorCode.VALIDATION_FAILED -> 400
+                        ErrorCode.FILE_NOT_FOUND -> 404
+                        ErrorCode.STORAGE_UNAVAILABLE -> 503
+                        ErrorCode.DEVICE_REVOKED -> 403
+                        else -> 409
+                    }
+                server.enqueue(
+                    MockResponse()
+                        .setResponseCode(status)
+                        .setHeader("Content-Type", "application/json")
+                        .setBody(
+                            """{"code":"$code","message":"Request failed.","requestId":"req-update","details":{}}""",
+                        ),
+                )
+
+                val error =
+                    runCatching {
+                        api.updateFile("token", DEVICE_ID, UpdateFileRequestDto(name = "renamed.txt"))
+                    }.exceptionOrNull() as KuraStorageException.Api
+
+                assertEquals(code, error.error.code)
+                assertEquals("req-update", error.error.requestId)
+            }
+        }
+
+    @Test
+    fun `update returns unauthorized for the authenticated executor to refresh and retry`() =
+        runTest {
+            server.enqueue(MockResponse().setResponseCode(401))
+
+            assertEquals(
+                NetworkCallResult.Unauthorized,
+                api.updateFile("expired", DEVICE_ID, UpdateFileRequestDto(name = "renamed.txt")),
+            )
+        }
+
     private fun resource(name: String) = checkNotNull(javaClass.classLoader?.getResource(name)).readText()
 
     private fun jsonResponse(body: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(body)
 
+    private fun compactJson(body: String) = body.filterNot(Char::isWhitespace)
+
     private companion object {
         const val DEVICE_ID = "11111111-1111-1111-1111-111111111111"
         const val REFRESH_TOKEN = "refresh-token-with-more-than-thirty-two-characters"
+        const val TARGET_PARENT_ID = "33333333-3333-3333-3333-333333333333"
         const val TOKEN_RESPONSE =
             """
             {"deviceId":"$DEVICE_ID","accessToken":"access-token","refreshToken":"$REFRESH_TOKEN",

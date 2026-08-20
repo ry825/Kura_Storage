@@ -291,6 +291,8 @@ suspend fun move(fileId: String, targetParentId: String): FileEntry
 
 共通API ExecutorによるAccess Token更新と既存Error変換を再利用する。新しいError Codeを`VALIDATION`、`CONFLICT`、`STORAGE`へ分類し、Request IDを保持する。
 
+LAN用OkHttpClientは、Socket作成ごとに現在の非VPN Wi-FiまたはEthernet `Network`を再取得する委譲`SocketFactory`を使用する。これにより、通信結果不明後のWi-Fi再接続で`Network`ハンドルが変更されても、再取得を新しいLAN経路で実行できる。
+
 ### 6.2 ViewModel状態
 
 `FileBrowserState`へ次を追加する。

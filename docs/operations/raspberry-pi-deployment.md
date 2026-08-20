@@ -145,6 +145,16 @@ migrations explicitly, switches `current`, restarts, and verifies health.
 Its pre-upgrade dump is stored under `/var/backups/kurastorage` with
 `root:postgres` ownership and is preserved by uninstall.
 
+After an upgrade that changes file operations, install the matching signed
+release APK on the authorized Android device and validate both LAN and
+ZeroTier routes. Exercise file and folder rename, file move, and a folder move
+with descendants. Confirm the item ID, `fileVersion`, and downloaded SHA-256
+remain unchanged, and that same-name conflicts and cyclic folder moves do not
+overwrite data. Repeat the main scenario ten times on each route. Before an
+HDD-unavailable test, take database and storage-root backups; verify the API
+rejects the operation and does not write to the OS root. Finish by rebooting
+the Pi and Android device and rerunning `verify.sh` plus the main smoke test.
+
 Application rollback switches to `previous`:
 
 ```bash

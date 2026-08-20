@@ -515,6 +515,8 @@ Androidは同じHTTPSホスト名を使用し、接続経路に応じて解決�
 5. 失敗時、`NET-API-HOSTNAME`を`NET-ZEROTIER-API-IP`へ解決してHTTPS到達性を確認する。
 6. 成功時は`REMOTE_SECURE`、両方失敗時は`DISCONNECTED`とする。
 
+`LOCAL_DIRECT`のSocket作成では接続ごとに現在の非VPN Wi-FiまたはEthernet `Network`を再取得する。Wi-Fi切断・再接続でAndroidの`Network`ハンドルが変更された後も、結果不明の再取得を新しい基盤Networkへバインドする。
+
 SSIDとBSSIDは外部Wi-Fiで自動バックアップを許可するポリシーにだけ使用し、接続先サーバーの本人確認には使用しない。
 
 ### 7.5 SecureCredentialStore

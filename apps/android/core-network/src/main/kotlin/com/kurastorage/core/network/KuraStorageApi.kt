@@ -20,6 +20,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Multipart
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
@@ -65,6 +66,12 @@ interface FileApi {
     suspend fun createFolder(
         accessToken: String,
         request: CreateFolderRequestDto,
+    ): NetworkCallResult<FileEntryDto>
+
+    suspend fun updateFile(
+        accessToken: String,
+        fileId: String,
+        request: UpdateFileRequestDto,
     ): NetworkCallResult<FileEntryDto>
 
     suspend fun trash(
@@ -145,6 +152,13 @@ private interface KuraStorageService {
     suspend fun createFolder(
         @Header("Authorization") authorization: String,
         @Body request: CreateFolderRequestDto,
+    ): Response<FileEntryDto>
+
+    @PATCH("files/{fileId}")
+    suspend fun updateFile(
+        @Header("Authorization") authorization: String,
+        @Path("fileId") fileId: String,
+        @Body request: UpdateFileRequestDto,
     ): Response<FileEntryDto>
 
     @DELETE("files/{fileId}")
@@ -236,6 +250,12 @@ class KuraStorageApi(
         accessToken: String,
         request: CreateFolderRequestDto,
     ) = executeAuthenticated { service.createFolder(bearer(accessToken), request) }
+
+    override suspend fun updateFile(
+        accessToken: String,
+        fileId: String,
+        request: UpdateFileRequestDto,
+    ) = executeAuthenticated { service.updateFile(bearer(accessToken), fileId, request) }
 
     override suspend fun trash(
         accessToken: String,

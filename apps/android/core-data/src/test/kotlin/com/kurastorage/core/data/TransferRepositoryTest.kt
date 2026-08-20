@@ -15,6 +15,7 @@ import com.kurastorage.core.network.FileApi
 import com.kurastorage.core.network.FileEntryDto
 import com.kurastorage.core.network.FileEntryPageDto
 import com.kurastorage.core.network.NetworkCallResult
+import com.kurastorage.core.network.UpdateFileRequestDto
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import okhttp3.MultipartBody
@@ -154,6 +155,12 @@ class TransferRepositoryTest {
         override suspend fun createFolder(
             accessToken: String,
             request: CreateFolderRequestDto,
+        ): NetworkCallResult<FileEntryDto> = error("unused")
+
+        override suspend fun updateFile(
+            accessToken: String,
+            fileId: String,
+            request: UpdateFileRequestDto,
         ): NetworkCallResult<FileEntryDto> = error("unused")
 
         override suspend fun trash(

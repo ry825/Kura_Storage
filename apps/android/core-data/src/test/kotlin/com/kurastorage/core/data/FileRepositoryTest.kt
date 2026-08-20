@@ -1,19 +1,24 @@
 package com.kurastorage.core.data
 
+import com.kurastorage.core.model.ApiError
 import com.kurastorage.core.model.AuthSession
 import com.kurastorage.core.model.DeviceId
+import com.kurastorage.core.model.ErrorCode
+import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.StoredCredential
 import com.kurastorage.core.network.CreateFolderRequestDto
 import com.kurastorage.core.network.FileApi
 import com.kurastorage.core.network.FileEntryDto
 import com.kurastorage.core.network.FileEntryPageDto
 import com.kurastorage.core.network.NetworkCallResult
+import com.kurastorage.core.network.UpdateFileRequestDto
 import kotlinx.coroutines.test.runTest
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 
@@ -45,7 +50,52 @@ class FileRepositoryTest {
             assertEquals("restore-me", repository.restore("restore-me").id)
         }
 
+    @Test
+    fun `repository sends only name for rename and only parent ID for move`() =
+        runTest {
+            val api = FakeFileApi()
+            val repository = DefaultFileRepository(api, AuthenticatedRequestExecutor(FakeAuth()))
+
+            assertEquals("renamed.txt", repository.rename("file", "renamed.txt").name)
+            assertEquals("target", repository.move("file", "target").parentId)
+            assertEquals(
+                listOf(
+                    UpdateFileRequestDto(name = "renamed.txt"),
+                    UpdateFileRequestDto(parentId = "target"),
+                ),
+                api.updateRequests,
+            )
+        }
+
+    @Test
+    fun `update refreshes once after 401 and preserves device revoked and unknown results`() =
+        runTest {
+            val api = FakeFileApi().apply { unauthorizedUpdateOnce = true }
+            val auth = FakeAuth()
+            val repository = DefaultFileRepository(api, AuthenticatedRequestExecutor(auth))
+
+            repository.rename("file", "renamed.txt")
+
+            assertEquals(listOf("token", "refreshed-token"), api.updateTokens)
+            assertEquals(1, auth.refreshAfterUnauthorizedCalls)
+
+            api.updateFailure =
+                KuraStorageException.Api(ApiError(ErrorCode.DEVICE_REVOKED, "revoked-request", 403))
+            val revoked = runCatching { repository.move("file", "target") }.exceptionOrNull()
+            assertEquals(ErrorCode.DEVICE_REVOKED, (revoked as KuraStorageException.Api).error.code)
+            assertEquals("revoked-request", revoked.error.requestId)
+
+            api.updateFailure = KuraStorageException.Network(java.io.IOException("response unknown"))
+            val unknown = runCatching { repository.rename("file", "unknown.txt") }.exceptionOrNull()
+            assertTrue(unknown is KuraStorageException.Network)
+        }
+
     private class FakeFileApi : FileApi {
+        val updateRequests = mutableListOf<UpdateFileRequestDto>()
+        val updateTokens = mutableListOf<String>()
+        var unauthorizedUpdateOnce = false
+        var updateFailure: Throwable? = null
+
         override suspend fun listFiles(
             accessToken: String,
             parentId: String?,
@@ -62,6 +112,24 @@ class FileRepositoryTest {
             accessToken: String,
             request: CreateFolderRequestDto,
         ) = NetworkCallResult.Success(dto("folder", "FOLDER"))
+
+        override suspend fun updateFile(
+            accessToken: String,
+            fileId: String,
+            request: UpdateFileRequestDto,
+        ): NetworkCallResult<FileEntryDto> {
+            updateRequests += request
+            updateTokens += accessToken
+            updateFailure?.let { throw it }
+            if (unauthorizedUpdateOnce && updateTokens.size == 1) return NetworkCallResult.Unauthorized
+            val requestedName = request.name
+            return NetworkCallResult.Success(
+                when {
+                    requestedName != null -> dto(fileId).copy(name = requestedName)
+                    else -> dto(fileId).copy(parentId = request.parentId)
+                },
+            )
+        }
 
         override suspend fun trash(
             accessToken: String,
@@ -98,6 +166,7 @@ class FileRepositoryTest {
 
     private class FakeAuth : AuthenticationRepository {
         private val session = AuthSession(DeviceId("device"), "token", "refresh", Instant.MAX, Instant.MAX)
+        var refreshAfterUnauthorizedCalls = 0
 
         override suspend fun storedCredential(): StoredCredential? = null
 
@@ -115,7 +184,10 @@ class FileRepositoryTest {
 
         override suspend fun refresh() = session
 
-        override suspend fun refreshAfterUnauthorized(rejectedAccessToken: String) = session
+        override suspend fun refreshAfterUnauthorized(rejectedAccessToken: String): AuthSession {
+            refreshAfterUnauthorizedCalls += 1
+            return session.copy(accessToken = "refreshed-token")
+        }
 
         override suspend fun logout() = Unit
 

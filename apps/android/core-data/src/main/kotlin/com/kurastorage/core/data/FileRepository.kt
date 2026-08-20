@@ -9,6 +9,7 @@ import com.kurastorage.core.network.FileApi
 import com.kurastorage.core.network.FileEntryDto
 import com.kurastorage.core.network.FileEntryPageDto
 import com.kurastorage.core.network.NetworkCallResult
+import com.kurastorage.core.network.UpdateFileRequestDto
 import java.time.Instant
 
 interface FileRepository {
@@ -23,6 +24,16 @@ interface FileRepository {
     suspend fun createFolder(
         parentId: String?,
         name: String,
+    ): FileEntry
+
+    suspend fun rename(
+        fileId: String,
+        name: String,
+    ): FileEntry
+
+    suspend fun move(
+        fileId: String,
+        targetParentId: String,
     ): FileEntry
 
     suspend fun trash(fileId: String): FileEntry
@@ -55,6 +66,16 @@ class DefaultFileRepository(
         parentId: String?,
         name: String,
     ) = authenticated { api.createFolder(it, CreateFolderRequestDto(parentId, name)) }.toModel()
+
+    override suspend fun rename(
+        fileId: String,
+        name: String,
+    ) = authenticated { api.updateFile(it, fileId, UpdateFileRequestDto(name = name)) }.toModel()
+
+    override suspend fun move(
+        fileId: String,
+        targetParentId: String,
+    ) = authenticated { api.updateFile(it, fileId, UpdateFileRequestDto(parentId = targetParentId)) }.toModel()
 
     override suspend fun trash(fileId: String) = authenticated { api.trash(it, fileId) }.toModel()
 

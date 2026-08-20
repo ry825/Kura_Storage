@@ -58,7 +58,7 @@ class ServiceContainer(
                 .callTimeout(Duration.ZERO)
                 .apply {
                     if (route == ConnectionRoute.LOCAL_DIRECT) {
-                        socketFactory(checkNotNull(localNetworkSource.lastNetwork()).socketFactory)
+                        socketFactory(localNetworkSource.refreshingSocketFactory())
                     }
                 }.build()
         val api =
