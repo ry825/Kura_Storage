@@ -1,6 +1,8 @@
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Application.Files;
+using KuraStorage.Application.Maintenance;
+using KuraStorage.Domain.Maintenance;
 
 namespace KuraStorage.Application.Abstractions;
 
@@ -17,7 +19,7 @@ public interface IFileRepository
 
     Task<FileEntry?> FindOwnedAsync(Guid ownerUserId, Guid entryId, CancellationToken cancellationToken);
 
-    Task ReloadAsync(FileEntry entry, CancellationToken cancellationToken);
+    Task<bool> ReloadAsync(FileEntry entry, CancellationToken cancellationToken);
 
     Task<FileEntry?> FindRootAsync(Guid ownerUserId, CancellationToken cancellationToken);
 
@@ -77,6 +79,28 @@ public interface IFileRepository
 
     Task<IReadOnlyList<FileOperation>> ListIncompleteOperationsAsync(CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<TrashPurgeCandidate>> ListPurgeCandidatesAsync(
+        DateTimeOffset cutoff,
+        DateTimeOffset? afterTrashedAt,
+        Guid? afterId,
+        int take,
+        CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    Task<IReadOnlyList<TrashPurgeRun>> ListRunningPurgeRunsAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    Task<TrashPurgeRun?> FindLatestPurgeRunAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    Task<long> SumTrashedFileBytesAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    Task<int> CountExpiredTrashRootsAsync(DateTimeOffset cutoff, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    Task<int> CountRecoveryRequiredPurgesAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
     void Remove(FileEntry entry);
 
     void RemoveRange(IEnumerable<FileEntry> entries);
@@ -87,12 +111,17 @@ public interface IFileRepository
 
     void Add(AuditLog auditLog);
 
+    void Add(TrashPurgeRun run) => throw new NotSupportedException();
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 
 public interface IFileStore
 {
     Task<bool> HasCapacityAsync(long requiredBytes, CancellationToken cancellationToken);
+
+    Task<StorageCapacity> GetCapacityAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
 
     Task EnsureUserAreaAsync(Guid ownerUserId, CancellationToken cancellationToken);
 

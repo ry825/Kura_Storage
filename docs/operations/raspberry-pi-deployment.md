@@ -2,7 +2,7 @@
 
 ## Scope and prerequisites
 
-This procedure installs the MVP API on Debian 12 ARM64 with PostgreSQL 17,
+This procedure installs the MVP API and trash-retention Worker on Debian 12 ARM64 with PostgreSQL 17,
 Nginx, nftables, an existing shared exFAT HDD, and externally managed ZeroTier.
 Run deployment commands from the Raspberry Pi local console or an explicitly
 authorized LAN administration session. Do not expose SSH through ZeroTier.
@@ -110,9 +110,13 @@ Type the password through standard input. Do not pipe a shell-literal password.
 
 ```bash
 sudo systemctl status kurastorage-api nginx postgresql
+sudo systemctl status kurastorage-worker
 sudo systemctl start kurastorage-api
+sudo systemctl start kurastorage-worker
 sudo systemctl stop kurastorage-api
+sudo systemctl stop kurastorage-worker
 sudo systemctl restart kurastorage-api
+sudo systemctl restart kurastorage-worker
 sudo --preserve-env=KURASTORAGE_DEPLOY_CONFIG \
   deployment/raspberry-pi/verify.sh
 ```
@@ -124,6 +128,29 @@ Managed IP, and the API Unix socket before validating and binding HTTPS.
 This prevents a boot-time failure when ZeroTier assigns its address after the
 base network has reached `network-online.target`.
 
+The Worker exposes no socket or TCP port. It runs once after process start and
+then every configured `KURASTORAGE_TRASH_INTERVAL_HOURS`. Inspect only
+operation identifiers and aggregate counts:
+
+```bash
+sudo systemctl status kurastorage-worker
+sudo journalctl -u kurastorage-worker --since today
+sudo -u postgres psql --dbname=kurastorage --command \
+  "SELECT id, started_at, completed_at, status, examined_root_count, deleted_root_count, released_bytes, error_count FROM trash_purge_runs ORDER BY started_at DESC LIMIT 10;"
+```
+
+`released_bytes` and the Admin API `trashBytes` are estimates based on database
+file-size snapshots, not exFAT allocation measurements. If a run fails, verify
+PostgreSQL, the HDD mount and identity, and read-only state before restarting
+the Worker. A restart recovers stopped runs and incomplete purge journals before
+examining new candidates. Do not edit run counters or delete journal rows.
+
+When the Admin API reports a capacity warning, first permanently delete only
+known-unneeded trash through the authenticated manual operation, then plan
+storage expansion, and finally investigate mount or filesystem faults. The
+warning never shortens the 30-day minimum and never selects younger trash for
+automatic deletion.
+
 To verify the storage boundary independently:
 
 ```bash
@@ -134,7 +161,7 @@ sudo --preserve-env=KURASTORAGE_STORAGE_MOUNT_PATH,KURASTORAGE_STORAGE_ROOT,KURA
 ## Upgrade and rollback
 
 Before an upgrade or rollback that includes the permanent-delete migration,
-stop the API and inspect unresolved purge journals without selecting file names
+take PostgreSQL and Storage Root backups, stop the Worker, and inspect unresolved purge journals without selecting file names
 or paths:
 
 ```sql
@@ -156,8 +183,10 @@ sudo --preserve-env=KURASTORAGE_DEPLOY_CONFIG \
   deployment/raspberry-pi/upgrade.sh
 ```
 
-Upgrade creates a PostgreSQL backup, extracts a new immutable version, applies
-migrations explicitly, switches `current`, restarts, and verifies health.
+Upgrade creates a PostgreSQL backup, stops the Worker, extracts a new immutable
+version, applies migrations explicitly, switches `current`, restarts API and
+Worker independently, and verifies health. API remains independently operable
+while the Worker is stopped; a Worker failure must not stop the API.
 Its pre-upgrade dump is stored under `/var/backups/kurastorage` with
 `root:postgres` ownership and is preserved by uninstall.
 

@@ -34,8 +34,9 @@ The command produces:
 - `kurastorage-android-<version>.apk`
 - `SHA256SUMS-<version>`
 
-It verifies APK signatures, application ID, non-debuggable state, and creates
-SHA-256 checksums. Verify checksums again after copying artifacts:
+The server archive contains the API, Admin CLI, and Worker ARM64 executables.
+The build verifies all three publish outputs, APK signatures, application ID,
+non-debuggable state, and creates SHA-256 checksums. Verify checksums again after copying artifacts:
 
 ```bash
 sha256sum --check SHA256SUMS-0.1.0

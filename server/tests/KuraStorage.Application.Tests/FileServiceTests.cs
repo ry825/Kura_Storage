@@ -183,7 +183,7 @@ public sealed class FileServiceTests
             CancellationToken cancellationToken) =>
             Task.FromResult(entries.SingleOrDefault(entry => entry.OwnerUserId == ownerUserId && entry.Id == entryId));
 
-        public Task ReloadAsync(FileEntry entry, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<bool> ReloadAsync(FileEntry entry, CancellationToken cancellationToken) => Task.FromResult(true);
 
         public Task<FileEntry?> FindRootAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
             Task.FromResult(entries.SingleOrDefault(entry => entry.OwnerUserId == ownerUserId && entry.ParentId is null));

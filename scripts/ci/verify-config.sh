@@ -29,6 +29,7 @@ required_files=(
   deployment/config/server/appsettings.Production.json.template
   deployment/config/nginx/kurastorage.conf.template
   deployment/config/systemd/kurastorage-api.service.template
+  deployment/config/systemd/kurastorage-worker.service.template
   deployment/config/systemd/storage.mount.template
   deployment/config/firewall/nftables.conf.template
   deployment/raspberry-pi/install.sh

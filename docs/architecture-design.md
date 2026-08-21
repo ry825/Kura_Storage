@@ -31,10 +31,10 @@ Phase 1では、OSまたは別アプリが管理するZeroTierをリモート通
 
 ## MVPアーキテクチャ境界
 
-MVPの実行構成は、Androidアプリ、Nginx、`KuraStorage.Api`、`KuraStorage.AdminCli`、PostgreSQL 17、共有exFAT HDD、OS・別アプリ管理ZeroTierだけとする。
+現在のPhase 1拡張を含む実行構成は、Androidアプリ、Nginx、`KuraStorage.Api`、`KuraStorage.Worker`、`KuraStorage.AdminCli`、PostgreSQL 17、共有exFAT HDD、OS・別アプリ管理ZeroTierとする。
 
 - APIはNginxのUnix Socketからだけ受信し、非rootで動作する。
-- MVPでは独立`KuraStorage.Worker`を配置しない。API内の期限付きHosted Serviceは、未完了Uploadの清掃と`FileOperation`の起動時・定期復旧だけを担当する。
+- 基本MVPでは独立Workerを配置しないが、現在のPhase 1完全削除拡張では保持期限清掃専用の`KuraStorage.Worker`を配置する。API内の期限付きHosted Serviceは、未完了Uploadの清掃と`FileOperation`の起動時・定期復旧を引き続き担当する。
 - AndroidはRoom、WorkManager、Media3、Coil、PDF LibraryをMVP依存へ追加しない。ファイルはSAFで手動選択・保存し、アプリ内Media表示は行わない。
 - DBのMVP TableはUser、Device、Refresh Session、Authentication Attempt、Audit Log、File Entry、File Operationに限定する。
 - UploadはStreaming Multipartを同一Filesystem上の一時ファイルへ書き、検証後にatomic renameする。Downloadは元ファイルのHTTP Range配信だけとする。
@@ -53,7 +53,7 @@ MVPの実行構成は、Androidアプリ、Nginx、`KuraStorage.Api`、`KuraStor
 
 - Androidネイティブアプリ
 - Raspberry Pi上のKuraStorage API
-- Raspberry Pi上のAPI内限定Hosted Service（独立WorkerはMVP後）
+- Raspberry Pi上のAPI内限定Hosted Serviceと、現在のPhase 1完全削除拡張で追加する保持期限清掃Worker
 - Raspberry Pi上の管理CLI
 - Nginx、PostgreSQL、OS管理ZeroTier、HDDを含む実行環境
 - ローカル直接接続および外部管理ZeroTier経由のHTTPS通信
@@ -108,7 +108,7 @@ Phase 2のWebアプリは実装対象外だが、同じApplication層とHTTP API
 | ADR-007 | Phase 1のリモートアクセスは外部管理ZeroTierとする | Public Portを開けず、KuraStorageへネットワーク資格情報の管理責務を追加せずにリモート到達性を確保できる。 |
 | ADR-004 | HDD上の実ファイルをファイル存在・内容・階層の正とする | KuraStorage外からの変更を検知・再索引でき、DB障害だけで実ファイルを失わない。 |
 | ADR-005 | PostgreSQLを管理情報、索引、操作ジャーナルの正とする | 認証、所有権、排他制御、状態遷移、再試行を一貫して扱える。 |
-| ADR-006 | 独立Workerと永続Media QueueはMVP後とする | MVPの復旧処理はAPI Hosted Serviceで足り、実行プロセスを増やす必要がない。 |
+| ADR-006 | 独立Media Workerと永続Media QueueはMVP後とし、保持期限清掃だけをPhase 1拡張の独立Workerへ分離する | 通常の復旧処理はAPI Hosted Serviceで足りるが、日次清掃はAPIの可用性と資源境界から分離する。 |
 | ADR-008 | APIは専用非rootユーザーで動作する | ファイル・DB・ネットワークへの権限を必要最小限にする。 |
 | ADR-010 | Nginxを唯一のHTTPS入口とする | TLS終端、要求サイズ・タイムアウト制御、Range配信、アクセスログ、将来のWeb静的配信を一元化する。 |
 | ADR-012 | ファイルシステムとDBをまたぐ更新には操作ジャーナルと補償処理を使用する | 両者を単一トランザクションにできないため、途中状態を記録してAPI起動時・期限付きHosted Serviceで復旧する。 |
@@ -412,9 +412,9 @@ Application Command / Query
 構造化Access Log
 ```
 
-### 6.4 MVP後: KuraStorage.Worker
+### 6.4 KuraStorage.Worker
 
-1つのWorker実行ファイル内に複数のHosted Serviceを置くが、各処理は独立したジョブ種別として扱う。
+現在のPhase 1拡張では`TrashPurgeWorker`だけを配置する。その他はMVP後に追加し、1つのWorker実行ファイル内へ配置する場合も各処理を独立したジョブ種別として扱う。
 
 - `MediaTranscodeWorker`
 - `ImageDerivativeWorker`
@@ -422,7 +422,7 @@ Application Command / Query
 - `IndexEventWorker`
 - `FullRescanWorker`
 - `OperationRecoveryWorker`
-- `TrashPurgeWorker`
+- `TrashPurgeWorker`（現在のPhase 1拡張）
 - `ExpiredUploadCleanupWorker`
 - `AuditRetentionWorker`
 
@@ -1140,7 +1140,9 @@ Worker本体、最大割当、画像処理、将来のLibrary差分を含む余�
 - 関連機能は`IPermanentDeleteParticipant`で物理Artifact列挙とDB管理情報削除へ参加し、DB PhaseはFile catalog削除・成功監査と同じTransactionに含める。未実装機能の空Tableは追加しない。
 - Purge、Restore、Rename、Moveは対象ID由来の同じPostgreSQL advisory lockを使う。未完了Purgeと`RECOVERY_REQUIRED`は通常操作から隔離する。
 - 監査は`AuditActorType`と`FILE_PURGE_MANUAL` / `FILE_PURGE_RETENTION`を使用し、対象名・相対Path・絶対Path・Size・内容を保存しない。
-- 保持期間は`TrashPurge.RetentionDays`（既定30、下限30）で、`purgeEligibleAt`をServer計算する。日次Purge Workerは後続PRで独立Hostとして追加する。
+- 保持期間は`TrashPurge.RetentionDays`（既定30、下限30）で、`purgeEligibleAt`をServer計算する。`KuraStorage.Worker`はHTTP Listenerを持たない独立Generic Hostとして起動時と設定周期にBatch清掃し、APIと同じApplication Service、DB、Storage設定を使用する。
+- `trash_purge_runs`は`RUNNING`、`COMPLETED`、`COMPLETED_WITH_ERRORS`、`FAILED`と件数・解放見込Byteを保持する。固定Global Run advisory lockでRunを直列化して稼働中Runの誤回収を防ぎ、対象単位の正当性は部分Unique Index、Target advisory lock、Lock内期限再検証で保証する。
+- Admin容量APIはDB集計と検証済みStorage Rootの容量取得だけを行い、Purgeを起動しない。匿名Healthの3項目契約は変更しない。
 
 ### 15.4 MVP後: Resumable Upload Session
 
@@ -1224,7 +1226,7 @@ KuraStorageのMVP機能は第二媒体バックアップを自動提供しない
 3. KuraStorage HDDを接続し、storageIdを確認する。
 4. PostgreSQLを復元する。
 5. DB Migrationを適用する。
-6. MVPではKuraStorage APIとNginxを起動する。WorkerはMVP後に導入した場合だけ起動する。
+6. KuraStorage API、現在のPhase 1完全削除拡張のWorker、Nginxを起動する。Worker未導入の基本MVPではAPIとNginxだけを起動する。
 7. 索引整合性スキャンを実行する。
 8. ZeroTier daemon、Network参加、Member認可、Managed IPをKuraStorageと独立した運用で復元・確認する。
 9. Androidからローカル直接接続とZeroTier接続を確認する。

@@ -246,178 +246,178 @@
 
 ### 2.1 作業開始
 
-- [ ] PR2の作業準備が完了している。
-  - [ ] PR1が`main`へMerge済みであることを確認する。
-  - [ ] 最新の`main`を取得し、PR2用の短命Branchを作成する。
-  - [ ] `requirements.md`、`design.md`、本ファイル、PR1完了記録を確認する。
-  - [ ] `git status`と既存差分を確認する。
-  - [ ] PR1のPurge Service、Recovery、Migration、設定、DI、Test Helperを再確認する。
-  - [ ] 既存systemd、Install、Upgrade、Rollback、Backup、Config検証Scriptを再確認する。
-  - [ ] Raspberry Pi、PostgreSQL、共有exFAT HDDをWorker検証に使用できることを確認する。
+- [x] PR2の作業準備が完了している。
+  - [x] PR1が`main`へMerge済みであることを確認する。
+  - [x] 最新の`main`を取得し、PR2用の短命Branchを作成する。
+  - [x] `requirements.md`、`design.md`、本ファイル、PR1完了記録を確認する。
+  - [x] `git status`と既存差分を確認する。
+  - [x] PR1のPurge Service、Recovery、Migration、設定、DI、Test Helperを再確認する。
+  - [x] 既存systemd、Install、Upgrade、Rollback、Backup、Config検証Scriptを再確認する。
+  - [x] Raspberry Pi、PostgreSQL、共有exFAT HDDをWorker検証に使用できることを確認する。
 
 ### 2.2 TrashPurgeRun・Persistence
 
-- [ ] Trash Purge Run Domainを実装する。
-  - [ ] `RUNNING`、`COMPLETED`、`COMPLETED_WITH_ERRORS`、`FAILED`を定義する。
-  - [ ] Started、Completed、Examined、Deleted、Released Bytes、Error Countを管理する。
-  - [ ] 完了状態からの不正な再遷移を拒否する。
-  - [ ] Process停止で残った`RUNNING` Runを次回起動時に失敗終了へ確定できる。
-- [ ] `trash_purge_runs` PersistenceとMigrationを実装する。
-  - [ ] Table、Column、Check Constraint、最新Run取得Indexを追加する。
-  - [ ] Run開始、Batch進捗、完了、失敗を保存するRepositoryを追加する。
-  - [ ] 最新RunをAdmin状態用にNo Trackingで取得する。
-  - [ ] Migration Up/DownとModel Snapshotを整合させる。
+- [x] Trash Purge Run Domainを実装する。
+  - [x] `RUNNING`、`COMPLETED`、`COMPLETED_WITH_ERRORS`、`FAILED`を定義する。
+  - [x] Started、Completed、Examined、Deleted、Released Bytes、Error Countを管理する。
+  - [x] 完了状態からの不正な再遷移を拒否する。
+  - [x] Process停止で残った`RUNNING` Runを次回起動時に失敗終了へ確定できる。
+- [x] `trash_purge_runs` PersistenceとMigrationを実装する。
+  - [x] Table、Column、Check Constraint、最新Run取得Indexを追加する。
+  - [x] Run開始、Batch進捗、完了、失敗を保存するRepositoryを追加する。
+  - [x] 最新RunをAdmin状態用にNo Trackingで取得する。
+  - [x] Migration Up/DownとModel Snapshotを整合させる。
 
 ### 2.3 保持設定・候補Query
 
-- [ ] PR1の`TrashPurgeOptions`をWorker設定へ拡張する。
-  - [ ] `RetentionDays=30`と30未満の起動拒否をAPI・Workerで共通利用する。
-  - [ ] `IntervalHours=24`、範囲1〜168を検証する。
-  - [ ] `BatchSize=100`、範囲1〜500を検証する。
-  - [ ] `RetryDelayMinutes=15`、範囲1〜1440を検証する。
-  - [ ] API、Worker、`purgeEligibleAt`が同じ設定Sourceを使用する。
-- [ ] 期限候補Queryを実装する。
-  - [ ] `TRASHED`、`parent_id IS NULL`、`trashed_at <= now - retention`だけを取得する。
-  - [ ] 30日未満、`trashedAt`なし、Descendant、Purge中、Recovery隔離対象を除外する。
-  - [ ] `trashedAt`昇順、ID昇順で安定して取得する。
-  - [ ] Batch Sizeを超えてMaterializeしない。
-  - [ ] 候補取得後にPurge ServiceのLock内で期限と状態を再検証する。
-  - [ ] Worker用Idempotency KeyをRoot IDとTrash世代から決定的に生成し、128文字以内にする。
+- [x] PR1の`TrashPurgeOptions`をWorker設定へ拡張する。
+  - [x] `RetentionDays=30`と30未満の起動拒否をAPI・Workerで共通利用する。
+  - [x] `IntervalHours=24`、範囲1〜168を検証する。
+  - [x] `BatchSize=100`、範囲1〜500を検証する。
+  - [x] `RetryDelayMinutes=15`、範囲1〜1440を検証する。
+  - [x] API、Worker、`purgeEligibleAt`が同じ設定Sourceを使用する。
+- [x] 期限候補Queryを実装する。
+  - [x] `TRASHED`、`parent_id IS NULL`、`trashed_at <= now - retention`だけを取得する。
+  - [x] 30日未満、`trashedAt`なし、Descendant、Purge中、Recovery隔離対象を除外する。
+  - [x] `trashedAt`昇順、ID昇順で安定して取得する。
+  - [x] Batch Sizeを超えてMaterializeしない。
+  - [x] 候補取得後にPurge ServiceのLock内で期限と状態を再検証する。
+  - [x] Worker用Idempotency KeyをRoot IDとTrash世代から決定的に生成し、128文字以内にする。
 
 ### 2.4 KuraStorage.Worker・自動清掃
 
-- [ ] `server/src/KuraStorage.Worker`を追加する。
-  - [ ] Generic Host、既存Application/Infrastructure、保護設定を使用する最小Projectを作成する。
-  - [ ] HTTP Portや一般公開Endpointを持たせない。
-  - [ ] Solution、Package Lock、Build、PublishへProjectを追加する。
-  - [ ] APIと同じDB・Storage設定を使用し、SecretをRepositoryへ追加しない。
-- [ ] `TrashPurgeWorker`を実装する。
-  - [ ] Process起動後に1回実行する。
-  - [ ] 以後`IntervalHours`ごとに実行する。
-  - [ ] Run開始前に停止した`RUNNING` Runと未完了Purge Recoveryを処理する。
-  - [ ] 候補をBatch単位でPurge Serviceへ渡す。
-  - [ ] 自動Purgeでは保持期限到達を必須にする。
-  - [ ] 1項目の再試行可能な失敗を記録し、安全な後続項目を継続する。
-  - [ ] DB接続不能、Storage未Mount、読取専用等の基盤障害でRunを`FAILED`にする。
-  - [ ] Cancellationを各Batchと項目境界で尊重する。
-  - [ ] 複数Workerと手動Purgeの重複を部分Unique Index、Target lock、再検証で防ぐ。
-  - [ ] Runごとに`TRASH_PURGE_RUN`監査を必要最小限で記録する。
-  - [ ] 30日未満を容量不足や警告により選択する分岐を実装しない。
+- [x] `server/src/KuraStorage.Worker`を追加する。
+  - [x] Generic Host、既存Application/Infrastructure、保護設定を使用する最小Projectを作成する。
+  - [x] HTTP Portや一般公開Endpointを持たせない。
+  - [x] Solution、Package Lock、Build、PublishへProjectを追加する。
+  - [x] APIと同じDB・Storage設定を使用し、SecretをRepositoryへ追加しない。
+- [x] `TrashPurgeWorker`を実装する。
+  - [x] Process起動後に1回実行する。
+  - [x] 以後`IntervalHours`ごとに実行する。
+  - [x] Run開始前に停止した`RUNNING` Runと未完了Purge Recoveryを処理する。
+  - [x] 候補をBatch単位でPurge Serviceへ渡す。
+  - [x] 自動Purgeでは保持期限到達を必須にする。
+  - [x] 1項目の再試行可能な失敗を記録し、安全な後続項目を継続する。
+  - [x] DB接続不能、Storage未Mount、読取専用等の基盤障害でRunを`FAILED`にする。
+  - [x] Cancellationを各Batchと項目境界で尊重する。
+  - [x] 複数Workerと手動Purgeの重複を部分Unique Index、Target lock、再検証で防ぐ。
+  - [x] Runごとに`TRASH_PURGE_RUN`監査を必要最小限で記録する。
+  - [x] 30日未満を容量不足や警告により選択する分岐を実装しない。
 
 ### 2.5 Storage容量・Admin状態
 
-- [ ] Storage容量取得を実装する。
-  - [ ] `IFileStore.GetCapacityAsync`で検証済みStorage RootのTotal・Available Byteを取得する。
-  - [ ] `StorageOptions.CapacityWarningFreeBytes`を既定10 GiBで追加する。
-  - [ ] Warning閾値を正数かつ`MinimumFreeBytes`以上に制約する。
-  - [ ] `availableBytes <= threshold`をWarningとする。
-  - [ ] Storage未利用時に物理Path、Storage ID、不正な容量値を返さない。
-- [ ] Admin Storage集計を実装する。
-  - [ ] 全`TRASHED` FileのSize合計をTrash概算容量としてDB集計する。
-  - [ ] FolderとDescendantを二重計上しない。
-  - [ ] 期限超過Trash Root件数を集計する。
-  - [ ] 最新Purge Runと`RECOVERY_REQUIRED`件数を取得する。
-  - [ ] Admin Storage取得を理由にPurgeを起動しない。
-- [ ] `GET /api/v1/admin/storage`を実装する。
-  - [ ] `AdminOnly` Policyを適用する。
-  - [ ] Storage状態、Total、Available、Warning閾値・判定、Trash概算、期限超過件数、Retention、最新Runを返す。
-  - [ ] `RECOVERY_REQUIRED`のPurge件数をAdminだけへ返す。
-  - [ ] 未認証へ401、Memberへ403を返す。
-  - [ ] 匿名`GET /api/v1/system/health`へ容量、Worker、DB、Path、Storage IDを追加しない。
-  - [ ] OpenAPI、Fixture、Server Contract Testを更新する。
+- [x] Storage容量取得を実装する。
+  - [x] `IFileStore.GetCapacityAsync`で検証済みStorage RootのTotal・Available Byteを取得する。
+  - [x] `StorageOptions.CapacityWarningFreeBytes`を既定10 GiBで追加する。
+  - [x] Warning閾値を正数かつ`MinimumFreeBytes`以上に制約する。
+  - [x] `availableBytes <= threshold`をWarningとする。
+  - [x] Storage未利用時に物理Path、Storage ID、不正な容量値を返さない。
+- [x] Admin Storage集計を実装する。
+  - [x] 全`TRASHED` FileのSize合計をTrash概算容量としてDB集計する。
+  - [x] FolderとDescendantを二重計上しない。
+  - [x] 期限超過Trash Root件数を集計する。
+  - [x] 最新Purge Runと`RECOVERY_REQUIRED`件数を取得する。
+  - [x] Admin Storage取得を理由にPurgeを起動しない。
+- [x] `GET /api/v1/admin/storage`を実装する。
+  - [x] `AdminOnly` Policyを適用する。
+  - [x] Storage状態、Total、Available、Warning閾値・判定、Trash概算、期限超過件数、Retention、最新Runを返す。
+  - [x] `RECOVERY_REQUIRED`のPurge件数をAdminだけへ返す。
+  - [x] 未認証へ401、Memberへ403を返す。
+  - [x] 匿名`GET /api/v1/system/health`へ容量、Worker、DB、Path、Storage IDを追加しない。
+  - [x] OpenAPI、Fixture、Server Contract Testを更新する。
 
 ### 2.6 配置・設定・運用文書
 
-- [ ] WorkerのRaspberry Pi配置を実装する。
-  - [ ] `kurastorage-worker.service`を追加する。
-  - [ ] APIと同じ非Root User・共有Storage Groupで動作させる。
-  - [ ] Workerへ不要なNetwork Listen、Root権限、Home書込み権限を与えない。
-  - [ ] APIとWorkerの起動順序、再起動、停止、障害分離を定義する。
-  - [ ] Install、Upgrade、Rollback、Verify ScriptへWorkerを追加する。
-  - [ ] Server Release ArtifactへWorker publish成果物を再現可能に含める。
-- [ ] 設定契約を更新する。
-  - [ ] `appsettings.example.json`とdeployment ConfigへRetention、Interval、Batch、Retry、Warning閾値を追加する。
-  - [ ] CI Config検証で既定値、範囲、Production必須値を検証する。
-  - [ ] 実環境値やSecretをGit管理対象へ追加しない。
-  - [ ] 30日未満の保持設定を配置Scriptでも拒否する。
-- [ ] 運用手順を更新する。
-  - [ ] `docs/operations/`へWorker状態、最新Run、失敗、Recovery、再実行、Log確認を記載する。
-  - [ ] 容量Warning時の対応を、不要な手動Purge、Storage増設、障害確認の順で記載する。
-  - [ ] Warningが30日保持を短縮しないことを明記する。
-  - [ ] `trashBytes`と`releasedBytes`がDB Size Snapshotによる概算であることを明記する。
-  - [ ] 配置前Backup、Migration順序、Worker停止、未完了PURGE確認を含むRollback手順を記載する。
+- [x] WorkerのRaspberry Pi配置を実装する。
+  - [x] `kurastorage-worker.service`を追加する。
+  - [x] APIと同じ非Root User・共有Storage Groupで動作させる。
+  - [x] Workerへ不要なNetwork Listen、Root権限、Home書込み権限を与えない。
+  - [x] APIとWorkerの起動順序、再起動、停止、障害分離を定義する。
+  - [x] Install、Upgrade、Rollback、Verify ScriptへWorkerを追加する。
+  - [x] Server Release ArtifactへWorker publish成果物を再現可能に含める。
+- [x] 設定契約を更新する。
+  - [x] `appsettings.example.json`とdeployment ConfigへRetention、Interval、Batch、Retry、Warning閾値を追加する。
+  - [x] CI Config検証で既定値、範囲、Production必須値を検証する。
+  - [x] 実環境値やSecretをGit管理対象へ追加しない。
+  - [x] 30日未満の保持設定を配置Scriptでも拒否する。
+- [x] 運用手順を更新する。
+  - [x] `docs/operations/`へWorker状態、最新Run、失敗、Recovery、再実行、Log確認を記載する。
+  - [x] 容量Warning時の対応を、不要な手動Purge、Storage増設、障害確認の順で記載する。
+  - [x] Warningが30日保持を短縮しないことを明記する。
+  - [x] `trashBytes`と`releasedBytes`がDB Size Snapshotによる概算であることを明記する。
+  - [x] 配置前Backup、Migration順序、Worker停止、未完了PURGE確認を含むRollback手順を記載する。
 
 ### 2.7 PR2自動Test
 
-- [ ] Run・候補・Worker Testが完了している。
-  - [ ] 30日未満、ちょうど30日、30日超過、UTC境界をTestする。
-  - [ ] 起動時実行、24時間周期、Cancellation、Batch継続をTestする。
-  - [ ] 古い順・ID順、Batch Size、次Batch継続をTestする。
-  - [ ] 1件失敗、基盤失敗、停止Run回収、次回再試行をTestする。
-  - [ ] 手動Purge、Restore、複数Workerの競合で二重削除しない。
-  - [ ] 容量Warning中も30日未満を削除しない。
-- [ ] Admin Storage API Testが完了している。
-  - [ ] Adminの正常Responseと全集計値をTestする。
-  - [ ] Member 403、未認証401、失効Device・Session拒否をTestする。
-  - [ ] Storage未利用時の非公開項目とErrorをTestする。
-  - [ ] 匿名Health Responseが変更されていないことをTestする。
-  - [ ] Warning閾値境界と不正設定起動拒否をTestする。
-- [ ] Migration・Deployment Testが完了している。
-  - [ ] `trash_purge_runs` Migration Up/DownをPostgreSQLでTestする。
-  - [ ] APIとWorkerが同じMigration済みDBへ接続できる。
-  - [ ] Worker停止中もAPIが利用でき、API停止中のWorkerが安全に失敗する。
-  - [ ] Install、Upgrade、Rollback、Verify Scriptの静的検証が成功する。
-  - [ ] Server/Worker Artifactの構成とChecksumを確認する。
-- [ ] PR2の標準検証が成功している。
-  - [ ] `./scripts/ci/verify-config.sh`が成功する。
-  - [ ] `./scripts/ci/verify-server.sh`が成功する。
-  - [ ] `./scripts/ci/verify-security.sh`が成功する。
-  - [ ] `./scripts/ci/verify-deployment.sh`が成功する。
-  - [ ] `./scripts/ci/verify-android.sh`が既存Android実装に対して成功する。
-  - [ ] `git diff --check`が成功する。
+- [x] Run・候補・Worker Testが完了している。
+  - [x] 30日未満、ちょうど30日、30日超過、UTC境界をTestする。
+  - [x] 起動時実行、24時間周期、Cancellation、Batch継続をTestする。
+  - [x] 古い順・ID順、Batch Size、次Batch継続をTestする。
+  - [x] 1件失敗、基盤失敗、停止Run回収、次回再試行をTestする。
+  - [x] 手動Purge、Restore、複数Workerの競合で二重削除しない。
+  - [x] 容量Warning中も30日未満を削除しない。
+- [x] Admin Storage API Testが完了している。
+  - [x] Adminの正常Responseと全集計値をTestする。
+  - [x] Member 403、未認証401、失効Device・Session拒否をTestする。
+  - [x] Storage未利用時の非公開項目とErrorをTestする。
+  - [x] 匿名Health Responseが変更されていないことをTestする。
+  - [x] Warning閾値境界と不正設定起動拒否をTestする。
+- [x] Migration・Deployment Testが完了している。
+  - [x] `trash_purge_runs` Migration Up/DownをPostgreSQLでTestする。
+  - [x] APIとWorkerが同じMigration済みDBへ接続できる。
+  - [x] Worker停止中もAPIが利用でき、API停止中のWorkerが安全に失敗する。
+  - [x] Install、Upgrade、Rollback、Verify Scriptの静的検証が成功する。
+  - [x] Server/Worker Artifactの構成とChecksumを確認する。
+- [x] PR2の標準検証が成功している。
+  - [x] `./scripts/ci/verify-config.sh`が成功する。
+  - [x] `./scripts/ci/verify-server.sh`が成功する。
+  - [x] `./scripts/ci/verify-security.sh`が成功する。
+  - [x] `./scripts/ci/verify-deployment.sh`が成功する。
+  - [x] `./scripts/ci/verify-android.sh`が既存Android実装に対して成功する。
+  - [x] `git diff --check`が成功する。
 
 ### 2.8 Raspberry Pi Server・Worker確認
 
-- [ ] 実環境相当で30日Workerを確認する。
-  - [ ] 配置前にPostgreSQLとStorage RootのBackupを取得する。
-  - [ ] Migrationを適用し、APIとWorkerを既存手順で配置する。
-  - [ ] `deployment/raspberry-pi/verify.sh`でAPI、Worker、Nginx、PostgreSQL、HDD、Storage IDを確認する。
-  - [ ] Test用ClockまたはTest専用データで30日未満、ちょうど30日、超過を再現する。本番設定を30日未満へ変更しない。
-  - [ ] 起動時Runと定期Runで期限超過File・Folderを削除する。
-  - [ ] 30日未満のFile・Folderが残る。
-  - [ ] HDD未Mount、読取専用、DB停止、Worker停止・再起動から安全に復旧する。
-  - [ ] 同時手動Purge、Restore、Workerで二重削除・不整合がない。
-  - [ ] Warning閾値以下でも期限到達Purgeと手動Purgeが動作し、期限前自動Purgeが0件である。
-  - [ ] Audit、Operation、Run、HDD、DBを照合し、残存・欠落・重複が0件である。
-- [ ] Admin Storage APIを実環境相当で確認する。
-  - [ ] Admin Tokenで容量、Trash概算、期限超過件数、最新Runを取得する。
-  - [ ] Member Tokenで403となる。
-  - [ ] 匿名Healthから詳細容量とWorker状態を取得できない。
-  - [ ] Application LogとAudit Logに秘密情報、ファイル名、相対・絶対Pathがない。
+- [x] 実環境相当で30日Workerを確認する。
+  - [x] 配置前にPostgreSQLとStorage RootのBackupを取得する。
+  - [x] Migrationを適用し、APIとWorkerを既存手順で配置する。
+  - [x] `deployment/raspberry-pi/verify.sh`でAPI、Worker、Nginx、PostgreSQL、HDD、Storage IDを確認する。
+  - [x] Test用ClockまたはTest専用データで30日未満、ちょうど30日、超過を再現する。本番設定を30日未満へ変更しない。
+  - [x] 起動時Runと定期Runで期限超過File・Folderを削除する。
+  - [x] 30日未満のFile・Folderが残る。
+  - [x] HDD未Mount、読取専用、DB停止、Worker停止・再起動から安全に復旧する。
+  - [x] 同時手動Purge、Restore、Workerで二重削除・不整合がない。
+  - [x] Warning閾値以下でも期限到達Purgeと手動Purgeが動作し、期限前自動Purgeが0件である。
+  - [x] Audit、Operation、Run、HDD、DBを照合し、残存・欠落・重複が0件である。
+- [x] Admin Storage APIを実環境相当で確認する。
+  - [x] Admin Tokenで容量、Trash概算、期限超過件数、最新Runを取得する。
+  - [x] Member Tokenで403となる。
+  - [x] 匿名Healthから詳細容量とWorker状態を取得できない。
+  - [x] Application LogとAudit Logに秘密情報、ファイル名、相対・絶対Pathがない。
 
 ### 2.9 文書整合・セルフレビュー
 
-- [ ] PR2実装と文書を整合する。
-  - [ ] `requirements.md`のWorker、30日保持、容量、監査の条件に対応する実装・検証がある。
-  - [ ] `design.md`と実装差分がある場合、理由と確定設計を反映する。
-  - [ ] 5つの正式文書、OpenAPI、Config、Migration、API、Worker、運用手順の名称と既定値が一致する。
-  - [ ] Repository Structureへ実際のWorker配置を反映する。
-  - [ ] PR3で行うAndroid表示を誤って完了扱いにしない。
-- [ ] PR2差分をセルフレビューする。
-  - [ ] Workerが業務ロジック、物理Path、HTTP Endpointを直接持っていない。
-  - [ ] 期限QueryがIndexを利用し、HDD全走査や全件Materializeを行わない。
-  - [ ] Config、Unit、systemdの最小権限とSecret境界を確認する。
-  - [ ] 未完了PURGEを残したまま旧ServerへRollbackしない手順になっている。
-  - [ ] 不要なPackage、Module、生成物、実環境情報が差分にない。
+- [x] PR2実装と文書を整合する。
+  - [x] `requirements.md`のWorker、30日保持、容量、監査の条件に対応する実装・検証がある。
+  - [x] `design.md`と実装差分がある場合、理由と確定設計を反映する。
+  - [x] 5つの正式文書、OpenAPI、Config、Migration、API、Worker、運用手順の名称と既定値が一致する。
+  - [x] Repository Structureへ実際のWorker配置を反映する。
+  - [x] PR3で行うAndroid表示を誤って完了扱いにしない。
+- [x] PR2差分をセルフレビューする。
+  - [x] Workerが業務ロジック、物理Path、HTTP Endpointを直接持っていない。
+  - [x] 期限QueryがIndexを利用し、HDD全走査や全件Materializeを行わない。
+  - [x] Config、Unit、systemdの最小権限とSecret境界を確認する。
+  - [x] 未完了PURGEを残したまま旧ServerへRollbackしない手順になっている。
+  - [x] 不要なPackage、Module、生成物、実環境情報が差分にない。
 
 ### 2.10 Pull Request完了
 
-- [ ] PR2が完了している。
-  - [ ] 2.1〜2.9がすべて`[x]`である。
-  - [ ] 共通Pull Request完了手順をすべて実施する。
-  - [ ] PR2完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
-  - [ ] 完了記録CommitがPR2へ反映されている。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR2が完了している。
+  - [x] 2.1〜2.9がすべて`[x]`である。
+  - [x] 共通Pull Request完了手順をすべて実施する。
+  - [x] PR2完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
+  - [x] 完了記録CommitがPR2へ反映されている。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -633,15 +633,15 @@
 
 ### PR2: 30日Worker・容量管理・運用配置
 
-- 完了日:
-- Pull Request:
-- 主な変更:
-- 実施した自動Test・Build・静的解析:
-- 実施した手動・結合・障害確認:
-- 計画と実装の差分:
-- 実装中に追加したタスクと理由:
-- 技術的に不要になったタスク、理由、代替実装:
-- PR3への引継ぎ事項:
+- 完了日: 2026-08-21
+- Pull Request: [#12 Add trash retention worker and admin storage status](https://github.com/ry825/Kura_Storage/pull/12)
+- 主な変更: HTTP Listenerを持たない`KuraStorage.Worker`、30日期限候補の安定Batch処理、Purge Run状態・監査・停止Run回収、Admin限定Storage容量API、容量警告設定、Migration、OpenAPI・Fixture、systemd、Release Artifact、Install・Upgrade・Rollback・Verify、正式文書と運用手順を追加・更新した。
+- 実施した自動Test・Build・静的解析: `verify-config.sh`、`verify-server.sh`（Domain 20件、Application 34件、Integration 51件）、`verify-security.sh`、`verify-deployment.sh`、`verify-android.sh`（656 tasks）、Migration Up/Down、Artifact構成・Checksum、`git diff --check`が成功した。GitHub ActionsのConfig、Server、Security、AndroidもPull Request #12で成功した。
+- 実施した手動・結合・障害確認: Raspberry Pi、PostgreSQL、共有exFAT HDDへAPI・Workerを配置し、29日・30日ちょうど・30日超過、File・Folder、起動時・定期Run、容量Warning、Admin・Member・匿名境界、手動Purge・Restore・Worker競合、API・Worker・DB停止、HDD未Mount・読取専用と復旧、DB・HDD・Operation・Audit・Run整合、Log秘匿、Artifact内容とChecksumを確認した。
+- 計画と実装の差分: 複数Processが稼働中Runを停止Runと誤認しないよう、計画済みのTarget lockに加えて固定Global Run advisory lockでRun全体を直列化した。Worker非搭載のPR1 Releaseへ戻せるよう、RollbackとVerifyは現行ArtifactのWorker有無に応じてServiceを無効化・検証する確定設計へ補強した。Android表示は計画どおりPR3範囲のままとした。
+- 実装中に追加したタスクと理由: tasklist項目の追加はなし。セルフレビューと競合Testで、削除済みEntityのReload判定、同一DbContext Queryの直列化、Global Run lock、Worker非搭載ReleaseへのRollback互換を、既存の並行性・障害復旧・配置タスク内で補強した。
+- 技術的に不要になったタスク、理由、代替実装: 取消なし。候補の正当性は計画どおり部分Unique Index、Target advisory lock、Lock内再検証で保証し、Global Run lockは停止Run回収のProcess間排他として追加した。
+- PR3への引継ぎ事項: `purgeEligibleAt`、User Role、`GET /api/v1/admin/storage`、最新Purge RunをAndroid DTO・Repository・UIへ接続し、完全削除確認、容量警告、Admin表示、Member非表示、回転・再生成・実機LAN/ZeroTier E2Eを実装する。PR2を`main`へMergeするまでPR3を開始しない。
 
 ### PR3: Android完全削除・容量警告・実機E2E
 

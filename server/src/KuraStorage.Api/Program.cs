@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using KuraStorage.Api;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
+using KuraStorage.Application.Maintenance;
 using KuraStorage.Application.Identity;
 using KuraStorage.Infrastructure;
 using KuraStorage.Infrastructure.Configuration;
@@ -129,6 +130,12 @@ app.MapGet(
             });
         })
     .AllowAnonymous();
+
+app.MapGet(
+        "/api/v1/admin/storage",
+        async (AdminStorageService storageService, CancellationToken cancellationToken) =>
+            Results.Ok(await storageService.GetAsync(cancellationToken)))
+    .RequireAuthorization("AdminOnly");
 
 app.MapPost(
         "/api/v1/auth/register-device",

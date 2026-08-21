@@ -40,6 +40,16 @@ public sealed class TrashPurgeMigrationTests
                 "SELECT count(*) FROM pg_indexes WHERE indexname IN ('ix_file_entries_trash_purge_candidates', 'ux_file_operations_incomplete_purge_target', 'ux_audit_logs_purge_success')",
                 connection);
             Assert.Equal(3L, await indexes.ExecuteScalarAsync());
+            await using var runTable = new NpgsqlCommand(
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'trash_purge_runs'",
+                connection);
+            Assert.Equal(1L, await runTable.ExecuteScalarAsync());
+            await using var invalidRun = new NpgsqlCommand(
+                "INSERT INTO trash_purge_runs (id, started_at, completed_at, status, examined_root_count, deleted_root_count, released_bytes, error_count) VALUES (@id, now(), NULL, 'COMPLETED', 0, 0, 0, 0)",
+                connection);
+            invalidRun.Parameters.AddWithValue("id", Guid.NewGuid());
+            var constraint = await Assert.ThrowsAsync<PostgresException>(() => invalidRun.ExecuteNonQueryAsync());
+            Assert.Equal(PostgresErrorCodes.CheckViolation, constraint.SqlState);
 
             var owner = Guid.NewGuid();
             var target = Guid.NewGuid();
@@ -69,6 +79,16 @@ public sealed class TrashPurgeMigrationTests
                 var exception = await Assert.ThrowsAsync<PostgresException>(() => duplicate.ExecuteNonQueryAsync());
                 Assert.Equal(PostgresErrorCodes.UniqueViolation, exception.SqlState);
             }
+        }
+
+        await database.Database.MigrateAsync("20260820114500_AddTrashPurgeFoundation");
+        await using (var runRolledBack = new NpgsqlConnection(postgres.GetConnectionString()))
+        {
+            await runRolledBack.OpenAsync();
+            await using var runTable = new NpgsqlCommand(
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'trash_purge_runs'",
+                runRolledBack);
+            Assert.Equal(0L, await runTable.ExecuteScalarAsync());
         }
 
         await database.Database.MigrateAsync("20260723131233_AddFileOperations");

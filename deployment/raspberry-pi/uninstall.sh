@@ -11,9 +11,11 @@ load_config
     die "Set KURASTORAGE_CONFIRM_UNINSTALL=REMOVE_APPLICATION_KEEP_DATA."
 
 systemctl disable --now kurastorage-api.service || true
+systemctl disable --now kurastorage-worker.service || true
 systemctl disable --now "${KURASTORAGE_STORAGE_MOUNT_UNIT}" || true
 remove_ufw_coexistence
 rm -f /etc/systemd/system/kurastorage-api.service
+rm -f /etc/systemd/system/kurastorage-worker.service
 rm -f "/etc/systemd/system/${KURASTORAGE_STORAGE_MOUNT_UNIT}"
 rm -f /etc/systemd/system/nginx.service.d/kurastorage.conf
 rm -f /usr/local/libexec/kurastorage/wait-for-api-addresses

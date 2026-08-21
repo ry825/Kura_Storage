@@ -451,6 +451,7 @@ Login/
 - Module間の更新は公開Application Service/Commandを経由する。
 - 完全削除は`Files/TrashPurgeService.cs`へ置き、`IPermanentDeleteParticipant`、`IFileStore`、`IFileRepository`の境界を通す。APIやWorkerからDbContext・物理絶対Pathを直接扱わない。
 - PurgeのUnit TestはApplication Tests、PostgreSQL制約・Migration・実Filesystem・API契約はIntegration Testsへ配置する。
+- 自動清掃のBatch・Run制御は`Application/Maintenance/`、周期制御だけを`KuraStorage.Worker/Workers/TrashPurgeWorker.cs`へ置く。WorkerからDbContext、HDD絶対Path、HTTP Endpointを直接扱わない。
 - `Shared/`へ業務機能を置かない。
 
 ---
@@ -589,29 +590,18 @@ KuraStorage.Api/
 - 物理PathをContractへ含めない。
 - 匿名Endpointは`Endpoints/System`と認証の必要箇所へ限定し、明示する。
 
-## 7.2 MVP後: `server/src/KuraStorage.Worker/`
+## 7.2 `server/src/KuraStorage.Worker/`
 
 ```text
 KuraStorage.Worker/
 ├── Workers/
-│   ├── MediaTranscodeWorker.cs
-│   ├── ImageDerivativeWorker.cs
-│   ├── CacheCleanupWorker.cs
-│   ├── IndexEventWorker.cs
-│   ├── FullRescanWorker.cs
-│   ├── OperationRecoveryWorker.cs
-│   ├── TrashPurgeWorker.cs
-│   ├── ExpiredUploadCleanupWorker.cs
-│   └── AuditRetentionWorker.cs
-├── Scheduling/
-│   ├── WorkerScheduleOptions.cs
-│   └── WorkerConcurrencyOptions.cs
-├── Health/
-├── DependencyInjection.cs
+│   └── TrashPurgeWorker.cs
 ├── Program.cs
-└── KuraStorage.Worker.csproj
+├── KuraStorage.Worker.csproj
+└── packages.lock.json
 ```
 
+- 現在のPhase 1拡張では`TrashPurgeWorker`だけを配置する。Media変換、派生画像、Cache、Index、再Scan等のWorkerはMVP後に追加する。
 - Worker classはJob取得・Application呼び出し・結果記録に限定する。
 - 変換や復旧の業務ロジックをWorker classへ直接書かない。
 - WorkerごとにCancellation、Lease、Retry、Concurrencyを定義する。
@@ -1083,6 +1073,7 @@ deployment/
 │   │   └── kurastorage.conf.template
 │   ├── systemd/
 │   │   ├── kurastorage-api.service.template
+│   │   ├── kurastorage-worker.service.template
 │   │   ├── storage.mount.template
 │   │   └── README.md
 │   ├── firewall/
@@ -1108,6 +1099,7 @@ deployment/
 | OpenSSL Scriptが生成した`server/server.crt`と`server/server.key` | `/etc/kurastorage/tls/`。生成物とRoot CA秘密鍵はRepository外 |
 | `TLS-ROOT-CA-CERT-PATH`の公開Root CA | Release Build時に生成するAndroid Appの`res/raw/kurastorage_root_ca.pem` |
 | `deployment/config/systemd/kurastorage-api.service.template` | `/etc/systemd/system/kurastorage-api.service` |
+| `deployment/config/systemd/kurastorage-worker.service.template` | `/etc/systemd/system/kurastorage-worker.service` |
 | `deployment/config/firewall/nftables.conf.template` | `/etc/nftables.d/kurastorage.conf` |
 | `deployment/config/logrotate/kurastorage` | `/etc/logrotate.d/kurastorage` |
 | Server publish成果物 | `/opt/kurastorage/`配下 |

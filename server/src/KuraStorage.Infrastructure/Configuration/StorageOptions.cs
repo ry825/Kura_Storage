@@ -14,4 +14,7 @@ public sealed class StorageOptions
 
     [Range(1, long.MaxValue)]
     public long MinimumFreeBytes { get; init; } = 1_073_741_824;
+
+    [Range(1, long.MaxValue)]
+    public long CapacityWarningFreeBytes { get; init; } = 10_737_418_240;
 }

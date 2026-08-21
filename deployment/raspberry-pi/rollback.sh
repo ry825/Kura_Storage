@@ -12,9 +12,16 @@ previous_target="$(readlink -f "${INSTALL_ROOT}/previous" 2>/dev/null || true)"
     die "No valid previous release is available."
 
 current_target="$(readlink -f "${INSTALL_ROOT}/current")"
+systemctl stop kurastorage-worker.service
+verify_no_unfinished_purges
 ln -sfn "${current_target}" "${INSTALL_ROOT}/previous"
 ln -sfn "${previous_target}" "${INSTALL_ROOT}/current"
 systemctl restart kurastorage-api.service
+if [[ -x "${INSTALL_ROOT}/current/KuraStorage.Worker" ]]; then
+    systemctl enable --now kurastorage-worker.service
+else
+    systemctl disable --now kurastorage-worker.service
+fi
 "${SCRIPT_DIR}/verify.sh"
 
 printf '%s\n' \

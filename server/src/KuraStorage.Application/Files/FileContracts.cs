@@ -73,6 +73,9 @@ public sealed class TrashPurgeOptions
     public const string SectionName = "TrashPurge";
     public const int MinimumRetentionDays = 30;
     public int RetentionDays { get; init; } = 30;
+    public int IntervalHours { get; init; } = 24;
+    public int BatchSize { get; init; } = 100;
+    public int RetryDelayMinutes { get; init; } = 15;
 }
 
 public sealed class UnsafeStorageTreeException(string message) : IOException(message);

@@ -1,0 +1,42 @@
+[Unit]
+Description=KuraStorage trash retention worker
+After=postgresql.service ${KURASTORAGE_STORAGE_MOUNT_UNIT}
+Requires=postgresql.service ${KURASTORAGE_STORAGE_MOUNT_UNIT}
+ConditionPathIsMountPoint=${KURASTORAGE_STORAGE_MOUNT_PATH}
+
+[Service]
+Type=simple
+User=kurastorage-api
+Group=${KURASTORAGE_STORAGE_ACCESS_GROUP}
+SupplementaryGroups=kurastorage-secrets
+WorkingDirectory=/opt/kurastorage/current
+Environment=DOTNET_ENVIRONMENT=Production
+Environment=KURASTORAGE_SECRETS_DIR=/etc/kurastorage/secrets
+Environment=DOTNET_EnableDiagnostics=0
+ExecStart=/opt/kurastorage/current/KuraStorage.Worker
+Restart=on-failure
+RestartSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadOnlyPaths=/etc/kurastorage
+ReadWritePaths=${KURASTORAGE_STORAGE_ROOT}
+LimitNOFILE=4096
+MemoryMax=3G
+CPUWeight=50
+IOWeight=50
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

@@ -181,7 +181,11 @@ public sealed class FileOperationRecoveryService(
         var lockIds = new[] { entry.Id, entry.ParentId, sourceParent?.Id, targetParent?.Id }
             .OfType<Guid>();
         await using var mutationLock = await repository.AcquireMutationLocksAsync(lockIds, cancellationToken);
-        await repository.ReloadAsync(entry, cancellationToken);
+        if (!await repository.ReloadAsync(entry, cancellationToken))
+        {
+            await RequireRecoveryAsync(operation, cancellationToken);
+            return;
+        }
 
         var source = RelativeStoragePath.Create(operation.SourceRelativePath);
         var target = RelativeStoragePath.Create(operation.TargetRelativePath);

@@ -11,6 +11,7 @@ tags:
   - name: Authentication
   - name: Files
   - name: Trash
+  - name: Administration
 paths:
   /system/health:
     get:
@@ -28,6 +29,28 @@ paths:
               examples:
                 available:
                   externalValue: ../fixtures/system-health-response.json
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /admin/storage:
+    get:
+      tags: [Administration]
+      operationId: getAdminStorageStatus
+      summary: Get storage capacity and trash retention status for administrators
+      description: Read-only administration status. This request never starts a purge run.
+      responses:
+        "200":
+          description: Current storage capacity, trash aggregates, and latest purge run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStorageStatus"
+              examples:
+                available:
+                  externalValue: ../fixtures/admin-storage-response.json
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalServerError"
   /auth/register-device:
@@ -575,6 +598,73 @@ components:
         storage:
           type: string
           enum: [AVAILABLE, UNAVAILABLE]
+    AdminStorageStatus:
+      type: object
+      additionalProperties: false
+      required: [storage, totalBytes, availableBytes, capacityWarningThresholdBytes, capacityWarning, trashBytes, expiredTrashRootCount, retentionDays, recoveryRequiredPurgeCount, lastPurgeRun]
+      properties:
+        storage:
+          type: string
+          enum: [AVAILABLE, UNAVAILABLE]
+        totalBytes:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
+        availableBytes:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
+        capacityWarningThresholdBytes:
+          type: integer
+          format: int64
+          minimum: 1
+        capacityWarning:
+          type: [boolean, "null"]
+        trashBytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Estimated from TRASHED file-size snapshots, not filesystem allocation.
+        expiredTrashRootCount:
+          type: integer
+          minimum: 0
+        retentionDays:
+          type: integer
+          minimum: 30
+        recoveryRequiredPurgeCount:
+          type: integer
+          minimum: 0
+        lastPurgeRun:
+          oneOf:
+            - $ref: "#/components/schemas/TrashPurgeRunSummary"
+            - type: "null"
+    TrashPurgeRunSummary:
+      type: object
+      additionalProperties: false
+      required: [startedAt, completedAt, status, examinedRootCount, deletedRootCount, releasedBytes, errorCount]
+      properties:
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+        status:
+          type: string
+          enum: [RUNNING, COMPLETED, COMPLETED_WITH_ERRORS, FAILED]
+        examinedRootCount:
+          type: integer
+          minimum: 0
+        deletedRootCount:
+          type: integer
+          minimum: 0
+        releasedBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        errorCount:
+          type: integer
+          minimum: 0
     RegisterDeviceRequest:
       type: object
       additionalProperties: false

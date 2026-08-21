@@ -262,7 +262,7 @@ WorkerはProcess起動後に1回実行し、その後`IntervalHours`ごとに実
 
 各Batch終了後にCancellationを確認する。1項目の失敗でRun全体を中断せず、安全に分類できる失敗は記録して次項目へ進む。DB接続不能など候補処理を継続できない障害はRunを`FAILED`として終了する。次回Runは未完了OperationのRecovery後に候補処理を再開する。
 
-複数Worker Processでは、未完了Purge部分Unique Index、Target advisory lock、Lock内再検証により重複を防ぐ。Runが`RUNNING`のままProcess停止した場合、次回起動時に失敗終了として確定してから新Runを開始する。
+複数Worker Processでは、固定IDから導出したRun単位のPostgreSQL advisory lockでRun全体を直列化する。これにより、稼働中の別ProcessのRunを停止Runと誤認して`FAILED`へ変更しない。各対象ではさらに、未完了Purge部分Unique Index、Target advisory lock、Lock内再検証により手動Purge・Restoreを含む重複を防ぐ。Runが`RUNNING`のままProcess停止した場合、次にGlobal Run lockを取得したProcessが失敗終了として確定してから新Runを開始する。
 
 ## 7. 監査ログ設計
 
