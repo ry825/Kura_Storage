@@ -412,12 +412,12 @@
 
 ### 2.10 Pull Request完了
 
-- [ ] PR2が完了している。
+- [x] PR2が完了している。
   - [x] 2.1〜2.9がすべて`[x]`である。
-  - [ ] 共通Pull Request完了手順をすべて実施する。
-  - [ ] PR2完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
-  - [ ] 完了記録CommitがPR2へ反映されている。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+  - [x] 共通Pull Request完了手順をすべて実施する。
+  - [x] PR2完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
+  - [x] 完了記録CommitがPR2へ反映されている。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -633,15 +633,15 @@
 
 ### PR2: 30日Worker・容量管理・運用配置
 
-- 完了日:
-- Pull Request:
-- 主な変更:
-- 実施した自動Test・Build・静的解析:
-- 実施した手動・結合・障害確認:
-- 計画と実装の差分:
-- 実装中に追加したタスクと理由:
-- 技術的に不要になったタスク、理由、代替実装:
-- PR3への引継ぎ事項:
+- 完了日: 2026-08-21
+- Pull Request: [#12 Add trash retention worker and admin storage status](https://github.com/ry825/Kura_Storage/pull/12)
+- 主な変更: HTTP Listenerを持たない`KuraStorage.Worker`、30日期限候補の安定Batch処理、Purge Run状態・監査・停止Run回収、Admin限定Storage容量API、容量警告設定、Migration、OpenAPI・Fixture、systemd、Release Artifact、Install・Upgrade・Rollback・Verify、正式文書と運用手順を追加・更新した。
+- 実施した自動Test・Build・静的解析: `verify-config.sh`、`verify-server.sh`（Domain 20件、Application 34件、Integration 51件）、`verify-security.sh`、`verify-deployment.sh`、`verify-android.sh`（656 tasks）、Migration Up/Down、Artifact構成・Checksum、`git diff --check`が成功した。GitHub ActionsのConfig、Server、Security、AndroidもPull Request #12で成功した。
+- 実施した手動・結合・障害確認: Raspberry Pi、PostgreSQL、共有exFAT HDDへAPI・Workerを配置し、29日・30日ちょうど・30日超過、File・Folder、起動時・定期Run、容量Warning、Admin・Member・匿名境界、手動Purge・Restore・Worker競合、API・Worker・DB停止、HDD未Mount・読取専用と復旧、DB・HDD・Operation・Audit・Run整合、Log秘匿、Artifact内容とChecksumを確認した。
+- 計画と実装の差分: 複数Processが稼働中Runを停止Runと誤認しないよう、計画済みのTarget lockに加えて固定Global Run advisory lockでRun全体を直列化した。Worker非搭載のPR1 Releaseへ戻せるよう、RollbackとVerifyは現行ArtifactのWorker有無に応じてServiceを無効化・検証する確定設計へ補強した。Android表示は計画どおりPR3範囲のままとした。
+- 実装中に追加したタスクと理由: tasklist項目の追加はなし。セルフレビューと競合Testで、削除済みEntityのReload判定、同一DbContext Queryの直列化、Global Run lock、Worker非搭載ReleaseへのRollback互換を、既存の並行性・障害復旧・配置タスク内で補強した。
+- 技術的に不要になったタスク、理由、代替実装: 取消なし。候補の正当性は計画どおり部分Unique Index、Target advisory lock、Lock内再検証で保証し、Global Run lockは停止Run回収のProcess間排他として追加した。
+- PR3への引継ぎ事項: `purgeEligibleAt`、User Role、`GET /api/v1/admin/storage`、最新Purge RunをAndroid DTO・Repository・UIへ接続し、完全削除確認、容量警告、Admin表示、Member非表示、回転・再生成・実機LAN/ZeroTier E2Eを実装する。PR2を`main`へMergeするまでPR3を開始しない。
 
 ### PR3: Android完全削除・容量警告・実機E2E
 
