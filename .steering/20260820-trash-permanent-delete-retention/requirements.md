@@ -98,7 +98,7 @@
 - [x] 既存の一覧、詳細、Folder作成、Upload、Range Download、Trash、Restore、Rename、Moveが引き続き成功する。
 - [x] 既存のStorage Root、`storageId`、Mount、Symbolic Link、相対Pathの安全境界を維持する。
 - [x] Raspberry Pi、PostgreSQL、共有exFAT HDD、Android実機で手動完全削除、自動清掃、容量警告、障害復旧を確認できる。
-- [ ] Server・Androidの必須CI、Migration適用・Rollback確認、Security検査、実機E2Eが成功する。
+- [x] Server・Androidの必須CI、Migration適用・Rollback確認、Security検査、実機E2Eが成功する。
 - [x] 正式文書、OpenAPI、設定例、運用手順と実装が一致する。
 
 ## 成功指標

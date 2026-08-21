@@ -583,8 +583,8 @@
 
 ### 3.10 最終文書整合・品質確認
 
-- [ ] 要求・設計・実装・検証を最終整合する。
-  - [ ] `requirements.md`の全受け入れ条件に対応する実装または検証記録がある。
+- [x] 要求・設計・実装・検証を最終整合する。
+  - [x] `requirements.md`の全受け入れ条件に対応する実装または検証記録がある。
   - [x] `design.md`と実装差分がある場合、理由と確定設計を反映する。
   - [x] 5つの正式文書、OpenAPI、Server、Worker、Android、Migration、Config、運用手順の名称・数値・Errorが一致する。
   - [x] `docs/product-requirements.md`の今回対象チェック項目を、実装・自動Test・実機確認が完了したものだけ更新する。
@@ -598,8 +598,8 @@
   - [x] `./scripts/ci/verify-android.sh`が成功する。
   - [x] `./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が成功する。
   - [x] `git diff --check`が成功する。
-- [ ] CIと成果物確認が完了している。
-  - [ ] GitHub ActionsのConfig、Server、Security、Android必須Jobが最終HEADで成功する。
+- [x] CIと成果物確認が完了している。
+  - [x] GitHub ActionsのConfig、Server、Security、Android必須Jobが最終HEADで成功する。
   - [x] Server・Worker Artifact、Release APK、Checksumを再現可能な手順で生成できる。
   - [x] 新規依存Packageの必要性、Lock File、既知脆弱性を確認する。
   - [x] Secret、Private Key、物理絶対Path、実環境Credential、不要な生成物が差分にない。
@@ -645,15 +645,15 @@
 
 ### PR3: Android完全削除・容量警告・実機E2E
 
-- 完了日:
-- Pull Request:
-- 主な変更:
-- 実施した自動Test・Build・静的解析:
-- 実施した手動・実機確認:
-- 計画と実装の差分:
-- 実装中に追加したタスクと理由:
-- 技術的に不要になったタスク、理由、代替実装:
-- 後続作業への引継ぎ事項:
+- 完了日: 2026-08-22
+- Pull Request: [#13 Add Android permanent trash deletion and capacity warnings](https://github.com/ry825/Kura_Storage/pull/13)
+- 主な変更: Token Responseと保護CredentialのAdmin・Member Role維持、Androidの完全削除Network・Repository・ViewModel・Compose UI、結果不明時の同一Idempotency Key再試行、Server算出保持期限表示、Admin限定容量警告、Member非取得境界、OpenAPI・正式文書・運用手順を追加・更新した。
+- 実施した自動Test・Build・静的解析: `verify-config.sh`、`verify-server.sh`（Domain 20件、Application 35件、Integration 51件）、`verify-security.sh`、`verify-deployment.sh`、`verify-android.sh`（656 tasks）、Android実機`connectedDebugAndroidTest`（18件、0失敗）、Release APK署名・Package ID・Version・Debuggable無効・Checksum、`git diff --check`が成功した。GitHub Actions run `32492127040`のConfig、Server、Security、Androidも実装Commit `314a0d9`で成功した。
+- 実施した手動・実機確認: Raspberry Pi、PostgreSQL、共有exFAT HDD、Android実機でLAN・ZeroTierのFile・配下付きFolder完全削除、取消、結果不明からの同一Key復旧、30日未満・ちょうど・超過境界、容量警告、Member非表示、LAN・ZeroTier各10回のFile・Folder連続Purge、HDD未Mount・読取専用・DB・API・Worker停止・Pi再起動と復旧、Folder作成・Upload・Range Download・Trash・Restore・Rename・Move回帰を確認した。最終照合でDB・HDD残存、未完了Purge、Recovery Required、実行中Run、成功監査重複、他User削除はすべて0件だった。
+- 計画と実装の差分: PR3の機能範囲に変更はない。実機Log検査でASP.NET Core標準`FileStreamResult`がDownload名をInformation Logへ出力することを検出したため、対象CategoryだけをWarning以上へ抑制し、配置Config検証と実機再検証を追加した。
+- 実装中に追加したタスクと理由: tasklistの独立項目は追加していない。計画済みのLog秘匿条件内で、上記のFramework Log抑制、設定検証、実ダウンロード後の0件再スキャンを追加した。
+- 技術的に不要になったタスク、理由、代替実装: 取消なし。一括削除、「ゴミ箱を空にする」、30日未満の自動削除は計画どおり実装していない。
+- 後続作業への引継ぎ事項: 本作業の後続Pull Requestはない。Pull Request #13はユーザーReview・Merge待ちであり、AgentはMergeしない。次回配置時は更新済みProduction Config TemplateからFramework Log抑制設定が生成される。
 
 ---
 
