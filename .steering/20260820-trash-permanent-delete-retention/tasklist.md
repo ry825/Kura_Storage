@@ -606,12 +606,12 @@
 
 ### 3.11 Pull Request完了
 
-- [ ] PR3が完了している。
-  - [ ] 3.1〜3.10がすべて`[x]`である。
-  - [ ] 共通Pull Request完了手順をすべて実施する。
-  - [ ] PR3完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
-  - [ ] 完了記録CommitがPR3へ反映されている。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR3が完了している。
+  - [x] 3.1〜3.10がすべて`[x]`である。
+  - [x] 共通Pull Request完了手順をすべて実施する。
+  - [x] PR3完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
+  - [x] 完了記録CommitがPR3へ反映されている。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -663,12 +663,35 @@
 
 ### 実装完了日
 
+2026-08-22
+
 ### 計画と実績の差分
+
+Server完全削除・復旧をPR1、30日Worker・容量管理・配置をPR2、Android UI・実機E2EをPR3とする3段階の計画範囲と順序は維持した。実装・競合Test・実機検証で見つかった安全性の不足は、各PRの既定タスク内で補強した。具体的には、symlink例外分類、削除済みEntityのReload判定、Worker全体のGlobal advisory lock、Worker非搭載ReleaseへのRollback互換、ASP.NET Core標準File Resultのファイル名Log抑制を追加した。一括削除、保持期間短縮、未実装関連機能の空Tableは計画どおり追加しなかった。
 
 ### 主な設計変更と理由
 
+- 物理削除とDB削除を単一Transactionと見なさず、Purge Operation、Target advisory lock、隔離、関連情報Participant、独立Audit、Recoveryの順序付きProtocolとした。exFATとPostgreSQL間に共通Transactionがなくても、結果不明と中断を安全に再実行できるようにするためである。
+- 自動清掃はHTTP Listenerを持たない別Workerとし、部分Unique Index、Target lock、lock内再検証に加えてGlobal Run lockでRunを直列化した。複数Processが稼働中Runを停止Runと誤認する競合を防ぐためである。
+- 保持期限と容量警告判定はServerを正とし、AndroidはUTC期限の表示変換とAdmin限定表示だけを行う設計とした。Client時刻・丸め・Member操作が削除判定へ影響しないようにするためである。
+- Androidは確認開始時にIdempotency Keyを1度だけ作成し、通信結果不明時は対象を消さず同一Keyで再試行する設計とした。Clientの成功推測による表示・Server状態の不整合を防ぐためである。
+- FrameworkがInformation LogへDownload名を出力するCategoryだけをWarning以上へ抑制し、Production Config検証の必須値にした。Application独自Logが無くてもFramework Logが秘匿条件を破ることを実機で検出したためである。
+
 ### 技術的な学び
+
+- DBとFilesystemをまたぐ不可逆操作では、「一度で成功する」より「どの境界で停まっても次回に完了できる」ことが重要である。Operation状態、決定的Key、隔離、最小Auditの組合せで、物理削除後DB失敗も復旧可能にできた。
+- 保持期限の境界はUTCと`<=`をServer側で一貫させ、ClientはServer値だけを表示すると、時差・タイムゾーン・Client Clockによる誤削除を避けられる。
+- Admin限定情報はUI非表示だけでなく、ViewModel生成とRepositoryのNetwork Request発行の両方をRoleで止めることで、Memberの通常操作への403波及も防げる。
+- Log秘匿性はコード検査だけでは不十分であり、Framework、HTTP Result、systemd、実ダウンロードを含む実行時Logのパターンスキャンが必要である。
 
 ### プロセス上の改善点
 
+- 長時間の実機E2Eでは、候補作成、障害注入、DB・HDD・Audit照合、清掃を1回のシナリオ単位で即時記録すると、中断・再開後の状態復元が容易になる。
+- Logスキャンを最終工程だけでなく、初回Download・Purgeの直後にも実施すれば、Framework Logの不備をより早く修正できた。
+- tasklistの完了記録Commitも必須CIを再実行するため、「実装CommitのCI」と「記録Commitの最終CI」の2段階を完了手順の標準所要時間として見積もる必要がある。
+
 ### 次回への改善提案
+
+- Android操作、API障害注入、Pi Service操作、DB・HDD・Audit最終照合を、秘密情報を出力しない再利用可能なE2E Harnessへ段階的に移す。
+- ApplicationとFrameworkのLog Category・Event IDを許可リスト化し、ファイル名・Path・Tokenパターンの実行時検査を配置Smoke Testに組み込む。
+- 不可逆操作の次回開発では、正常系より先に「Request受信前」「物理変更後」「DB Commit後Response喪失」の中断点をTest Matrix化し、各点のIdempotency・Recovery・Audit完了条件を先に固定する。
