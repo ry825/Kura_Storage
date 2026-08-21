@@ -126,11 +126,13 @@ with open(sys.argv[1], encoding="utf-8") as source:
     config = json.load(source)
 storage = config["Storage"]
 purge = config["TrashPurge"]
+log_levels = config["Logging"]["LogLevel"]
 assert storage["CapacityWarningFreeBytes"] >= storage["MinimumFreeBytes"] > 0
 assert purge["RetentionDays"] >= 30
 assert 1 <= purge["IntervalHours"] <= 168
 assert 1 <= purge["BatchSize"] <= 500
 assert 1 <= purge["RetryDelayMinutes"] <= 1440
+assert log_levels["Microsoft.AspNetCore.Http.Result.FileStreamResult"] == "Warning"
 PY
 
 envsubst "${template_variables}" \

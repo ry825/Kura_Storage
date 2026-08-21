@@ -60,46 +60,46 @@
 
 ### 利用者による完全削除
 
-- [ ] 認証済み利用者が自分の`TRASHED` Fileを確認後に完全削除できる。
-- [ ] 認証済み利用者が自分の`TRASHED` Folderとその配下を確認後に完全削除できる。
-- [ ] 完全削除後、対象実体、ゴミ箱用Container、対象と配下の`FileEntry`、実装済みの関連管理情報・派生データが残らない。
-- [ ] 完全削除後の通常一覧、ゴミ箱一覧、詳細、Download、Restoreから対象へ到達できない。
-- [ ] `DELETED`状態または完全削除済みFileの索引行を追加しない。
-- [ ] `ACTIVE`、Root、他User、存在しない対象を、所有関係を漏えいしないErrorで拒否する。
-- [ ] Androidは不可逆性を明示した確認操作を必要とし、処理中の重複送信を防ぐ。
-- [ ] Androidは成功後にServerからゴミ箱一覧を再取得し、通信結果不明時は成功を推測しない。
+- [x] 認証済み利用者が自分の`TRASHED` Fileを確認後に完全削除できる。
+- [x] 認証済み利用者が自分の`TRASHED` Folderとその配下を確認後に完全削除できる。
+- [x] 完全削除後、対象実体、ゴミ箱用Container、対象と配下の`FileEntry`、実装済みの関連管理情報・派生データが残らない。
+- [x] 完全削除後の通常一覧、ゴミ箱一覧、詳細、Download、Restoreから対象へ到達できない。
+- [x] `DELETED`状態または完全削除済みFileの索引行を追加しない。
+- [x] `ACTIVE`、Root、他User、存在しない対象を、所有関係を漏えいしないErrorで拒否する。
+- [x] Androidは不可逆性を明示した確認操作を必要とし、処理中の重複送信を防ぐ。
+- [x] Androidは成功後にServerからゴミ箱一覧を再取得し、通信結果不明時は成功を推測しない。
 
 ### 30日保持と自動清掃
 
-- [ ] `trashedAt`から30日未満の項目は自動完全削除されない。
-- [ ] `trashedAt`からちょうど30日以上の項目は自動清掃対象になる。
-- [ ] 日次Workerおよび起動後の実行で、期限超過項目をBatch単位に完全削除できる。
-- [ ] 手動完全削除、Restore、複数Workerが競合しても二重削除やDB・HDD不整合を起こさない。
-- [ ] HDD空き容量が警告閾値以下でも、30日未満の項目を削除しない。
-- [ ] Storage未Mount、読取専用、DB障害、Process停止後に、安全に再試行、復旧、または`RECOVERY_REQUIRED`へ移行する。
+- [x] `trashedAt`から30日未満の項目は自動完全削除されない。
+- [x] `trashedAt`からちょうど30日以上の項目は自動清掃対象になる。
+- [x] 日次Workerおよび起動後の実行で、期限超過項目をBatch単位に完全削除できる。
+- [x] 手動完全削除、Restore、複数Workerが競合しても二重削除やDB・HDD不整合を起こさない。
+- [x] HDD空き容量が警告閾値以下でも、30日未満の項目を削除しない。
+- [x] Storage未Mount、読取専用、DB障害、Process停止後に、安全に再試行、復旧、または`RECOVERY_REQUIRED`へ移行する。
 
 ### 関連管理情報と監査ログ
 
-- [ ] 実装済みの共有、同期、最近使用、Backup Receipt、派生データ等が存在する場合、対象と配下の関連情報を完全削除する。
-- [ ] 現時点で未実装の関連機能について、空の業務テーブルを先行追加しない。
-- [ ] 手動・自動の完全削除成功後も、独立した監査ログだけは対象IDと必要最小限の情報を保持する。
-- [ ] 監査保存失敗時はDB上の関連情報と`FileEntry`削除をCommitしない。
-- [ ] 監査ログ、Application Log、API Responseにファイル名、相対・絶対Path、内容、Token、秘密情報を出力しない。
+- [x] 実装済みの共有、同期、最近使用、Backup Receipt、派生データ等が存在する場合、対象と配下の関連情報を完全削除する。
+- [x] 現時点で未実装の関連機能について、空の業務テーブルを先行追加しない。
+- [x] 手動・自動の完全削除成功後も、独立した監査ログだけは対象IDと必要最小限の情報を保持する。
+- [x] 監査保存失敗時はDB上の関連情報と`FileEntry`削除をCommitしない。
+- [x] 監査ログ、Application Log、API Responseにファイル名、相対・絶対Path、内容、Token、秘密情報を出力しない。
 
 ### 容量警告と管理状態
 
-- [ ] Adminは詳細Storage状態、ゴミ箱概算容量、期限超過件数、直近自動清掃結果を確認できる。
-- [ ] 容量が設定済み警告閾値以下の場合、AndroidのAdmin向け表示で警告と対応案内を確認できる。
-- [ ] Member、未認証利用者、匿名Healthは詳細容量とWorker状態を取得できない。
-- [ ] 警告閾値、保持日数、実行間隔、Batch Sizeを設定で検証し、不正値ではServerを起動しない。
+- [x] Adminは詳細Storage状態、ゴミ箱概算容量、期限超過件数、直近自動清掃結果を確認できる。
+- [x] 容量が設定済み警告閾値以下の場合、AndroidのAdmin向け表示で警告と対応案内を確認できる。
+- [x] Member、未認証利用者、匿名Healthは詳細容量とWorker状態を取得できない。
+- [x] 警告閾値、保持日数、実行間隔、Batch Sizeを設定で検証し、不正値ではServerを起動しない。
 
 ### 回帰・運用
 
-- [ ] 既存の一覧、詳細、Folder作成、Upload、Range Download、Trash、Restore、Rename、Moveが引き続き成功する。
-- [ ] 既存のStorage Root、`storageId`、Mount、Symbolic Link、相対Pathの安全境界を維持する。
-- [ ] Raspberry Pi、PostgreSQL、共有exFAT HDD、Android実機で手動完全削除、自動清掃、容量警告、障害復旧を確認できる。
-- [ ] Server・Androidの必須CI、Migration適用・Rollback確認、Security検査、実機E2Eが成功する。
-- [ ] 正式文書、OpenAPI、設定例、運用手順と実装が一致する。
+- [x] 既存の一覧、詳細、Folder作成、Upload、Range Download、Trash、Restore、Rename、Moveが引き続き成功する。
+- [x] 既存のStorage Root、`storageId`、Mount、Symbolic Link、相対Pathの安全境界を維持する。
+- [x] Raspberry Pi、PostgreSQL、共有exFAT HDD、Android実機で手動完全削除、自動清掃、容量警告、障害復旧を確認できる。
+- [x] Server・Androidの必須CI、Migration適用・Rollback確認、Security検査、実機E2Eが成功する。
+- [x] 正式文書、OpenAPI、設定例、運用手順と実装が一致する。
 
 ## 成功指標
 

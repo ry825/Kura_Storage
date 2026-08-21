@@ -727,7 +727,7 @@ components:
     TokenResponse:
       type: object
       additionalProperties: false
-      required: [deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt]
+      required: [deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, role]
       properties:
         deviceId:
           type: string
@@ -742,6 +742,9 @@ components:
         refreshTokenExpiresAt:
           type: string
           format: date-time
+        role:
+          type: string
+          enum: [ADMIN, MEMBER]
     UploadFileRequest:
       type: object
       additionalProperties: false

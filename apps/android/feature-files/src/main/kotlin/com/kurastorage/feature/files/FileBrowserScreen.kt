@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -34,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.TransferEvent
@@ -55,6 +57,9 @@ fun FileBrowserScreen(
     onChooseDownload: (FileEntry) -> Unit,
     onTrash: (FileEntry) -> Unit,
     onRestore: (FileEntry) -> Unit,
+    onBeginPermanentDelete: (FileEntry) -> Unit = {},
+    onConfirmPermanentDelete: () -> Unit = {},
+    onCancelPermanentDelete: () -> Unit = {},
     onRename: (FileEntry) -> Unit = {},
     onRenameInput: (String) -> Unit = {},
     onSubmitRename: () -> Unit = {},
@@ -70,6 +75,9 @@ fun FileBrowserScreen(
     onCancelTransfer: () -> Unit,
     onRetryTransfer: () -> Unit,
     onOpenDownload: (String) -> Unit,
+    adminStorageState: AdminStorageState = AdminStorageState(loading = false),
+    onRefreshAdminStorage: () -> Unit = {},
+    onOpenTrashFromWarning: () -> Unit = {},
 ) {
     var showCreate by remember { mutableStateOf(false) }
     var pendingTrash by remember { mutableStateOf<FileEntry?>(null) }
@@ -79,6 +87,7 @@ fun FileBrowserScreen(
         return ErrorState(state.error.message, state.error.requestId, onRefresh)
     }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        AdminStoragePanel(adminStorageState, onRefreshAdminStorage, onOpenTrashFromWarning)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onBack) { Text("Back") }
             Button(onClick = onRefresh) { Text("Refresh") }
@@ -129,13 +138,29 @@ fun FileBrowserScreen(
         AlertDialog(
             onDismissRequest = onDismissDetail,
             title = { Text(entry.name) },
-            text = { Text("${entry.entryType} • ${entry.size} bytes\nUpdated ${entry.updatedAt}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${entry.entryType} • ${entry.size} bytes\nUpdated ${entry.updatedAt}")
+                    if (trashMode) Text(state.retention?.text ?: "Automatic deletion time is unavailable.")
+                }
+            },
             confirmButton = {
                 if (trashMode) {
-                    Button(onClick = {
-                        pendingRestore = entry
-                        onDismissDetail()
-                    }) { Text("Restore") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            pendingRestore = entry
+                            onDismissDetail()
+                        }) { Text("Restore") }
+                        Button(
+                            onClick = { onBeginPermanentDelete(entry) },
+                            colors =
+                                ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error,
+                                    contentColor = MaterialTheme.colorScheme.onError,
+                                ),
+                            modifier = Modifier.testTag("delete-permanently"),
+                        ) { Text("Delete permanently") }
+                    }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         if (entry.entryType == FileEntryType.FILE) {
@@ -179,6 +204,14 @@ fun FileBrowserScreen(
             },
         )
     }
+    state.permanentDelete?.let { deletion ->
+        PermanentDeleteDialog(
+            state = deletion,
+            onDismiss = onCancelPermanentDelete,
+            onConfirm = onConfirmPermanentDelete,
+            onRefresh = onRefresh,
+        )
+    }
     state.rename?.let { rename ->
         RenameDialog(
             state = rename,
@@ -199,6 +232,114 @@ fun FileBrowserScreen(
             onRefresh = onRefreshPlacement,
         )
     }
+}
+
+@Composable
+fun AdminStoragePanel(
+    state: AdminStorageState,
+    onRefresh: () -> Unit,
+    onOpenTrash: () -> Unit,
+) {
+    val status = state.status
+    when {
+        state.error ->
+            Column(Modifier.testTag("admin-storage-error"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Storage status could not be refreshed.", color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onRefresh) { Text("Retry storage status") }
+            }
+        status?.storage == "UNAVAILABLE" ->
+            Column(Modifier.testTag("admin-storage-unavailable"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Storage is unavailable.", color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onRefresh) { Text("Refresh storage status") }
+            }
+        status?.capacityWarning == true ->
+            Column(
+                Modifier.fillMaxWidth().testTag("capacity-warning").padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text("Storage capacity warning", style = MaterialTheme.typography.titleMedium)
+                Text("Available: ${formatBytes(status.availableBytes)}")
+                Text("Warning threshold: ${formatBytes(status.capacityWarningThresholdBytes)}")
+                Text("Trash estimate: ${formatBytes(status.trashBytes)}")
+                Text("Expired trash roots: ${status.expiredTrashRootCount}")
+                val latest = status.lastPurgeRun
+                Text("Latest cleanup: ${latest?.status ?: "not available"}")
+                latest?.let {
+                    Text(
+                        "Cleanup examined/deleted/errors: " +
+                            "${it.examinedRootCount}/${it.deletedRootCount}/${it.errorCount}",
+                    )
+                    Text("Cleanup released: ${formatBytes(it.releasedBytes)}")
+                }
+                Text("The 30-day retention period is not shortened. Delete unneeded trash manually or expand storage.")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onOpenTrash) { Text("Open Trash") }
+                    TextButton(onClick = onRefresh) { Text("Refresh") }
+                }
+            }
+    }
+}
+
+@Composable
+private fun PermanentDeleteDialog(
+    state: PermanentDeleteState,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val refreshOnly = state.error?.code in setOf(ErrorCode.FILE_NOT_FOUND, ErrorCode.IDEMPOTENCY_CONFLICT)
+    val refreshRecommended =
+        state.resultUnknown ||
+            state.error?.code in
+            setOf(ErrorCode.FILE_NOT_FOUND, ErrorCode.IDEMPOTENCY_CONFLICT, ErrorCode.RECOVERY_REQUIRED)
+    AlertDialog(
+        onDismissRequest = { if (!state.submitting) onDismiss() },
+        title = { Text("Delete ${state.target.name} permanently?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("This operation cannot be undone.")
+                if (state.target.entryType == FileEntryType.FOLDER) {
+                    Text("The folder and everything inside it will be permanently deleted.")
+                }
+                state.error?.let { error ->
+                    Text(error.message, color = MaterialTheme.colorScheme.error)
+                    if (refreshRecommended) {
+                        TextButton(onClick = onRefresh, enabled = !state.submitting) { Text("Refresh to confirm") }
+                    }
+                }
+                if (state.submitting) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !state.submitting && !refreshOnly,
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                modifier = Modifier.testTag("confirm-permanent-delete"),
+            ) {
+                Text(
+                    if (state.submitting) {
+                        "Deleting…"
+                    } else if (state.resultUnknown) {
+                        "Retry same request"
+                    } else if (refreshOnly) {
+                        "Refresh list first"
+                    } else {
+                        "Delete permanently"
+                    },
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !state.submitting && !state.resultUnknown) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @Composable

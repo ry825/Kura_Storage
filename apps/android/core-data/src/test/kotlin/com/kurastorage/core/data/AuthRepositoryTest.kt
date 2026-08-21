@@ -5,6 +5,7 @@ import com.kurastorage.core.model.ConnectionRoute
 import com.kurastorage.core.model.DeviceId
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.KuraStorageException
+import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.network.AuthenticationApi
 import com.kurastorage.core.network.LoginRequestDto
 import com.kurastorage.core.network.LogoutRequestDto
@@ -37,6 +38,8 @@ class AuthRepositoryTest {
                     "Android",
                 )
             assertEquals(DeviceId(DEVICE_ID), result.deviceId)
+            assertEquals(UserRole.ADMIN, result.role)
+            assertEquals(UserRole.ADMIN, fixture.repository.role())
 
             runCatching {
                 fixture.repository.register(
@@ -74,6 +77,8 @@ class AuthRepositoryTest {
             assertEquals(List(12) { "access-2" }, results)
             assertEquals(1, fixture.api.refreshCount.get())
             assertEquals(24, invocations.get())
+            assertEquals(UserRole.ADMIN, fixture.repository.role())
+            assertEquals(UserRole.ADMIN, fixture.metadataStore.metadata?.role)
         }
 
     @Test
@@ -86,6 +91,20 @@ class AuthRepositoryTest {
 
             runCatching { fixture.repository.login("family", "secret") }
 
+            assertNull(fixture.tokenStore.token)
+            assertNull(fixture.metadataStore.metadata)
+        }
+
+    @Test
+    fun `logout clears role with encrypted token and metadata`() =
+        runTest {
+            val fixture = Fixture()
+            fixture.seedCredential()
+            fixture.repository.login("family", "secret")
+
+            fixture.repository.logout()
+
+            assertNull(fixture.repository.role())
             assertNull(fixture.tokenStore.token)
             assertNull(fixture.metadataStore.metadata)
         }
@@ -138,6 +157,7 @@ class AuthRepositoryTest {
                     DeviceId(DEVICE_ID),
                     Instant.parse("2026-07-27T00:00:00Z"),
                     "family",
+                    UserRole.ADMIN,
                 )
             tokenStore.token = "refresh-0"
         }
@@ -210,6 +230,7 @@ class AuthRepositoryTest {
                 refreshToken = "refresh-$suffix",
                 accessTokenExpiresAt = "2026-07-26T01:00:00Z",
                 refreshTokenExpiresAt = "2026-07-27T00:00:00Z",
+                role = "ADMIN",
             )
     }
 }

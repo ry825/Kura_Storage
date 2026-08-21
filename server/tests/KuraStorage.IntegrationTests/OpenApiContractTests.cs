@@ -40,6 +40,11 @@ public sealed class OpenApiContractTests
         Assert.Contains("purgeEligibleAt:", contract, StringComparison.Ordinal);
         Assert.Contains("AdminStorageStatus:", contract, StringComparison.Ordinal);
         Assert.Contains("TrashPurgeRunSummary:", contract, StringComparison.Ordinal);
+        Assert.Contains(
+            "required: [deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, role]",
+            contract,
+            StringComparison.Ordinal);
+        Assert.Contains("enum: [ADMIN, MEMBER]", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("ownerUserId:", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("relativePath:", contract, StringComparison.Ordinal);
     }

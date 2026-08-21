@@ -11,6 +11,37 @@ namespace KuraStorage.Application.Tests;
 public sealed class IdentityServiceTests
 {
     [Fact]
+    public async Task TokenResponses_PreserveUserRoleAcrossRegisterLoginAndRefresh()
+    {
+        var fixture = new Fixture();
+        await fixture.CreateUserAsync(UserRole.Admin);
+
+        var registration = await fixture.Service.RegisterDeviceAsync(
+            "alice",
+            "password",
+            "phone",
+            null,
+            "request",
+            CancellationToken.None);
+        var login = await fixture.Service.LoginAsync(
+            "alice",
+            "password",
+            registration.Value!.DeviceId,
+            null,
+            "request",
+            CancellationToken.None);
+        var refresh = await fixture.Service.RefreshAsync(
+            login.Value!.DeviceId,
+            login.Value.RefreshToken,
+            "request",
+            CancellationToken.None);
+
+        Assert.Equal(UserRole.Admin.ToString().ToUpperInvariant(), registration.Value.Role);
+        Assert.Equal(UserRole.Admin.ToString().ToUpperInvariant(), login.Value.Role);
+        Assert.Equal(UserRole.Admin.ToString().ToUpperInvariant(), refresh.Value!.Role);
+    }
+
+    [Fact]
     public async Task RefreshAsync_WhenUsedTokenIsPresented_RevokesEntireSessionFamily()
     {
         var fixture = new Fixture();
@@ -158,13 +189,13 @@ public sealed class IdentityServiceTests
                 Clock);
         }
 
-        public async Task<Guid> CreateUserAsync()
+        public async Task<Guid> CreateUserAsync(UserRole role = UserRole.Member)
         {
             var result = await Service.CreateUserAsync(
                 "alice",
                 "Alice",
                 "password",
-                UserRole.Member,
+                role,
                 CancellationToken.None);
             return result.Value;
         }

@@ -300,7 +300,13 @@ public sealed class IdentityService(
             refreshExpiresAt,
             now);
         var accessToken = accessTokens.Issue(userId, deviceId, familyId, role, now);
-        return new TokenPair(deviceId, accessToken.Value, refreshToken, accessToken.ExpiresAt, refreshExpiresAt);
+        return new TokenPair(
+            deviceId,
+            accessToken.Value,
+            refreshToken,
+            accessToken.ExpiresAt,
+            refreshExpiresAt,
+            role.ToString().ToUpperInvariant());
     }
 
     private static AuthenticationAttempt Attempt(

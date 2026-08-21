@@ -6,6 +6,7 @@ import com.kurastorage.core.model.DeviceId
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.StoredCredential
+import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.network.AuthenticationApi
 import com.kurastorage.core.network.LoginRequestDto
 import com.kurastorage.core.network.LogoutRequestDto
@@ -43,6 +44,8 @@ interface AuthenticationRepository {
     suspend fun logout()
 
     fun accessToken(): String?
+
+    fun role(): UserRole? = null
 }
 
 @Suppress("TooManyFunctions")
@@ -74,6 +77,7 @@ class DefaultAuthenticationRepository(
             refreshToken = refreshToken,
             refreshTokenExpiresAt = metadata.refreshTokenExpiresAt,
             username = metadata.username,
+            role = metadata.role,
         )
     }
 
@@ -147,6 +151,8 @@ class DefaultAuthenticationRepository(
             ?.takeIf { it.accessTokenExpiresAt.isAfter(clock.instant()) }
             ?.accessToken
 
+    override fun role(): UserRole? = session.get()?.role
+
     @Suppress("TooGenericExceptionCaught")
     private suspend fun persist(
         response: TokenResponseDto,
@@ -159,6 +165,7 @@ class DefaultAuthenticationRepository(
                 refreshToken = response.refreshToken,
                 accessTokenExpiresAt = Instant.parse(response.accessTokenExpiresAt),
                 refreshTokenExpiresAt = Instant.parse(response.refreshTokenExpiresAt),
+                role = UserRole.valueOf(response.role),
             )
         try {
             tokenStore.write(authSession.refreshToken)
@@ -167,6 +174,7 @@ class DefaultAuthenticationRepository(
                     deviceId = authSession.deviceId,
                     refreshTokenExpiresAt = authSession.refreshTokenExpiresAt,
                     username = username,
+                    role = authSession.role,
                 ),
             )
             session.set(authSession)

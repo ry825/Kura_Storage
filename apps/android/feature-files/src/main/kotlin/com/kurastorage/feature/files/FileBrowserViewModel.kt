@@ -21,6 +21,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Clock
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 data class FileBrowserState(
     val loading: Boolean = true,
@@ -31,8 +35,25 @@ data class FileBrowserState(
     val transfer: TransferEvent? = null,
     val rename: RenameState? = null,
     val movePicker: MovePickerState? = null,
+    val permanentDelete: PermanentDeleteState? = null,
+    val retention: RetentionDisplayState? = null,
     val placementResult: String? = null,
     val error: BrowserError? = null,
+)
+
+data class PermanentDeleteState(
+    val target: FileEntry,
+    val idempotencyKey: String,
+    val submitting: Boolean = false,
+    val resultUnknown: Boolean = false,
+    val error: BrowserError? = null,
+)
+
+enum class RetentionStage { BEFORE_DEADLINE, DEADLINE_REACHED, UNKNOWN }
+
+data class RetentionDisplayState(
+    val stage: RetentionStage,
+    val text: String,
 )
 
 data class RenameState(
@@ -80,6 +101,9 @@ class FileBrowserViewModel(
     private val files: FileRepository,
     private val transfers: TransferRepository,
     private val trashMode: Boolean = false,
+    private val clock: Clock = Clock.systemUTC(),
+    private val zoneId: ZoneId = ZoneId.systemDefault(),
+    private val idempotencyKeyFactory: () -> String = { UUID.randomUUID().toString() },
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(FileBrowserState())
     val state: StateFlow<FileBrowserState> = mutableState.asStateFlow()
@@ -97,9 +121,24 @@ class FileBrowserViewModel(
         refresh()
     }
 
-    fun refresh() = load { pager.refresh() }
+    fun refresh() =
+        load({ pager.refresh() }) { page ->
+            val pending = mutableState.value.permanentDelete
+            val requiresAuthoritativeConfirmation =
+                pending?.resultUnknown == true || pending?.error?.code == ErrorCode.FILE_NOT_FOUND
+            if (requiresAuthoritativeConfirmation && page.items.none { it.id == pending.target.id }) {
+                mutableState.update {
+                    it.copy(
+                        permanentDelete = null,
+                        selected = null,
+                        retention = null,
+                        placementResult = "Permanent deletion confirmed.",
+                    )
+                }
+            }
+        }
 
-    fun loadMore() = load { pager.loadNext() }
+    fun loadMore() = load(action = { pager.loadNext() })
 
     fun open(entry: FileEntry) {
         if (entry.entryType == FileEntryType.FOLDER && !trashMode) {
@@ -107,11 +146,11 @@ class FileBrowserViewModel(
             pager = pager(entry.id)
             refresh()
         } else {
-            mutableState.update { it.copy(selected = entry) }
+            showDetail(entry)
         }
     }
 
-    fun select(entry: FileEntry) = mutableState.update { it.copy(selected = entry) }
+    fun select(entry: FileEntry) = showDetail(entry)
 
     fun back(): Boolean {
         if (trashMode || folderStack.size <= 1) return false
@@ -121,13 +160,85 @@ class FileBrowserViewModel(
         return true
     }
 
-    fun dismissDetail() = mutableState.update { it.copy(selected = null) }
+    fun dismissDetail() = mutableState.update { it.copy(selected = null, retention = null) }
 
     fun createFolder(name: String) = mutate { files.createFolder(folderStack.last(), name) }
 
     fun trash(entry: FileEntry) = mutate { files.trash(entry.id) }
 
-    fun restore(entry: FileEntry) = mutate { files.restore(entry.id) }
+    fun restore(entry: FileEntry) {
+        val deletion = mutableState.value.permanentDelete
+        if (deletion?.target?.id == entry.id && deletion.submitting) return
+        mutate { files.restore(entry.id) }
+    }
+
+    fun beginPermanentDelete(entry: FileEntry) {
+        if (!trashMode || mutableState.value.permanentDelete?.submitting == true) return
+        mutableState.update {
+            it.copy(
+                selected = null,
+                retention = null,
+                permanentDelete = PermanentDeleteState(entry, idempotencyKeyFactory()),
+                error = null,
+                placementResult = null,
+            )
+        }
+    }
+
+    fun cancelPermanentDelete() {
+        val deletion = mutableState.value.permanentDelete
+        if (deletion?.submitting == true || deletion?.resultUnknown == true) return
+        mutableState.update { it.copy(permanentDelete = null) }
+    }
+
+    fun confirmPermanentDelete() {
+        val deletion = mutableState.value.permanentDelete ?: return
+        if (deletion.submitting) return
+        mutableState.update {
+            it.copy(permanentDelete = deletion.copy(submitting = true, error = null, resultUnknown = false))
+        }
+        viewModelScope.launch {
+            runCatching { files.purge(deletion.target.id, deletion.idempotencyKey) }
+                .onSuccess {
+                    runCatching { pager.refresh() }
+                        .onSuccess { page ->
+                            showPage(page)
+                            mutableState.update {
+                                it.copy(
+                                    selected = null,
+                                    retention = null,
+                                    permanentDelete = null,
+                                    placementResult = "Deleted permanently.",
+                                    error = null,
+                                )
+                            }
+                        }.onFailure { failure ->
+                            mutableState.update {
+                                it.copy(
+                                    permanentDelete =
+                                        deletion.copy(
+                                            submitting = false,
+                                            resultUnknown = true,
+                                            error = failure.toBrowserError(resultUnknownOverride = true),
+                                        ),
+                                )
+                            }
+                        }
+                }.onFailure { failure ->
+                    val error = failure.toBrowserError()
+                    mutableState.update {
+                        it.copy(
+                            permanentDelete =
+                                deletion.copy(
+                                    submitting = false,
+                                    resultUnknown = error.resultUnknown,
+                                    error = error,
+                                ),
+                        )
+                    }
+                }
+        }
+    }
 
     fun beginRename(entry: FileEntry) {
         if (trashMode) return
@@ -307,12 +418,33 @@ class FileBrowserViewModel(
         }
     }
 
-    private fun load(action: suspend () -> FilePage) {
+    private fun load(
+        action: suspend () -> FilePage,
+        after: (FilePage) -> Unit = {},
+    ) {
         viewModelScope.launch {
             mutableState.update { it.copy(loading = true, error = null, placementResult = null) }
             runCatching { action() }
-                .onSuccess(::showPage)
-                .onFailure(::showError)
+                .onSuccess { page ->
+                    showPage(page)
+                    after(page)
+                }.onFailure(::showError)
+        }
+    }
+
+    private fun showDetail(entry: FileEntry) {
+        mutableState.update { it.copy(selected = entry, retention = retention(entry)) }
+    }
+
+    private fun retention(entry: FileEntry): RetentionDisplayState {
+        val deadline =
+            entry.purgeEligibleAt
+                ?: return RetentionDisplayState(RetentionStage.UNKNOWN, "Automatic deletion time is unavailable.")
+        val local = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z").withZone(zoneId).format(deadline)
+        return if (deadline.isAfter(clock.instant())) {
+            RetentionDisplayState(RetentionStage.BEFORE_DEADLINE, "Scheduled for automatic deletion: $local")
+        } else {
+            RetentionDisplayState(RetentionStage.DEADLINE_REACHED, "Automatic deletion is due since $local")
         }
     }
 
@@ -455,6 +587,7 @@ class FileBrowserViewModel(
             ErrorCode.FILE_MOVE_CYCLE -> "This folder cannot be moved there. Choose another folder."
             ErrorCode.FILE_NOT_FOUND -> "The item or destination is no longer available. Refresh the list."
             ErrorCode.RECOVERY_REQUIRED -> "Recovery is required before this item can be changed."
+            ErrorCode.IDEMPOTENCY_CONFLICT -> "This deletion key conflicts with another request. Refresh the list."
             ErrorCode.STORAGE_UNAVAILABLE, ErrorCode.STORAGE_CAPACITY_INSUFFICIENT -> "Storage is unavailable."
             else -> categoryErrorMessage(code, category, resultUnknown)
         }

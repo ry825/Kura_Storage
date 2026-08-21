@@ -200,6 +200,22 @@ HDD-unavailable test, take database and storage-root backups; verify the API
 rejects the operation and does not write to the OS root. Finish by rebooting
 the Pi and Android device and rerunning `verify.sh` plus the main smoke test.
 
+For a release that changes permanent deletion or retention, also exercise a
+trashed file and a trashed folder with descendants on both routes. Verify that
+cancel sends no purge request, confirmation is visibly irreversible, a
+successful purge disappears only after an authoritative refresh, and an
+unknown network result offers refresh or retry with the original idempotency
+key. Confirm that the server-provided retention deadline is displayed without
+the Android client recalculating 30 days. As both an administrator and member,
+verify that only the administrator can request and view capacity, trash,
+expired-root, and latest-run details. Reproduce the retention boundary with a
+test clock or test-only data; never reduce the production retention setting
+below 30 days. While capacity warning is active, confirm that pre-deadline
+entries remain and that manual or deadline purge can release capacity. After
+failure and recovery tests, reconcile the database, storage root, purge
+journals, audit records, and purge runs without writing file names or paths to
+logs.
+
 Application rollback switches to `previous`:
 
 ```bash

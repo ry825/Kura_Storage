@@ -34,6 +34,7 @@ class FileRepositoryTest {
             val second = pager.loadNext()
 
             assertEquals("file-1", first.items.single().id)
+            assertEquals(Instant.parse(PURGE_TIME), first.items.single().purgeEligibleAt)
             assertEquals(listOf("file-1", "file-2"), second.items.map { it.id })
             assertFalse(second.hasNextPage)
         }
@@ -90,11 +91,31 @@ class FileRepositoryTest {
             assertTrue(unknown is KuraStorageException.Network)
         }
 
+    @Test
+    fun `purge preserves idempotency key across refresh retry and never synthesizes unknown success`() =
+        runTest {
+            val api = FakeFileApi().apply { unauthorizedPurgeOnce = true }
+            val auth = FakeAuth()
+            val repository = DefaultFileRepository(api, AuthenticatedRequestExecutor(auth))
+
+            repository.purge("file", "key-1")
+
+            assertEquals(listOf("key-1", "key-1"), api.purgeKeys)
+            assertEquals(listOf("token", "refreshed-token"), api.purgeTokens)
+            api.purgeFailure = KuraStorageException.Network(java.io.IOException("response unknown"))
+            val failure = runCatching { repository.purge("file", "key-1") }.exceptionOrNull()
+            assertTrue(failure is KuraStorageException.Network)
+        }
+
     private class FakeFileApi : FileApi {
         val updateRequests = mutableListOf<UpdateFileRequestDto>()
         val updateTokens = mutableListOf<String>()
         var unauthorizedUpdateOnce = false
         var updateFailure: Throwable? = null
+        val purgeKeys = mutableListOf<String>()
+        val purgeTokens = mutableListOf<String>()
+        var unauthorizedPurgeOnce = false
+        var purgeFailure: Throwable? = null
 
         override suspend fun listFiles(
             accessToken: String,
@@ -147,6 +168,18 @@ class FileRepositoryTest {
             fileId: String,
         ) = NetworkCallResult.Success(dto(fileId))
 
+        override suspend fun purge(
+            accessToken: String,
+            fileId: String,
+            idempotencyKey: String,
+        ): NetworkCallResult<Unit> {
+            purgeTokens += accessToken
+            purgeKeys += idempotencyKey
+            purgeFailure?.let { throw it }
+            if (unauthorizedPurgeOnce && purgeTokens.size == 1) return NetworkCallResult.Unauthorized
+            return NetworkCallResult.Success(Unit)
+        }
+
         override suspend fun upload(
             accessToken: String,
             idempotencyKey: String,
@@ -198,8 +231,9 @@ class FileRepositoryTest {
         fun dto(
             id: String,
             type: String = "FILE",
-        ) = FileEntryDto(id, "root", "$id.txt", type, "text/plain", 1, "ACTIVE", 1, null, TIME, TIME)
+        ) = FileEntryDto(id, "root", "$id.txt", type, "text/plain", 1, "ACTIVE", 1, null, TIME, TIME, PURGE_TIME)
 
         const val TIME = "2026-07-29T00:00:00Z"
+        const val PURGE_TIME = "2026-08-28T00:00:00Z"
     }
 }

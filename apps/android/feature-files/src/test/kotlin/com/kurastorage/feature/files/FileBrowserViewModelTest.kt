@@ -14,6 +14,7 @@ import com.kurastorage.core.model.FilePage
 import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadOperation
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -31,7 +32,9 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import java.io.IOException
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FileBrowserViewModelTest {
@@ -318,6 +321,164 @@ class FileBrowserViewModelTest {
             }
         }
 
+    @Test
+    fun `permanent delete creates one key blocks duplicate and restore then refreshes authoritative list`() =
+        runTest(dispatcher) {
+            val target = file("trash").copy(status = FileEntryStatus.TRASHED)
+            val gate = CompletableDeferred<Unit>()
+            val files = PurgeFiles(target, gate)
+            val viewModel =
+                FileBrowserViewModel(
+                    files,
+                    FakeTransfers(),
+                    trashMode = true,
+                    idempotencyKeyFactory = { "key-1" },
+                )
+
+            viewModel.beginPermanentDelete(target)
+            viewModel.confirmPermanentDelete()
+            viewModel.confirmPermanentDelete()
+            viewModel.restore(target)
+
+            assertEquals(listOf("key-1"), files.purgeKeys)
+            assertEquals(0, files.restoreCalls)
+            assertEquals(
+                true,
+                viewModel.state.value.permanentDelete
+                    ?.submitting,
+            )
+            gate.complete(Unit)
+
+            assertNull(viewModel.state.value.permanentDelete)
+            assertEquals(emptyList<FileEntry>(), viewModel.state.value.entries)
+            assertEquals("Deleted permanently.", viewModel.state.value.placementResult)
+        }
+
+    @Test
+    fun `cancelling unsent permanent delete discards its key`() =
+        runTest(dispatcher) {
+            val target = file("trash").copy(status = FileEntryStatus.TRASHED)
+            val files = PurgeFiles(target)
+            val keys = listOf("discarded-key", "replacement-key").iterator()
+            val viewModel =
+                FileBrowserViewModel(
+                    files,
+                    FakeTransfers(),
+                    trashMode = true,
+                    idempotencyKeyFactory = { keys.next() },
+                )
+
+            viewModel.beginPermanentDelete(target)
+            assertEquals(
+                "discarded-key",
+                viewModel.state.value.permanentDelete
+                    ?.idempotencyKey,
+            )
+            viewModel.cancelPermanentDelete()
+            assertNull(viewModel.state.value.permanentDelete)
+            assertEquals(emptyList<String>(), files.purgeKeys)
+
+            viewModel.beginPermanentDelete(target)
+            assertEquals(
+                "replacement-key",
+                viewModel.state.value.permanentDelete
+                    ?.idempotencyKey,
+            )
+        }
+
+    @Test
+    fun `unknown permanent delete keeps item and same key until refresh or retry confirms result`() =
+        runTest(dispatcher) {
+            val target = file("trash").copy(status = FileEntryStatus.TRASHED)
+            val files = PurgeFiles(target).apply { purgeFailure = KuraStorageException.Network(IOException("lost")) }
+            val viewModel =
+                FileBrowserViewModel(
+                    files,
+                    FakeTransfers(),
+                    trashMode = true,
+                    idempotencyKeyFactory = { "stable-key" },
+                )
+
+            viewModel.beginPermanentDelete(target)
+            viewModel.confirmPermanentDelete()
+
+            assertEquals(
+                true,
+                viewModel.state.value.permanentDelete
+                    ?.resultUnknown,
+            )
+            assertEquals(listOf(target), viewModel.state.value.entries)
+            viewModel.cancelPermanentDelete()
+            assertEquals(
+                "stable-key",
+                viewModel.state.value.permanentDelete
+                    ?.idempotencyKey,
+            )
+            files.purgeFailure = null
+            viewModel.confirmPermanentDelete()
+
+            assertEquals(listOf("stable-key", "stable-key"), files.purgeKeys)
+            assertNull(viewModel.state.value.permanentDelete)
+        }
+
+    @Test
+    fun `permanent delete maps authoritative errors and retention uses server UTC deadline`() =
+        runTest(dispatcher) {
+            val deadline = Instant.parse("2026-08-21T00:00:00Z")
+            val target = file("trash").copy(status = FileEntryStatus.TRASHED, purgeEligibleAt = deadline)
+            val files = PurgeFiles(target)
+            val viewModel =
+                FileBrowserViewModel(
+                    files,
+                    FakeTransfers(),
+                    trashMode = true,
+                    clock = Clock.fixed(deadline, ZoneOffset.UTC),
+                    zoneId = ZoneOffset.ofHours(10),
+                    idempotencyKeyFactory = { "key" },
+                )
+            viewModel.select(target)
+            assertEquals(
+                RetentionStage.DEADLINE_REACHED,
+                viewModel.state.value.retention
+                    ?.stage,
+            )
+            assertEquals(
+                true,
+                viewModel.state.value.retention
+                    ?.text
+                    ?.contains("AEST") == true ||
+                    viewModel.state.value.retention
+                        ?.text
+                        ?.contains("+10:00") == true,
+            )
+
+            listOf(
+                ErrorCode.FILE_NOT_FOUND to 404,
+                ErrorCode.IDEMPOTENCY_CONFLICT to 409,
+                ErrorCode.RECOVERY_REQUIRED to 409,
+                ErrorCode.STORAGE_UNAVAILABLE to 503,
+            ).forEach { (code, status) ->
+                files.purgeFailure = apiFailure(code, status)
+                viewModel.beginPermanentDelete(target)
+                viewModel.confirmPermanentDelete()
+                assertEquals(
+                    code,
+                    viewModel.state.value.permanentDelete
+                        ?.error
+                        ?.code,
+                )
+                if (code == ErrorCode.FILE_NOT_FOUND) {
+                    files.present = false
+                    viewModel.refresh()
+                    assertNull(viewModel.state.value.permanentDelete)
+                    files.present = true
+                    viewModel.refresh()
+                } else {
+                    viewModel.cancelPermanentDelete()
+                }
+            }
+        }
+
     private class FakeFiles(
         private val empty: Boolean = false,
         private var failNext: Boolean = false,
@@ -391,6 +552,63 @@ class FileBrowserViewModelTest {
             destinationUri: String,
             mimeType: String?,
         ): Intent = error("unused")
+    }
+
+    private class PurgeFiles(
+        private val target: FileEntry,
+        private val gate: CompletableDeferred<Unit>? = null,
+    ) : FileRepository {
+        var present = true
+        var restoreCalls = 0
+        var purgeFailure: Throwable? = null
+        val purgeKeys = mutableListOf<String>()
+
+        override suspend fun list(
+            parentId: String?,
+            page: Int,
+            pageSize: Int,
+        ) = page()
+
+        override suspend fun detail(fileId: String) = target
+
+        override suspend fun createFolder(
+            parentId: String?,
+            name: String,
+        ) = target
+
+        override suspend fun rename(
+            fileId: String,
+            name: String,
+        ) = target
+
+        override suspend fun move(
+            fileId: String,
+            targetParentId: String,
+        ) = target
+
+        override suspend fun trash(fileId: String) = target
+
+        override suspend fun listTrash(
+            page: Int,
+            pageSize: Int,
+        ) = page()
+
+        override suspend fun restore(fileId: String): FileEntry {
+            restoreCalls++
+            return target
+        }
+
+        override suspend fun purge(
+            fileId: String,
+            idempotencyKey: String,
+        ) {
+            purgeKeys += idempotencyKey
+            gate?.await()
+            purgeFailure?.let { throw it }
+            present = false
+        }
+
+        private fun page() = FilePage(null, if (present) listOf(target) else emptyList(), 1, 100, if (present) 1 else 0)
     }
 
     private class PlacementFiles(

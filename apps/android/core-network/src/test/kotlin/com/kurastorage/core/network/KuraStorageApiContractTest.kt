@@ -9,6 +9,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -169,6 +170,60 @@ class KuraStorageApiContractTest {
             )
         }
 
+    @Test
+    fun `purge uses stable idempotency header and maps no content and errors`() =
+        runTest {
+            server.enqueue(MockResponse().setResponseCode(204))
+            assertTrue(api.purge("token", DEVICE_ID, IDEMPOTENCY_KEY) is NetworkCallResult.Success)
+            val request = server.takeRequest()
+            assertEquals("DELETE", request.method)
+            assertEquals("/api/v1/trash/$DEVICE_ID", request.path)
+            assertEquals(IDEMPOTENCY_KEY, request.getHeader("Idempotency-Key"))
+
+            listOf(
+                ErrorCode.FILE_NOT_FOUND to 404,
+                ErrorCode.IDEMPOTENCY_CONFLICT to 409,
+                ErrorCode.RECOVERY_REQUIRED to 409,
+                ErrorCode.STORAGE_UNAVAILABLE to 503,
+            ).forEach { (code, status) ->
+                server.enqueue(
+                    MockResponse().setResponseCode(status).setHeader("Content-Type", "application/json").setBody(
+                        """{"code":"$code","message":"failed","requestId":"purge-request","details":{}}""",
+                    ),
+                )
+                val error =
+                    runCatching { api.purge("token", DEVICE_ID, IDEMPOTENCY_KEY) }.exceptionOrNull()
+                        as KuraStorageException.Api
+                assertEquals(code, error.error.code)
+            }
+        }
+
+    @Test
+    fun `admin storage maps nullable capacity and latest run contract`() =
+        runTest {
+            server.enqueue(jsonResponse(resource("admin-storage-response.json")))
+            val result = api.getAdminStorage("token") as NetworkCallResult.Success
+            assertEquals(1, result.value.expiredTrashRootCount)
+            assertEquals("COMPLETED", result.value.lastPurgeRun?.status)
+            assertEquals("/api/v1/admin/storage", server.takeRequest().path)
+
+            server.enqueue(
+                jsonResponse(
+                    """
+                    {"storage":"UNAVAILABLE","totalBytes":null,"availableBytes":null,
+                    "capacityWarningThresholdBytes":10737418240,"capacityWarning":null,
+                    "trashBytes":0,"expiredTrashRootCount":0,"retentionDays":30,
+                    "recoveryRequiredPurgeCount":0,"lastPurgeRun":null}
+                    """.trimIndent(),
+                ),
+            )
+            val unavailable = api.getAdminStorage("token") as NetworkCallResult.Success
+            assertEquals("UNAVAILABLE", unavailable.value.storage)
+            assertNull(unavailable.value.totalBytes)
+            assertNull(unavailable.value.capacityWarning)
+            assertNull(unavailable.value.lastPurgeRun)
+        }
+
     private fun resource(name: String) = checkNotNull(javaClass.classLoader?.getResource(name)).readText()
 
     private fun jsonResponse(body: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(body)
@@ -179,10 +234,11 @@ class KuraStorageApiContractTest {
         const val DEVICE_ID = "11111111-1111-1111-1111-111111111111"
         const val REFRESH_TOKEN = "refresh-token-with-more-than-thirty-two-characters"
         const val TARGET_PARENT_ID = "33333333-3333-3333-3333-333333333333"
+        const val IDEMPOTENCY_KEY = "44444444-4444-4444-4444-444444444444"
         const val TOKEN_RESPONSE =
             """
             {"deviceId":"$DEVICE_ID","accessToken":"access-token","refreshToken":"$REFRESH_TOKEN",
-            "accessTokenExpiresAt":"2026-07-26T01:15:00Z","refreshTokenExpiresAt":"2026-07-27T01:00:00Z"}
+            "accessTokenExpiresAt":"2026-07-26T01:15:00Z","refreshTokenExpiresAt":"2026-07-27T01:00:00Z","role":"ADMIN"}
             """
     }
 }

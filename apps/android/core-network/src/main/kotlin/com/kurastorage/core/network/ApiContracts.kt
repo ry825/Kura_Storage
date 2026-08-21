@@ -44,6 +44,7 @@ data class TokenResponseDto(
     val refreshToken: String,
     val accessTokenExpiresAt: String,
     val refreshTokenExpiresAt: String,
+    val role: String = "MEMBER",
 )
 
 @Serializable
@@ -89,4 +90,29 @@ data class FileEntryPageDto(
     val page: Int,
     val pageSize: Int,
     val totalCount: Long,
+)
+
+@Serializable
+data class TrashPurgeRunSummaryDto(
+    val startedAt: String,
+    val completedAt: String? = null,
+    val status: String,
+    val examinedRootCount: Int,
+    val deletedRootCount: Int,
+    val releasedBytes: Long,
+    val errorCount: Int,
+)
+
+@Serializable
+data class AdminStorageStatusDto(
+    val storage: String,
+    val totalBytes: Long? = null,
+    val availableBytes: Long? = null,
+    val capacityWarningThresholdBytes: Long,
+    val capacityWarning: Boolean? = null,
+    val trashBytes: Long,
+    val expiredTrashRootCount: Int,
+    val retentionDays: Int,
+    val recoveryRequiredPurgeCount: Int,
+    val lastPurgeRun: TrashPurgeRunSummaryDto? = null,
 )
