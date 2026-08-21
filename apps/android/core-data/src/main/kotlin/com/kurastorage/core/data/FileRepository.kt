@@ -1,9 +1,14 @@
 package com.kurastorage.core.data
 
+import com.kurastorage.core.model.AdminStorageStatus
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.FilePage
+import com.kurastorage.core.model.TrashPurgeRunSummary
+import com.kurastorage.core.model.UserRole
+import com.kurastorage.core.network.AdminStorageApi
+import com.kurastorage.core.network.AdminStorageStatusDto
 import com.kurastorage.core.network.CreateFolderRequestDto
 import com.kurastorage.core.network.FileApi
 import com.kurastorage.core.network.FileEntryDto
@@ -44,6 +49,11 @@ interface FileRepository {
     ): FilePage
 
     suspend fun restore(fileId: String): FileEntry
+
+    suspend fun purge(
+        fileId: String,
+        idempotencyKey: String,
+    ): Unit = error("Purge is not implemented by this test double")
 
     companion object {
         const val DEFAULT_PAGE_SIZE = 100
@@ -86,6 +96,13 @@ class DefaultFileRepository(
 
     override suspend fun restore(fileId: String) = authenticated { api.restore(it, fileId) }.toModel()
 
+    override suspend fun purge(
+        fileId: String,
+        idempotencyKey: String,
+    ) {
+        authenticated { api.purge(it, fileId, idempotencyKey) }
+    }
+
     private suspend fun <T> authenticated(call: suspend (String) -> NetworkCallResult<T>): T =
         executor.execute { token ->
             when (val result = call(token)) {
@@ -93,6 +110,27 @@ class DefaultFileRepository(
                 NetworkCallResult.Unauthorized -> AuthenticatedCallResult.Unauthorized
             }
         }
+}
+
+interface AdminStorageRepository {
+    suspend fun get(): AdminStorageStatus?
+}
+
+class DefaultAdminStorageRepository(
+    private val api: AdminStorageApi,
+    private val executor: AuthenticatedRequestExecutor,
+    private val authentication: AuthenticationRepository,
+) : AdminStorageRepository {
+    override suspend fun get(): AdminStorageStatus? {
+        if (authentication.role() != UserRole.ADMIN) return null
+        return executor
+            .execute { token ->
+                when (val result = api.getAdminStorage(token)) {
+                    is NetworkCallResult.Success -> AuthenticatedCallResult.Success(result.value)
+                    NetworkCallResult.Unauthorized -> AuthenticatedCallResult.Unauthorized
+                }
+            }.toModel()
+    }
 }
 
 class FilePager(
@@ -129,7 +167,33 @@ internal fun FileEntryDto.toModel() =
         trashedAt = trashedAt?.let(Instant::parse),
         createdAt = Instant.parse(createdAt),
         updatedAt = Instant.parse(updatedAt),
+        purgeEligibleAt = purgeEligibleAt?.let(Instant::parse),
     )
 
 @Suppress("MaxLineLength")
 internal fun FileEntryPageDto.toModel() = FilePage(parentId, items.map(FileEntryDto::toModel), page, pageSize, totalCount)
+
+internal fun AdminStorageStatusDto.toModel() =
+    AdminStorageStatus(
+        storage = storage,
+        totalBytes = totalBytes,
+        availableBytes = availableBytes,
+        capacityWarningThresholdBytes = capacityWarningThresholdBytes,
+        capacityWarning = capacityWarning,
+        trashBytes = trashBytes,
+        expiredTrashRootCount = expiredTrashRootCount,
+        retentionDays = retentionDays,
+        recoveryRequiredPurgeCount = recoveryRequiredPurgeCount,
+        lastPurgeRun =
+            lastPurgeRun?.let {
+                TrashPurgeRunSummary(
+                    startedAt = Instant.parse(it.startedAt),
+                    completedAt = it.completedAt?.let(Instant::parse),
+                    status = it.status,
+                    examinedRootCount = it.examinedRootCount,
+                    deletedRootCount = it.deletedRootCount,
+                    releasedBytes = it.releasedBytes,
+                    errorCount = it.errorCount,
+                )
+            },
+    )

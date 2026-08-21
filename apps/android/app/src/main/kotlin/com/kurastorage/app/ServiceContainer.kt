@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import com.kurastorage.core.data.AndroidContentStreamProvider
 import com.kurastorage.core.data.AuthenticatedRequestExecutor
 import com.kurastorage.core.data.DataStoreCredentialMetadataStore
+import com.kurastorage.core.data.DefaultAdminStorageRepository
 import com.kurastorage.core.data.DefaultAuthenticationRepository
 import com.kurastorage.core.data.DefaultFileRepository
 import com.kurastorage.core.data.DefaultTransferRepository
@@ -80,6 +81,7 @@ class ServiceContainer(
         return SessionServices(
             authentication = auth,
             files = DefaultFileRepository(api, executor),
+            adminStorage = DefaultAdminStorageRepository(api, executor, auth),
             transfers =
                 DefaultTransferRepository(
                     api,
@@ -100,5 +102,6 @@ class ServiceContainer(
 data class SessionServices(
     val authentication: DefaultAuthenticationRepository,
     val files: DefaultFileRepository,
+    val adminStorage: DefaultAdminStorageRepository,
     val transfers: DefaultTransferRepository,
 )

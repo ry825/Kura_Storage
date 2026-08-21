@@ -18,6 +18,30 @@ data class FileEntry(
     val trashedAt: Instant?,
     val createdAt: Instant,
     val updatedAt: Instant,
+    val purgeEligibleAt: Instant? = null,
+)
+
+data class TrashPurgeRunSummary(
+    val startedAt: Instant,
+    val completedAt: Instant?,
+    val status: String,
+    val examinedRootCount: Int,
+    val deletedRootCount: Int,
+    val releasedBytes: Long,
+    val errorCount: Int,
+)
+
+data class AdminStorageStatus(
+    val storage: String,
+    val totalBytes: Long?,
+    val availableBytes: Long?,
+    val capacityWarningThresholdBytes: Long,
+    val capacityWarning: Boolean?,
+    val trashBytes: Long,
+    val expiredTrashRootCount: Int,
+    val retentionDays: Int,
+    val recoveryRequiredPurgeCount: Int,
+    val lastPurgeRun: TrashPurgeRunSummary?,
 )
 
 data class FilePage(

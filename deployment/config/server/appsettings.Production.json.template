@@ -30,6 +30,7 @@
       "Default": "Information",
       "Microsoft.AspNetCore.DataProtection": "Warning",
       "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+      "Microsoft.AspNetCore.Http.Result.FileStreamResult": "Warning",
       "Microsoft.Hosting.Lifetime": "Warning"
     }
   }

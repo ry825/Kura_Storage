@@ -7,12 +7,15 @@ value class DeviceId(
     val value: String,
 )
 
+enum class UserRole { ADMIN, MEMBER }
+
 data class AuthSession(
     val deviceId: DeviceId,
     val accessToken: String,
     val refreshToken: String,
     val accessTokenExpiresAt: Instant,
     val refreshTokenExpiresAt: Instant,
+    val role: UserRole = UserRole.MEMBER,
 )
 
 data class StoredCredential(
@@ -20,6 +23,7 @@ data class StoredCredential(
     val refreshToken: String,
     val refreshTokenExpiresAt: Instant,
     val username: String?,
+    val role: UserRole = UserRole.MEMBER,
 )
 
 enum class AuthState {

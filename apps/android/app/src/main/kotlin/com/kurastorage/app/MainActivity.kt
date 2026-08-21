@@ -35,12 +35,16 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.kurastorage.core.model.ConnectionStatus
 import com.kurastorage.core.model.FileEntry
+import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.ui.AppDestination
 import com.kurastorage.core.ui.KuraStorageTheme
 import com.kurastorage.feature.auth.AuthScreen
 import com.kurastorage.feature.auth.AuthViewModel
 import com.kurastorage.feature.connection.ConnectionScreen
 import com.kurastorage.feature.connection.ConnectionViewModel
+import com.kurastorage.feature.files.AdminStoragePanel
+import com.kurastorage.feature.files.AdminStorageState
+import com.kurastorage.feature.files.AdminStorageViewModel
 import com.kurastorage.feature.files.FileBrowserScreen
 import com.kurastorage.feature.files.FileBrowserViewModel
 
@@ -133,9 +137,10 @@ private fun KuraStorageApp(
             )
         }
         composable(AppDestination.HOME.route) {
-            val authRepository = services?.authentication
+            val current = services
+            val authRepository = current?.authentication
             val route = connected?.route
-            if (authRepository == null || route == null) {
+            if (current == null || authRepository == null || route == null) {
                 navController.navigate(AppDestination.CONNECTION.route)
                 return@composable
             }
@@ -147,8 +152,20 @@ private fun KuraStorageApp(
                             AuthViewModel(route, Build.MODEL, authRepository)
                         },
                 )
+            val storageViewModel =
+                if (authRepository.role() == UserRole.ADMIN) {
+                    viewModel<AdminStorageViewModel>(
+                        key = "home-storage-$route",
+                        factory = simpleViewModelFactory { AdminStorageViewModel(current.adminStorage) },
+                    )
+                } else {
+                    null
+                }
+            val storageState = AdminStorageStateFor(storageViewModel)
             HomeScreen(
                 connection = connected,
+                adminStorageState = storageState,
+                onRefreshAdminStorage = { storageViewModel?.refresh() },
                 onFiles = { navController.navigate(AppDestination.FILES.route) },
                 onTrash = { navController.navigate(AppDestination.TRASH.route) },
                 onLogout = {
@@ -174,9 +191,20 @@ private fun KuraStorageApp(
                             FileBrowserViewModel(current.files, current.transfers)
                         },
                 )
+            val storageViewModel =
+                if (current.authentication.role() == UserRole.ADMIN) {
+                    viewModel<AdminStorageViewModel>(
+                        key = "files-storage",
+                        factory = simpleViewModelFactory { AdminStorageViewModel(current.adminStorage) },
+                    )
+                } else {
+                    null
+                }
             FileRoute(
                 viewModel = filesViewModel,
+                adminStorageViewModel = storageViewModel,
                 trashMode = false,
+                onOpenTrash = { navController.navigate(AppDestination.TRASH.route) },
                 onExit = { navController.popBackStack() },
             )
         }
@@ -196,7 +224,9 @@ private fun KuraStorageApp(
                 )
             FileRoute(
                 viewModel = trashViewModel,
+                adminStorageViewModel = null,
                 trashMode = true,
+                onOpenTrash = {},
                 onExit = { navController.popBackStack() },
             )
         }
@@ -206,11 +236,14 @@ private fun KuraStorageApp(
 @Composable
 private fun FileRoute(
     viewModel: FileBrowserViewModel,
+    adminStorageViewModel: AdminStorageViewModel?,
     trashMode: Boolean,
+    onOpenTrash: () -> Unit,
     onExit: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val adminStorageState = AdminStorageStateFor(adminStorageViewModel)
     var pendingDownload by remember { mutableStateOf<FileEntry?>(null) }
     val uploadPicker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -257,6 +290,9 @@ private fun FileRoute(
         },
         onTrash = viewModel::trash,
         onRestore = viewModel::restore,
+        onBeginPermanentDelete = viewModel::beginPermanentDelete,
+        onConfirmPermanentDelete = viewModel::confirmPermanentDelete,
+        onCancelPermanentDelete = viewModel::cancelPermanentDelete,
         onRename = viewModel::beginRename,
         onRenameInput = viewModel::updateRenameInput,
         onSubmitRename = viewModel::submitRename,
@@ -274,12 +310,25 @@ private fun FileRoute(
         onOpenDownload = { uri ->
             runCatching { context.startActivity(viewModel.downloadedFileIntent(uri)) }
         },
+        adminStorageState = adminStorageState,
+        onRefreshAdminStorage = { adminStorageViewModel?.refresh() },
+        onOpenTrashFromWarning = onOpenTrash,
     )
 }
 
 @Composable
+private fun AdminStorageStateFor(viewModel: AdminStorageViewModel?): AdminStorageState {
+    if (viewModel == null) return AdminStorageState(loading = false)
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    return state
+}
+
+@Composable
+@Suppress("LongParameterList")
 fun HomeScreen(
     connection: ConnectionStatus.Connected?,
+    adminStorageState: AdminStorageState = AdminStorageState(loading = false),
+    onRefreshAdminStorage: () -> Unit = {},
     onFiles: () -> Unit,
     onTrash: () -> Unit,
     onLogout: () -> Unit,
@@ -290,6 +339,7 @@ fun HomeScreen(
     ) {
         Text("KuraStorage", style = MaterialTheme.typography.headlineMedium)
         Text("Connection: ${connection?.route?.name ?: "UNKNOWN"}")
+        AdminStoragePanel(adminStorageState, onRefreshAdminStorage, onTrash)
         Button(onClick = onFiles) { Text("My files") }
         Button(onClick = onTrash) { Text("Trash") }
         Button(onClick = onLogout) { Text("Log out") }

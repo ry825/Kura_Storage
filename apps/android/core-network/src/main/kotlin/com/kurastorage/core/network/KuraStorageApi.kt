@@ -90,6 +90,12 @@ interface FileApi {
         fileId: String,
     ): NetworkCallResult<FileEntryDto>
 
+    suspend fun purge(
+        accessToken: String,
+        fileId: String,
+        idempotencyKey: String,
+    ): NetworkCallResult<Unit> = error("Purge is not implemented by this test double")
+
     @Suppress("LongParameterList")
     suspend fun upload(
         accessToken: String,
@@ -106,6 +112,10 @@ interface FileApi {
         accessToken: String,
         fileId: String,
     ): NetworkCallResult<ResponseBody>
+}
+
+interface AdminStorageApi {
+    suspend fun getAdminStorage(accessToken: String): NetworkCallResult<AdminStorageStatusDto>
 }
 
 @Suppress("TooManyFunctions")
@@ -180,6 +190,18 @@ private interface KuraStorageService {
         @Path("fileId") fileId: String,
     ): Response<FileEntryDto>
 
+    @DELETE("trash/{fileId}")
+    suspend fun purge(
+        @Header("Authorization") authorization: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Path("fileId") fileId: String,
+    ): Response<Unit>
+
+    @GET("admin/storage")
+    suspend fun getAdminStorage(
+        @Header("Authorization") authorization: String,
+    ): Response<AdminStorageStatusDto>
+
     @Suppress("LongParameterList")
     @Multipart
     @POST("files/upload")
@@ -208,7 +230,8 @@ class KuraStorageApi(
     client: OkHttpClient,
     private val json: Json = Json { ignoreUnknownKeys = false },
 ) : AuthenticationApi,
-    FileApi {
+    FileApi,
+    AdminStorageApi {
     private val service =
         Retrofit
             .Builder()
@@ -272,6 +295,17 @@ class KuraStorageApi(
         accessToken: String,
         fileId: String,
     ) = executeAuthenticated { service.restore(bearer(accessToken), fileId) }
+
+    override suspend fun purge(
+        accessToken: String,
+        fileId: String,
+        idempotencyKey: String,
+    ) = executeAuthenticatedNoContent { service.purge(bearer(accessToken), idempotencyKey, fileId) }
+
+    override suspend fun getAdminStorage(accessToken: String): NetworkCallResult<AdminStorageStatusDto> =
+        executeAuthenticated {
+            service.getAdminStorage(bearer(accessToken))
+        }
 
     @Suppress("LongParameterList")
     override suspend fun upload(
@@ -347,6 +381,22 @@ class KuraStorageApi(
                 NetworkCallResult.Success(
                     response.body() ?: throw SerializationException("Successful API response had no body"),
                 )
+            } catch (error: KuraStorageException) {
+                throw error
+            } catch (error: IOException) {
+                throw KuraStorageException.Network(error)
+            }
+        }
+
+    private suspend fun executeAuthenticatedNoContent(call: suspend () -> Response<Unit>): NetworkCallResult<Unit> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = call()
+                if (response.code() == HTTP_UNAUTHORIZED) return@withContext NetworkCallResult.Unauthorized
+                if (!response.isSuccessful) {
+                    throw apiException(response.code(), response.errorBody()?.string().orEmpty())
+                }
+                NetworkCallResult.Success(Unit)
             } catch (error: KuraStorageException) {
                 throw error
             } catch (error: IOException) {

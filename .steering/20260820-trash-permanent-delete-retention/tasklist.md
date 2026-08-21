@@ -425,184 +425,184 @@
 
 ### 3.1 作業開始
 
-- [ ] PR3の作業準備が完了している。
-  - [ ] PR2が`main`へMerge済みであることを確認する。
-  - [ ] 最新の`main`を取得し、PR3用の短命Branchを作成する。
-  - [ ] `requirements.md`、`design.md`、本ファイル、PR1・PR2完了記録を確認する。
-  - [ ] `git status`と既存差分を確認する。
-  - [ ] AndroidのCredential、Token Refresh、File API、Repository、ViewModel、Compose UI、Testの既存パターンを再確認する。
-  - [ ] Raspberry Pi、Worker、PostgreSQL、共有exFAT HDD、Android実機、LAN、ZeroTier、Release署名入力を利用できることを確認する。
+- [x] PR3の作業準備が完了している。
+  - [x] PR2が`main`へMerge済みであることを確認する。
+  - [x] 最新の`main`を取得し、PR3用の短命Branchを作成する。
+  - [x] `requirements.md`、`design.md`、本ファイル、PR1・PR2完了記録を確認する。
+  - [x] `git status`と既存差分を確認する。
+  - [x] AndroidのCredential、Token Refresh、File API、Repository、ViewModel、Compose UI、Testの既存パターンを再確認する。
+  - [x] Raspberry Pi、Worker、PostgreSQL、共有exFAT HDD、Android実機、LAN、ZeroTier、Release署名入力を利用できることを確認する。
 
 ### 3.2 Android認証・Network契約
 
-- [ ] Role契約をAndroidへ実装する。
-  - [ ] Token ResponseへRoleを追加し、Server OpenAPIとFixtureを更新する。
-  - [ ] `UserRole.ADMIN`と`MEMBER`をCore Modelへ追加する。
-  - [ ] RoleをKeystore保護済みCredentialへ保存・読出する。
-  - [ ] Register、Login、RefreshでRoleを欠落・改変させない。
-  - [ ] LogoutとCredential破棄でRoleも削除する。
-- [ ] Purge Network契約を実装する。
-  - [ ] `DELETE /api/v1/trash/{fileId}`を`KuraStorageApi`へ追加する。
-  - [ ] UUID `Idempotency-Key`をHeaderへ設定する。
-  - [ ] `204`を成功として処理する。
-  - [ ] 401 Refresh後の再送でも同じIdempotency Keyを維持する。
-  - [ ] 404、409 `IDEMPOTENCY_CONFLICT`、409 `RECOVERY_REQUIRED`、503、通信結果不明を既存Error分類へ追加する。
-  - [ ] `FileEntryDto`へ`purgeEligibleAt`を追加する。
-- [ ] Admin Storage Network契約を実装する。
-  - [ ] `GET /api/v1/admin/storage`とResponse DTOを追加する。
-  - [ ] Long Byte値、nullable最新Run、Storage unavailableを欠落なく変換する。
-  - [ ] Admin Roleの場合だけRepositoryがEndpointを呼ぶ。
-  - [ ] Member 403を通常利用の認証失敗として誤処理しない。
+- [x] Role契約をAndroidへ実装する。
+  - [x] Token ResponseへRoleを追加し、Server OpenAPIとFixtureを更新する。
+  - [x] `UserRole.ADMIN`と`MEMBER`をCore Modelへ追加する。
+  - [x] RoleをKeystore保護済みCredentialへ保存・読出する。
+  - [x] Register、Login、RefreshでRoleを欠落・改変させない。
+  - [x] LogoutとCredential破棄でRoleも削除する。
+- [x] Purge Network契約を実装する。
+  - [x] `DELETE /api/v1/trash/{fileId}`を`KuraStorageApi`へ追加する。
+  - [x] UUID `Idempotency-Key`をHeaderへ設定する。
+  - [x] `204`を成功として処理する。
+  - [x] 401 Refresh後の再送でも同じIdempotency Keyを維持する。
+  - [x] 404、409 `IDEMPOTENCY_CONFLICT`、409 `RECOVERY_REQUIRED`、503、通信結果不明を既存Error分類へ追加する。
+  - [x] `FileEntryDto`へ`purgeEligibleAt`を追加する。
+- [x] Admin Storage Network契約を実装する。
+  - [x] `GET /api/v1/admin/storage`とResponse DTOを追加する。
+  - [x] Long Byte値、nullable最新Run、Storage unavailableを欠落なく変換する。
+  - [x] Admin Roleの場合だけRepositoryがEndpointを呼ぶ。
+  - [x] Member 403を通常利用の認証失敗として誤処理しない。
 
 ### 3.3 Android Data・Idempotency
 
-- [ ] File Repositoryへ完全削除を追加する。
-  - [ ] `purge(fileId, idempotencyKey)`を追加する。
-  - [ ] 成功Responseから削除済み項目をローカル合成しない。
-  - [ ] 通信結果不明時に成功を推測しない。
-  - [ ] 同一操作の再試行で同じKeyを使用できるAPIにする。
-  - [ ] `purgeEligibleAt`をUTC `Instant`へ変換する。
-- [ ] Admin Storage Repositoryを実装する。
-  - [ ] `AdminStorageStatus`と`TrashPurgeRunSummary`へDTOを変換する。
-  - [ ] Byte値と表示用単位変換を分離する。
-  - [ ] Adminだけが取得でき、MemberではNetwork Requestを生成しない。
-  - [ ] 取得失敗をFile一覧Repositoryの失敗と分離する。
+- [x] File Repositoryへ完全削除を追加する。
+  - [x] `purge(fileId, idempotencyKey)`を追加する。
+  - [x] 成功Responseから削除済み項目をローカル合成しない。
+  - [x] 通信結果不明時に成功を推測しない。
+  - [x] 同一操作の再試行で同じKeyを使用できるAPIにする。
+  - [x] `purgeEligibleAt`をUTC `Instant`へ変換する。
+- [x] Admin Storage Repositoryを実装する。
+  - [x] `AdminStorageStatus`と`TrashPurgeRunSummary`へDTOを変換する。
+  - [x] Byte値と表示用単位変換を分離する。
+  - [x] Adminだけが取得でき、MemberではNetwork Requestを生成しない。
+  - [x] 取得失敗をFile一覧Repositoryの失敗と分離する。
 
 ### 3.4 Trash ViewModel
 
-- [ ] 完全削除状態を実装する。
-  - [ ] Target、確認表示、Idempotency Key、Submitting、Result Unknown、Errorを管理する。
-  - [ ] 確認開始時に操作Keyを1回だけ生成する。
-  - [ ] Cancel後に未送信Keyを破棄する。
-  - [ ] 送信中の二重Tapと同じTargetのRestoreを防ぐ。
-  - [ ] 204後にTrash一覧をServerから再取得する。
-  - [ ] 通信結果不明時は対象を一覧から消さず、再取得と同一Key再試行を提供する。
-  - [ ] 再取得で対象不在なら削除完了状態として表示を確定する。
-  - [ ] 404、Idempotency Conflict、Recovery Required、Storage異常を区別する。
-  - [ ] 画面再生成で送信済み操作Keyと結果不明状態を必要範囲で保持する。
-- [ ] 保持期限表示を実装する。
-  - [ ] Serverの`purgeEligibleAt`を使用し、Androidで30日を再計算しない。
-  - [ ] 期限前、期限到達、時刻不明を区別する。
-  - [ ] Device Local Timezoneでは表示変換だけを行い、削除判定に使用しない。
+- [x] 完全削除状態を実装する。
+  - [x] Target、確認表示、Idempotency Key、Submitting、Result Unknown、Errorを管理する。
+  - [x] 確認開始時に操作Keyを1回だけ生成する。
+  - [x] Cancel後に未送信Keyを破棄する。
+  - [x] 送信中の二重Tapと同じTargetのRestoreを防ぐ。
+  - [x] 204後にTrash一覧をServerから再取得する。
+  - [x] 通信結果不明時は対象を一覧から消さず、再取得と同一Key再試行を提供する。
+  - [x] 再取得で対象不在なら削除完了状態として表示を確定する。
+  - [x] 404、Idempotency Conflict、Recovery Required、Storage異常を区別する。
+  - [x] 画面再生成で送信済み操作Keyと結果不明状態を必要範囲で保持する。
+- [x] 保持期限表示を実装する。
+  - [x] Serverの`purgeEligibleAt`を使用し、Androidで30日を再計算しない。
+  - [x] 期限前、期限到達、時刻不明を区別する。
+  - [x] Device Local Timezoneでは表示変換だけを行い、削除判定に使用しない。
 
 ### 3.5 完全削除Compose UI
 
-- [ ] Trash項目の危険操作UIを実装する。
-  - [ ] Trash項目の詳細から`Restore`と`Delete permanently`へ到達できる。
-  - [ ] 完全削除を通常操作から視覚的に分離する。
-  - [ ] 確認Dialogへ対象名と「この操作は取り消せません」を表示する。
-  - [ ] 確認前にRequestを送信しない。
-  - [ ] FileとFolderで同じ安全確認を行い、Folderは配下も削除されることを示す。
-  - [ ] Submitting中は操作を無効化し、Progressを表示する。
-  - [ ] 成功後は再取得済みTrash一覧を表示する。
-  - [ ] 結果不明、404、Conflict、Recovery、Storage異常に適切な案内と再試行を表示する。
-  - [ ] 保持期限を項目詳細へ表示する。
-  - [ ] 一括削除、「ゴミ箱を空にする」、30日未満の自動削除操作を追加しない。
+- [x] Trash項目の危険操作UIを実装する。
+  - [x] Trash項目の詳細から`Restore`と`Delete permanently`へ到達できる。
+  - [x] 完全削除を通常操作から視覚的に分離する。
+  - [x] 確認Dialogへ対象名と「この操作は取り消せません」を表示する。
+  - [x] 確認前にRequestを送信しない。
+  - [x] FileとFolderで同じ安全確認を行い、Folderは配下も削除されることを示す。
+  - [x] Submitting中は操作を無効化し、Progressを表示する。
+  - [x] 成功後は再取得済みTrash一覧を表示する。
+  - [x] 結果不明、404、Conflict、Recovery、Storage異常に適切な案内と再試行を表示する。
+  - [x] 保持期限を項目詳細へ表示する。
+  - [x] 一括削除、「ゴミ箱を空にする」、30日未満の自動削除操作を追加しない。
 
 ### 3.6 Admin容量警告UI
 
-- [ ] Admin Storage状態をViewModelへ実装する。
-  - [ ] Admin Login時にFiles/Homeで状態を取得する。
-  - [ ] Refresh操作でFile一覧と独立して再取得する。
-  - [ ] Capacity Warning、Storage unavailable、取得失敗、正常を区別する。
-  - [ ] Memberでは状態取得Actionを実行しない。
-  - [ ] API失敗でFile一覧、Trash、Transferを利用不能にしない。
-- [ ] 容量Warning Panelを実装する。
-  - [ ] `capacityWarning == true`のAdminにだけ表示する。
-  - [ ] 空き容量、Warning閾値、Trash概算容量、期限超過件数、最新清掃結果を表示する。
-  - [ ] 人間向け単位を表示し、丸めでWarning判定を変えない。
-  - [ ] Trash画面への導線を提供する。
-  - [ ] 30日保持を短縮しないことと、手動PurgeまたはStorage増設の案内を表示する。
-  - [ ] Member、未認証、匿名Health由来の詳細を表示しない。
+- [x] Admin Storage状態をViewModelへ実装する。
+  - [x] Admin Login時にFiles/Homeで状態を取得する。
+  - [x] Refresh操作でFile一覧と独立して再取得する。
+  - [x] Capacity Warning、Storage unavailable、取得失敗、正常を区別する。
+  - [x] Memberでは状態取得Actionを実行しない。
+  - [x] API失敗でFile一覧、Trash、Transferを利用不能にしない。
+- [x] 容量Warning Panelを実装する。
+  - [x] `capacityWarning == true`のAdminにだけ表示する。
+  - [x] 空き容量、Warning閾値、Trash概算容量、期限超過件数、最新清掃結果を表示する。
+  - [x] 人間向け単位を表示し、丸めでWarning判定を変えない。
+  - [x] Trash画面への導線を提供する。
+  - [x] 30日保持を短縮しないことと、手動PurgeまたはStorage増設の案内を表示する。
+  - [x] Member、未認証、匿名Health由来の詳細を表示しない。
 
 ### 3.7 Android自動Test
 
-- [ ] Network・Repository Testが完了している。
-  - [ ] Purge Path、Idempotency Header、204、Error ResponseをTestする。
-  - [ ] 401 Refresh後再送と同一Key維持をTestする。
-  - [ ] 通信結果不明時に成功を合成しないことをTestする。
-  - [ ] `purgeEligibleAt`、Role、Admin Storage、最新RunのDTO変換をTestする。
-  - [ ] AdminだけがStorage Endpointを呼び、Memberが呼ばないことをTestする。
-  - [ ] OpenAPI FixtureとDTO・Endpointの一致をTestする。
-- [ ] ViewModel Testが完了している。
-  - [ ] 確認、Cancel、送信、二重Tap、成功後再取得をTestする。
-  - [ ] 結果不明、同一Key再試行、再取得による完了確定をTestする。
-  - [ ] 404、Idempotency Conflict、Recovery Required、Storage異常をTestする。
-  - [ ] 保持期限のUTC境界と表示状態をTestする。
-  - [ ] Admin Warning、正常、Storage unavailable、取得失敗、Member非取得をTestする。
-- [ ] Compose UI Testが完了している。
-  - [ ] File・Folderの完全削除入口、不可逆確認、取消、Loading、成功、ErrorをTestする。
-  - [ ] Restoreと完全削除が誤操作しにくく分離されていることをTestする。
-  - [ ] 保持期限表示をTestする。
-  - [ ] Admin Warning Panel、Trash導線、Member非表示をTestする。
-  - [ ] 一覧、詳細、Folder作成、Transfer、Trash、Restore、Rename、Move UIに回帰がない。
-- [ ] Android Instrumented Testが完了している。
-  - [ ] FakeまたはTest ServerでPurge正常系、結果不明、主要Errorを確認する。
-  - [ ] Admin/Memberの容量表示境界を確認する。
-  - [ ] `connectedDebugAndroidTest --max-workers=1`が成功する。
+- [x] Network・Repository Testが完了している。
+  - [x] Purge Path、Idempotency Header、204、Error ResponseをTestする。
+  - [x] 401 Refresh後再送と同一Key維持をTestする。
+  - [x] 通信結果不明時に成功を合成しないことをTestする。
+  - [x] `purgeEligibleAt`、Role、Admin Storage、最新RunのDTO変換をTestする。
+  - [x] AdminだけがStorage Endpointを呼び、Memberが呼ばないことをTestする。
+  - [x] OpenAPI FixtureとDTO・Endpointの一致をTestする。
+- [x] ViewModel Testが完了している。
+  - [x] 確認、Cancel、送信、二重Tap、成功後再取得をTestする。
+  - [x] 結果不明、同一Key再試行、再取得による完了確定をTestする。
+  - [x] 404、Idempotency Conflict、Recovery Required、Storage異常をTestする。
+  - [x] 保持期限のUTC境界と表示状態をTestする。
+  - [x] Admin Warning、正常、Storage unavailable、取得失敗、Member非取得をTestする。
+- [x] Compose UI Testが完了している。
+  - [x] File・Folderの完全削除入口、不可逆確認、取消、Loading、成功、ErrorをTestする。
+  - [x] Restoreと完全削除が誤操作しにくく分離されていることをTestする。
+  - [x] 保持期限表示をTestする。
+  - [x] Admin Warning Panel、Trash導線、Member非表示をTestする。
+  - [x] 一覧、詳細、Folder作成、Transfer、Trash、Restore、Rename、Move UIに回帰がない。
+- [x] Android Instrumented Testが完了している。
+  - [x] FakeまたはTest ServerでPurge正常系、結果不明、主要Errorを確認する。
+  - [x] Admin/Memberの容量表示境界を確認する。
+  - [x] `connectedDebugAndroidTest --max-workers=1`が成功する。
 
 ### 3.8 Artifact・Raspberry Pi・Android配置
 
-- [ ] 最終Server、Worker、Android Artifactを生成する。
-  - [ ] PR2 Merge済みServer・Workerを既存Release手順でPublishする。
-  - [ ] Server・Worker Artifactの構成とChecksumを検証する。
-  - [ ] 確定済みRoot CA、API設定、Repository外Signing KeyでRelease APKを生成する。
-  - [ ] APK署名、Package ID、Version、Debuggable無効、Checksumを検証する。
-  - [ ] Secret、Private Key、実環境Credential、生成済み保護設定をRepositoryへ追加しない。
-- [ ] Raspberry Piへ安全に配置する。
-  - [ ] 配置前にPostgreSQLとStorage RootのBackupを取得する。
-  - [ ] Install・Upgrade手順でServer・Workerを配置する。
-  - [ ] Migration Versionと既存Trash項目を確認する。
-  - [ ] API、Worker、Nginx、PostgreSQL、HDD、Storage ID、最新Purge Runを確認する。
-  - [ ] Rollback可能な直前Artifactと設定を保持する。
+- [x] 最終Server、Worker、Android Artifactを生成する。
+  - [x] PR2 Merge済みServer・Workerを既存Release手順でPublishする。
+  - [x] Server・Worker Artifactの構成とChecksumを検証する。
+  - [x] 確定済みRoot CA、API設定、Repository外Signing KeyでRelease APKを生成する。
+  - [x] APK署名、Package ID、Version、Debuggable無効、Checksumを検証する。
+  - [x] Secret、Private Key、実環境Credential、生成済み保護設定をRepositoryへ追加しない。
+- [x] Raspberry Piへ安全に配置する。
+  - [x] 配置前にPostgreSQLとStorage RootのBackupを取得する。
+  - [x] Install・Upgrade手順でServer・Workerを配置する。
+  - [x] Migration Versionと既存Trash項目を確認する。
+  - [x] API、Worker、Nginx、PostgreSQL、HDD、Storage ID、最新Purge Runを確認する。
+  - [x] Rollback可能な直前Artifactと設定を保持する。
 
 ### 3.9 実機E2E
 
-- [ ] Android実機で手動完全削除を確認する。
-  - [ ] LANでTrash Fileを完全削除する。
-  - [ ] LANで配下を持つTrash Folderを完全削除する。
-  - [ ] ZeroTierでTrash File・Folderを完全削除する。
-  - [ ] 確認取消では対象が残る。
-  - [ ] 成功後の一覧、詳細、Download、Restoreから対象へ到達できない。
-  - [ ] 通信中断・結果不明時に成功表示せず、再取得または同一Key再試行で確定する。
-  - [ ] 二重Tap、Restore競合、他User、`ACTIVE`、Storage異常を安全に処理する。
-- [ ] Android実機で30日保持と容量警告を確認する。
-  - [ ] 30日未満、ちょうど30日、超過項目の保持・自動削除境界を確認する。
-  - [ ] AdminでCapacity Warning Panel、Trash概算、期限超過件数、最新Runを確認する。
-  - [ ] Memberで詳細容量が表示・取得されない。
-  - [ ] Warning中も30日未満の自動削除が0件である。
-  - [ ] Warning中の手動Purgeと期限到達Purgeで容量を解放できる。
-- [ ] 障害・再起動・回帰を確認する。
-  - [ ] HDD未Mount、読取専用、DB停止、API停止、Worker停止、Pi再起動から安全に復旧する。
-  - [ ] 物理削除後DB失敗を再現し、Recoveryで管理情報削除と監査を完了する。
-  - [ ] File・Folder Purgeを含む主要シナリオをLANで10回連続成功させる。
-  - [ ] File・Folder Purgeを含む主要シナリオをZeroTierで10回連続成功させる。
-  - [ ] Folder作成、Upload、Range Download、Trash、Restore、Rename、Moveを実機で再確認する。
-  - [ ] HDD、DB、Operation、Audit、Runの不整合、残存、重複、他User削除が0件である。
-  - [ ] Android、API、Worker LogとAuditにPassword、Token、Key、ファイル名、内容、相対・絶対Pathがない。
+- [x] Android実機で手動完全削除を確認する。
+  - [x] LANでTrash Fileを完全削除する。
+  - [x] LANで配下を持つTrash Folderを完全削除する。
+  - [x] ZeroTierでTrash File・Folderを完全削除する。
+  - [x] 確認取消では対象が残る。
+  - [x] 成功後の一覧、詳細、Download、Restoreから対象へ到達できない。
+  - [x] 通信中断・結果不明時に成功表示せず、再取得または同一Key再試行で確定する。
+  - [x] 二重Tap、Restore競合、他User、`ACTIVE`、Storage異常を安全に処理する。
+- [x] Android実機で30日保持と容量警告を確認する。
+  - [x] 30日未満、ちょうど30日、超過項目の保持・自動削除境界を確認する。
+  - [x] AdminでCapacity Warning Panel、Trash概算、期限超過件数、最新Runを確認する。
+  - [x] Memberで詳細容量が表示・取得されない。
+  - [x] Warning中も30日未満の自動削除が0件である。
+  - [x] Warning中の手動Purgeと期限到達Purgeで容量を解放できる。
+- [x] 障害・再起動・回帰を確認する。
+  - [x] HDD未Mount、読取専用、DB停止、API停止、Worker停止、Pi再起動から安全に復旧する。
+  - [x] 物理削除後DB失敗を再現し、Recoveryで管理情報削除と監査を完了する。
+  - [x] File・Folder Purgeを含む主要シナリオをLANで10回連続成功させる。
+  - [x] File・Folder Purgeを含む主要シナリオをZeroTierで10回連続成功させる。
+  - [x] Folder作成、Upload、Range Download、Trash、Restore、Rename、Moveを実機で再確認する。
+  - [x] HDD、DB、Operation、Audit、Runの不整合、残存、重複、他User削除が0件である。
+  - [x] Android、API、Worker LogとAuditにPassword、Token、Key、ファイル名、内容、相対・絶対Pathがない。
 
 ### 3.10 最終文書整合・品質確認
 
 - [ ] 要求・設計・実装・検証を最終整合する。
   - [ ] `requirements.md`の全受け入れ条件に対応する実装または検証記録がある。
-  - [ ] `design.md`と実装差分がある場合、理由と確定設計を反映する。
-  - [ ] 5つの正式文書、OpenAPI、Server、Worker、Android、Migration、Config、運用手順の名称・数値・Errorが一致する。
-  - [ ] `docs/product-requirements.md`の今回対象チェック項目を、実装・自動Test・実機確認が完了したものだけ更新する。
-  - [ ] 完全削除、30日保持、容量警告、監査、関連情報削除、復旧の運用手順を最終化する。
-  - [ ] 未実装の共有、同期、Recent、Backup、Derivative Featureを実装済みとして記載しない。
-- [ ] 全自動検証が成功している。
-  - [ ] `./scripts/ci/verify-config.sh`が成功する。
-  - [ ] `./scripts/ci/verify-server.sh`が成功する。
-  - [ ] `./scripts/ci/verify-security.sh`が成功する。
-  - [ ] `./scripts/ci/verify-deployment.sh`が成功する。
-  - [ ] `./scripts/ci/verify-android.sh`が成功する。
-  - [ ] `./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が成功する。
-  - [ ] `git diff --check`が成功する。
+  - [x] `design.md`と実装差分がある場合、理由と確定設計を反映する。
+  - [x] 5つの正式文書、OpenAPI、Server、Worker、Android、Migration、Config、運用手順の名称・数値・Errorが一致する。
+  - [x] `docs/product-requirements.md`の今回対象チェック項目を、実装・自動Test・実機確認が完了したものだけ更新する。
+  - [x] 完全削除、30日保持、容量警告、監査、関連情報削除、復旧の運用手順を最終化する。
+  - [x] 未実装の共有、同期、Recent、Backup、Derivative Featureを実装済みとして記載しない。
+- [x] 全自動検証が成功している。
+  - [x] `./scripts/ci/verify-config.sh`が成功する。
+  - [x] `./scripts/ci/verify-server.sh`が成功する。
+  - [x] `./scripts/ci/verify-security.sh`が成功する。
+  - [x] `./scripts/ci/verify-deployment.sh`が成功する。
+  - [x] `./scripts/ci/verify-android.sh`が成功する。
+  - [x] `./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が成功する。
+  - [x] `git diff --check`が成功する。
 - [ ] CIと成果物確認が完了している。
   - [ ] GitHub ActionsのConfig、Server、Security、Android必須Jobが最終HEADで成功する。
-  - [ ] Server・Worker Artifact、Release APK、Checksumを再現可能な手順で生成できる。
-  - [ ] 新規依存Packageの必要性、Lock File、既知脆弱性を確認する。
-  - [ ] Secret、Private Key、物理絶対Path、実環境Credential、不要な生成物が差分にない。
+  - [x] Server・Worker Artifact、Release APK、Checksumを再現可能な手順で生成できる。
+  - [x] 新規依存Packageの必要性、Lock File、既知脆弱性を確認する。
+  - [x] Secret、Private Key、物理絶対Path、実環境Credential、不要な生成物が差分にない。
 
 ### 3.11 Pull Request完了
 

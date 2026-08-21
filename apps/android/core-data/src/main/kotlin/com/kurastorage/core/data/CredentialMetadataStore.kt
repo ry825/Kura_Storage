@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.kurastorage.core.model.DeviceId
+import com.kurastorage.core.model.UserRole
 import kotlinx.coroutines.flow.first
 import java.time.Instant
 
@@ -14,6 +15,7 @@ data class CredentialMetadata(
     val deviceId: DeviceId,
     val refreshTokenExpiresAt: Instant,
     val username: String?,
+    val role: UserRole = UserRole.MEMBER,
 )
 
 interface CredentialMetadataStore {
@@ -32,7 +34,8 @@ class DataStoreCredentialMetadataStore(
         val values = context.credentialDataStore.data.first()
         val deviceId = values[DEVICE_ID]?.let(::DeviceId) ?: return null
         val expiresAt = values[REFRESH_EXPIRES_AT]?.let(Instant::parse) ?: return null
-        return CredentialMetadata(deviceId, expiresAt, values[LAST_USERNAME])
+        val role = values[ROLE]?.let { runCatching { UserRole.valueOf(it) }.getOrNull() } ?: UserRole.MEMBER
+        return CredentialMetadata(deviceId, expiresAt, values[LAST_USERNAME], role)
     }
 
     override suspend fun write(metadata: CredentialMetadata) {
@@ -40,6 +43,7 @@ class DataStoreCredentialMetadataStore(
             values[DEVICE_ID] = metadata.deviceId.value
             values[REFRESH_EXPIRES_AT] = metadata.refreshTokenExpiresAt.toString()
             metadata.username?.let { values[LAST_USERNAME] = it } ?: values.remove(LAST_USERNAME)
+            values[ROLE] = metadata.role.name
         }
     }
 
@@ -51,5 +55,6 @@ class DataStoreCredentialMetadataStore(
         val DEVICE_ID = stringPreferencesKey("device_id")
         val REFRESH_EXPIRES_AT = stringPreferencesKey("refresh_token_expires_at")
         val LAST_USERNAME = stringPreferencesKey("last_username")
+        val ROLE = stringPreferencesKey("role")
     }
 }

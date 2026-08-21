@@ -5,7 +5,8 @@ public sealed record TokenPair(
     string AccessToken,
     string RefreshToken,
     DateTimeOffset AccessTokenExpiresAt,
-    DateTimeOffset RefreshTokenExpiresAt);
+    DateTimeOffset RefreshTokenExpiresAt,
+    string Role = "MEMBER");
 
 public sealed record IdentityFailure(string Code, IdentityFailureKind Kind);
 

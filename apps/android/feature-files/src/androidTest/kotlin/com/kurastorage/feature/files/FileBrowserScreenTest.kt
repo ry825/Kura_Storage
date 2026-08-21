@@ -19,6 +19,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
+import com.kurastorage.core.model.AdminStorageStatus
 import com.kurastorage.core.model.ErrorCategory
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.FileEntry
@@ -124,6 +125,7 @@ class FileBrowserScreenTest {
 
         compose.onNodeWithText("Trash").assertIsDisplayed()
         compose.onNodeWithText("2 / 5 bytes").assertIsDisplayed()
+        compose.onNodeWithText("Delete permanently").assertIsDisplayed()
         compose.onNodeWithText("Restore").performClick()
         compose.onNodeWithText("Restore this item?").assertIsDisplayed()
     }
@@ -401,6 +403,167 @@ class FileBrowserScreenTest {
         compose.onAllNodesWithText("Actions").assertCountEquals(0)
         compose.onAllNodesWithText("Rename").assertCountEquals(0)
         compose.onAllNodesWithText("Move").assertCountEquals(0)
+    }
+
+    @Test
+    fun permanentDeleteSeparatesRestoreShowsIrreversibleFolderWarningAndDisablesWhileSubmitting() {
+        val target = folder().copy(status = FileEntryStatus.TRASHED)
+        var purgeRequests = 0
+        val screenState =
+            mutableStateOf(
+                FileBrowserState(
+                    loading = false,
+                    entries = listOf(target),
+                    selected = target,
+                    retention = RetentionDisplayState(RetentionStage.BEFORE_DEADLINE, "Scheduled for automatic deletion: tomorrow"),
+                ),
+            )
+        compose.setContent {
+            FileBrowserScreen(
+                state = screenState.value,
+                trashMode = true,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onBeginPermanentDelete = {
+                    screenState.value =
+                        screenState.value.copy(
+                            selected = null,
+                            permanentDelete = PermanentDeleteState(target, "key"),
+                        )
+                },
+                onConfirmPermanentDelete = {
+                    purgeRequests++
+                    screenState.value =
+                        screenState.value.copy(
+                            permanentDelete = screenState.value.permanentDelete?.copy(submitting = true),
+                        )
+                },
+                onCancelPermanentDelete = {
+                    screenState.value = screenState.value.copy(permanentDelete = null)
+                },
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+        compose.onNodeWithText("Restore").assertIsDisplayed()
+        compose.onNodeWithText("Scheduled for automatic deletion: tomorrow").assertIsDisplayed()
+        compose.onNodeWithText("Delete permanently").assertIsDisplayed().performClick()
+        compose.onNodeWithText("This operation cannot be undone.").assertIsDisplayed()
+        compose.onNodeWithText("The folder and everything inside it will be permanently deleted.").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, purgeRequests) }
+        compose.onNodeWithText("Cancel").performClick()
+        compose.runOnIdle {
+            assertEquals(0, purgeRequests)
+            screenState.value = screenState.value.copy(selected = target)
+        }
+        compose.onNodeWithText("Delete permanently").performClick()
+        compose.onNodeWithTag("confirm-permanent-delete").performClick()
+        compose.runOnIdle { assertEquals(1, purgeRequests) }
+        compose.onNodeWithText("Deleting…").assertIsNotEnabled()
+        compose.runOnIdle {
+            screenState.value =
+                screenState.value.copy(
+                    entries = emptyList(),
+                    permanentDelete = null,
+                    placementResult = "Deleted permanently.",
+                )
+        }
+        compose.onNodeWithText("Trash is empty.").assertIsDisplayed()
+        compose.onNodeWithText("Deleted permanently.").assertIsDisplayed()
+    }
+
+    @Test
+    fun unknownPermanentDeleteKeepsSameRetryAndRequiresRefreshOrRetry() {
+        val target = file().copy(status = FileEntryStatus.TRASHED)
+        var retries = 0
+        val deletionState =
+            mutableStateOf(
+                PermanentDeleteState(
+                    target = target,
+                    idempotencyKey = "stable-key",
+                    resultUnknown = true,
+                    error =
+                        BrowserError(
+                            "The result is unknown because the connection was interrupted. Refresh to confirm.",
+                            ErrorCategory.CONNECTION,
+                            resultUnknown = true,
+                        ),
+                ),
+            )
+        compose.setContent {
+            FileBrowserScreen(
+                state =
+                    FileBrowserState(
+                        loading = false,
+                        entries = listOf(target),
+                        permanentDelete = deletionState.value,
+                    ),
+                trashMode = true,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onConfirmPermanentDelete = { retries++ },
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("Refresh to confirm").assertIsDisplayed()
+        compose.onNodeWithText("Cancel").assertIsNotEnabled()
+        compose.onNodeWithText("Retry same request").performClick()
+        compose.runOnIdle { assertEquals(1, retries) }
+
+        compose.runOnIdle {
+            deletionState.value =
+                deletionState.value.copy(
+                    resultUnknown = false,
+                    error =
+                        BrowserError(
+                            "This deletion key conflicts with another request. Refresh the list.",
+                            ErrorCategory.CONFLICT,
+                            ErrorCode.IDEMPOTENCY_CONFLICT,
+                        ),
+                )
+        }
+        compose.onNodeWithText("Refresh to confirm").assertIsDisplayed()
+        compose.onNodeWithText("Refresh list first").assertIsNotEnabled()
+    }
+
+    @Test
+    fun capacityWarningShowsAdminDetailsAndTrashActionWhileNormalStateIsHidden() {
+        val warning = AdminStorageStatus("AVAILABLE", 100, 10, 20, true, 5, 1, 30, 0, null)
+        val panelState = mutableStateOf(AdminStorageState(loading = false, status = warning))
+        compose.setContent {
+            AdminStoragePanel(panelState.value, {}, {})
+        }
+        compose.onNodeWithTag("capacity-warning").assertIsDisplayed()
+        compose.onNodeWithText("Open Trash").assertIsDisplayed()
+        compose
+            .onNodeWithText(
+                "The 30-day retention period is not shortened. Delete unneeded trash manually or expand storage.",
+            ).assertIsDisplayed()
+
+        compose.runOnIdle { panelState.value = AdminStorageState(loading = false, status = warning.copy(capacityWarning = false)) }
+        compose.onAllNodesWithText("Storage capacity warning").assertCountEquals(0)
     }
 
     private fun file() =

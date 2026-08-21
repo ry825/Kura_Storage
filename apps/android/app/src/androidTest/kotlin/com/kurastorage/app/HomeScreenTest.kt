@@ -1,11 +1,15 @@
 package com.kurastorage.app
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import com.kurastorage.core.model.AdminStorageStatus
 import com.kurastorage.core.model.ConnectionRoute
 import com.kurastorage.core.model.ConnectionStatus
 import com.kurastorage.core.model.StorageAvailability
+import com.kurastorage.feature.files.AdminStorageState
 import org.junit.Rule
 import org.junit.Test
 
@@ -32,5 +36,34 @@ class HomeScreenTest {
         compose.onNodeWithText("Trash").assertIsDisplayed()
         compose.onNodeWithText("Connection: REMOTE_SECURE").assertIsDisplayed()
         compose.onNodeWithText("Log out").assertIsDisplayed()
+    }
+
+    @Test
+    fun homeShowsCapacityWarningOnlyWhenAdminStatusIsPresent() {
+        val warning = AdminStorageStatus("AVAILABLE", 100, 10, 20, true, 5, 1, 30, 0, null)
+        compose.setContent {
+            HomeScreen(
+                connection = null,
+                adminStorageState = AdminStorageState(loading = false, status = warning),
+                onFiles = {},
+                onTrash = {},
+                onLogout = {},
+            )
+        }
+        compose.onNodeWithText("Storage capacity warning").assertIsDisplayed()
+    }
+
+    @Test
+    fun homeHidesCapacityDetailsForMemberState() {
+        compose.setContent {
+            HomeScreen(
+                connection = null,
+                adminStorageState = AdminStorageState(loading = false),
+                onFiles = {},
+                onTrash = {},
+                onLogout = {},
+            )
+        }
+        compose.onAllNodesWithText("Storage capacity warning").assertCountEquals(0)
     }
 }
