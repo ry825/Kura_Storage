@@ -87,6 +87,11 @@ load_config() {
         KURASTORAGE_STORAGE_DEVICE_UUID
         KURASTORAGE_STORAGE_ID
         KURASTORAGE_STORAGE_RESERVE_BYTES
+        KURASTORAGE_STORAGE_WARNING_BYTES
+        KURASTORAGE_TRASH_RETENTION_DAYS
+        KURASTORAGE_TRASH_INTERVAL_HOURS
+        KURASTORAGE_TRASH_BATCH_SIZE
+        KURASTORAGE_TRASH_RETRY_DELAY_MINUTES
         KURASTORAGE_STORAGE_MOUNT_UNIT
         KURASTORAGE_STORAGE_ACCESS_GROUP
         KURASTORAGE_STORAGE_ACCESS_USER
@@ -138,6 +143,26 @@ load_config() {
         die "Invalid storage mount unit."
     [[ "${KURASTORAGE_STORAGE_RESERVE_BYTES}" =~ ^[0-9]+$ ]] ||
         die "Invalid storage reserve."
+    [[ "${KURASTORAGE_STORAGE_WARNING_BYTES}" =~ ^[0-9]+$ ]] ||
+        die "Invalid storage warning threshold."
+    ((KURASTORAGE_STORAGE_WARNING_BYTES >= KURASTORAGE_STORAGE_RESERVE_BYTES)) ||
+        die "Storage warning threshold must be at least the storage reserve."
+    if ! [[ "${KURASTORAGE_TRASH_RETENTION_DAYS}" =~ ^[0-9]+$ ]] ||
+        ((KURASTORAGE_TRASH_RETENTION_DAYS < 30)); then
+        die "Trash retention must be at least 30 days."
+    fi
+    if ! [[ "${KURASTORAGE_TRASH_INTERVAL_HOURS}" =~ ^[0-9]+$ ]] ||
+        ((KURASTORAGE_TRASH_INTERVAL_HOURS < 1 || KURASTORAGE_TRASH_INTERVAL_HOURS > 168)); then
+        die "Trash purge interval must be between 1 and 168 hours."
+    fi
+    if ! [[ "${KURASTORAGE_TRASH_BATCH_SIZE}" =~ ^[0-9]+$ ]] ||
+        ((KURASTORAGE_TRASH_BATCH_SIZE < 1 || KURASTORAGE_TRASH_BATCH_SIZE > 500)); then
+        die "Trash purge batch size must be between 1 and 500."
+    fi
+    if ! [[ "${KURASTORAGE_TRASH_RETRY_DELAY_MINUTES}" =~ ^[0-9]+$ ]] ||
+        ((KURASTORAGE_TRASH_RETRY_DELAY_MINUTES < 1 || KURASTORAGE_TRASH_RETRY_DELAY_MINUTES > 1440)); then
+        die "Trash purge retry delay must be between 1 and 1440 minutes."
+    fi
     [[ "${KURASTORAGE_STORAGE_ACCESS_GROUP}" =~ ^[a-z_][a-z0-9_-]*$ ]] ||
         die "Invalid storage access group."
     [[ "${KURASTORAGE_STORAGE_ACCESS_USER}" =~ ^[a-z_][a-z0-9_-]*$ ]] ||
@@ -167,7 +192,7 @@ render_template() {
     # Keep Nginx runtime variables such as $host intact.
     # shellcheck disable=SC2016
     envsubst \
-        '${KURASTORAGE_API_HOSTNAME} ${KURASTORAGE_LAN_API_IP} ${KURASTORAGE_LAN_CIDR} ${KURASTORAGE_ZEROTIER_API_IP} ${KURASTORAGE_ZEROTIER_CIDR} ${KURASTORAGE_ZEROTIER_INTERFACE} ${KURASTORAGE_STORAGE_MOUNT_PATH} ${KURASTORAGE_STORAGE_ROOT} ${KURASTORAGE_STORAGE_DEVICE_UUID} ${KURASTORAGE_STORAGE_ID} ${KURASTORAGE_STORAGE_RESERVE_BYTES} ${KURASTORAGE_STORAGE_MOUNT_UNIT} ${KURASTORAGE_STORAGE_ACCESS_GROUP} ${KURASTORAGE_STORAGE_UID} ${KURASTORAGE_STORAGE_GID} ${KURASTORAGE_POSTGRES_DATABASE} ${KURASTORAGE_POSTGRES_ROLE}' \
+        '${KURASTORAGE_API_HOSTNAME} ${KURASTORAGE_LAN_API_IP} ${KURASTORAGE_LAN_CIDR} ${KURASTORAGE_ZEROTIER_API_IP} ${KURASTORAGE_ZEROTIER_CIDR} ${KURASTORAGE_ZEROTIER_INTERFACE} ${KURASTORAGE_STORAGE_MOUNT_PATH} ${KURASTORAGE_STORAGE_ROOT} ${KURASTORAGE_STORAGE_DEVICE_UUID} ${KURASTORAGE_STORAGE_ID} ${KURASTORAGE_STORAGE_RESERVE_BYTES} ${KURASTORAGE_STORAGE_WARNING_BYTES} ${KURASTORAGE_TRASH_RETENTION_DAYS} ${KURASTORAGE_TRASH_INTERVAL_HOURS} ${KURASTORAGE_TRASH_BATCH_SIZE} ${KURASTORAGE_TRASH_RETRY_DELAY_MINUTES} ${KURASTORAGE_STORAGE_MOUNT_UNIT} ${KURASTORAGE_STORAGE_ACCESS_GROUP} ${KURASTORAGE_STORAGE_UID} ${KURASTORAGE_STORAGE_GID} ${KURASTORAGE_POSTGRES_DATABASE} ${KURASTORAGE_POSTGRES_ROLE}' \
         <"${source_file}" >"${temporary_file}"
     install -m 0640 "${temporary_file}" "${destination_file}"
     rm -f "${temporary_file}"
@@ -288,6 +313,8 @@ install_release_artifact() {
     [[ -x "${release_directory}/KuraStorage.Api" ]] || die "API executable is absent from artifact."
     [[ -x "${release_directory}/KuraStorage.AdminCli" ]] ||
         die "Admin CLI executable is absent from artifact."
+    [[ -x "${release_directory}/KuraStorage.Worker" ]] ||
+        die "Worker executable is absent from artifact."
     chown -R root:root "${release_directory}"
     render_runtime_configuration "${release_directory}"
     printf '%s\n' "${release_directory}"
@@ -319,6 +346,16 @@ apply_migrations() {
     )
 }
 
+verify_no_unfinished_purges() {
+    local unfinished
+    unfinished="$(runuser -u postgres -- psql --no-psqlrc --tuples-only \
+        --dbname="${KURASTORAGE_POSTGRES_DATABASE}" --command \
+        "SELECT count(*) FROM file_operations WHERE operation_type = 'PURGE' AND status <> 'COMPLETED';" |
+        tr -d '[:space:]')"
+    [[ "${unfinished}" == "0" ]] ||
+        die "Rollback is blocked while unfinished PURGE operations exist."
+}
+
 activate_release() {
     local release_directory="$1"
     local current_target=""
@@ -331,5 +368,6 @@ activate_release() {
     ln -sfn "${release_directory}" "${INSTALL_ROOT}/current"
     systemctl daemon-reload
     systemctl restart kurastorage-api.service
+    systemctl restart kurastorage-worker.service
     systemctl reload nginx.service
 }

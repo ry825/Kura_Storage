@@ -212,7 +212,7 @@ public sealed class TrashPurgeServiceTests
             Task.FromResult<IFileTransaction>(new NoOpTransaction());
         public Task<FileEntry?> FindOwnedAsync(Guid ownerUserId, Guid entryId, CancellationToken cancellationToken) =>
             Task.FromResult(Entries.SingleOrDefault(item => item.OwnerUserId == ownerUserId && item.Id == entryId));
-        public Task ReloadAsync(FileEntry entry, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<bool> ReloadAsync(FileEntry entry, CancellationToken cancellationToken) => Task.FromResult(true);
         public Task<FileEntry?> FindRootAsync(Guid ownerUserId, CancellationToken cancellationToken) => Task.FromResult<FileEntry?>(null);
         public Task<FileEntry?> FindActiveChildAsync(Guid ownerUserId, Guid parentId, string name, CancellationToken cancellationToken) => Task.FromResult<FileEntry?>(null);
         public Task<FileEntry?> FindActiveFolderByPathAsync(Guid ownerUserId, string relativePath, CancellationToken cancellationToken) => Task.FromResult<FileEntry?>(null);

@@ -1,6 +1,7 @@
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Identity;
 using KuraStorage.Application.Files;
+using KuraStorage.Application.Maintenance;
 using KuraStorage.Infrastructure.Configuration;
 using KuraStorage.Infrastructure.Identity;
 using KuraStorage.Infrastructure.Persistence;
@@ -17,7 +18,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddKuraStorageInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        bool addFileRecoveryHostedService = true)
     {
         services.AddOptions<DatabaseOptions>()
             .Bind(configuration.GetSection(DatabaseOptions.SectionName))
@@ -28,12 +30,18 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(StorageOptions.SectionName))
             .ValidateDataAnnotations()
             .Validate(options => Path.IsPathFullyQualified(options.RootPath), "Storage:RootPath must be absolute.")
+            .Validate(
+                options => options.CapacityWarningFreeBytes >= options.MinimumFreeBytes,
+                "Storage:CapacityWarningFreeBytes must be at least Storage:MinimumFreeBytes.")
             .ValidateOnStart();
         services.AddOptions<TrashPurgeOptions>()
             .Bind(configuration.GetSection(TrashPurgeOptions.SectionName))
             .Validate(
                 options => options.RetentionDays >= TrashPurgeOptions.MinimumRetentionDays,
                 "TrashPurge:RetentionDays must be at least 30.")
+            .Validate(options => options.IntervalHours is >= 1 and <= 168, "TrashPurge:IntervalHours must be between 1 and 168.")
+            .Validate(options => options.BatchSize is >= 1 and <= 500, "TrashPurge:BatchSize must be between 1 and 500.")
+            .Validate(options => options.RetryDelayMinutes is >= 1 and <= 1440, "TrashPurge:RetryDelayMinutes must be between 1 and 1440.")
             .ValidateOnStart();
         services.AddOptions<AuthenticationOptions>()
             .Bind(configuration.GetSection(AuthenticationOptions.SectionName))
@@ -50,6 +58,16 @@ public static class DependencyInjection
         services.AddScoped<IdentityService>();
         services.AddScoped<FileService>();
         services.AddScoped<TrashPurgeService>();
+        services.AddScoped<TrashPurgeRunner>();
+        services.AddScoped<ITrashPurgeRunner>(serviceProvider => serviceProvider.GetRequiredService<TrashPurgeRunner>());
+        services.AddScoped(
+            serviceProvider => new AdminStorageService(
+                serviceProvider.GetRequiredService<IFileRepository>(),
+                serviceProvider.GetRequiredService<IFileStore>(),
+                serviceProvider.GetRequiredService<IStorageGuard>(),
+                serviceProvider.GetRequiredService<ISystemClock>(),
+                serviceProvider.GetRequiredService<TrashPurgeOptions>(),
+                serviceProvider.GetRequiredService<IOptions<StorageOptions>>().Value.CapacityWarningFreeBytes));
         services.AddSingleton(
             serviceProvider => serviceProvider.GetRequiredService<IOptions<TrashPurgeOptions>>().Value);
         services.AddScoped<FileOperationRecoveryService>();
@@ -60,7 +78,10 @@ public static class DependencyInjection
         services.AddSingleton<ISystemClock, SystemClock>();
         services.AddSingleton<IStorageGuard, StorageGuard>();
         services.AddSingleton<IFileStore, FileStore>();
-        services.AddHostedService<FileRecoveryHostedService>();
+        if (addFileRecoveryHostedService)
+        {
+            services.AddHostedService<FileRecoveryHostedService>();
+        }
         return services;
     }
 

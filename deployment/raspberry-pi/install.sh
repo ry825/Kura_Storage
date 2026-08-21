@@ -105,6 +105,10 @@ render_template \
     /etc/systemd/system/kurastorage-api.service
 chmod 0644 /etc/systemd/system/kurastorage-api.service
 render_template \
+    "${DEPLOYMENT_DIR}/config/systemd/kurastorage-worker.service.template" \
+    /etc/systemd/system/kurastorage-worker.service
+chmod 0644 /etc/systemd/system/kurastorage-worker.service
+render_template \
     "${DEPLOYMENT_DIR}/config/nginx/kurastorage.conf.template" \
     /etc/nginx/sites-available/kurastorage.conf
 install -d -m 0755 /usr/local/libexec/kurastorage /etc/systemd/system/nginx.service.d
@@ -128,6 +132,7 @@ install -m 0644 "${DEPLOYMENT_DIR}/config/logrotate/kurastorage" \
 nginx -t
 nft --check --file /etc/nftables.d/kurastorage.conf
 verify_systemd_service_unit /etc/systemd/system/kurastorage-api.service
+verify_systemd_service_unit /etc/systemd/system/kurastorage-worker.service
 systemctl daemon-reload
 systemd-analyze verify nginx.service
 systemctl enable nftables.service
@@ -137,6 +142,6 @@ configure_ufw_coexistence
 release_directory="$(install_release_artifact)"
 apply_migrations "${release_directory}"
 activate_release "${release_directory}"
-systemctl enable kurastorage-api.service nginx.service postgresql.service
+systemctl enable kurastorage-api.service kurastorage-worker.service nginx.service postgresql.service
 
 "${SCRIPT_DIR}/verify.sh"

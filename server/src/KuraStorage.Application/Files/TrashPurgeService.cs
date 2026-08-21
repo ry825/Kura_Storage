@@ -9,8 +9,11 @@ public sealed class TrashPurgeService(
     IFileStore fileStore,
     IStorageGuard storageGuard,
     IEnumerable<IPermanentDeleteParticipant> participants,
-    ISystemClock clock)
+    ISystemClock clock,
+    TrashPurgeOptions? purgeOptions = null)
 {
+    private readonly int retentionDays = purgeOptions?.RetentionDays ?? 30;
+
     public async Task<FileResult<bool>> PurgeAsync(
         PurgeFileCommand command,
         CancellationToken cancellationToken)
@@ -24,49 +27,6 @@ public sealed class TrashPurgeService(
             !Guid.TryParse(command.IdempotencyKey, out _))
         {
             return FileResult<bool>.Fail(FileErrorCodes.ValidationFailed, FileFailureKind.BadRequest);
-        }
-
-        var existing = await repository.FindOperationAsync(
-            command.OwnerUserId,
-            command.IdempotencyKey,
-            cancellationToken);
-        if (existing is not null)
-        {
-            if (existing.OperationType != FileOperationType.Purge ||
-                existing.FileEntryId != command.FileEntryId)
-            {
-                await AuditFailureAsync(command, FileErrorCodes.IdempotencyConflict, cancellationToken);
-                return FileResult<bool>.Fail(FileErrorCodes.IdempotencyConflict, FileFailureKind.Conflict);
-            }
-
-            if (existing.Status == FileOperationStatus.Completed)
-            {
-                return FileResult<bool>.Success(true);
-            }
-
-            if (existing.Status == FileOperationStatus.RecoveryRequired)
-            {
-                await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
-                return FileResult<bool>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
-            }
-
-            await RecoverAsync(existing, cancellationToken);
-            return existing.Status == FileOperationStatus.Completed
-                ? FileResult<bool>.Success(true)
-                : FileResult<bool>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
-        }
-
-        if (await storageGuard.InspectAsync(StorageIntent.Delete, cancellationToken) != StorageStatus.Available)
-        {
-            await AuditFailureAsync(command, FileErrorCodes.StorageUnavailable, cancellationToken);
-            return FileResult<bool>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
-        }
-
-        var initial = await repository.FindOwnedAsync(command.OwnerUserId, command.FileEntryId, cancellationToken);
-        if (!IsPurgeRoot(initial))
-        {
-            await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
-            return FileResult<bool>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
         var idempotencyLockId = Guid.Parse(command.IdempotencyKey);
@@ -88,20 +48,32 @@ public sealed class TrashPurgeService(
 
             if (lockedExisting.Status == FileOperationStatus.Completed)
             {
-                return FileResult<bool>.Success(true);
+                return FileResult<bool>.Success(false);
+            }
+
+            if (lockedExisting.Status == FileOperationStatus.RecoveryRequired)
+            {
+                await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
+                return FileResult<bool>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
             }
 
             await RecoverAsync(lockedExisting, cancellationToken);
             return lockedExisting.Status == FileOperationStatus.Completed
-                ? FileResult<bool>.Success(true)
+                ? FileResult<bool>.Success(false)
                 : FileResult<bool>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
+        if (await storageGuard.InspectAsync(StorageIntent.Delete, cancellationToken) != StorageStatus.Available)
+        {
+            await AuditFailureAsync(command, FileErrorCodes.StorageUnavailable, cancellationToken);
+            return FileResult<bool>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
         }
 
         var lockedEntry = await repository.FindOwnedAsync(
             command.OwnerUserId,
             command.FileEntryId,
             cancellationToken);
-        if (!IsPurgeRoot(lockedEntry))
+        if (!IsEligible(lockedEntry, command))
         {
             await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
             return FileResult<bool>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
@@ -337,4 +309,10 @@ public sealed class TrashPurgeService(
 
     private static bool IsPurgeRoot(FileEntry? entry) =>
         entry is { Status: FileEntryStatus.Trashed, ParentId: null };
+
+    private bool IsEligible(FileEntry? entry, PurgeFileCommand command) =>
+        IsPurgeRoot(entry) &&
+        (command.Trigger == PurgeTrigger.User ||
+            entry!.TrashedAt is not null &&
+            entry.TrashedAt <= clock.UtcNow.AddDays(-retentionDays));
 }

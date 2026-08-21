@@ -563,6 +563,8 @@ sealed interface FileListUiState {
 - Write可能PathをKuraStorageの必要領域へ限定する。
 - API Userのsudoers/polkit権限は固定unit起動だけに限定する。
 - Unit変更後は`systemd-analyze verify`等で検証する。
+- 保持WorkerはHTTP Listenerを持たず、起動時実行、Cancellation可能な周期待機、停止Run回収、Batchごとの進捗保存をTestする。
+- 容量警告は保持期限や候補Queryを変更せず、Admin状態取得から削除処理を起動しない。
 
 ### 8.3 Shell
 

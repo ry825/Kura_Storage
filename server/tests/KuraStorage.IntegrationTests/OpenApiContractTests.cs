@@ -21,6 +21,7 @@ public sealed class OpenApiContractTests
             "  /trash:",
             "  /trash/{fileId}:",
             "  /files/{fileId}/restore:",
+            "  /admin/storage:",
         })
         {
             Assert.Contains(path, contract, StringComparison.Ordinal);
@@ -37,6 +38,8 @@ public sealed class OpenApiContractTests
         Assert.Contains("IDEMPOTENCY_CONFLICT", contract, StringComparison.Ordinal);
         Assert.Contains("operationId: permanentlyDeleteTrashEntry", contract, StringComparison.Ordinal);
         Assert.Contains("purgeEligibleAt:", contract, StringComparison.Ordinal);
+        Assert.Contains("AdminStorageStatus:", contract, StringComparison.Ordinal);
+        Assert.Contains("TrashPurgeRunSummary:", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("ownerUserId:", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("relativePath:", contract, StringComparison.Ordinal);
     }

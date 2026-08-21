@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Security.Cryptography;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
+using KuraStorage.Application.Maintenance;
 using KuraStorage.Domain.Files;
 using KuraStorage.Infrastructure.Configuration;
 using Microsoft.Extensions.Options;
@@ -29,6 +30,13 @@ public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFil
 
         var available = new DriveInfo(root).AvailableFreeSpace;
         return Task.FromResult(available >= requiredBytes + options.MinimumFreeBytes);
+    }
+
+    public Task<StorageCapacity> GetCapacityAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var drive = new DriveInfo(root);
+        return Task.FromResult(new StorageCapacity(drive.TotalSize, drive.AvailableFreeSpace));
     }
 
     public async Task EnsureUserAreaAsync(Guid ownerUserId, CancellationToken cancellationToken)

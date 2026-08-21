@@ -8,8 +8,11 @@ using System.Text.Json;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Identity;
+using KuraStorage.Application.Maintenance;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Audit;
+using KuraStorage.Domain.Identity;
+using KuraStorage.Domain.Maintenance;
 using KuraStorage.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
@@ -982,6 +985,301 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         Assert.Equal(new byte[] { 2, 4, 6 }, await download.Content.ReadAsByteArrayAsync());
     }
 
+    [Fact]
+    public async Task RetentionRunner_ClosesStoppedRunBeforeStartingNextRun()
+    {
+        var stopped = new TrashPurgeRun(Guid.NewGuid(), DateTimeOffset.UtcNow.AddHours(-1));
+        await using (var seedScope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = seedScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            database.TrashPurgeRuns.Add(stopped);
+            await database.SaveChangesAsync();
+        }
+
+        await using (var runScope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            await runScope.ServiceProvider.GetRequiredService<TrashPurgeRunner>().RunAsync(CancellationToken.None);
+        }
+
+        await using var verifyScope = fixture.Factory.Services.CreateAsyncScope();
+        var verifyDatabase = verifyScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        var recovered = await verifyDatabase.TrashPurgeRuns.SingleAsync(run => run.Id == stopped.Id);
+        Assert.Equal(TrashPurgeRunStatus.Failed, recovered.Status);
+        Assert.NotNull(recovered.CompletedAt);
+        Assert.Equal(
+            1,
+            await verifyDatabase.AuditLogs.CountAsync(audit =>
+                audit.Action == "TRASH_PURGE_RUN" && audit.TargetId == stopped.Id.ToString()));
+    }
+
+    [Fact]
+    public async Task RetentionRunner_UsesUtcBoundaryStableBatchingAndLeavesYoungTrash()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("retention-runner", "retention-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var older = await UploadAsync(client, rootId, "older.bin", new byte[11], Guid.NewGuid().ToString());
+        var boundary = await UploadAsync(client, rootId, "boundary.bin", new byte[13], Guid.NewGuid().ToString());
+        var young = await UploadAsync(client, rootId, "young.bin", new byte[17], Guid.NewGuid().ToString());
+        foreach (var file in new[] { older, boundary, young })
+        {
+            using var trash = await client.DeleteAsync($"/api/v1/files/{file.Id}");
+            trash.EnsureSuccessStatusCode();
+        }
+
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-30);
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            await database.FileEntries.Where(entry => entry.Id == older.Id).ExecuteUpdateAsync(
+                updates => updates.SetProperty(entry => entry.TrashedAt, cutoff.AddDays(-1)));
+            await database.FileEntries.Where(entry => entry.Id == boundary.Id).ExecuteUpdateAsync(
+                updates => updates.SetProperty(entry => entry.TrashedAt, cutoff));
+            await database.FileEntries.Where(entry => entry.Id == young.Id).ExecuteUpdateAsync(
+                updates => updates.SetProperty(entry => entry.TrashedAt, cutoff.AddDays(1)));
+
+            var repository = scope.ServiceProvider.GetRequiredService<IFileRepository>();
+            var firstBatch = await repository.ListPurgeCandidatesAsync(
+                cutoff,
+                null,
+                null,
+                2,
+                CancellationToken.None);
+            Assert.Equal([older.Id, boundary.Id], firstBatch.Select(item => item.RootId));
+            Assert.Equal([11L, 13L], firstBatch.Select(item => item.EstimatedBytes));
+        }
+
+        TrashPurgeRunSummary summary;
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            summary = await scope.ServiceProvider.GetRequiredService<TrashPurgeRunner>()
+                .RunAsync(CancellationToken.None);
+        }
+
+        Assert.Equal("COMPLETED", summary.Status);
+        Assert.True(summary.ExaminedRootCount >= 2);
+        Assert.True(summary.DeletedRootCount >= 2);
+        Assert.True(summary.ReleasedBytes >= 24);
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.False(await database.FileEntries.AnyAsync(entry => entry.Id == older.Id || entry.Id == boundary.Id));
+            Assert.True(await database.FileEntries.AnyAsync(entry => entry.Id == young.Id));
+            Assert.Equal(
+                2,
+                await database.AuditLogs.CountAsync(audit =>
+                    (audit.TargetId == older.Id.ToString() || audit.TargetId == boundary.Id.ToString()) &&
+                    audit.Action == "FILE_PURGE_RETENTION" &&
+                    audit.ResultCode == "SUCCESS"));
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentRetentionRunners_DeleteTargetAndSuccessAuditOnce()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("retention-parallel", "retention-parallel-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var file = await UploadAsync(client, rootId, "parallel-expired.bin", new byte[19], Guid.NewGuid().ToString());
+        using (var trash = await client.DeleteAsync($"/api/v1/files/{file.Id}"))
+        {
+            trash.EnsureSuccessStatusCode();
+        }
+
+        await using (var seedScope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            await seedScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>().FileEntries
+                .Where(entry => entry.Id == file.Id)
+                .ExecuteUpdateAsync(
+                    updates => updates.SetProperty(entry => entry.TrashedAt, DateTimeOffset.UtcNow.AddDays(-31)));
+        }
+
+        await using var firstScope = fixture.Factory.Services.CreateAsyncScope();
+        await using var secondScope = fixture.Factory.Services.CreateAsyncScope();
+        await Task.WhenAll(
+            firstScope.ServiceProvider.GetRequiredService<TrashPurgeRunner>().RunAsync(CancellationToken.None),
+            secondScope.ServiceProvider.GetRequiredService<TrashPurgeRunner>().RunAsync(CancellationToken.None));
+
+        await using var verifyScope = fixture.Factory.Services.CreateAsyncScope();
+        var database = verifyScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        Assert.False(await database.FileEntries.AnyAsync(entry => entry.Id == file.Id));
+        Assert.Equal(
+            1,
+            await database.AuditLogs.CountAsync(audit =>
+                audit.TargetId == file.Id.ToString() &&
+                audit.Action == "FILE_PURGE_RETENTION" &&
+                audit.ResultCode == "SUCCESS"));
+    }
+
+    [Fact]
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    public async Task RetentionRunner_ContinuesAfterItemFailureAndRecoversOnNextRun()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync(
+            "retention-retry",
+            "retention-retry-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var blocked = await UploadAsync(client, rootId, "blocked.bin", new byte[23], Guid.NewGuid().ToString());
+        var healthy = await UploadAsync(client, rootId, "healthy.bin", new byte[29], Guid.NewGuid().ToString());
+        foreach (var file in new[] { blocked, healthy })
+        {
+            using var trash = await client.DeleteAsync($"/api/v1/files/{file.Id}");
+            trash.EnsureSuccessStatusCode();
+        }
+
+        string blockedContainer;
+        await using (var seedScope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = seedScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            await database.FileEntries.Where(entry => entry.Id == blocked.Id).ExecuteUpdateAsync(
+                updates => updates.SetProperty(entry => entry.TrashedAt, DateTimeOffset.UtcNow.AddDays(-32)));
+            await database.FileEntries.Where(entry => entry.Id == healthy.Id).ExecuteUpdateAsync(
+                updates => updates.SetProperty(entry => entry.TrashedAt, DateTimeOffset.UtcNow.AddDays(-31)));
+            var relativePath = await database.FileEntries
+                .Where(entry => entry.Id == blocked.Id)
+                .Select(entry => entry.RelativePath)
+                .SingleAsync();
+            blockedContainer = Path.Combine(
+                fixture.StorageRootPath,
+                Path.GetDirectoryName(relativePath)!.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        File.SetUnixFileMode(
+            blockedContainer,
+            UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        TrashPurgeRunSummary failedItemRun;
+        try
+        {
+            await using var runScope = fixture.Factory.Services.CreateAsyncScope();
+            failedItemRun = await CreateRunner(runScope, batchSize: 1).RunAsync(CancellationToken.None);
+        }
+        finally
+        {
+            File.SetUnixFileMode(
+                blockedContainer,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        Assert.Equal("COMPLETED_WITH_ERRORS", failedItemRun.Status);
+        Assert.True(failedItemRun.ExaminedRootCount >= 2);
+        Assert.True(failedItemRun.DeletedRootCount >= 1);
+        Assert.Equal(1, failedItemRun.ErrorCount);
+
+        await using (var continuationScope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var continuationDatabase = continuationScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.True(await continuationDatabase.FileEntries.AnyAsync(entry => entry.Id == blocked.Id));
+            Assert.False(await continuationDatabase.FileEntries.AnyAsync(entry => entry.Id == healthy.Id));
+        }
+
+        await using (var retryScope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var retryRun = await CreateRunner(retryScope, batchSize: 1).RunAsync(CancellationToken.None);
+            Assert.Equal("COMPLETED", retryRun.Status);
+        }
+
+        await using var verifyScope = fixture.Factory.Services.CreateAsyncScope();
+        var verifyDatabase = verifyScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        Assert.False(await verifyDatabase.FileEntries.AnyAsync(
+            entry => entry.Id == blocked.Id || entry.Id == healthy.Id));
+        Assert.Equal(
+            2,
+            await verifyDatabase.AuditLogs.CountAsync(audit =>
+                (audit.TargetId == blocked.Id.ToString() || audit.TargetId == healthy.Id.ToString()) &&
+                audit.Action == "FILE_PURGE_RETENTION" &&
+                audit.ResultCode == "SUCCESS"));
+    }
+
+    [Fact]
+    public async Task AdminStorage_ReturnsAggregatesAndRejectsMemberAnonymousAndRevokedDevice()
+    {
+        var admin = await fixture.CreateAuthenticatedClientAsync(
+            "storage-admin",
+            "storage-admin-password",
+            UserRole.Admin);
+        using var adminClient = admin.Client;
+        var rootId = await GetRootIdAsync(adminClient);
+        var file = await UploadAsync(
+            adminClient,
+            rootId,
+            "capacity.bin",
+            new byte[123],
+            Guid.NewGuid().ToString());
+        using (var trash = await adminClient.DeleteAsync($"/api/v1/files/{file.Id}"))
+        {
+            trash.EnsureSuccessStatusCode();
+        }
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            await database.FileEntries
+                .Where(entry => entry.Id == file.Id)
+                .ExecuteUpdateAsync(
+                    updates => updates.SetProperty(
+                        entry => entry.TrashedAt,
+                        DateTimeOffset.UtcNow.AddDays(-31)));
+            var run = new TrashPurgeRun(Guid.NewGuid(), DateTimeOffset.UtcNow.AddMinutes(-1));
+            run.RecordExamined();
+            run.RecordDeleted(64);
+            run.Complete(DateTimeOffset.UtcNow);
+            database.TrashPurgeRuns.Add(run);
+            await database.SaveChangesAsync();
+        }
+
+        using (var response = await adminClient.GetAsync("/api/v1/admin/storage"))
+        {
+            response.EnsureSuccessStatusCode();
+            using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+            var root = json.RootElement;
+            Assert.Equal("AVAILABLE", root.GetProperty("storage").GetString());
+            Assert.True(root.GetProperty("totalBytes").GetInt64() > 0);
+            Assert.True(root.GetProperty("availableBytes").GetInt64() >= 0);
+            Assert.True(root.GetProperty("trashBytes").GetInt64() >= 123);
+            Assert.True(root.GetProperty("expiredTrashRootCount").GetInt32() >= 1);
+            Assert.Equal(30, root.GetProperty("retentionDays").GetInt32());
+            Assert.Equal("COMPLETED", root.GetProperty("lastPurgeRun").GetProperty("status").GetString());
+        }
+
+        var member = await fixture.CreateAuthenticatedClientAsync("storage-member", "storage-member-password");
+        using (member.Client)
+        using (var forbidden = await member.Client.GetAsync("/api/v1/admin/storage"))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        }
+
+        using (var anonymous = fixture.Factory.CreateClient())
+        using (var unauthorized = await anonymous.GetAsync("/api/v1/admin/storage"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+        }
+
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(admin.AccessToken);
+        var userId = Guid.Parse(token.Subject);
+        var deviceId = Guid.Parse(token.Claims.Single(claim => claim.Type == "device_id").Value);
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IdentityService>().RevokeDeviceAsync(
+                userId,
+                deviceId,
+                "admin-storage-test",
+                CancellationToken.None);
+        }
+
+        using (var revoked = await adminClient.GetAsync("/api/v1/admin/storage"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
+        }
+
+        using var healthClient = fixture.Factory.CreateClient();
+        using var health = await healthClient.GetAsync("/api/v1/system/health");
+        health.EnsureSuccessStatusCode();
+        var healthJson = await health.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("totalBytes", healthJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("lastPurgeRun", healthJson, StringComparison.Ordinal);
+    }
+
     private static async Task<Guid> GetRootIdAsync(HttpClient client)
     {
         using var response = await client.GetAsync("/api/v1/files");
@@ -989,6 +1287,15 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
         return json.RootElement.GetProperty("parentId").GetGuid();
     }
+
+    private static TrashPurgeRunner CreateRunner(AsyncServiceScope scope, int batchSize) =>
+        new(
+            scope.ServiceProvider.GetRequiredService<IFileRepository>(),
+            scope.ServiceProvider.GetRequiredService<TrashPurgeService>(),
+            scope.ServiceProvider.GetRequiredService<FileOperationRecoveryService>(),
+            scope.ServiceProvider.GetRequiredService<IStorageGuard>(),
+            scope.ServiceProvider.GetRequiredService<ISystemClock>(),
+            new TrashPurgeOptions { BatchSize = batchSize });
 
     private static Task<HttpResponseMessage> SendPurgeAsync(HttpClient client, Guid fileId, string key)
     {

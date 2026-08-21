@@ -23,6 +23,16 @@ nft --check --file /etc/nftables.d/kurastorage.conf
 verify_ufw_coexistence
 [[ "$(systemctl show kurastorage-api.service --property=User --value)" == "kurastorage-api" ]] ||
     die "API is not configured to run as kurastorage-api."
+if [[ -x "${INSTALL_ROOT}/current/KuraStorage.Worker" ]]; then
+    systemctl is-active --quiet kurastorage-worker.service
+    [[ "$(systemctl show kurastorage-worker.service --property=User --value)" == "kurastorage-api" ]] ||
+        die "Worker is not configured to run as kurastorage-api."
+    [[ "$(systemctl show kurastorage-worker.service --property=Group --value)" == "${KURASTORAGE_STORAGE_ACCESS_GROUP}" ]] ||
+        die "Worker does not use the shared storage group."
+else
+    ! systemctl is-active --quiet kurastorage-worker.service ||
+        die "Worker must be inactive when the current release does not contain it."
+fi
 socket_available=false
 for _ in {1..60}; do
     if [[ -S /run/kurastorage/api.sock ]]; then

@@ -37,9 +37,9 @@ Phase 1のリモートアクセスは、KuraStorage外で管理されるZeroTier
 | Android Data | Network/Auth状態と画面表示に必要な最小Repository。永続TokenはKeystore保護 | Room、WorkManager、Backup Queue、Offline Cache |
 | File操作 | 一覧、詳細、Folder作成、Streaming Multipart Upload、Range Download、Trash、Restore、Rename、Move | Permanent Delete、Resumable Chunk Upload |
 | 表示 | ファイル情報と転送状態。Download後はOSの対応アプリで開く | アプリ内Photo・Video・Audio・PDF・Text表示編集、Thumbnail、画質変換 |
-| 実行Host | API、Admin CLI。API内の期限付きHosted ServiceはUpload清掃と`FileOperation`復旧だけを担当 | 独立Worker、自動Backup、Media変換、Index監視 |
+| 実行Host | API、Admin CLI。現在のPhase 1完全削除拡張では保持期限清掃専用Workerも配置し、API内の期限付きHosted ServiceはUpload清掃と`FileOperation`復旧を担当 | Media Worker、自動Backup、Media変換、Index監視 |
 
-以降に残すMVP後の詳細設計は将来拡張の設計資料であり、MVPの実装依存、DB Migration、API、画面、リリース判定へ先行投入しない。「MVP後」と明示された節が本節と競合する場合は本節を優先する。
+以降に残すMVP後の詳細設計は将来拡張の設計資料であり、現在のPhase 1拡張として明示した完全削除・保持期限清掃を除き、MVPの実装依存、DB Migration、API、画面、リリース判定へ先行投入しない。「MVP後」と明示された節が本節と競合する場合は本節を優先する。
 
 ---
 
@@ -1851,6 +1851,7 @@ Upload Session、Chunk範囲管理、端末をまたぐ再開はMVP完成後に�
 - `GET /api/v1/trash`: 認証Userのゴミ箱一覧
 - `DELETE /api/v1/trash/{fileId}`: 認証User所有のTrash Rootを完全削除
 - `POST /api/v1/files/{fileId}/restore`
+- `GET /api/v1/admin/storage`: Admin限定のStorage容量、Trash概算、期限超過件数、最新自動清掃Run
 - `PATCH /api/v1/files/{fileId}`: `name`または`parentId`の一方だけで名前変更または移動
 
 名前変更と移動は認証User所有の`ACTIVE`かつ非Root項目だけを対象とする。同じ正規化済み名前または同じ親への再実行は副作用のない`200`とする。同名項目は上書きせず、循環移動と深度64超過をHDD操作前に拒否する。File ID、所有者、内容属性、`fileVersion`は変更しない。
@@ -1861,7 +1862,7 @@ Rename・Move・Trash・Restoreは、対象、source親、target親のGUIDから
 
 手動完全削除は必須のUUID形式`Idempotency-Key`を受け、同一User・Key・Targetの完了済み再送へ`204`、別Targetへの再利用へ`409 IDEMPOTENCY_CONFLICT`を返す。他User、`ACTIVE`、Root、存在しない対象は`404 FILE_NOT_FOUND`へ統一する。Purgeは対象lock内で再検証し、`FileOperation(PURGE, PENDING)`、関連ArtifactとTrash Containerの冪等削除、`FILESYSTEM_DONE`、関連管理情報・子孫・Root・成功監査・`COMPLETED`の単一DB Transactionの順で進める。未完了Purge対象はTrash一覧とRestoreから隔離する。
 
-`FileEntry.purgeEligibleAt`はTrash Rootだけに設定し、Serverが`trashedAt + TrashPurge.RetentionDays`をUTCで計算する。`ACTIVE`とTrash子孫は`null`とする。自動清掃と容量管理は後続実装とし、復元先に同名項目がある場合は`409 FILE_RESTORE_CONFLICT`として既存項目を上書きしない。
+`FileEntry.purgeEligibleAt`はTrash Rootだけに設定し、Serverが`trashedAt + TrashPurge.RetentionDays`をUTCで計算する。`ACTIVE`とTrash子孫は`null`とする。`KuraStorage.Worker`は起動直後と`IntervalHours`周期に、期限到達Rootを古い順・ID順で`BatchSize`件ずつ同じPurge Serviceへ渡す。Global Run advisory lockでRunを直列化し、`trash_purge_runs`へ検査数、削除数、解放見込Byte、Error数を保存する。停止した`RUNNING` Runは次にLockを取得したProcessが`FAILED`へ確定する。容量Warningは候補条件を変更しない。復元先に同名項目がある場合は`409 FILE_RESTORE_CONFLICT`として既存項目を上書きしない。
 
 ### 8.10 MVP後: 共有
 

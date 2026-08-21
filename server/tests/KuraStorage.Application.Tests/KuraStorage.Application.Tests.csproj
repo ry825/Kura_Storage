@@ -8,5 +8,6 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <ProjectReference Include="../../src/KuraStorage.Application/KuraStorage.Application.csproj" />
+    <ProjectReference Include="../../src/KuraStorage.Worker/KuraStorage.Worker.csproj" />
   </ItemGroup>
 </Project>

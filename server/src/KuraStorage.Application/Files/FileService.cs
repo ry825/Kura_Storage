@@ -118,9 +118,9 @@ public sealed class FileService(
         await using var mutationLock = await repository.AcquireMutationLocksAsync(
             [initial.Id, parentId],
             cancellationToken);
-        await repository.ReloadAsync(initial, cancellationToken);
+        var entryExists = await repository.ReloadAsync(initial, cancellationToken);
         var entry = initial;
-        if (entry is null || entry.Status != FileEntryStatus.Active)
+        if (!entryExists || entry.Status != FileEntryStatus.Active)
         {
             await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
@@ -207,11 +207,11 @@ public sealed class FileService(
         await using var mutationLock = await repository.AcquireMutationLocksAsync(
             [initial.Id, sourceParentId, command.TargetParentId],
             cancellationToken);
-        await repository.ReloadAsync(initial, cancellationToken);
-        await repository.ReloadAsync(initialTarget!, cancellationToken);
+        var entryExists = await repository.ReloadAsync(initial, cancellationToken);
+        var targetExists = await repository.ReloadAsync(initialTarget!, cancellationToken);
         var entry = initial;
         var targetParent = initialTarget;
-        if (entry is null || entry.Status != FileEntryStatus.Active || !IsActiveFolder(targetParent))
+        if (!entryExists || !targetExists || entry.Status != FileEntryStatus.Active || !IsActiveFolder(targetParent))
         {
             await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
@@ -608,8 +608,8 @@ public sealed class FileService(
         await using var mutationLock = await repository.AcquireMutationLocksAsync(
             [entry.Id, parentId],
             cancellationToken);
-        await repository.ReloadAsync(entry, cancellationToken);
-        if (entry is null || entry.Status != FileEntryStatus.Active || entry.ParentId is null)
+        var entryExists = await repository.ReloadAsync(entry, cancellationToken);
+        if (!entryExists || entry.Status != FileEntryStatus.Active || entry.ParentId is null)
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
@@ -680,8 +680,8 @@ public sealed class FileService(
         await using var mutationLock = await repository.AcquireMutationLocksAsync(
             [entry.Id, parentId],
             cancellationToken);
-        await repository.ReloadAsync(entry, cancellationToken);
-        if (entry is null ||
+        var entryExists = await repository.ReloadAsync(entry, cancellationToken);
+        if (!entryExists ||
             entry.Status != FileEntryStatus.Trashed ||
             entry.OriginalParentId is not Guid lockedParentId ||
             lockedParentId != parentId ||

@@ -1,0 +1,20 @@
+{
+  "storage": "AVAILABLE",
+  "totalBytes": 1000000000000,
+  "availableBytes": 250000000000,
+  "capacityWarningThresholdBytes": 10737418240,
+  "capacityWarning": false,
+  "trashBytes": 4096,
+  "expiredTrashRootCount": 1,
+  "retentionDays": 30,
+  "recoveryRequiredPurgeCount": 0,
+  "lastPurgeRun": {
+    "startedAt": "2026-08-20T00:00:00Z",
+    "completedAt": "2026-08-20T00:00:01Z",
+    "status": "COMPLETED",
+    "examinedRootCount": 1,
+    "deletedRootCount": 1,
+    "releasedBytes": 4096,
+    "errorCount": 0
+  }
+}

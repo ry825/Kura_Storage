@@ -213,6 +213,8 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
 
     public string SigningKeyPem { get; private set; } = string.Empty;
 
+    public string StorageRootPath => Path.Combine(directory, "not-mounted");
+
     public string Password { get; } = $"S3cr3t-Not-In-Logs-{Guid.NewGuid():N}";
 
     public IReadOnlyCollection<string> LogMessages => logger.Messages;
@@ -270,7 +272,8 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
 
     public async Task<AuthenticatedTestClient> CreateAuthenticatedClientAsync(
         string username = "alice",
-        string? password = null)
+        string? password = null,
+        UserRole role = UserRole.Member)
     {
         password ??= Password;
         await using (var scope = Factory.Services.CreateAsyncScope())
@@ -280,7 +283,7 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
                 username,
                 username,
                 password,
-                UserRole.Member,
+                role,
                 CancellationToken.None);
             Assert.True(created.IsSuccess || created.Failure?.Code == IdentityErrorCodes.UsernameAlreadyExists);
         }

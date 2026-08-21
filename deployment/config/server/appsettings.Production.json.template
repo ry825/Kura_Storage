@@ -6,7 +6,14 @@
   "Storage": {
     "RootPath": "${KURASTORAGE_STORAGE_ROOT}",
     "StorageId": "${KURASTORAGE_STORAGE_ID}",
-    "MinimumFreeBytes": ${KURASTORAGE_STORAGE_RESERVE_BYTES}
+    "MinimumFreeBytes": ${KURASTORAGE_STORAGE_RESERVE_BYTES},
+    "CapacityWarningFreeBytes": ${KURASTORAGE_STORAGE_WARNING_BYTES}
+  },
+  "TrashPurge": {
+    "RetentionDays": ${KURASTORAGE_TRASH_RETENTION_DAYS},
+    "IntervalHours": ${KURASTORAGE_TRASH_INTERVAL_HOURS},
+    "BatchSize": ${KURASTORAGE_TRASH_BATCH_SIZE},
+    "RetryDelayMinutes": ${KURASTORAGE_TRASH_RETRY_DELAY_MINUTES}
   },
   "Authentication": {
     "JwtIssuer": "kurastorage",

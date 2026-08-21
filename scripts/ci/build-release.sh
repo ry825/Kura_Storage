@@ -95,8 +95,16 @@ dotnet publish \
     --self-contained true \
     --no-restore \
     --output "${server_publish}/cli"
+dotnet publish \
+    "${repository_root}/server/src/KuraStorage.Worker/KuraStorage.Worker.csproj" \
+    --configuration Release \
+    --runtime linux-arm64 \
+    --self-contained true \
+    --no-restore \
+    --output "${server_publish}/worker"
 cp -a "${server_publish}/api/." "${staging_directory}/"
 cp -a "${server_publish}/cli/." "${staging_directory}/"
+cp -a "${server_publish}/worker/." "${staging_directory}/"
 rm -f \
     "${staging_directory}/appsettings.json" \
     "${staging_directory}/appsettings.example.json"
@@ -108,7 +116,9 @@ for required_server_file in \
     KuraStorage.Api \
     KuraStorage.Api.dll \
     KuraStorage.AdminCli \
-    KuraStorage.AdminCli.dll; do
+    KuraStorage.AdminCli.dll \
+    KuraStorage.Worker \
+    KuraStorage.Worker.dll; do
     [[ -f "${staging_directory}/${required_server_file}" ]] || {
         printf 'Server artifact input is missing: %s\n' "${required_server_file}" >&2
         exit 1

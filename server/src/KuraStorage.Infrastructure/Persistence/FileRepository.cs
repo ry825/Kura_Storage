@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Maintenance;
+using KuraStorage.Application.Maintenance;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
@@ -24,8 +26,12 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
             entry => entry.OwnerUserId == ownerUserId && entry.Id == entryId,
             cancellationToken);
 
-    public async Task ReloadAsync(FileEntry entry, CancellationToken cancellationToken) =>
-        await dbContext.Entry(entry).ReloadAsync(cancellationToken);
+    public async Task<bool> ReloadAsync(FileEntry entry, CancellationToken cancellationToken)
+    {
+        var trackedEntry = dbContext.Entry(entry);
+        await trackedEntry.ReloadAsync(cancellationToken);
+        return trackedEntry.State != EntityState.Detached;
+    }
 
     public async Task<FileEntry?> FindRootAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
         await dbContext.FileEntries.SingleOrDefaultAsync(
@@ -223,11 +229,91 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
             .OrderBy(operation => operation.CreatedAt)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<TrashPurgeCandidate>> ListPurgeCandidatesAsync(
+        DateTimeOffset cutoff,
+        DateTimeOffset? afterTrashedAt,
+        Guid? afterId,
+        int take,
+        CancellationToken cancellationToken) =>
+        await dbContext.FileEntries
+            .AsNoTracking()
+            .Where(entry =>
+                entry.Status == FileEntryStatus.Trashed &&
+                entry.ParentId == null &&
+                entry.TrashedAt != null &&
+                entry.TrashedAt <= cutoff &&
+                (afterTrashedAt == null ||
+                    entry.TrashedAt > afterTrashedAt ||
+                    entry.TrashedAt == afterTrashedAt && entry.Id.CompareTo(afterId!.Value) > 0) &&
+                !dbContext.FileOperations.Any(operation =>
+                    operation.FileEntryId == entry.Id &&
+                    operation.OperationType == FileOperationType.Purge &&
+                    operation.Status != FileOperationStatus.Completed))
+            .OrderBy(entry => entry.TrashedAt)
+            .ThenBy(entry => entry.Id)
+            .Select(entry => new TrashPurgeCandidate(
+                entry.Id,
+                entry.OwnerUserId,
+                entry.TrashedAt!.Value,
+                dbContext.FileEntries
+                    .Where(candidate =>
+                        candidate.OwnerUserId == entry.OwnerUserId &&
+                        candidate.Status == FileEntryStatus.Trashed &&
+                        candidate.EntryType == FileEntryType.File &&
+                        (candidate.Id == entry.Id ||
+                            candidate.RelativePath.StartsWith(entry.RelativePath + "/")))
+                    .Sum(candidate => (long?)candidate.Size) ?? 0))
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<TrashPurgeRun>> ListRunningPurgeRunsAsync(
+        CancellationToken cancellationToken) =>
+        await dbContext.TrashPurgeRuns
+            .Where(run => run.Status == TrashPurgeRunStatus.Running)
+            .OrderBy(run => run.StartedAt)
+            .ToListAsync(cancellationToken);
+
+    public async Task<TrashPurgeRun?> FindLatestPurgeRunAsync(CancellationToken cancellationToken) =>
+        await dbContext.TrashPurgeRuns
+            .AsNoTracking()
+            .OrderByDescending(run => run.StartedAt)
+            .ThenByDescending(run => run.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<long> SumTrashedFileBytesAsync(CancellationToken cancellationToken) =>
+        await dbContext.FileEntries
+            .Where(entry => entry.Status == FileEntryStatus.Trashed && entry.EntryType == FileEntryType.File)
+            .SumAsync(entry => (long?)entry.Size, cancellationToken) ?? 0;
+
+    public async Task<int> CountExpiredTrashRootsAsync(
+        DateTimeOffset cutoff,
+        CancellationToken cancellationToken) =>
+        await dbContext.FileEntries.CountAsync(
+            entry =>
+                entry.Status == FileEntryStatus.Trashed &&
+                entry.ParentId == null &&
+                entry.TrashedAt != null &&
+                entry.TrashedAt <= cutoff &&
+                !dbContext.FileOperations.Any(operation =>
+                    operation.FileEntryId == entry.Id &&
+                    operation.OperationType == FileOperationType.Purge &&
+                    operation.Status != FileOperationStatus.Completed),
+            cancellationToken);
+
+    public async Task<int> CountRecoveryRequiredPurgesAsync(CancellationToken cancellationToken) =>
+        await dbContext.FileOperations.CountAsync(
+            operation =>
+                operation.OperationType == FileOperationType.Purge &&
+                operation.Status == FileOperationStatus.RecoveryRequired,
+            cancellationToken);
+
     public void Add(FileEntry entry) => dbContext.FileEntries.Add(entry);
 
     public void Add(FileOperation operation) => dbContext.FileOperations.Add(operation);
 
     public void Add(AuditLog auditLog) => dbContext.AuditLogs.Add(auditLog);
+
+    public void Add(TrashPurgeRun run) => dbContext.TrashPurgeRuns.Add(run);
 
     public void Remove(FileEntry entry) => dbContext.FileEntries.Remove(entry);
 

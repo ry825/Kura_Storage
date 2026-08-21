@@ -45,6 +45,11 @@ export KURASTORAGE_STORAGE_ROOT="${KURASTORAGE_STORAGE_MOUNT_PATH}/KuraStorage"
 export KURASTORAGE_STORAGE_DEVICE_UUID=ABCD-1234
 export KURASTORAGE_STORAGE_ID=00000000-0000-0000-0000-000000000000
 export KURASTORAGE_STORAGE_RESERVE_BYTES=1073741824
+export KURASTORAGE_STORAGE_WARNING_BYTES=10737418240
+export KURASTORAGE_TRASH_RETENTION_DAYS=30
+export KURASTORAGE_TRASH_INTERVAL_HOURS=24
+export KURASTORAGE_TRASH_BATCH_SIZE=100
+export KURASTORAGE_TRASH_RETRY_DELAY_MINUTES=15
 export KURASTORAGE_STORAGE_MOUNT_UNIT
 KURASTORAGE_STORAGE_MOUNT_UNIT="$(systemd-escape --path --suffix=mount \
     "${KURASTORAGE_STORAGE_MOUNT_PATH}")"
@@ -107,12 +112,26 @@ grep -Fq \
     "ufw --force delete allow in on ${KURASTORAGE_ZEROTIER_INTERFACE} from ${KURASTORAGE_ZEROTIER_CIDR} to ${KURASTORAGE_ZEROTIER_API_IP} port 443 proto tcp" \
     "${fake_ufw_log}"
 # shellcheck disable=SC2016
-template_variables='${KURASTORAGE_API_HOSTNAME} ${KURASTORAGE_LAN_API_IP} ${KURASTORAGE_LAN_CIDR} ${KURASTORAGE_ZEROTIER_API_IP} ${KURASTORAGE_ZEROTIER_CIDR} ${KURASTORAGE_ZEROTIER_INTERFACE} ${KURASTORAGE_STORAGE_MOUNT_PATH} ${KURASTORAGE_STORAGE_ROOT} ${KURASTORAGE_STORAGE_DEVICE_UUID} ${KURASTORAGE_STORAGE_ID} ${KURASTORAGE_STORAGE_RESERVE_BYTES} ${KURASTORAGE_STORAGE_MOUNT_UNIT} ${KURASTORAGE_STORAGE_ACCESS_GROUP} ${KURASTORAGE_STORAGE_UID} ${KURASTORAGE_STORAGE_GID} ${KURASTORAGE_POSTGRES_DATABASE} ${KURASTORAGE_POSTGRES_ROLE}'
+template_variables='${KURASTORAGE_API_HOSTNAME} ${KURASTORAGE_LAN_API_IP} ${KURASTORAGE_LAN_CIDR} ${KURASTORAGE_ZEROTIER_API_IP} ${KURASTORAGE_ZEROTIER_CIDR} ${KURASTORAGE_ZEROTIER_INTERFACE} ${KURASTORAGE_STORAGE_MOUNT_PATH} ${KURASTORAGE_STORAGE_ROOT} ${KURASTORAGE_STORAGE_DEVICE_UUID} ${KURASTORAGE_STORAGE_ID} ${KURASTORAGE_STORAGE_RESERVE_BYTES} ${KURASTORAGE_STORAGE_WARNING_BYTES} ${KURASTORAGE_TRASH_RETENTION_DAYS} ${KURASTORAGE_TRASH_INTERVAL_HOURS} ${KURASTORAGE_TRASH_BATCH_SIZE} ${KURASTORAGE_TRASH_RETRY_DELAY_MINUTES} ${KURASTORAGE_STORAGE_MOUNT_UNIT} ${KURASTORAGE_STORAGE_ACCESS_GROUP} ${KURASTORAGE_STORAGE_UID} ${KURASTORAGE_STORAGE_GID} ${KURASTORAGE_POSTGRES_DATABASE} ${KURASTORAGE_POSTGRES_ROLE}'
 
 envsubst "${template_variables}" \
     <deployment/config/server/appsettings.Production.json.template \
     >"${validation_root}/appsettings.Production.json"
 python3 -m json.tool "${validation_root}/appsettings.Production.json" >/dev/null
+python3 - "${validation_root}/appsettings.Production.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    config = json.load(source)
+storage = config["Storage"]
+purge = config["TrashPurge"]
+assert storage["CapacityWarningFreeBytes"] >= storage["MinimumFreeBytes"] > 0
+assert purge["RetentionDays"] >= 30
+assert 1 <= purge["IntervalHours"] <= 168
+assert 1 <= purge["BatchSize"] <= 500
+assert 1 <= purge["RetryDelayMinutes"] <= 1440
+PY
 
 envsubst "${template_variables}" \
     <deployment/config/systemd/storage.mount.template \
@@ -134,6 +153,25 @@ sed -i \
     -e "s#^ReadWritePaths=.*#ReadWritePaths=${validation_root}#" \
     "${validation_root}/kurastorage-api.service"
 verify_systemd_unit "${validation_root}/kurastorage-api.service"
+
+envsubst "${template_variables}" \
+    <deployment/config/systemd/kurastorage-worker.service.template \
+    >"${validation_root}/kurastorage-worker.service"
+sed -i \
+    -e "s/^User=.*/User=$(id -un)/" \
+    -e "s/^Group=.*/Group=$(id -gn)/" \
+    -e '/^SupplementaryGroups=/d' \
+    -e 's#^ExecStart=.*#ExecStart=/bin/true#' \
+    -e "s#^ReadWritePaths=.*#ReadWritePaths=${validation_root}#" \
+    "${validation_root}/kurastorage-worker.service"
+verify_systemd_unit "${validation_root}/kurastorage-worker.service"
+grep -q '^PrivateNetwork=true$' "${validation_root}/kurastorage-worker.service"
+grep -q '^RestrictAddressFamilies=AF_UNIX$' "${validation_root}/kurastorage-worker.service"
+# shellcheck disable=SC2016
+grep -Fq '[[ -x "${INSTALL_ROOT}/current/KuraStorage.Worker" ]]' deployment/raspberry-pi/rollback.sh
+grep -Fq 'systemctl disable --now kurastorage-worker.service' deployment/raspberry-pi/rollback.sh
+# shellcheck disable=SC2016
+grep -Fq '[[ -x "${INSTALL_ROOT}/current/KuraStorage.Worker" ]]' deployment/raspberry-pi/verify.sh
 
 envsubst "${template_variables}" \
     <deployment/config/systemd/nginx-kurastorage.conf.template \
