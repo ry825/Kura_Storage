@@ -415,24 +415,41 @@ PR1〜PR3および本ファイルの全タスクが完了した後にだけ、`s
 
 ### 実装完了日
 
-未完了
+2026-08-23
 
 ### 計画と実績の差分
 
-未記録
+PR1で索引整合性モデル・Migration・全件再スキャン・管理CLI、PR2でinotify・Worker・定期再スキャン・実機性能確認、PR3でProtocol 2 MISSING API・HDD非依存索引削除・Android UIを、計画どおり3つのPull Requestへ分割して完了した。PR2の10,000件実測ではBatch照会と中断Run回復を追加し、PR3の実機連続操作ではFilesystem確定後の楽観的DB競合を`RECOVERY_REQUIRED`へ正規化する追加修正を行った。検索・共有・派生データ生成・自動Backupは範囲へ加えなかった。
+
+Production相当環境では、Protocol 2 Android、API、Workerを揃えてからdry-run、Indexing有効化、startup APPLYの順でRolloutした。実機で判明した.NET環境変数名とAdmin CLIの作業DirectoryをRunbookへ反映した。試験中の段階Releaseは最終コードの再配置確認にだけ使用し、追跡対象へ生成物・実環境値・Credentialを含めなかった。
 
 ### 主な設計変更と理由
 
-未記録
+- HDD上の存在・内容・階層を正とし、inotifyはHint、起動時・周期・overflow時の全件Scanを最終収束手段とした。イベント欠落・停止・再起動後にも整合できるためである。
+- 不存在を`ACTIVE`から`MISSING_CANDIDATE`、5分以上後の別Observationから`MISSING`へ進め、HDD全体利用不可や不完全Scanを個別欠損と区別した。瞬断や観測競合による誤確定を防ぐためである。
+- 「一覧から削除」は`IFileIndexDeletionParticipant`とDB Transactionだけを使い、`IFileStore`・物理Purge境界・HDD事前検査から分離した。HDD利用不可でも実行できる契約と、将来の関連索引Consumer整理を両立するためである。
+- 物理再出現がまだ索引化されていない場合は旧MISSING索引をHDD非依存で削除し、後続Event・Scanが新しい索引項目を作成する。削除直前のDB索引上の復活だけをLock後再読込で競合にする。
+- Healthの`protocolVersion`を2へ上げ、未知StatusはAndroid Domainで`UNKNOWN`へ隔離しつつ、Protocol不一致ClientをFile API前で更新要求へ止めた。非互換状態の誤操作を防ぐためである。
+- API操作とWatcherがFilesystem変更後に競合した場合、500ではなく`RECOVERY_REQUIRED`を返し、永続化済み`FILESYSTEM_DONE`を起動時RecoveryでHDDから収束させる設計へ補強した。
 
 ### 技術的な学び
 
-未記録
+- exFAT上の30万件規模を想定する索引処理では、Streaming列挙だけでなく、既存Path・Move候補・未完了操作のBatch照会と永続StagingがCPU・DB負荷・Memory上限に重要だった。
+- inotifyのMove pairing、Folder再配置後のwatch再構築、overflow、watch上限、監視開始前後の隙間は個別イベント処理だけでは閉じず、世代付き全件Scanと組み合わせる必要がある。
+- systemdの保護されたmount namespaceと`Requires=`依存により、ホスト側の単純な`umount`だけでは稼働中APIからHDDが利用不可に見えない場合がある。runtime maskと両namespaceの切離し、必須trapによる同一Storage ID復旧で安全に障害注入できた。
+- .NET標準設定の階層環境変数は`Indexing__Enabled`であり、プロジェクト独自Prefixを付けない。Admin CLIは選択Release directoryから実行しなければReleaseの`appsettings.json`を読めない。
+- HTTP結果不明時はClientが成功・失敗を推測せず、Serverの権威ある一覧を再取得して対象有無から次の操作可能性だけを決めると、二重送信と誤成功表示を避けられる。
 
 ### プロセス上の改善点
 
-未記録
+- Production相当のWorker有効化とAndroid接続確認をPR3終盤だけでなく、Protocol契約が固まった時点の短いsmoke testとして先行すると、設定Keyや作業Directory差をより早く検出できる。
+- 複数の`dotnet publish`が共通Project出力を競合したため、Release publishは明示的に直列化する。独立したTestだけを並列化し、共有出力を持つBuildは並列化しない。
+- 実機試験Userを作成した直後はWatcherが新規Directoryへ確実に設定されたことを確認してから障害注入する。開始直後のwatch gapはstartup scanで正しく収束したが、試験手順として待機条件を明示すべきだった。
+- ローカル検証に必要なshellcheck、nginx、Android SDK、JDK、dotnet-efの所在を一つの再現可能なbootstrap手順へまとめると、環境差による再実行コストを減らせる。
 
 ### 次回への改善提案
 
-未記録
+- Raspberry Pi E2Eを、専用User作成、状態待機、HDD障害注入、API回帰、機密情報を出さない集計、必須cleanupまで含むRepository管理のHarnessへ整理する。各破壊操作には対象Path検証と復旧trapを標準化する。
+- API操作とinotify照合の競合Testを、Rename・Move・Trash・RestoreだけでなくUpload確定・Folder階層操作についても決定的なbarrierを使うIntegration Testへ拡張する。
+- 実Directory数と将来余裕を継続観測し、`fs.inotify.max_user_watches`を推奨65536以上へ変更する場合は、測定値・Rollback・他Service影響を別Reviewにする。アプリ配置Scriptからsysctlを自動変更しない。
+- Connected Android Testと署名済みReleaseのProtocol smoke testをRelease候補CIの明示Gateとして扱い、未知Status、Storage unavailable、MISSING確認DialogのAccessibility文言を継続的に検証する。
