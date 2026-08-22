@@ -51,6 +51,7 @@ sealed interface NetworkCallResult<out T> {
     data object Unauthorized : NetworkCallResult<Nothing>
 }
 
+@Suppress("TooManyFunctions")
 interface FileApi {
     suspend fun listFiles(
         accessToken: String,
@@ -90,6 +91,16 @@ interface FileApi {
         accessToken: String,
         fileId: String,
     ): NetworkCallResult<FileEntryDto>
+
+    suspend fun recheckMissing(
+        accessToken: String,
+        fileId: String,
+    ): NetworkCallResult<FileEntryDto> = error("Missing recheck is not implemented by this test double")
+
+    suspend fun deleteMissingIndexEntry(
+        accessToken: String,
+        fileId: String,
+    ): NetworkCallResult<Unit> = error("Missing index deletion is not implemented by this test double")
 
     suspend fun purge(
         accessToken: String,
@@ -221,6 +232,18 @@ private interface KuraStorageService {
         @Header("Authorization") authorization: String,
         @Path("fileId") fileId: String,
     ): Response<FileEntryDto>
+
+    @POST("files/{fileId}/missing/recheck")
+    suspend fun recheckMissing(
+        @Header("Authorization") authorization: String,
+        @Path("fileId") fileId: String,
+    ): Response<FileEntryDto>
+
+    @DELETE("files/{fileId}/missing-index-entry")
+    suspend fun deleteMissingIndexEntry(
+        @Header("Authorization") authorization: String,
+        @Path("fileId") fileId: String,
+    ): Response<Unit>
 
     @DELETE("trash/{fileId}")
     suspend fun purge(
@@ -362,6 +385,16 @@ class KuraStorageApi(
         accessToken: String,
         fileId: String,
     ) = executeAuthenticated { service.restore(bearer(accessToken), fileId) }
+
+    override suspend fun recheckMissing(
+        accessToken: String,
+        fileId: String,
+    ) = executeAuthenticated { service.recheckMissing(bearer(accessToken), fileId) }
+
+    override suspend fun deleteMissingIndexEntry(
+        accessToken: String,
+        fileId: String,
+    ) = executeAuthenticatedNoContent { service.deleteMissingIndexEntry(bearer(accessToken), fileId) }
 
     override suspend fun purge(
         accessToken: String,

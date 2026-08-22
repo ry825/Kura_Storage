@@ -81,6 +81,8 @@ data class FileEntryDto(
     val createdAt: String,
     val updatedAt: String,
     val purgeEligibleAt: String? = null,
+    val missingDetectedAt: String? = null,
+    val missingLastCheckedAt: String? = null,
 )
 
 @Serializable

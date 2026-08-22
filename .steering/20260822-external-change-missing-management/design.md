@@ -449,7 +449,7 @@ Global Scan lockは別Scanだけを排他し、APIの無関係なFile操作を�
 | --- | --- |
 | API Rename中に旧Path DELETE Event | Operation中なので延期し、Move完了後Eventで新Pathへ収束 |
 | Scan後に同PathへFile再作成 | 候補化直前Inspectで再発見し、`ACTIVE`維持 |
-| `MISSING`削除と実体再出現 | Entry lock内Inspectで再発見を優先し、索引削除をConflictにする |
+| `MISSING`削除と実体再出現 | Entry lock内の索引状態再読込で既に再発見済みなら削除をConflictにする。索引未反映の実体はHDDへアクセスせず索引削除し、後続EventまたはScanで新規項目へ収束させる |
 | Worker停止中のMove | 起動時Scanで一意一致時だけID維持、曖昧なら新規＋旧候補 |
 | HDD取外し中のDELETE Event | Storage unavailableとして状態変更せず、再接続Scanへ延期 |
 | Queue overflow | 個別Eventを信用せずFull scan要求を維持 |

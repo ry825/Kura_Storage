@@ -126,7 +126,7 @@ app.MapGet(
             return Results.Ok(new
             {
                 api = "AVAILABLE",
-                protocolVersion = 1,
+                protocolVersion = 2,
                 storage = storage == StorageStatus.Available ? "AVAILABLE" : "UNAVAILABLE",
             });
         })
@@ -262,7 +262,7 @@ app.MapGet(
     });
 
 app.MapGet(
-    "/api/v1/files/{fileId:guid}",
+        "/api/v1/files/{fileId:guid}",
     async (
         Guid fileId,
         HttpContext context,
@@ -275,6 +275,47 @@ app.MapGet(
         }
 
         return ToFileHttpResult(await files.GetAsync(userId, fileId, cancellationToken), context);
+    });
+
+app.MapPost(
+    "/api/v1/files/{fileId:guid}/missing/recheck",
+    async (
+        Guid fileId,
+        HttpContext context,
+        MissingEntryService missingEntries,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToFileHttpResult(
+            await missingEntries.RecheckAsync(
+                new MissingFileCommand(userId, deviceId, fileId, context.TraceIdentifier),
+                cancellationToken),
+            context);
+    });
+
+app.MapDelete(
+    "/api/v1/files/{fileId:guid}/missing-index-entry",
+    async (
+        Guid fileId,
+        HttpContext context,
+        MissingEntryService missingEntries,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await missingEntries.DeleteIndexEntryAsync(
+            new MissingFileCommand(userId, deviceId, fileId, context.TraceIdentifier),
+            cancellationToken);
+        return result.IsSuccess ? Results.NoContent() : ToFileHttpResult(result, context);
     });
 
 app.MapPatch(

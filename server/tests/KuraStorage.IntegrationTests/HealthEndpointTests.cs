@@ -24,7 +24,7 @@ public sealed class HealthEndpointTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("AVAILABLE", json.RootElement.GetProperty("api").GetString());
         Assert.Equal("UNAVAILABLE", json.RootElement.GetProperty("storage").GetString());
-        Assert.Equal(1, json.RootElement.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal(2, json.RootElement.GetProperty("protocolVersion").GetInt32());
         Assert.Equal(3, json.RootElement.EnumerateObject().Count());
     }
 

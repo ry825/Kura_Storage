@@ -9,6 +9,8 @@
   "fileVersion": 1,
   "trashedAt": null,
   "purgeEligibleAt": null,
+  "missingDetectedAt": null,
+  "missingLastCheckedAt": null,
   "createdAt": "2026-07-29T00:00:00Z",
   "updatedAt": "2026-07-29T00:00:00Z"
 }

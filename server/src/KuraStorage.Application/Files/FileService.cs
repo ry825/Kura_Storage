@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
+using KuraStorage.Application.Indexing;
 
 namespace KuraStorage.Application.Files;
 
@@ -9,6 +10,7 @@ public sealed class FileService(
     IFileRepository repository,
     IFileStore fileStore,
     IStorageGuard storageGuard,
+    IManagedFileSystemSnapshotReader snapshotReader,
     IUserStorageProvisioner provisioner,
     ISystemClock clock,
     TrashPurgeOptions? purgeOptions = null)
@@ -67,7 +69,7 @@ public sealed class FileService(
         CancellationToken cancellationToken)
     {
         var entry = await repository.FindOwnedAsync(ownerUserId, entryId, cancellationToken);
-        if (entry?.Status != FileEntryStatus.Active)
+        if (entry is null || entry.Status == FileEntryStatus.Trashed)
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
@@ -541,9 +543,19 @@ public sealed class FileService(
         CancellationToken cancellationToken)
     {
         var entry = await repository.FindOwnedAsync(ownerUserId, entryId, cancellationToken);
-        if (entry is null || entry.Status != FileEntryStatus.Active || entry.EntryType != FileEntryType.File)
+        if (entry is null || entry.Status == FileEntryStatus.Trashed || entry.EntryType != FileEntryType.File)
         {
             return FileResult<DownloadFile>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (entry.Status == FileEntryStatus.MissingCandidate)
+        {
+            return FileResult<DownloadFile>.Fail(FileErrorCodes.FileMissingCandidate, FileFailureKind.Conflict);
+        }
+
+        if (entry.Status == FileEntryStatus.Missing)
+        {
+            return FileResult<DownloadFile>.Fail(FileErrorCodes.FileMissing, FileFailureKind.Conflict);
         }
 
         if (await IsBlockedAsync(ownerUserId, entry, cancellationToken))
@@ -551,16 +563,51 @@ public sealed class FileService(
             return FileResult<DownloadFile>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
-        if (!await StorageAvailableAsync(StorageIntent.Read, cancellationToken) ||
-            !await fileStore.ExistsAsync(RelativeStoragePath.Create(entry.RelativePath), false, cancellationToken))
+        if (!await StorageAvailableAsync(StorageIntent.Read, cancellationToken))
         {
             return FileResult<DownloadFile>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
         }
 
-        return FileResult<DownloadFile>.Success(
-            new DownloadFile(
-                Map(entry),
-                await fileStore.OpenReadAsync(RelativeStoragePath.Create(entry.RelativePath), cancellationToken)));
+
+        ObservedStorageEntry? observed;
+        try
+        {
+            observed = await snapshotReader.InspectAsync(RelativeStoragePath.Create(entry.RelativePath), cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return FileResult<DownloadFile>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
+        }
+
+        if (observed is null)
+        {
+            return await MarkDownloadMissingAsync(entry, cancellationToken);
+        }
+
+        if (observed.IsolationReason is not null ||
+            observed.OwnerUserId != ownerUserId ||
+            observed.EntryType != FileEntryType.File ||
+            !string.Equals(observed.RelativePath.Value, entry.RelativePath, StringComparison.Ordinal) ||
+            !await StorageAvailableAsync(StorageIntent.Read, cancellationToken))
+        {
+            return FileResult<DownloadFile>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
+        }
+
+        try
+        {
+            return FileResult<DownloadFile>.Success(
+                new DownloadFile(
+                    Map(entry),
+                    await fileStore.OpenReadAsync(RelativeStoragePath.Create(entry.RelativePath), cancellationToken)));
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return await MarkDownloadMissingAsync(entry, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return FileResult<DownloadFile>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
+        }
     }
 
     public async Task<FileResult<FilePage>> ListTrashAsync(
@@ -649,7 +696,15 @@ public sealed class FileService(
         entry.Trash(target, clock.UtcNow);
         ApplyDescendantPaths(descendants, source.Value, target.Value, true, clock.UtcNow);
         operation.Complete(clock.UtcNow);
-        await repository.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await repository.SaveChangesAsync(cancellationToken);
+        }
+        catch (FilePersistenceConflictException)
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
         return FileResult<FileItem>.Success(Map(entry, retentionDays));
     }
 
@@ -731,7 +786,15 @@ public sealed class FileService(
         entry.Restore(parentId, target, clock.UtcNow);
         ApplyDescendantPaths(descendants, source.Value, target.Value, false, clock.UtcNow);
         operation.Complete(clock.UtcNow);
-        await repository.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await repository.SaveChangesAsync(cancellationToken);
+        }
+        catch (FilePersistenceConflictException)
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
         return FileResult<FileItem>.Success(Map(entry));
     }
 
@@ -876,8 +939,18 @@ public sealed class FileService(
                 requestId,
                 now));
         operation.Complete(now);
-        await repository.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        try
+        {
+            await repository.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (FilePersistenceConflictException)
+        {
+            // The filesystem mutation is already durable and the operation remains
+            // FILESYSTEM_DONE. Recovery will reconcile the catalog from the HDD.
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
         return FileResult<FileItem>.Success(Map(entry));
     }
 
@@ -1004,6 +1077,27 @@ public sealed class FileService(
     private async Task<bool> StorageAvailableAsync(StorageIntent intent, CancellationToken cancellationToken) =>
         await storageGuard.InspectAsync(intent, cancellationToken) == StorageStatus.Available;
 
+    private async Task<FileResult<DownloadFile>> MarkDownloadMissingAsync(
+        FileEntry entry,
+        CancellationToken cancellationToken)
+    {
+        await using var mutationLock = await repository.AcquireMutationLocksAsync([entry.Id], cancellationToken);
+        if (await repository.ReloadAsync(entry, cancellationToken) && entry.Status == FileEntryStatus.Active)
+        {
+            entry.MarkMissingCandidate(Guid.NewGuid(), clock.UtcNow);
+            try
+            {
+                await repository.SaveChangesAsync(cancellationToken);
+            }
+            catch (FilePersistenceConflictException)
+            {
+                return FileResult<DownloadFile>.Fail(FileErrorCodes.IndexConflict, FileFailureKind.Conflict);
+            }
+        }
+
+        return FileResult<DownloadFile>.Fail(FileErrorCodes.FileMissing, FileFailureKind.Conflict);
+    }
+
     private static bool IsActiveFolder(FileEntry? entry) =>
         entry is { Status: FileEntryStatus.Active, EntryType: FileEntryType.Folder };
 
@@ -1052,12 +1146,20 @@ public sealed class FileService(
             entry.EntryType.ToString().ToUpperInvariant(),
             entry.MimeType,
             entry.Size,
-            entry.Status.ToString().ToUpperInvariant(),
+            entry.Status switch
+            {
+                FileEntryStatus.MissingCandidate => "MISSING_CANDIDATE",
+                FileEntryStatus.Missing => "MISSING",
+                FileEntryStatus.Trashed => "TRASHED",
+                _ => "ACTIVE",
+            },
             entry.FileVersion,
             entry.TrashedAt,
             entry.Status == FileEntryStatus.Trashed && entry.ParentId is null && entry.TrashedAt is not null
                 ? entry.TrashedAt.Value.AddDays(retentionDays)
                 : null,
+            entry.MissingDetectedAt,
+            entry.MissingLastCheckedAt,
             entry.CreatedAt,
             entry.UpdatedAt);
 }

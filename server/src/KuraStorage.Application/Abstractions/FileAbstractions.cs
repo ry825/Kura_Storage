@@ -158,12 +158,17 @@ public interface IPermanentDeleteParticipant
     Task DeleteManagementDataAsync(PermanentDeleteTarget target, CancellationToken cancellationToken);
 }
 
+public interface IFileIndexDeletionParticipant
+{
+    Task DeleteManagementDataAsync(FileIndexDeletionTarget target, CancellationToken cancellationToken);
+}
+
 public sealed record StoredUpload(RelativeStoragePath Path, long Size, string Sha256);
 
 public sealed class FilePersistenceConflictException : Exception
 {
     public FilePersistenceConflictException(Exception innerException)
-        : base("A file catalog uniqueness constraint was violated.", innerException)
+        : base("A file catalog persistence conflict occurred.", innerException)
     {
     }
 }

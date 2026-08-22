@@ -21,6 +21,8 @@ sealed interface ConnectionStatus {
     data object Disconnected : ConnectionStatus
 
     data object TlsFailure : ConnectionStatus
+
+    data object IncompatibleProtocol : ConnectionStatus
 }
 
 data class ServerHealth(

@@ -123,5 +123,13 @@ class ConnectionDetectorTest {
             healthProbe = HealthProbe(probe),
         )
 
-    private fun available() = ServerHealth(1, StorageAvailability.AVAILABLE)
+    @Test
+    fun `protocol 1 is rejected before file access`() =
+        runTest {
+            val detector = detector(localAddress = null) { ServerHealth(1, StorageAvailability.AVAILABLE) }
+
+            assertEquals(ConnectionStatus.IncompatibleProtocol, detector.detect())
+        }
+
+    private fun available() = ServerHealth(2, StorageAvailability.AVAILABLE)
 }

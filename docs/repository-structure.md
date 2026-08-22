@@ -83,6 +83,8 @@ kurastorage/
 
 Rename・Moveは現行のServer File機能を拡張し、Domainは`KuraStorage.Domain/Files/`、Command・契約・Recoveryは`KuraStorage.Application/Files/`、RepositoryとFileStoreは既存Infrastructure、Endpointは既存`KuraStorage.Api/Program.cs`へ配置する。専用Project、Worker、将来用Directory、DB Tableは追加しない。Android側も既存`core-network`、`core-data`、`feature-files`内へ配置する。
 
+外部欠損の再確認と索引削除は`KuraStorage.Application/Files/MissingEntryService.cs`へ配置する。DB関連情報だけを消すConsumerは`IFileIndexDeletionParticipant`を実装し、物理完全削除用`IPermanentDeleteParticipant`へ混在させない。AndroidのProtocol 2 DTO・未知Status変換・Repository操作は既存`core-network`、`core-model`、`core-data`、表示と二重送信防止は`feature-files`へ配置する。
+
 ```text
 kurastorage/
 ├── .github/
@@ -854,7 +856,7 @@ feature-files/
 | --- | --- |
 | `feature-connection` | LOCAL_DIRECT/REMOTE_SECURE/DISCONNECTED、Health、RemoteAccessGuidanceController |
 | `feature-auth` | 初回Device登録、Login、Refresh、Logout、Device失効対応 |
-| `feature-files` | Home、一覧、詳細、Folder作成、Streaming Upload、Range Download、Trash、Restore、Rename、Move |
+| `feature-files` | Home、一覧、詳細、Folder作成、Streaming Upload、Range Download、Trash、Restore、Rename、Move、MISSING表示・再確認・索引削除確認 |
 
 `feature-media`、`feature-sharing`、`feature-backup`、`feature-settings`はMVP後に必要となった時点で追加する。
 

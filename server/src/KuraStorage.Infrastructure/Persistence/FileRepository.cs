@@ -47,7 +47,9 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
             entry =>
                 entry.OwnerUserId == ownerUserId &&
                 entry.ParentId == parentId &&
-                entry.Status == FileEntryStatus.Active &&
+                (entry.Status == FileEntryStatus.Active ||
+                 entry.Status == FileEntryStatus.MissingCandidate ||
+                 entry.Status == FileEntryStatus.Missing) &&
                 entry.Name == name,
             cancellationToken);
 
@@ -140,7 +142,9 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
             .Where(entry =>
                 entry.OwnerUserId == ownerUserId &&
                 entry.ParentId == parentId &&
-                entry.Status == FileEntryStatus.Active &&
+                (entry.Status == FileEntryStatus.Active ||
+                 entry.Status == FileEntryStatus.MissingCandidate ||
+                 entry.Status == FileEntryStatus.Missing) &&
                 !IncompleteRelocationTargets(ownerUserId).Any(
                     target =>
                         target.Id == entry.Id ||
@@ -159,7 +163,9 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
             entry =>
                 entry.OwnerUserId == ownerUserId &&
                 entry.ParentId == parentId &&
-                entry.Status == FileEntryStatus.Active &&
+                (entry.Status == FileEntryStatus.Active ||
+                 entry.Status == FileEntryStatus.MissingCandidate ||
+                 entry.Status == FileEntryStatus.Missing) &&
                 !IncompleteRelocationTargets(ownerUserId).Any(
                     target =>
                         target.Id == entry.Id ||
@@ -327,6 +333,10 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
         }
         catch (DbUpdateException exception)
             when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new FilePersistenceConflictException(exception);
+        }
+        catch (DbUpdateConcurrencyException exception)
         {
             throw new FilePersistenceConflictException(exception);
         }

@@ -58,3 +58,16 @@ sudo --preserve-env=KURASTORAGE_CONFIRM_DATABASE_RESTORE \
 Database restoration is destructive and requires the explicit confirmation
 value. The restore script preserves ownership through the local database role
 and fails immediately on restore errors.
+
+## Index reconciliation after restore or HDD replacement
+
+After restoring PostgreSQL and the matching Storage Root, keep
+`Indexing.Enabled=false`, verify the mounted Storage ID, change to the selected
+release directory, and run `./KuraStorage.AdminCli index rescan --dry-run` as
+`kurastorage-api` with the production environment and secrets directory. Review
+only aggregate counts, then
+run an APPLY rescan before enabling the Worker. A different HDD or Storage ID
+must not be attached to the restored catalog. If an HDD is intentionally
+replaced, follow the reviewed data migration procedure and reconcile ownership
+and managed paths before any APPLY scan; never rewrite `MISSING` states merely
+to bypass rollback guards.

@@ -260,113 +260,113 @@
 
 ### 3.1 File一覧・詳細・Content access契約
 
-- [ ] File APIで欠損状態を一貫して扱う。
-  - [ ] 一覧・詳細Responseへ`MISSING_CANDIDATE`と`MISSING`を追加し、Healthの`protocolVersion`を2へ更新して非互換ClientをFile APIの前で更新要求へ止める。
-  - [ ] 通常File、候補、確定欠損をClientが区別でき、欠損理由と検知日時を表示できる情報を返す。
-  - [ ] 一覧はDB索引から取得し、要求ごとにHDD全走査を行わない。
-  - [ ] Download・内容Open直前にHDD存在とStorage状態を確認する。
-  - [ ] Open時に不存在を検出しても要求内だけで`MISSING`を確定せず、候補化・再確認へ収束させる。
-  - [ ] `MISSING`項目へのDownload、Rename、Move、Trash等の禁止操作を安定したError Codeで拒否する。
-  - [ ] 他Userの欠損項目の存在、Path、Metadataを漏えいしない。
+- [x] File APIで欠損状態を一貫して扱う。
+  - [x] 一覧・詳細Responseへ`MISSING_CANDIDATE`と`MISSING`を追加し、Healthの`protocolVersion`を2へ更新して非互換ClientをFile APIの前で更新要求へ止める。
+  - [x] 通常File、候補、確定欠損をClientが区別でき、欠損理由と検知日時を表示できる情報を返す。
+  - [x] 一覧はDB索引から取得し、要求ごとにHDD全走査を行わない。
+  - [x] Download・内容Open直前にHDD存在とStorage状態を確認する。
+  - [x] Open時に不存在を検出しても要求内だけで`MISSING`を確定せず、候補化・再確認へ収束させる。
+  - [x] `MISSING`項目へのDownload、Rename、Move、Trash等の禁止操作を安定したError Codeで拒否する。
+  - [x] 他Userの欠損項目の存在、Path、Metadataを漏えいしない。
 
 ### 3.2 明示再確認API
 
-- [ ] `MISSING`項目の再確認Use CaseとEndpointを実装する。
-  - [ ] 所有Userの`MISSING`または`MISSING_CANDIDATE`項目だけをIDで再確認できる。
-  - [ ] HDDが`AVAILABLE`であることを確認して対象Pathを安全に再照合する。
-  - [ ] 再発見時はMetadata・Parent・状態を更新し、通常一覧へ復帰させる。
-  - [ ] 不存在継続時は状態と最終確認日時を冪等更新する。
-  - [ ] HDD利用不可、Storage ID不一致、権限Errorでは欠損継続を確定せず、明確な再試行可能Errorを返す。
-  - [ ] 再確認と外部再作成、全件Scan、索引削除の競合を条件付き更新で処理する。
+- [x] `MISSING`項目の再確認Use CaseとEndpointを実装する。
+  - [x] 所有Userの`MISSING`または`MISSING_CANDIDATE`項目だけをIDで再確認できる。
+  - [x] HDDが`AVAILABLE`であることを確認して対象Pathを安全に再照合する。
+  - [x] 再発見時はMetadata・Parent・状態を更新し、通常一覧へ復帰させる。
+  - [x] 不存在継続時は状態と最終確認日時を冪等更新する。
+  - [x] HDD利用不可、Storage ID不一致、権限Errorでは欠損継続を確定せず、明確な再試行可能Errorを返す。
+  - [x] 再確認と外部再作成、全件Scan、索引削除の競合を条件付き更新で処理する。
 
 ### 3.3 「一覧から削除」APIと関連情報整理
 
-- [ ] `MISSING`索引削除Use CaseとEndpointを実装する。
-  - [ ] 所有Userの確定`MISSING`項目だけを明示操作で削除できる。
-  - [ ] `ACTIVE`、`MISSING_CANDIDATE`、`TRASHED`、Root、他User項目を拒否する。
-  - [ ] 削除処理はHDDの削除・移動・作成を一切行わない。
-  - [ ] FileEntryと現時点で実装済みの関連管理情報を同一DB Transactionで削除する。
-  - [ ] DB管理情報だけを扱う`IFileIndexDeletionParticipant`を物理完全削除境界から分離し、将来の共有、検索補助、Recent、派生データが同じ整理処理へ参加できる構造にする。
-  - [ ] Folder索引削除時の欠損子孫、部分再発見、親子関係を承認済み規則で一貫して処理する。
-  - [ ] 同じ要求の再送、全件Scanとの競合、削除直前の実体再発見で誤削除しない。
-  - [ ] 監査ログへ明示操作と結果を記録し、物理PathやFile名を不要に残さない。
+- [x] `MISSING`索引削除Use CaseとEndpointを実装する。
+  - [x] 所有Userの確定`MISSING`項目だけを明示操作で削除できる。
+  - [x] `ACTIVE`、`MISSING_CANDIDATE`、`TRASHED`、Root、他User項目を拒否する。
+  - [x] 削除処理はHDDの削除・移動・作成を一切行わない。
+  - [x] FileEntryと現時点で実装済みの関連管理情報を同一DB Transactionで削除する。
+  - [x] DB管理情報だけを扱う`IFileIndexDeletionParticipant`を物理完全削除境界から分離し、将来の共有、検索補助、Recent、派生データが同じ整理処理へ参加できる構造にする。
+  - [x] Folder索引削除時の欠損子孫、部分再発見、親子関係を承認済み規則で一貫して処理する。
+  - [x] 同じ要求の再送、全件Scanとの競合、削除直前の索引上の再発見で誤削除しない。
+  - [x] 監査ログへ明示操作と結果を記録し、物理PathやFile名を不要に残さない。
 
 ### 3.4 Android Data・Domain・UI
 
-- [ ] AndroidのAPI ContractとDomainモデルを拡張する。
-  - [ ] 未知Statusを安全に扱い、旧Server・旧ClientをProtocol不一致時の更新要求へ止める。
-  - [ ] 再確認と一覧から削除をRepository・UseCase境界へ追加する。
-  - [ ] 通信結果不明時に再確認成功や索引削除成功を推測せず、Server一覧を再取得する。
-- [ ] 一覧・詳細で`MISSING`を表示する。
-  - [ ] 通常Fileと区別できる状態、理由、検知日時、利用不可操作をAccessibility対応で表示する。
-  - [ ] `MISSING_CANDIDATE`は誤確定を避ける表示規則に従い、通常項目との違いを必要な範囲で示す。
-  - [ ] `MISSING`項目から「再確認」を実行し、処理中の二重送信を防ぐ。
-  - [ ] 「一覧から削除」はHDD上のFile削除ではないことを明記して確認を求める。
-  - [ ] 再発見成功後と索引削除成功後にServerから一覧を再取得する。
-  - [ ] HDD利用不可、再試行可能Error、再発見、欠損継続、競合を明確に表示する。
+- [x] AndroidのAPI ContractとDomainモデルを拡張する。
+  - [x] 未知Statusを安全に扱い、旧Server・旧ClientをProtocol不一致時の更新要求へ止める。
+  - [x] 再確認と一覧から削除をRepository・UseCase境界へ追加する。
+  - [x] 通信結果不明時に再確認成功や索引削除成功を推測せず、Server一覧を再取得する。
+- [x] 一覧・詳細で`MISSING`を表示する。
+  - [x] 通常Fileと区別できる状態、理由、検知日時、利用不可操作をAccessibility対応で表示する。
+  - [x] `MISSING_CANDIDATE`は誤確定を避ける表示規則に従い、通常項目との違いを必要な範囲で示す。
+  - [x] `MISSING`項目から「再確認」を実行し、処理中の二重送信を防ぐ。
+  - [x] 「一覧から削除」はHDD上のFile削除ではないことを明記して確認を求める。
+  - [x] 再発見成功後と索引削除成功後にServerから一覧を再取得する。
+  - [x] HDD利用不可、再試行可能Error、再発見、欠損継続、競合を明確に表示する。
 
 ### 3.5 PR3自動Test
 
-- [ ] Server Unit・Integration・API Testが完了している。
-  - [ ] 一覧・詳細・Download直前存在確認・禁止操作の状態別契約をTestする。
-  - [ ] 再確認の再発見、不存在継続、Storage利用不可、競合、冪等性をTestする。
-  - [ ] 索引削除でHDD操作が0回であり、FileEntryと実装済み関連情報だけが削除されることをTestする。
-  - [ ] Folder子孫、部分再発見、同時Scan、同時再作成、二重削除をTestする。
-  - [ ] 他User、無効Token、非`MISSING`、Rootを所有関係を漏えいしないErrorで拒否する。
-  - [ ] OpenAPI、Fixture、API Response、共通Error Codeが一致する。
-- [ ] Android Unit・Compose Testが完了している。
-  - [ ] Status mapping、未知Status、Repository、UseCase、ViewModel状態遷移をTestする。
-  - [ ] Health Protocol 1・2の不一致、未知Statusの`UNKNOWN`変換、非互換時にFile APIへ進まないことをTestする。
-  - [ ] 通常・候補・欠損表示、再確認、確認Dialog、二重Tap、成功後再取得、Error表示をTestする。
-  - [ ] 画面回転、Back、通信結果不明、再発見、削除済み競合をTestする。
-  - [ ] Accessibility Semanticsと日本語文言が「実ファイル削除」と誤認させないことを確認する。
-- [ ] PR3の標準検証が成功している。
-  - [ ] `./scripts/ci/verify-config.sh`が成功する。
-  - [ ] `./scripts/ci/verify-server.sh`が成功する。
-  - [ ] `./scripts/ci/verify-security.sh`が成功する。
-  - [ ] `./scripts/ci/verify-deployment.sh`が成功する。
-  - [ ] `./scripts/ci/verify-android.sh`が成功する。
-  - [ ] `./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が成功する。
-  - [ ] `git diff --check`が成功する。
+- [x] Server Unit・Integration・API Testが完了している。
+  - [x] 一覧・詳細・Download直前存在確認・禁止操作の状態別契約をTestする。
+  - [x] 再確認の再発見、不存在継続、Storage利用不可、競合、冪等性をTestする。
+  - [x] 索引削除でHDD操作が0回であり、FileEntryと実装済み関連情報だけが削除されることをTestする。
+  - [x] Folder子孫、部分再発見、同時Scan、同時再作成、二重削除をTestする。
+  - [x] 他User、無効Token、非`MISSING`、Rootを所有関係を漏えいしないErrorで拒否する。
+  - [x] OpenAPI、Fixture、API Response、共通Error Codeが一致する。
+- [x] Android Unit・Compose Testが完了している。
+  - [x] Status mapping、未知Status、Repository、UseCase、ViewModel状態遷移をTestする。
+  - [x] Health Protocol 1・2の不一致、未知Statusの`UNKNOWN`変換、非互換時にFile APIへ進まないことをTestする。
+  - [x] 通常・候補・欠損表示、再確認、確認Dialog、二重Tap、成功後再取得、Error表示をTestする。
+  - [x] 画面回転、Back、通信結果不明、再発見、削除済み競合をTestする。
+  - [x] Accessibility Semanticsと日本語文言が「実ファイル削除」と誤認させないことを確認する。
+- [x] PR3の標準検証が成功している。
+  - [x] `./scripts/ci/verify-config.sh`が成功する。
+  - [x] `./scripts/ci/verify-server.sh`が成功する。
+  - [x] `./scripts/ci/verify-security.sh`が成功する。
+  - [x] `./scripts/ci/verify-deployment.sh`が成功する。
+  - [x] `./scripts/ci/verify-android.sh`が成功する。
+  - [x] `./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が成功する。
+  - [x] `git diff --check`が成功する。
 
 ### 3.6 Raspberry Pi・Android実機E2E
 
-- [ ] 外部削除からMISSING操作までを実機確認する。
-  - [ ] Androidで表示中のFileをHDD上から外部削除し、`MISSING_CANDIDATE`から別時刻再確認後の`MISSING`へ遷移する。
-  - [ ] HDDを外しただけでは全Fileが`MISSING`にならず、AndroidにStorage利用不可として表示される。
-  - [ ] `MISSING`のPathへ実Fileを戻し、「再確認」で同じ索引項目が通常状態へ復帰する。
-  - [ ] 不存在のまま「一覧から削除」し、HDD操作なしで一覧・詳細・Downloadから到達不能になる。
-  - [ ] 外部Rename・Move・内容更新・Folder削除を行い、Android表示とDB索引が実体へ収束する。
-  - [ ] 監視停止、API・Worker再起動、Event Burst、HDD再接続後も同じ結果へ収束する。
-  - [ ] 他Userから再確認・索引削除できず、対象の存在やMetadataが漏えいしない。
-- [ ] 既存機能を実機回帰確認する。
-  - [ ] Upload、Resume、Download、Range、Folder作成、Rename、Move、Trash、Restore、Purgeが監視・再スキャン導入後も動作する。
-  - [ ] 外部変更追従中もAPI応答とAndroid操作性が正式な性能目標を満たす。
-  - [ ] E2E結果、状態遷移、所要時間、失敗注入条件を`docs/testing/`へ記録する。
+- [x] 外部削除からMISSING操作までを実機確認する。
+  - [x] Androidで表示中のFileをHDD上から外部削除し、`MISSING_CANDIDATE`から別時刻再確認後の`MISSING`へ遷移する。
+  - [x] HDDを外しただけでは全Fileが`MISSING`にならず、AndroidにStorage利用不可として表示される。
+  - [x] `MISSING`のPathへ実Fileを戻し、「再確認」で同じ索引項目が通常状態へ復帰する。
+  - [x] 不存在のまま「一覧から削除」し、HDD操作なしで一覧・詳細・Downloadから到達不能になる。
+  - [x] 外部Rename・Move・内容更新・Folder削除を行い、Android表示とDB索引が実体へ収束する。
+  - [x] 監視停止、API・Worker再起動、Event Burst、HDD再接続後も同じ結果へ収束する。
+  - [x] 他Userから再確認・索引削除できず、対象の存在やMetadataが漏えいしない。
+- [x] 既存機能を実機回帰確認する。
+  - [x] Upload、Resume、Download、Range、Folder作成、Rename、Move、Trash、Restore、Purgeが監視・再スキャン導入後も動作する。
+  - [x] 外部変更追従中もAPI応答とAndroid操作性が正式な性能目標を満たす。
+  - [x] E2E結果、状態遷移、所要時間、失敗注入条件を`docs/testing/`へ記録する。
 
 ### 3.7 文書整合・最終セルフレビュー
 
-- [ ] 正式文書と実装を整合する。
-  - [ ] 5つの正式文書、Steering文書、OpenAPI、Migration、Server、Worker、Android、配置・運用手順の名称と状態が一致する。
-  - [ ] `MISSING_CANDIDATE`、`MISSING`、再確認、索引削除、HDD非操作境界を運用文書へ反映する。
-  - [ ] Backup・Restore後の全件再スキャン、HDD交換・Storage ID不一致時の復旧手順を更新する。
-  - [ ] 検索・共有・派生データ追加前に守る索引Consumer境界と索引削除契約を明記する。
-  - [ ] Android Protocol 2配布、Migration、Server・Worker配置、dry-run、`Indexing.Enabled=true`、本Scanの順でProduction rollout手順を記載する。
-- [ ] 全体差分をセルフレビューする。
-  - [ ] HDD上の存在・内容・階層を正とする原則を全経路で維持している。
-  - [ ] HDD利用不可と個別File不存在を混同する経路がない。
-  - [ ] Event欠落、Worker停止、再起動、競合後に全件再スキャンで収束できる。
-  - [ ] 「一覧から削除」がHDD操作を行わず、将来関連情報を残さない拡張境界を持つ。
-  - [ ] 物理Path、個人情報、Credential、実環境情報、生成物が差分にない。
-  - [ ] 検索、共有、派生データ生成、自動バックアップを実装範囲へ混入させていない。
+- [x] 正式文書と実装を整合する。
+  - [x] 5つの正式文書、Steering文書、OpenAPI、Migration、Server、Worker、Android、配置・運用手順の名称と状態が一致する。
+  - [x] `MISSING_CANDIDATE`、`MISSING`、再確認、索引削除、HDD非操作境界を運用文書へ反映する。
+  - [x] Backup・Restore後の全件再スキャン、HDD交換・Storage ID不一致時の復旧手順を更新する。
+  - [x] 検索・共有・派生データ追加前に守る索引Consumer境界と索引削除契約を明記する。
+  - [x] Android Protocol 2配布、Migration、Server・Worker配置、dry-run、`Indexing.Enabled=true`、本Scanの順でProduction rollout手順を記載する。
+- [x] 全体差分をセルフレビューする。
+  - [x] HDD上の存在・内容・階層を正とする原則を全経路で維持している。
+  - [x] HDD利用不可と個別File不存在を混同する経路がない。
+  - [x] Event欠落、Worker停止、再起動、競合後に全件再スキャンで収束できる。
+  - [x] 「一覧から削除」がHDD操作を行わず、将来関連情報を残さない拡張境界を持つ。
+  - [x] 物理Path、個人情報、Credential、実環境情報、生成物が差分にない。
+  - [x] 検索、共有、派生データ生成、自動バックアップを実装範囲へ混入させていない。
 
 ### 3.8 PR3完了
 
-- [ ] PR3を完了する。
-  - [ ] 3.1〜3.8のPR3対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR3を完了する。
+  - [x] 3.1〜3.8のPR3対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -395,16 +395,17 @@
 - 実装中に追加したタスクと理由: 実機のFolder移動で再配置後のwatchを`IN_MOVE_SELF`により失う問題を修正し、配下変更の回帰Testを追加した。10,000件試験でEvent追加とScan追加の一意制約競合、Worker中断後に残る`RUNNING` Scan、既存EntryごとのDB照会による負荷を検出したため、一意制約競合の再試行正規化、中断Runの`FAILED/WORKER_INTERRUPTED`回復、Path・Move候補・未完了操作のBatch照会とPostgreSQL回帰Testを追加した。
 - 技術的に不要になったタスク・理由・代替実装: なし。
 - 後続Pull Requestへの引継ぎ事項: PR #17のMergeとCI成功を確認してから最新`main`よりPR3 Branchを作成する。PR3でProtocol 2、MISSING API、索引削除、Android表示をまとめて配置するまでは`Indexing.Enabled=false`を維持する。本番有効化前に実Directory数と運用余裕を測定し、現在のwatch上限61621を推奨65536以上へレビュー済みsysctl設定で調整する。PR3実機回帰ではPR2の性能記録を基準に、既存Upload・Download・File操作と外部変更追従を再確認する。
+
 ### PR3: MISSING API・索引削除・Android表示と再確認
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続作業への引継ぎ事項: 未記録
+- 完了日: 2026-08-23
+- Pull Request: [#18 Add missing file management and Android recovery UI](https://github.com/ry825/Kura_Storage/pull/18)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-server.sh`（Domain 34件、Application 107件、Integration 77件、失敗0件）、`./scripts/ci/verify-android.sh`（656タスク）、実Android端末で`connectedDebugAndroidTest --max-workers=1`（app 3件、core-data 2件、feature-auth 2件、feature-connection 1件、feature-files 16件、失敗0件）、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`dotnet format --verify-no-changes`、EF Core `migrations has-pending-model-changes`、`git diff --check`を実施し、すべて成功した。Pull RequestのGitHub Actions（Android、Config、Security、Server）もすべて成功した。
+- 手動確認・実機確認: 配置前にPostgreSQLとStorage RootをBackupし、署名済みProtocol 2 Android Release、API、WorkerをRaspberry Pi 4と実exFAT HDDへ配置した。外部削除の`MISSING_CANDIDATE`から5分後の別Scanによる`MISSING`確定、同一ID復活、他User 404、HDD利用不可中の索引のみ削除204、外部Rename・Move・内容更新・Folder削除、監視停止・API/Worker再起動・201項目Burst・HDD再接続を確認した。Upload、2分割Resume、Download、Range、Folder作成、Rename、Move、Trash、Restore、Purgeも成功し、Androidで候補・確定欠損・再確認・HDD非削除確認Dialog・索引削除後再取得・Storage unavailable表示を確認した。結果は`docs/testing/20260822-missing-management-e2e.md`へ記録し、専用試験User・物理領域・DB関連情報・資格情報を削除した。最終状態はStorage ID一致、全Service active、Indexing有効、候補・欠損・実行中Scan・未完了FileOperationが各0件である。
+- 計画と実装の差分: 一覧からの索引削除は、ユーザー承認により削除時点の物理再出現をHDDで確認せず、DB索引状態だけをLock後に再読込して判定する設計へ統一した。物理再出現がまだ索引化されていない場合もHDD非依存で索引を削除し、後続EventまたはScanが新しい索引項目を作成する。Production有効化では実機確認に基づき、Workerの標準.NET環境変数`Indexing__Enabled=true`とRelease directoryを作業DirectoryにしたAdmin CLI実行手順を明記した。
+- 実装中に追加したタスクと理由: 実機でAPI操作とinotify照合を即時連続させた際、Filesystem変更後の楽観的DB競合が500になる問題を検出したため、Rename・Move・Trash・Restoreの確定競合を`RECOVERY_REQUIRED`へ正規化し、`FILESYSTEM_DONE`から起動時Recoveryで収束するUnit Testと実機回帰を追加した。Androidの索引削除結果不明時も、Server再取得後に対象が残る場合だけ再試行可能とし、対象が消えている場合は成功を推測せず中立メッセージで閉じるTestを追加した。
+- 技術的に不要になったタスク・理由・代替実装: 削除直前にHDDを直接検査する暫定案は、「索引削除はHDDを一切参照せず、HDD利用不可でも完了する」という正式契約と矛盾するため採用しなかった。代替として、索引行と欠損子孫をLock後に再読込し、索引上で復活済みなら競合、未索引の物理再出現は後続Event・Scanで新規索引化する。
+- 後続作業への引継ぎ事項: 後続Pull Requestはない。PR #18をReview・Merge後、運用Runbookの順序でProtocol 2 Android、API、Workerを同時Rolloutし、現行ホストの`fs.inotify.max_user_watches=61621`警告について推奨65536以上への変更を別途Reviewする。KuraStorageはsysctlを自動変更しない。
 
 ---
 
@@ -414,24 +415,41 @@ PR1〜PR3および本ファイルの全タスクが完了した後にだけ、`s
 
 ### 実装完了日
 
-未完了
+2026-08-23
 
 ### 計画と実績の差分
 
-未記録
+PR1で索引整合性モデル・Migration・全件再スキャン・管理CLI、PR2でinotify・Worker・定期再スキャン・実機性能確認、PR3でProtocol 2 MISSING API・HDD非依存索引削除・Android UIを、計画どおり3つのPull Requestへ分割して完了した。PR2の10,000件実測ではBatch照会と中断Run回復を追加し、PR3の実機連続操作ではFilesystem確定後の楽観的DB競合を`RECOVERY_REQUIRED`へ正規化する追加修正を行った。検索・共有・派生データ生成・自動Backupは範囲へ加えなかった。
+
+Production相当環境では、Protocol 2 Android、API、Workerを揃えてからdry-run、Indexing有効化、startup APPLYの順でRolloutした。実機で判明した.NET環境変数名とAdmin CLIの作業DirectoryをRunbookへ反映した。試験中の段階Releaseは最終コードの再配置確認にだけ使用し、追跡対象へ生成物・実環境値・Credentialを含めなかった。
 
 ### 主な設計変更と理由
 
-未記録
+- HDD上の存在・内容・階層を正とし、inotifyはHint、起動時・周期・overflow時の全件Scanを最終収束手段とした。イベント欠落・停止・再起動後にも整合できるためである。
+- 不存在を`ACTIVE`から`MISSING_CANDIDATE`、5分以上後の別Observationから`MISSING`へ進め、HDD全体利用不可や不完全Scanを個別欠損と区別した。瞬断や観測競合による誤確定を防ぐためである。
+- 「一覧から削除」は`IFileIndexDeletionParticipant`とDB Transactionだけを使い、`IFileStore`・物理Purge境界・HDD事前検査から分離した。HDD利用不可でも実行できる契約と、将来の関連索引Consumer整理を両立するためである。
+- 物理再出現がまだ索引化されていない場合は旧MISSING索引をHDD非依存で削除し、後続Event・Scanが新しい索引項目を作成する。削除直前のDB索引上の復活だけをLock後再読込で競合にする。
+- Healthの`protocolVersion`を2へ上げ、未知StatusはAndroid Domainで`UNKNOWN`へ隔離しつつ、Protocol不一致ClientをFile API前で更新要求へ止めた。非互換状態の誤操作を防ぐためである。
+- API操作とWatcherがFilesystem変更後に競合した場合、500ではなく`RECOVERY_REQUIRED`を返し、永続化済み`FILESYSTEM_DONE`を起動時RecoveryでHDDから収束させる設計へ補強した。
 
 ### 技術的な学び
 
-未記録
+- exFAT上の30万件規模を想定する索引処理では、Streaming列挙だけでなく、既存Path・Move候補・未完了操作のBatch照会と永続StagingがCPU・DB負荷・Memory上限に重要だった。
+- inotifyのMove pairing、Folder再配置後のwatch再構築、overflow、watch上限、監視開始前後の隙間は個別イベント処理だけでは閉じず、世代付き全件Scanと組み合わせる必要がある。
+- systemdの保護されたmount namespaceと`Requires=`依存により、ホスト側の単純な`umount`だけでは稼働中APIからHDDが利用不可に見えない場合がある。runtime maskと両namespaceの切離し、必須trapによる同一Storage ID復旧で安全に障害注入できた。
+- .NET標準設定の階層環境変数は`Indexing__Enabled`であり、プロジェクト独自Prefixを付けない。Admin CLIは選択Release directoryから実行しなければReleaseの`appsettings.json`を読めない。
+- HTTP結果不明時はClientが成功・失敗を推測せず、Serverの権威ある一覧を再取得して対象有無から次の操作可能性だけを決めると、二重送信と誤成功表示を避けられる。
 
 ### プロセス上の改善点
 
-未記録
+- Production相当のWorker有効化とAndroid接続確認をPR3終盤だけでなく、Protocol契約が固まった時点の短いsmoke testとして先行すると、設定Keyや作業Directory差をより早く検出できる。
+- 複数の`dotnet publish`が共通Project出力を競合したため、Release publishは明示的に直列化する。独立したTestだけを並列化し、共有出力を持つBuildは並列化しない。
+- 実機試験Userを作成した直後はWatcherが新規Directoryへ確実に設定されたことを確認してから障害注入する。開始直後のwatch gapはstartup scanで正しく収束したが、試験手順として待機条件を明示すべきだった。
+- ローカル検証に必要なshellcheck、nginx、Android SDK、JDK、dotnet-efの所在を一つの再現可能なbootstrap手順へまとめると、環境差による再実行コストを減らせる。
 
 ### 次回への改善提案
 
-未記録
+- Raspberry Pi E2Eを、専用User作成、状態待機、HDD障害注入、API回帰、機密情報を出さない集計、必須cleanupまで含むRepository管理のHarnessへ整理する。各破壊操作には対象Path検証と復旧trapを標準化する。
+- API操作とinotify照合の競合Testを、Rename・Move・Trash・RestoreだけでなくUpload確定・Folder階層操作についても決定的なbarrierを使うIntegration Testへ拡張する。
+- 実Directory数と将来余裕を継続観測し、`fs.inotify.max_user_watches`を推奨65536以上へ変更する場合は、測定値・Rollback・他Service影響を別Reviewにする。アプリ配置Scriptからsysctlを自動変更しない。
+- Connected Android Testと署名済みReleaseのProtocol smoke testをRelease候補CIの明示Gateとして扱い、未知Status、Storage unavailable、MISSING確認DialogのAccessibility文言を継続的に検証する。

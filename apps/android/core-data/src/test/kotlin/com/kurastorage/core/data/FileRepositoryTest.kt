@@ -4,6 +4,7 @@ import com.kurastorage.core.model.ApiError
 import com.kurastorage.core.model.AuthSession
 import com.kurastorage.core.model.DeviceId
 import com.kurastorage.core.model.ErrorCode
+import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.StoredCredential
 import com.kurastorage.core.network.CreateFolderRequestDto
@@ -49,6 +50,21 @@ class FileRepositoryTest {
             assertEquals("trash-me", repository.trash("trash-me").id)
             assertEquals(0, repository.listTrash().items.size)
             assertEquals("restore-me", repository.restore("restore-me").id)
+        }
+
+    @Test
+    fun `repository maps missing timestamps unknown status and missing operations`() =
+        runTest {
+            val api = FakeFileApi()
+            val repository = DefaultFileRepository(api, AuthenticatedRequestExecutor(FakeAuth()))
+
+            val unknown = api.dtoOverride("future", "FUTURE_STATUS").toModel()
+            assertEquals(FileEntryStatus.UNKNOWN, unknown.status)
+            assertEquals(Instant.parse(TIME), unknown.missingDetectedAt)
+            assertEquals("missing", repository.recheckMissing("missing").id)
+            repository.deleteMissingIndexEntry("missing")
+            assertEquals(listOf("missing"), api.rechecked)
+            assertEquals(listOf("missing"), api.deletedMissing)
         }
 
     @Test
@@ -116,6 +132,13 @@ class FileRepositoryTest {
         val purgeTokens = mutableListOf<String>()
         var unauthorizedPurgeOnce = false
         var purgeFailure: Throwable? = null
+        val rechecked = mutableListOf<String>()
+        val deletedMissing = mutableListOf<String>()
+
+        fun dtoOverride(
+            id: String,
+            status: String,
+        ) = dto(id).copy(status = status, missingDetectedAt = TIME, missingLastCheckedAt = TIME)
 
         override suspend fun listFiles(
             accessToken: String,
@@ -167,6 +190,22 @@ class FileRepositoryTest {
             accessToken: String,
             fileId: String,
         ) = NetworkCallResult.Success(dto(fileId))
+
+        override suspend fun recheckMissing(
+            accessToken: String,
+            fileId: String,
+        ): NetworkCallResult<FileEntryDto> {
+            rechecked += fileId
+            return NetworkCallResult.Success(dto(fileId).copy(status = "MISSING"))
+        }
+
+        override suspend fun deleteMissingIndexEntry(
+            accessToken: String,
+            fileId: String,
+        ): NetworkCallResult<Unit> {
+            deletedMissing += fileId
+            return NetworkCallResult.Success(Unit)
+        }
 
         override suspend fun purge(
             accessToken: String,

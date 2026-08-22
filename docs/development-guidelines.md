@@ -51,6 +51,9 @@
 - 全件ScanはPostgreSQL Stagingへ設定Batch単位で保存し、30万件をProcess Memoryへ全保持しない。DRY_RUNは専用Connectionの一時Tableだけを使用する。
 - Symlink、特殊File、未知User、不正Pathは通常索引へ公開せず、File名、Path、User ID、File ID、補助同一性KeyをMetric Labelまたは通常CLI出力へ含めない。
 - 外部MoveでIDを維持するのはdevice・inode、Owner、種類、Size、mtimeが1対1で一致するときだけとし、補助Key単独または曖昧な候補を自動結合しない。
+- File一覧・詳細へ欠損状態を追加しても要求単位のHDD全走査を行わず、Content Openだけを安全な個別Path確認とする。Open時の初回不存在から直接`MISSING`へ進めない。
+- `MISSING`の一覧削除はDB Transactionと`IFileIndexDeletionParticipant`だけを使用し、`IFileStore`、物理完全削除participant、Client指定Pathを呼び出さない。Folderは全子孫の状態と未完了操作を再確認する。
+- AndroidはProtocol不一致時にFile APIへ進まず、未知enumを`UNKNOWN`へ変換して破壊的操作を無効にする。再確認・索引削除の通信結果不明を成功と推測せず、一覧を再取得する。
 
 ---
 
