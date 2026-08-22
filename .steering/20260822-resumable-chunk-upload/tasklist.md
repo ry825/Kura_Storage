@@ -261,12 +261,12 @@
 
 ### 1.11 Pull Request完了
 
-- [ ] PR1が完了している。
-  - [ ] 1.1〜1.10がすべて`[x]`である。
-  - [ ] 共通Pull Request完了手順をすべて実施する。
-  - [ ] PR1完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
-  - [ ] 完了記録CommitがPR1へ反映されている。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR1が完了している。
+  - [x] 1.1〜1.10がすべて`[x]`である。
+  - [x] 共通Pull Request完了手順をすべて実施する。
+  - [x] PR1完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
+  - [x] 完了記録CommitがPR1へ反映されている。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -425,14 +425,31 @@
 
 ### PR1: Resumable Upload Server・API契約・期限切れSession清掃
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- PR2への引継ぎ事項: 未記録
+- 完了日: 2026-08-22
+- Pull Request: [#14 Add resumable chunk upload server flow](https://github.com/ry825/Kura_Storage/pull/14)
+- 実施したTest・Build・静的解析:
+  - `./scripts/ci/verify-config.sh`: 成功
+  - `./scripts/ci/verify-server.sh`: 成功（Domain 28件、Application 51件、Integration 63件）
+  - `./scripts/ci/verify-security.sh`: 成功
+  - `./scripts/ci/verify-deployment.sh`: 成功
+  - `./scripts/ci/verify-android.sh`: 成功
+  - `git diff --check`: 成功
+  - GitHub Actions最終HEAD: Config、Server、Security、Androidの全Job成功
+- 手動確認・実機確認:
+  - API Test Clientと一時実Filesystemを使用し、Session作成、複数Chunk、中断後の状態照会・再開、完了、取消、期限切れ清掃、Device失効、Recoveryを確認した。
+  - 完了前のFile非公開、完了後の既存File操作、既存Multipart Uploadの回帰をIntegration Testで確認した。
+  - Raspberry PiおよびAndroid実機による大容量E2EはPR2の対象であり、PR1では実施していない。
+- 計画と実装の差分:
+  - SHA-256 Headerは相互運用性のため大文字・小文字の16進表記を受理し、内部で小文字へ正規化する仕様に確定した。
+  - 保存先FolderのPurgeでUploadSessionまでCascade削除されないよう、`destination_folder_id`をnullableかつ`ON DELETE SET NULL`とした。公開直前に保存先を再検証し、消失時は完了を拒否して期限切れ清掃へ移行する。
+- 実装中に追加したタスクと理由:
+  - 保存先FolderのPurgeと未完了Sessionの相互作用を確認するMigration・Integration Testを追加した。SessionのCleanup情報を保持し、一時ファイルを孤児化させないため。
+  - Cleanup Batch上限と低Cardinality MetricのIntegration Testを追加した。運用時の資源制御と個人識別子非露出を回帰から保護するため。
+- 技術的に不要になったタスク・理由・代替実装: なし
+- PR2への引継ぎ事項:
+  - PR1 Merge後、最新`main`からAndroid用Branchを作成し、OpenAPI契約に基づくSession Client、SAF範囲Streaming、再開状態、ViewModel・Compose UIを実装する。
+  - Raspberry Pi、共有exFAT HDD、Android実機で大容量・LAN切断・再接続・ZeroTier・Release BuildのE2Eを完了する。
+  - Server側のSession API、設定、Cleanup、Recovery、既存Multipart互換契約はPR1で利用可能になっている。
 
 ### PR2: Android中断再開・大容量実機E2E・運用文書
 
