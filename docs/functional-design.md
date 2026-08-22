@@ -1840,9 +1840,23 @@ APIは容量と名前を検証して`FileOperation(PENDING)`を作成し、HDD�
 
 通信中断時、Androidは同じ`Idempotency-Key`でファイル先頭から全体を再送する。MVPではUpload Session照会、Chunk、`Content-Range` Upload、中断位置からの再開を提供しない。
 
-#### MVP後: Resumable Chunk Upload
+#### Phase 1拡張: Resumable Chunk Upload
 
-Upload Session、Chunk範囲管理、端末をまたぐ再開はMVP完成後に別契約として追加する。MVP Endpointの挙動を暗黙に変更せず、API VersionとMigration方針を定義して導入する。
+初期MVPの全体再試行契約は履歴として維持し、`POST /api/v1/files/upload`も変更しない。Phase 1拡張では、同じ認証Deviceからの中断再開を次の独立契約で追加する。Webアプリと自動バックアップは将来このServer契約を再利用するが、現時点ではClient実装を追加しない。
+
+| Endpoint | 用途 | 成功 |
+| --- | --- | --- |
+| `POST /api/v1/upload-sessions` | Session作成・同一Metadataの冪等取得 | 新規`201`、再送`200` |
+| `GET /api/v1/upload-sessions/{id}` | 状態・確定済みOffset照会 | `200` |
+| `PUT /api/v1/upload-sessions/{id}/chunks` | 次の連続ChunkをStreaming送信 | `200` |
+| `POST /api/v1/upload-sessions/{id}/complete` | 全体検証・atomic publish | `200 FileEntry` |
+| `DELETE /api/v1/upload-sessions/{id}` | 未完了Sessionの冪等取消 | `204` |
+
+Sessionは`ACTIVE`、`COMPLETING`、`COMPLETED`、`CANCELLED`、`EXPIRED`、`RECOVERY_REQUIRED`を取る。作成時の`Idempotency-Key`はUser内で一意とし、同じKey・同じDevice・同じMetadataは既存Sessionを返し、異なるMetadataは`409 IDEMPOTENCY_CONFLICT`とする。Sessionは作成Deviceへ固定し、他User、他Device、失効Device、存在しないIDは`404 UPLOAD_SESSION_NOT_FOUND`へ統一する。
+
+Chunkは`application/octet-stream`、`Content-Length`、`Upload-Offset`、`X-Chunk-Sha256`を必須とし、現在の`receivedBytes`と連続するOffsetだけを受け付ける。通常Chunkは256 KiB以上、推奨4 MiB、上限8 MiBとし、最終Chunkだけ下限未満を許可する。最後に確定したOffset・長さ・Checksumの完全一致再送は冪等成功、それ以外のGap、Overlap、順不同、変更再送は`409 UPLOAD_OFFSET_MISMATCH`、Checksum不一致は`422 CHUNK_CHECKSUM_MISMATCH`とする。成功Chunkだけがidle期限を24時間延長し、作成から7日の絶対期限を超えない。照会は期限を延長しない。
+
+完了は受信済みByte、実ファイル長、任意の全体SHA-256を再検証する。検証後、既存`FileOperation`規則で`PENDING`、同一Filesystemのatomic rename、`FILESYSTEM_DONE`、FileEntry・監査・Session完了・`COMPLETED`を確定する。完了再送は同じFileEntryを返す。公開Errorは共通形式を使い、入力不正`400`、非開示`404`、状態・Offset競合`409`、上限`413`、検証不一致`422`、資源上限`429`と`Retry-After`、Storage未利用`503`、容量不足`507`を返す。
 
 ### 8.9 ファイル操作
 

@@ -1,4 +1,5 @@
 using KuraStorage.Application.Files;
+using KuraStorage.Application.Transfers;
 using KuraStorage.Infrastructure;
 using KuraStorage.Infrastructure.Configuration;
 using Microsoft.Extensions.Configuration;
@@ -42,6 +43,24 @@ public sealed class ConfigurationValidationTests
 
         Assert.Throws<OptionsValidationException>(
             () => provider.GetRequiredService<IOptions<StorageOptions>>().Value);
+    }
+
+    [Theory]
+    [InlineData("UploadSession:PreferredChunkBytes", "1")]
+    [InlineData("UploadSession:MaximumChunkBytes", "67108865")]
+    [InlineData("UploadSession:MaximumFileBytes", "0")]
+    [InlineData("UploadSession:IdleExpirationHours", "0")]
+    [InlineData("UploadSession:AbsoluteExpirationHours", "721")]
+    [InlineData("UploadSession:CleanupBatchSize", "501")]
+    [InlineData("UploadSession:MaximumActiveSessionsPerDevice", "0")]
+    [InlineData("UploadSession:MaximumConcurrentChunkWrites", "17")]
+    [InlineData("UploadSession:OverloadRetryAfterSeconds", "301")]
+    public void UploadSessionOptions_InvalidValue_IsRejected(string key, string value)
+    {
+        using var provider = BuildProvider(new Dictionary<string, string?> { [key] = value });
+
+        Assert.Throws<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<UploadSessionOptions>>().Value);
     }
 
     private static ServiceProvider BuildProvider(IReadOnlyDictionary<string, string?> values)

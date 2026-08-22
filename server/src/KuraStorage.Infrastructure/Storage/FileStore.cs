@@ -3,13 +3,14 @@ using System.Security.Cryptography;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
+using KuraStorage.Application.Transfers;
 using KuraStorage.Domain.Files;
 using KuraStorage.Infrastructure.Configuration;
 using Microsoft.Extensions.Options;
 
 namespace KuraStorage.Infrastructure.Storage;
 
-public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFileStore
+public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFileStore, IUploadSessionStore
 {
     private readonly StorageOptions options = configuredOptions.Value;
     private readonly string root = Path.TrimEndingDirectorySeparator(
@@ -45,6 +46,7 @@ public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFil
         Directory.CreateDirectory(Resolve(RelativeStoragePath.Create($"users/{ownerUserId:N}/files"), false));
         Directory.CreateDirectory(Resolve(RelativeStoragePath.Create($"users/{ownerUserId:N}/trash"), false));
         Directory.CreateDirectory(Resolve(RelativeStoragePath.Create($"upload-temp/{ownerUserId:N}"), false));
+        Directory.CreateDirectory(Resolve(RelativeStoragePath.Create($"upload-sessions/{ownerUserId:N}"), false));
         await Task.CompletedTask;
     }
 
@@ -217,6 +219,196 @@ public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFil
             64 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         return Task.FromResult(stream);
+    }
+
+    public Task<TemporaryUploadState> InspectAsync(
+        RelativeStoragePath path,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var resolved = Resolve(path, false);
+        if (!File.Exists(resolved))
+        {
+            return Task.FromResult(new TemporaryUploadState(false, 0));
+        }
+
+        EnsureNoSymbolicLink(resolved);
+        return Task.FromResult(new TemporaryUploadState(true, new FileInfo(resolved).Length));
+    }
+
+    public async Task<StoredChunk> WriteChunkAsync(
+        RelativeStoragePath path,
+        long offset,
+        Stream content,
+        long expectedLength,
+        CancellationToken cancellationToken)
+    {
+        if (offset < 0 || expectedLength <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(offset));
+        }
+
+        var resolved = Resolve(path, false);
+        Directory.CreateDirectory(Path.GetDirectoryName(resolved)!);
+        EnsureNoSymbolicLink(Path.GetDirectoryName(resolved)!);
+        var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+        await using var destination = new FileStream(
+            resolved,
+            FileMode.OpenOrCreate,
+            FileAccess.ReadWrite,
+            FileShare.None,
+            buffer.Length,
+            FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.WriteThrough);
+        if (destination.Length < offset)
+        {
+            throw new UploadTemporaryFileTooShortException();
+        }
+
+        if (destination.Length != offset)
+        {
+            destination.SetLength(offset);
+        }
+
+        destination.Position = offset;
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        long total = 0;
+        try
+        {
+            while (total < expectedLength)
+            {
+                var requested = (int)Math.Min(buffer.Length, expectedLength - total);
+                var read = await content.ReadAsync(buffer.AsMemory(0, requested), cancellationToken);
+                if (read == 0)
+                {
+                    throw new UploadChunkSizeMismatchException();
+                }
+
+                hash.AppendData(buffer, 0, read);
+                await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                total += read;
+            }
+
+            if (await content.ReadAsync(buffer.AsMemory(0, 1), cancellationToken) != 0)
+            {
+                throw new UploadChunkSizeMismatchException();
+            }
+
+            await destination.FlushAsync(cancellationToken);
+            destination.Flush(flushToDisk: true);
+            return new StoredChunk(total, Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant());
+        }
+        catch
+        {
+            destination.SetLength(offset);
+            destination.Flush(flushToDisk: true);
+            throw;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    public async Task<StoredChunk> ReadAndHashAsync(
+        Stream content,
+        long expectedLength,
+        CancellationToken cancellationToken)
+    {
+        if (expectedLength <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(expectedLength));
+        }
+
+        var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        long total = 0;
+        try
+        {
+            while (total < expectedLength)
+            {
+                var requested = (int)Math.Min(buffer.Length, expectedLength - total);
+                var read = await content.ReadAsync(buffer.AsMemory(0, requested), cancellationToken);
+                if (read == 0)
+                {
+                    throw new UploadChunkSizeMismatchException();
+                }
+
+                hash.AppendData(buffer, 0, read);
+                total += read;
+            }
+
+            if (await content.ReadAsync(buffer.AsMemory(0, 1), cancellationToken) != 0)
+            {
+                throw new UploadChunkSizeMismatchException();
+            }
+
+            return new StoredChunk(total, Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant());
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    public async Task TruncateAsync(
+        RelativeStoragePath path,
+        long length,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var resolved = Resolve(path, false);
+        if (!File.Exists(resolved))
+        {
+            if (length == 0)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(resolved)!);
+                EnsureNoSymbolicLink(Path.GetDirectoryName(resolved)!);
+                await using var empty = new FileStream(
+                    resolved,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    4096,
+                    FileOptions.Asynchronous | FileOptions.WriteThrough);
+                await empty.FlushAsync(cancellationToken);
+                empty.Flush(flushToDisk: true);
+                return;
+            }
+
+            throw new UploadTemporaryFileTooShortException();
+        }
+
+        await using var stream = new FileStream(
+            resolved,
+            FileMode.Open,
+            FileAccess.Write,
+            FileShare.None,
+            4096,
+            FileOptions.Asynchronous | FileOptions.WriteThrough);
+        if (stream.Length < length)
+        {
+            throw new UploadTemporaryFileTooShortException();
+        }
+
+        stream.SetLength(length);
+        await stream.FlushAsync(cancellationToken);
+        stream.Flush(flushToDisk: true);
+    }
+
+    public async Task<string> ComputeSha256Async(
+        RelativeStoragePath path,
+        CancellationToken cancellationToken)
+    {
+        var resolved = Resolve(path, true);
+        await using var stream = new FileStream(
+            resolved,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            64 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var hash = await SHA256.HashDataAsync(stream, cancellationToken);
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     private string Resolve(

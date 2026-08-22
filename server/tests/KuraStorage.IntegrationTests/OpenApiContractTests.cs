@@ -15,6 +15,10 @@ public sealed class OpenApiContractTests
         {
             "  /files:",
             "  /files/upload:",
+            "  /upload-sessions:",
+            "  /upload-sessions/{sessionId}:",
+            "  /upload-sessions/{sessionId}/chunks:",
+            "  /upload-sessions/{sessionId}/complete:",
             "  /folders:",
             "  /files/{fileId}:",
             "  /files/{fileId}/content:",
@@ -36,6 +40,12 @@ public sealed class OpenApiContractTests
         Assert.Contains("RECOVERY_REQUIRED", contract, StringComparison.Ordinal);
         Assert.Contains("RANGE_NOT_SATISFIABLE", contract, StringComparison.Ordinal);
         Assert.Contains("IDEMPOTENCY_CONFLICT", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: createUploadSession", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: uploadSessionChunk", contract, StringComparison.Ordinal);
+        Assert.Contains("Upload-Offset", contract, StringComparison.Ordinal);
+        Assert.Contains("X-Chunk-Sha256", contract, StringComparison.Ordinal);
+        Assert.Contains("CHUNK_CHECKSUM_MISMATCH", contract, StringComparison.Ordinal);
+        Assert.Contains("UPLOAD_LIMIT_REACHED", contract, StringComparison.Ordinal);
         Assert.Contains("operationId: permanentlyDeleteTrashEntry", contract, StringComparison.Ordinal);
         Assert.Contains("purgeEligibleAt:", contract, StringComparison.Ordinal);
         Assert.Contains("AdminStorageStatus:", contract, StringComparison.Ordinal);
@@ -47,5 +57,6 @@ public sealed class OpenApiContractTests
         Assert.Contains("enum: [ADMIN, MEMBER]", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("ownerUserId:", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("relativePath:", contract, StringComparison.Ordinal);
+        Assert.DoesNotContain("temporaryRelativePath:", contract, StringComparison.Ordinal);
     }
 }

@@ -66,7 +66,8 @@ else
 fi
 mkdir -p \
     "${KURASTORAGE_STORAGE_ROOT}/users" \
-    "${KURASTORAGE_STORAGE_ROOT}/upload-temp"
+    "${KURASTORAGE_STORAGE_ROOT}/upload-temp" \
+    "${KURASTORAGE_STORAGE_ROOT}/upload-sessions"
 
 install -m 0640 -o root -g www-data "${KURASTORAGE_TLS_CERT_FILE}" \
     "${CONFIG_ROOT}/tls/server.crt"

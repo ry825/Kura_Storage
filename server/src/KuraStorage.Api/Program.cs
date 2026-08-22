@@ -7,6 +7,7 @@ using KuraStorage.Api;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
+using KuraStorage.Application.Transfers;
 using KuraStorage.Application.Identity;
 using KuraStorage.Infrastructure;
 using KuraStorage.Infrastructure.Configuration;
@@ -356,6 +357,179 @@ app.MapPost(
         return await HandleUploadAsync(userId, context, files, cancellationToken);
     });
 
+app.MapPost(
+    "/api/v1/upload-sessions",
+    async (
+        CreateUploadSessionRequest request,
+        HttpContext context,
+        UploadSessionService uploads,
+        UploadSessionOptions uploadOptions,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await uploads.CreateAsync(
+            new CreateUploadSessionCommand(
+                userId,
+                deviceId,
+                request.DestinationFolderId,
+                request.FileName ?? string.Empty,
+                request.Size,
+                request.ContentType,
+                request.Sha256,
+                context.Request.Headers["Idempotency-Key"].ToString(),
+                context.TraceIdentifier),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return TransferError(result.Failure!, context, uploadOptions);
+        }
+
+        var created = result.Value!;
+        context.Response.Headers.Location = $"/api/v1/upload-sessions/{created.Session.Id}";
+        context.Response.Headers["Upload-Offset"] = created.Session.NextOffset.ToString(CultureInfo.InvariantCulture);
+        return Results.Json(
+            created.Session,
+            statusCode: created.Created ? StatusCodes.Status201Created : StatusCodes.Status200OK);
+    });
+
+app.MapGet(
+    "/api/v1/upload-sessions/{sessionId:guid}",
+    async (
+        Guid sessionId,
+        HttpContext context,
+        UploadSessionService uploads,
+        UploadSessionOptions uploadOptions,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await uploads.GetAsync(userId, deviceId, sessionId, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return TransferError(result.Failure!, context, uploadOptions);
+        }
+
+        context.Response.Headers["Upload-Offset"] = result.Value!.NextOffset.ToString(CultureInfo.InvariantCulture);
+        return Results.Ok(result.Value);
+    });
+
+app.MapPut(
+    "/api/v1/upload-sessions/{sessionId:guid}/chunks",
+    async (
+        Guid sessionId,
+        HttpContext context,
+        UploadSessionService uploads,
+        UploadSessionOptions uploadOptions,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (!string.Equals(context.Request.ContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase) ||
+            context.Request.ContentLength is not long length ||
+            !long.TryParse(
+                context.Request.Headers["Upload-Offset"].ToString(),
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var offset))
+        {
+            return Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context);
+        }
+
+        var result = await uploads.UploadChunkAsync(
+            new UploadChunkCommand(
+                userId,
+                deviceId,
+                sessionId,
+                offset,
+                length,
+                context.Request.Headers["X-Chunk-Sha256"].ToString(),
+                context.Request.Body,
+                context.TraceIdentifier),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            if (result.Failure!.Code == FileErrorCodes.UploadOffsetMismatch)
+            {
+                var current = await uploads.GetAsync(userId, deviceId, sessionId, cancellationToken);
+                if (current.IsSuccess)
+                {
+                    context.Response.Headers["Upload-Offset"] =
+                        current.Value!.NextOffset.ToString(CultureInfo.InvariantCulture);
+                }
+            }
+
+            return TransferError(result.Failure!, context, uploadOptions);
+        }
+
+        context.Response.Headers["Upload-Offset"] = result.Value!.NextOffset.ToString(CultureInfo.InvariantCulture);
+        return Results.Ok(result.Value);
+    });
+
+app.MapPost(
+    "/api/v1/upload-sessions/{sessionId:guid}/complete",
+    async (
+        Guid sessionId,
+        HttpContext context,
+        UploadSessionService uploads,
+        UploadSessionOptions uploadOptions,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await uploads.CompleteAsync(
+            userId,
+            deviceId,
+            sessionId,
+            context.TraceIdentifier,
+            cancellationToken);
+        return result.IsSuccess
+            ? Results.Ok(result.Value)
+            : TransferError(result.Failure!, context, uploadOptions);
+    });
+
+app.MapDelete(
+    "/api/v1/upload-sessions/{sessionId:guid}",
+    async (
+        Guid sessionId,
+        HttpContext context,
+        UploadSessionService uploads,
+        UploadSessionOptions uploadOptions,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await uploads.CancelAsync(
+            userId,
+            deviceId,
+            sessionId,
+            context.TraceIdentifier,
+            cancellationToken);
+        return result.IsSuccess
+            ? Results.NoContent()
+            : TransferError(result.Failure!, context, uploadOptions);
+    });
+
 app.MapGet(
     "/api/v1/files/{fileId:guid}/content",
     async (
@@ -526,11 +700,38 @@ static IResult ToFileHttpResult<T>(FileResult<T> result, HttpContext context)
         FileFailureKind.NotFound => StatusCodes.Status404NotFound,
         FileFailureKind.Conflict => StatusCodes.Status409Conflict,
         FileFailureKind.Unprocessable => StatusCodes.Status422UnprocessableEntity,
+        FileFailureKind.PayloadTooLarge => StatusCodes.Status413PayloadTooLarge,
+        FileFailureKind.TooManyRequests => StatusCodes.Status429TooManyRequests,
         FileFailureKind.StorageUnavailable => StatusCodes.Status503ServiceUnavailable,
         FileFailureKind.CapacityInsufficient => StatusCodes.Status507InsufficientStorage,
         _ => StatusCodes.Status500InternalServerError,
     };
     return Error(status, result.Failure.Code, context);
+}
+
+static IResult TransferError(
+    FileFailure failure,
+    HttpContext context,
+    UploadSessionOptions options)
+{
+    if (failure.Kind == FileFailureKind.TooManyRequests)
+    {
+        context.Response.Headers.RetryAfter = options.OverloadRetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+    }
+
+    var status = failure.Kind switch
+    {
+        FileFailureKind.BadRequest => StatusCodes.Status400BadRequest,
+        FileFailureKind.NotFound => StatusCodes.Status404NotFound,
+        FileFailureKind.Conflict => StatusCodes.Status409Conflict,
+        FileFailureKind.Unprocessable => StatusCodes.Status422UnprocessableEntity,
+        FileFailureKind.PayloadTooLarge => StatusCodes.Status413PayloadTooLarge,
+        FileFailureKind.TooManyRequests => StatusCodes.Status429TooManyRequests,
+        FileFailureKind.StorageUnavailable => StatusCodes.Status503ServiceUnavailable,
+        FileFailureKind.CapacityInsufficient => StatusCodes.Status507InsufficientStorage,
+        _ => StatusCodes.Status500InternalServerError,
+    };
+    return Error(status, failure.Code, context);
 }
 
 static async Task<IResult> HandleUploadAsync(
@@ -654,6 +855,13 @@ public sealed record RefreshRequest(Guid DeviceId, string? RefreshToken);
 public sealed record LogoutRequest(Guid DeviceId, string? RefreshToken);
 
 public sealed record CreateFolderRequest(Guid? ParentId, string? Name);
+
+public sealed record CreateUploadSessionRequest(
+    Guid DestinationFolderId,
+    string? FileName,
+    long Size,
+    string? ContentType,
+    string? Sha256);
 
 public sealed class UpdateFileRequest
 {

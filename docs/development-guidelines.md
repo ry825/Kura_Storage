@@ -32,6 +32,11 @@
 - MVPに必要なHost、Project、Android Module、DB Table、API、依存だけを追加する。Worker、Room、WorkManager、Media3、Coil、PDF、FFmpeg、Popplerを先行追加しない。
 - Uploadは`multipart/form-data`の単一File Partを逐次読み取り、Client、Nginx、APIで全体Bufferingしない。`Idempotency-Key`、期待Size、任意SHA-256を検証する。
 - Upload中断は同じKeyで先頭から全体再試行する。Chunk Uploadまたは中断位置からの再開をMVPへ混在させない。
+- Phase 1拡張のResumable Uploadは独立した`/api/v1/upload-sessions`契約とし、MVPのMultipart Endpointを変更しない。Sessionは認証ContextのUser・Deviceに紐付け、Client指定の物理Pathを受け取らない。
+- ChunkはRequest Bodyを一度だけStreamingし、宣言長、実長、連続Offset、範囲、SHA-256、上限を検証する。durable flush前にDB Offsetを進めず、失敗時は確定Offsetへtruncateする。
+- 同じ`Idempotency-Key`の作成再送はMetadata完全一致時だけ成功させる。最後のChunk再送もOffset、長さ、Checksumが一致する場合だけ冪等成功とする。
+- 期限判定はServer UTCを使い、照会で延長せず、Chunk成功時だけ絶対期限内で延長する。CleanupはDB候補のみをBatch処理し、Storage Root全走査を禁止する。
+- Testは状態遷移と期限境界、Chunk正常・重複・短長・Gap・Overlap・Checksum不一致、並行完了・取消・Cleanup、API再起動復旧、Migration Up/Down、不正Path・Device失効・パス非開示を必須とする。
 - HDD更新前に`FileOperation(PENDING)`を記録し、`FILESYSTEM_DONE`、`COMPLETED`へ進める。自動判定できない失敗は`RECOVERY_REQUIRED`とする。
 - AndroidのUpload元とDownload先はStorage Access Frameworkの`content://` URIとして扱い、物理Pathへの変換、全体ByteArray化、不要な永続権限取得を禁止する。
 - Trash・Restore・Rename・Moveの同名競合では既存項目を上書きしない。Permanent DeleteはMVP後とする。
