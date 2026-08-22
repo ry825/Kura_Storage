@@ -160,6 +160,62 @@ sudo --preserve-env=KURASTORAGE_STORAGE_MOUNT_PATH,KURASTORAGE_STORAGE_ROOT,KURA
 
 ## Upgrade and rollback
 
+### Resumable upload operations
+
+The Upload Session API is additive: older Android clients continue to use
+`POST /api/v1/files/upload`, while the new client requires the resumable
+endpoints and never silently falls back to whole-file upload. Apply the
+database migration and server release before distributing the matching
+Android APK.
+
+Before deployment or a destructive fault-injection test, back up PostgreSQL
+with `scripts/maintenance/backup-database.sh` and take a storage-root backup
+using [backup-recovery.md](backup-recovery.md). Do not include a production
+file name, device identifier, temporary path, token, or full checksum in a
+ticket or normal log.
+
+Inspect session state with aggregate, non-sensitive queries:
+
+```sql
+SELECT status, count(*)
+FROM upload_sessions
+GROUP BY status
+ORDER BY status;
+
+SELECT count(*) AS expired_active_sessions
+FROM upload_sessions
+WHERE status = 'ACTIVE' AND expires_at <= CURRENT_TIMESTAMP;
+```
+
+Use `kurastorage.upload.active_sessions`, `kurastorage.upload.sessions`,
+`kurastorage.upload.cleanup`, `kurastorage.upload.recovery`,
+`kurastorage.upload.chunks`, and `kurastorage.upload.failures` for routine
+monitoring. A client may safely retry a network failure,
+429, or temporary 503 with the same Session ID, Idempotency Key, and
+server-confirmed offset. An offset conflict must be followed by a Session GET;
+never force a client offset into the database. Expired, cancelled, revoked, or
+source-changed uploads require explicit user action and must not be silently
+recreated.
+
+For explicit cancellation, use the Android confirmation action or
+`DELETE /api/v1/upload-sessions/{sessionId}` as the owning authenticated
+device. Cleanup handles terminal-session temporary files idempotently. For a
+`RECOVERY_REQUIRED` session, preserve the database and storage backup, stop
+new writes if storage integrity is uncertain, and restart the matching server
+release so startup recovery can reconcile known states. Do not edit
+`received_bytes`, remove a temporary file, or publish it manually.
+Startup Recovery and Cleanup finish before the API begins accepting HTTP
+requests. If startup remains unhealthy, inspect the service journal and the
+storage/database prerequisites instead of bypassing that gate.
+
+Before rolling back to a release without Upload Session support, ensure no
+rows are `ACTIVE`, `COMPLETING`, or `RECOVERY_REQUIRED`. Cancel active sessions
+with the owning clients, allow terminal cleanup to finish, and resolve
+recovery-required sessions on the current release. `rollback.sh` enforces this
+check in addition to unfinished purge journals. If the old release cannot read
+the newer schema, restore the reviewed PostgreSQL and storage-root backup as a
+matched pair; never roll back only one side.
+
 Before an upgrade or rollback that includes the permanent-delete migration,
 take PostgreSQL and Storage Root backups, stop the Worker, and inspect unresolved purge journals without selecting file names
 or paths:

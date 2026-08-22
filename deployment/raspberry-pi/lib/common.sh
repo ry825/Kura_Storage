@@ -240,6 +240,13 @@ verify_storage_mount() {
         die "Storage root GID does not match the API group."
 }
 
+ensure_upload_session_storage() {
+    install -d -m 0770 \
+        -o "${KURASTORAGE_STORAGE_UID}" \
+        -g "${KURASTORAGE_STORAGE_GID}" \
+        "${KURASTORAGE_STORAGE_ROOT}/upload-sessions"
+}
+
 set_storage_owner_variables() {
     KURASTORAGE_STORAGE_UID="$(id -u kurastorage-api)"
     KURASTORAGE_STORAGE_GID="$(getent group "${KURASTORAGE_STORAGE_ACCESS_GROUP}" | cut -d: -f3)"
@@ -354,6 +361,16 @@ verify_no_unfinished_purges() {
         tr -d '[:space:]')"
     [[ "${unfinished}" == "0" ]] ||
         die "Rollback is blocked while unfinished PURGE operations exist."
+}
+
+verify_no_unfinished_upload_sessions() {
+    local unfinished
+    unfinished="$(runuser -u postgres -- psql --no-psqlrc --tuples-only \
+        --dbname="${KURASTORAGE_POSTGRES_DATABASE}" --command \
+        "SELECT count(*) FROM upload_sessions WHERE status IN ('ACTIVE', 'COMPLETING', 'RECOVERY_REQUIRED');" |
+        tr -d '[:space:]')"
+    [[ "${unfinished}" == "0" ]] ||
+        die "Rollback is blocked while resumable upload sessions require the current server."
 }
 
 activate_release() {

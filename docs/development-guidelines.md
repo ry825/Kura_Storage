@@ -39,6 +39,7 @@
 - Testは状態遷移と期限境界、Chunk正常・重複・短長・Gap・Overlap・Checksum不一致、並行完了・取消・Cleanup、API再起動復旧、Migration Up/Down、不正Path・Device失効・パス非開示を必須とする。
 - HDD更新前に`FileOperation(PENDING)`を記録し、`FILESYSTEM_DONE`、`COMPLETED`へ進める。自動判定できない失敗は`RECOVERY_REQUIRED`とする。
 - AndroidのUpload元とDownload先はStorage Access Frameworkの`content://` URIとして扱い、物理Pathへの変換、全体ByteArray化、不要な永続権限取得を禁止する。
+- AndroidのResumable UploadはServer確定Offsetだけを進捗の正とし、401更新や通信結果不明後も同じSession、Idempotency Key、Offset、Chunk内容を維持する。明示取消だけがSession取消APIを呼び、Coroutine Cancellationを取消と推測しない。
 - Trash・Restore・Rename・Moveの同名競合では既存項目を上書きしない。Permanent DeleteはMVP後とする。
 - Rename・Moveは`PATCH /api/v1/files/{fileId}`で一方だけを受け付け、Clientから物理Pathを受け取らない。同じ正規化済み名前または同じ親への再実行は副作用のない成功とする。
 - Rename・Move・Trash・Restoreは、対象・source親・target親のGUIDから導出したPostgreSQL advisory lockを昇順に取得する。Recoveryも同じ規則を使い、全終了経路でlockを解放する。

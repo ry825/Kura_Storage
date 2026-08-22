@@ -62,7 +62,22 @@ data class UploadOperation(
     val contentType: String?,
     val sha256: String? = null,
     val idempotencyKey: String,
+    val sessionId: String? = null,
+    val confirmedOffset: Long = 0,
+    val expiresAt: Instant? = null,
+    val state: UploadState = UploadState.PREPARING,
 )
+
+enum class UploadState {
+    PREPARING,
+    CREATING_SESSION,
+    UPLOADING,
+    PAUSED,
+    VERIFYING,
+    COMPLETED,
+    CANCELLED,
+    FAILED,
+}
 
 data class DownloadOperation(
     val file: FileEntry,
@@ -77,6 +92,12 @@ sealed interface TransferEvent {
 
     data class UploadCompleted(
         val file: FileEntry,
+    ) : TransferEvent
+
+    data class UploadStatus(
+        val operation: UploadOperation,
+        val message: String? = null,
+        val canRetry: Boolean = false,
     ) : TransferEvent
 
     data class DownloadCompleted(

@@ -15,6 +15,8 @@ set_storage_owner_variables
 verify_storage_mount
 verify_storage_identity_file "${KURASTORAGE_STORAGE_ROOT}/.storage-identity" ||
     die "Storage identity mismatch."
+[[ -d "${KURASTORAGE_STORAGE_ROOT}/upload-sessions" ]] ||
+    die "Resumable upload temporary directory is unavailable."
 systemctl is-active --quiet postgresql.service
 systemctl is-active --quiet kurastorage-api.service
 systemctl is-active --quiet nginx.service
@@ -55,5 +57,6 @@ for _ in {1..60}; do
 done
 grep -q '"api":"AVAILABLE"' <<<"${health_json}" || die "API health is unavailable."
 grep -q '"storage":"AVAILABLE"' <<<"${health_json}" || die "Storage health is unavailable."
+grep -q '"protocolVersion":1' <<<"${health_json}" || die "Unexpected API protocol version."
 
 printf 'KuraStorage deployment verified: %s\n' "${KURASTORAGE_VERSION}"

@@ -1,5 +1,6 @@
 package com.kurastorage.feature.files
 
+import android.view.KeyEvent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -19,12 +21,16 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
+import androidx.test.platform.app.InstrumentationRegistry
 import com.kurastorage.core.model.AdminStorageStatus
 import com.kurastorage.core.model.ErrorCategory
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
+import com.kurastorage.core.model.TransferEvent
+import com.kurastorage.core.model.UploadOperation
+import com.kurastorage.core.model.UploadState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -128,6 +134,118 @@ class FileBrowserScreenTest {
         compose.onNodeWithText("Delete permanently").assertIsDisplayed()
         compose.onNodeWithText("Restore").performClick()
         compose.onNodeWithText("Restore this item?").assertIsDisplayed()
+    }
+
+    @Test
+    fun pausedUploadShowsConfirmedProgressResumeAndCancelConfirmation() {
+        var retried = false
+        var cancelled = false
+        val operation =
+            UploadOperation(
+                "content://video",
+                "root",
+                "a-very-long-video-file-name.mp4",
+                10,
+                "video/mp4",
+                "a".repeat(64),
+                "key",
+                "session",
+                4,
+                Instant.parse("2026-08-23T00:00:00Z"),
+                UploadState.PAUSED,
+            )
+        compose.setContent {
+            FileBrowserScreen(
+                state =
+                    FileBrowserState(
+                        loading = false,
+                        transfer = TransferEvent.UploadStatus(operation, "Connection interrupted", canRetry = true),
+                    ),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = { cancelled = true },
+                onRetryTransfer = { retried = true },
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("4 / 10 bytes").assertIsDisplayed()
+        compose.onNodeWithText("a-very-long-video-file-name.mp4").assertIsDisplayed()
+        compose.onNodeWithTag("resume-upload").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(true, retried) }
+        compose.onNodeWithTag("cancel-upload").performClick()
+        compose.onNodeWithText("Cancel upload?").assertIsDisplayed()
+        compose.onNodeWithTag("confirm-cancel-upload").performClick()
+        compose.runOnIdle { assertEquals(true, cancelled) }
+    }
+
+    @Test
+    fun uploadProgressHandlesZeroAndCompleteBoundariesAndBackDismissesCancellation() {
+        var operation by
+            mutableStateOf(
+                UploadOperation(
+                    "content://empty",
+                    "root",
+                    "empty-file-with-a-name-that-must-remain-accessible.bin",
+                    0,
+                    "application/octet-stream",
+                    "a".repeat(64),
+                    "key",
+                    "session",
+                    0,
+                    Instant.parse("2026-08-23T00:00:00Z"),
+                    UploadState.PAUSED,
+                ),
+            )
+        compose.setContent {
+            FileBrowserScreen(
+                state =
+                    FileBrowserState(
+                        loading = false,
+                        transfer = TransferEvent.UploadStatus(operation, canRetry = true),
+                    ),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("0 / 0 bytes").assertIsDisplayed()
+        compose.onNodeWithText(operation.fileName).assertIsDisplayed()
+        compose.onNodeWithTag("cancel-upload").performClick()
+        compose.onNodeWithText("Cancel upload?").assertIsDisplayed()
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+        compose.onAllNodesWithText("Cancel upload?").assertCountEquals(0)
+
+        compose.runOnIdle {
+            operation = operation.copy(size = 10, confirmedOffset = 10, state = UploadState.COMPLETED)
+        }
+        compose.onNodeWithText("10 / 10 bytes").assertIsDisplayed()
+        compose.onNodeWithText("Upload completed").assertIsDisplayed()
+        compose.onAllNodesWithTag("cancel-upload").assertCountEquals(0)
     }
 
     @Test

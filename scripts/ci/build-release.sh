@@ -46,8 +46,9 @@ done
     printf 'Android release builds require JDK 17.\n' >&2
     exit 2
 }
-apksigner_binary="${ANDROID_SDK_ROOT}/build-tools/35.0.0/apksigner"
-apkanalyzer_binary="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/apkanalyzer"
+android_sdk_root="${ANDROID_SDK_ROOT}"
+apksigner_binary="${android_sdk_root}/build-tools/35.0.0/apksigner"
+apkanalyzer_binary="${android_sdk_root}/cmdline-tools/latest/bin/apkanalyzer"
 [[ -x "${apksigner_binary}" && -x "${apkanalyzer_binary}" ]] || {
     printf 'Android SDK build-tools 35.0.0 and cmdline-tools are required.\n' >&2
     exit 2
@@ -66,10 +67,12 @@ command -v openssl >/dev/null 2>&1 || {
     printf 'OpenSSL is required to validate the public Root CA certificate.\n' >&2
     exit 2
 }
+root_ca_text="$(openssl x509 -in "${KURASTORAGE_ROOT_CA_CERTIFICATE}" -noout -text 2>/dev/null)" || {
+    printf 'Root CA input must be a readable public certificate.\n' >&2
+    exit 2
+}
 if grep -q 'PRIVATE KEY' "${KURASTORAGE_ROOT_CA_CERTIFICATE}" ||
-    ! openssl x509 -in "${KURASTORAGE_ROOT_CA_CERTIFICATE}" -noout >/dev/null 2>&1 ||
-    ! openssl x509 -in "${KURASTORAGE_ROOT_CA_CERTIFICATE}" -noout -text |
-        grep -q 'CA:TRUE' ||
+    ! grep -q 'CA:TRUE' <<<"${root_ca_text}" ||
     ! openssl x509 -in "${KURASTORAGE_ROOT_CA_CERTIFICATE}" -noout -checkend 2592000; then
     printf 'Root CA input must be a public CA certificate valid for at least 30 days.\n' >&2
     exit 2
@@ -80,6 +83,9 @@ staging_directory="$(mktemp -d)"
 trap 'rm -rf "${server_publish}" "${staging_directory}"' EXIT
 mkdir -p "${output_directory}"
 
+# The .NET SDK can treat ANDROID_SDK_ROOT as a workload resolver input and
+# terminate solution restore without diagnostics on hosts without that workload.
+unset ANDROID_HOME ANDROID_SDK_ROOT
 dotnet restore "${repository_root}/server/KuraStorage.sln" --locked-mode
 dotnet publish \
     "${repository_root}/server/src/KuraStorage.Api/KuraStorage.Api.csproj" \
@@ -129,6 +135,7 @@ tar --create --gzip \
     --directory "${staging_directory}" .
 
 version_code="${KURASTORAGE_ANDROID_VERSION_CODE:-1}"
+export ANDROID_SDK_ROOT="${android_sdk_root}"
 (
     cd "${repository_root}/apps/android"
     ./gradlew --no-daemon --no-configuration-cache --stacktrace \

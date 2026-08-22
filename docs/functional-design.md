@@ -1842,7 +1842,7 @@ APIは容量と名前を検証して`FileOperation(PENDING)`を作成し、HDD�
 
 #### Phase 1拡張: Resumable Chunk Upload
 
-初期MVPの全体再試行契約は履歴として維持し、`POST /api/v1/files/upload`も変更しない。Phase 1拡張では、同じ認証Deviceからの中断再開を次の独立契約で追加する。Webアプリと自動バックアップは将来このServer契約を再利用するが、現時点ではClient実装を追加しない。
+初期MVPの全体再試行契約は履歴として維持し、`POST /api/v1/files/upload`も変更しない。Phase 1拡張では、同じ認証Deviceからの中断再開を次の独立契約で追加し、Androidの手動アップロードで利用する。Webアプリと自動バックアップは将来このServer契約を再利用するが、Web UIと自動バックアップ本体は現時点では追加しない。
 
 | Endpoint | 用途 | 成功 |
 | --- | --- | --- |
@@ -1856,7 +1856,11 @@ Sessionは`ACTIVE`、`COMPLETING`、`COMPLETED`、`CANCELLED`、`EXPIRED`、`REC
 
 Chunkは`application/octet-stream`、`Content-Length`、`Upload-Offset`、`X-Chunk-Sha256`を必須とし、現在の`receivedBytes`と連続するOffsetだけを受け付ける。通常Chunkは256 KiB以上、推奨4 MiB、上限8 MiBとし、最終Chunkだけ下限未満を許可する。最後に確定したOffset・長さ・Checksumの完全一致再送は冪等成功、それ以外のGap、Overlap、順不同、変更再送は`409 UPLOAD_OFFSET_MISMATCH`、Checksum不一致は`422 CHUNK_CHECKSUM_MISMATCH`とする。成功Chunkだけがidle期限を24時間延長し、作成から7日の絶対期限を超えない。照会は期限を延長しない。
 
+AndroidはSAFの`content://` URIをStreaming走査して全体SHA-256とSizeを検証し、最大1 ChunkだけをMemoryへ保持する。通信結果不明、401更新、429、一時503、Offset競合ではSessionを再照会し、Serverの`nextOffset`から同じSessionとIdempotency Keyで再開する。期限切れ、取消、Device失効、Source権限喪失、Source変更では新Sessionを暗黙作成せず、利用者へ最初からの開始または再選択を求める。Process終了をまたぐ永続Queue、Room、WorkManagerはこの拡張に含めない。
+
 完了は受信済みByte、実ファイル長、任意の全体SHA-256を再検証する。検証後、既存`FileOperation`規則で`PENDING`、同一Filesystemのatomic rename、`FILESYSTEM_DONE`、FileEntry・監査・Session完了・`COMPLETED`を確定する。完了再送は同じFileEntryを返す。公開Errorは共通形式を使い、入力不正`400`、非開示`404`、状態・Offset競合`409`、上限`413`、検証不一致`422`、資源上限`429`と`Retry-After`、Storage未利用`503`、容量不足`507`を返す。
+
+起動時のSession RecoveryとCleanupはHTTP受付開始前に完了させる。定期実行を含む候補照会はEF Coreで追跡せず、各Sessionのadvisory lock取得後にDBの権威状態を再読込してからOffset照合・truncate・期限判定を行う。
 
 ### 8.9 ファイル操作
 

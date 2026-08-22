@@ -14,6 +14,7 @@ import com.kurastorage.core.model.FilePage
 import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadOperation
+import com.kurastorage.core.model.UploadState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -134,7 +135,67 @@ class FileBrowserViewModelTest {
 
             cancellableViewModel.cancelTransfer()
 
-            assertNull(cancellableViewModel.state.value.transfer)
+            assertEquals(
+                UploadState.CANCELLED,
+                (cancellableViewModel.state.value.transfer as TransferEvent.UploadStatus).operation.state,
+            )
+        }
+
+    @Test
+    fun `paused upload retry keeps authoritative session offset and double start is ignored`() =
+        runTest(dispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            val transfers =
+                FakeTransfers { operation, attempt ->
+                    if (attempt == 1) {
+                        flow {
+                            emit(
+                                TransferEvent.UploadStatus(
+                                    operation.copy(
+                                        sessionId = "session",
+                                        confirmedOffset = 4,
+                                        state = UploadState.PAUSED,
+                                    ),
+                                    "Connection interrupted",
+                                    canRetry = true,
+                                ),
+                            )
+                            gate.await()
+                        }
+                    } else {
+                        flowOf(TransferEvent.UploadCompleted(file("uploaded")))
+                    }
+                }
+            val viewModel = FileBrowserViewModel(FakeFiles(), transfers)
+
+            viewModel.startUpload("content://source", "video.mp4", 10, "video/mp4")
+            viewModel.startUpload("content://other", "other.mp4", 10, "video/mp4")
+            assertEquals(1, transfers.uploads.size)
+            gate.complete(Unit)
+            viewModel.retryTransfer()
+
+            assertEquals("session", transfers.uploads.last().sessionId)
+            assertEquals(4, transfers.uploads.last().confirmedOffset)
+            assertEquals(transfers.uploads.first().idempotencyKey, transfers.uploads.last().idempotencyKey)
+        }
+
+    @Test
+    fun `completed upload refreshes listing and a different selection starts a new identity`() =
+        runTest(dispatcher) {
+            val files = FakeFiles()
+            val transfers = FakeTransfers()
+            val viewModel = FileBrowserViewModel(files, transfers)
+            val initialListCalls = files.listCalls
+
+            viewModel.startUpload("content://first", "first.txt", 5, "text/plain")
+            viewModel.startUpload("content://second", "second.txt", 6, "text/plain")
+
+            assertEquals(initialListCalls + 2, files.listCalls)
+            assertEquals(2, transfers.uploads.size)
+            assertEquals(listOf("content://first", "content://second"), transfers.uploads.map { it.sourceUri })
+            assertFalse(transfers.uploads.first().idempotencyKey == transfers.uploads.last().idempotencyKey)
+            assertNull(transfers.uploads.last().sessionId)
+            assertEquals(0, transfers.uploads.last().confirmedOffset)
         }
 
     @Test
@@ -483,11 +544,14 @@ class FileBrowserViewModelTest {
         private val empty: Boolean = false,
         private var failNext: Boolean = false,
     ) : FileRepository {
+        var listCalls = 0
+
         override suspend fun list(
             parentId: String?,
             page: Int,
             pageSize: Int,
         ): FilePage {
+            listCalls++
             if (failNext) {
                 failNext = false
                 throw KuraStorageException.Api(
@@ -531,6 +595,8 @@ class FileBrowserViewModelTest {
         },
     ) : TransferRepository {
         val uploads = mutableListOf<UploadOperation>()
+        val cancellations = mutableListOf<UploadOperation>()
+        private var newUploadCount = 0
 
         override fun newUpload(
             sourceUri: String,
@@ -538,7 +604,17 @@ class FileBrowserViewModelTest {
             fileName: String,
             size: Long,
             contentType: String?,
-        ) = UploadOperation(sourceUri, destinationFolderId, fileName, size, contentType, idempotencyKey = "key")
+        ): UploadOperation {
+            newUploadCount++
+            return UploadOperation(
+                sourceUri,
+                destinationFolderId,
+                fileName,
+                size,
+                contentType,
+                idempotencyKey = "key-$newUploadCount",
+            )
+        }
 
         override fun upload(operation: UploadOperation): Flow<TransferEvent> {
             uploads += operation
@@ -547,6 +623,10 @@ class FileBrowserViewModelTest {
 
         override fun download(operation: DownloadOperation): Flow<TransferEvent> =
             flowOf(TransferEvent.DownloadCompleted(operation.destinationUri))
+
+        override suspend fun cancelUpload(operation: UploadOperation) {
+            cancellations += operation
+        }
 
         override fun openDownloadedFile(
             destinationUri: String,

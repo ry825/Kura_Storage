@@ -22,6 +22,7 @@ import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -118,6 +119,37 @@ interface AdminStorageApi {
     suspend fun getAdminStorage(accessToken: String): NetworkCallResult<AdminStorageStatusDto>
 }
 
+interface UploadSessionApi {
+    suspend fun createUploadSession(
+        accessToken: String,
+        idempotencyKey: String,
+        request: CreateUploadSessionRequestDto,
+    ): NetworkCallResult<UploadSessionDto>
+
+    suspend fun getUploadSession(
+        accessToken: String,
+        sessionId: String,
+    ): NetworkCallResult<UploadSessionDto>
+
+    suspend fun uploadChunk(
+        accessToken: String,
+        sessionId: String,
+        offset: Long,
+        sha256: String,
+        body: RequestBody,
+    ): NetworkCallResult<UploadChunkDto>
+
+    suspend fun completeUploadSession(
+        accessToken: String,
+        sessionId: String,
+    ): NetworkCallResult<FileEntryDto>
+
+    suspend fun cancelUploadSession(
+        accessToken: String,
+        sessionId: String,
+    ): NetworkCallResult<Unit>
+}
+
 @Suppress("TooManyFunctions")
 private interface KuraStorageService {
     @GET("system/health")
@@ -202,6 +234,40 @@ private interface KuraStorageService {
         @Header("Authorization") authorization: String,
     ): Response<AdminStorageStatusDto>
 
+    @POST("upload-sessions")
+    suspend fun createUploadSession(
+        @Header("Authorization") authorization: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body request: CreateUploadSessionRequestDto,
+    ): Response<UploadSessionDto>
+
+    @GET("upload-sessions/{sessionId}")
+    suspend fun getUploadSession(
+        @Header("Authorization") authorization: String,
+        @Path("sessionId") sessionId: String,
+    ): Response<UploadSessionDto>
+
+    @PUT("upload-sessions/{sessionId}/chunks")
+    suspend fun uploadChunk(
+        @Header("Authorization") authorization: String,
+        @Path("sessionId") sessionId: String,
+        @Header("Upload-Offset") offset: Long,
+        @Header("X-Chunk-Sha256") sha256: String,
+        @Body body: RequestBody,
+    ): Response<UploadChunkDto>
+
+    @POST("upload-sessions/{sessionId}/complete")
+    suspend fun completeUploadSession(
+        @Header("Authorization") authorization: String,
+        @Path("sessionId") sessionId: String,
+    ): Response<FileEntryDto>
+
+    @DELETE("upload-sessions/{sessionId}")
+    suspend fun cancelUploadSession(
+        @Header("Authorization") authorization: String,
+        @Path("sessionId") sessionId: String,
+    ): Response<Unit>
+
     @Suppress("LongParameterList")
     @Multipart
     @POST("files/upload")
@@ -231,7 +297,8 @@ class KuraStorageApi(
     private val json: Json = Json { ignoreUnknownKeys = false },
 ) : AuthenticationApi,
     FileApi,
-    AdminStorageApi {
+    AdminStorageApi,
+    UploadSessionApi {
     private val service =
         Retrofit
             .Builder()
@@ -307,6 +374,35 @@ class KuraStorageApi(
             service.getAdminStorage(bearer(accessToken))
         }
 
+    override suspend fun createUploadSession(
+        accessToken: String,
+        idempotencyKey: String,
+        request: CreateUploadSessionRequestDto,
+    ) = executeAuthenticated { service.createUploadSession(bearer(accessToken), idempotencyKey, request) }
+
+    override suspend fun getUploadSession(
+        accessToken: String,
+        sessionId: String,
+    ) = executeAuthenticated { service.getUploadSession(bearer(accessToken), sessionId) }
+
+    override suspend fun uploadChunk(
+        accessToken: String,
+        sessionId: String,
+        offset: Long,
+        sha256: String,
+        body: RequestBody,
+    ) = executeAuthenticated { service.uploadChunk(bearer(accessToken), sessionId, offset, sha256, body) }
+
+    override suspend fun completeUploadSession(
+        accessToken: String,
+        sessionId: String,
+    ) = executeAuthenticated { service.completeUploadSession(bearer(accessToken), sessionId) }
+
+    override suspend fun cancelUploadSession(
+        accessToken: String,
+        sessionId: String,
+    ) = executeAuthenticatedNoContent { service.cancelUploadSession(bearer(accessToken), sessionId) }
+
     @Suppress("LongParameterList")
     override suspend fun upload(
         accessToken: String,
@@ -340,7 +436,7 @@ class KuraStorageApi(
             try {
                 val response = call()
                 if (!response.isSuccessful) {
-                    throw apiException(response.code(), response.errorBody()?.string().orEmpty())
+                    throw apiException(response.code(), response.errorBody()?.string().orEmpty(), response.headers())
                 }
                 response.body() ?: throw SerializationException("Successful API response had no body")
             } catch (error: KuraStorageException) {
@@ -359,7 +455,7 @@ class KuraStorageApi(
             try {
                 val response = call()
                 if (!response.isSuccessful) {
-                    throw apiException(response.code(), response.errorBody()?.string().orEmpty())
+                    throw apiException(response.code(), response.errorBody()?.string().orEmpty(), response.headers())
                 }
             } catch (error: KuraStorageException) {
                 throw error
@@ -376,7 +472,7 @@ class KuraStorageApi(
                 val response = call()
                 if (response.code() == HTTP_UNAUTHORIZED) return@withContext NetworkCallResult.Unauthorized
                 if (!response.isSuccessful) {
-                    throw apiException(response.code(), response.errorBody()?.string().orEmpty())
+                    throw apiException(response.code(), response.errorBody()?.string().orEmpty(), response.headers())
                 }
                 NetworkCallResult.Success(
                     response.body() ?: throw SerializationException("Successful API response had no body"),
@@ -394,7 +490,7 @@ class KuraStorageApi(
                 val response = call()
                 if (response.code() == HTTP_UNAUTHORIZED) return@withContext NetworkCallResult.Unauthorized
                 if (!response.isSuccessful) {
-                    throw apiException(response.code(), response.errorBody()?.string().orEmpty())
+                    throw apiException(response.code(), response.errorBody()?.string().orEmpty(), response.headers())
                 }
                 NetworkCallResult.Success(Unit)
             } catch (error: KuraStorageException) {
@@ -409,10 +505,19 @@ class KuraStorageApi(
     private fun apiException(
         statusCode: Int,
         body: String,
+        headers: okhttp3.Headers = okhttp3.Headers.headersOf(),
     ): KuraStorageException.Api {
         val response = runCatching { json.decodeFromString<ErrorResponseDto>(body) }.getOrNull()
         val code = response?.code?.let { runCatching { ErrorCode.valueOf(it) }.getOrNull() } ?: ErrorCode.UNKNOWN
-        return KuraStorageException.Api(ApiError(code, response?.requestId, statusCode))
+        return KuraStorageException.Api(
+            ApiError(
+                code,
+                response?.requestId,
+                statusCode,
+                headers["Retry-After"]?.toLongOrNull(),
+                headers["Upload-Offset"]?.toLongOrNull(),
+            ),
+        )
     }
 
     private companion object {

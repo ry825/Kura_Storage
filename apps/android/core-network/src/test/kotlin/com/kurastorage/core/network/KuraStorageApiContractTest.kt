@@ -4,6 +4,7 @@ import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.KuraStorageException
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -224,6 +225,137 @@ class KuraStorageApiContractTest {
             assertNull(unavailable.value.lastPurgeRun)
         }
 
+    @Test
+    fun `upload session endpoints preserve idempotency offset checksum and binary body`() =
+        runTest {
+            server.enqueue(jsonResponse(UPLOAD_SESSION_RESPONSE).setResponseCode(201))
+            server.enqueue(jsonResponse(UPLOAD_SESSION_RESPONSE))
+            server.enqueue(
+                jsonResponse(UPLOAD_CHUNK_RESPONSE),
+            )
+            server.enqueue(jsonResponse(resource("file-entry-response.json")))
+            server.enqueue(MockResponse().setResponseCode(204))
+
+            val created =
+                api.createUploadSession(
+                    "token",
+                    IDEMPOTENCY_KEY,
+                    CreateUploadSessionRequestDto(DEVICE_ID, "video.mp4", "video/mp4", 5, SHA256),
+                ) as NetworkCallResult.Success
+            val create = server.takeRequest()
+            assertEquals("POST", create.method)
+            assertEquals("/api/v1/upload-sessions", create.path)
+            assertEquals(IDEMPOTENCY_KEY, create.getHeader("Idempotency-Key"))
+            assertEquals(
+                compactJson(
+                    """
+                    {"destinationFolderId":"$DEVICE_ID","fileName":"video.mp4","contentType":"video/mp4",
+                    "size":5,"sha256":"$SHA256"}
+                    """.trimIndent(),
+                ),
+                compactJson(create.body.readUtf8()),
+            )
+            assertEquals(4_194_304, created.value.preferredChunkBytes)
+            assertEquals(8_388_608, created.value.maximumChunkBytes)
+            assertEquals("2026-08-29T00:00:00Z", created.value.absoluteExpiresAt)
+            assertTrue(created.value.resumable)
+
+            api.getUploadSession("token", DEVICE_ID)
+            assertEquals("/api/v1/upload-sessions/$DEVICE_ID", server.takeRequest().path)
+
+            api.uploadChunk("token", DEVICE_ID, 0, SHA256, "hello".toRequestBody())
+            val chunk = server.takeRequest()
+            assertEquals("PUT", chunk.method)
+            assertEquals("0", chunk.getHeader("Upload-Offset"))
+            assertEquals(SHA256, chunk.getHeader("X-Chunk-Sha256"))
+            assertEquals("hello", chunk.body.readUtf8())
+
+            api.completeUploadSession("token", DEVICE_ID)
+            assertEquals("POST", server.takeRequest().method)
+            api.cancelUploadSession("token", DEVICE_ID)
+            assertEquals("DELETE", server.takeRequest().method)
+        }
+
+    @Test
+    fun `upload retry headers are preserved on structured error`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(429)
+                    .setHeader("Content-Type", "application/json")
+                    .setHeader("Retry-After", "7")
+                    .setHeader("Upload-Offset", "4194304")
+                    .setBody(UPLOAD_LIMIT_ERROR),
+            )
+
+            val error =
+                runCatching { api.getUploadSession("token", DEVICE_ID) }.exceptionOrNull()
+                    as KuraStorageException.Api
+
+            assertEquals(ErrorCode.UPLOAD_LIMIT_REACHED, error.error.code)
+            assertEquals(7L, error.error.retryAfterSeconds)
+            assertEquals(4194304L, error.error.uploadOffset)
+            assertTrue(error.error.canRetry)
+        }
+
+    @Test
+    fun `upload session errors preserve every stable upload error code`() =
+        runTest {
+            val expected =
+                listOf(
+                    ErrorCode.IDEMPOTENCY_CONFLICT,
+                    ErrorCode.UPLOAD_SIZE_MISMATCH,
+                    ErrorCode.UPLOAD_CHECKSUM_MISMATCH,
+                    ErrorCode.UPLOAD_SESSION_NOT_FOUND,
+                    ErrorCode.UPLOAD_OFFSET_MISMATCH,
+                    ErrorCode.UPLOAD_INCOMPLETE,
+                    ErrorCode.UPLOAD_SESSION_EXPIRED,
+                    ErrorCode.UPLOAD_SESSION_CANCELLED,
+                    ErrorCode.UPLOAD_SESSION_COMPLETED,
+                    ErrorCode.CHUNK_SIZE_LIMIT_EXCEEDED,
+                    ErrorCode.FILE_SIZE_LIMIT_EXCEEDED,
+                    ErrorCode.CHUNK_CHECKSUM_MISMATCH,
+                    ErrorCode.UPLOAD_LIMIT_REACHED,
+                    ErrorCode.STORAGE_CAPACITY_INSUFFICIENT,
+                    ErrorCode.STORAGE_UNAVAILABLE,
+                    ErrorCode.RECOVERY_REQUIRED,
+                    ErrorCode.DEVICE_REVOKED,
+                )
+            expected.forEach { code ->
+                val status =
+                    when (code) {
+                        ErrorCode.UPLOAD_SESSION_NOT_FOUND -> 404
+                        ErrorCode.CHUNK_SIZE_LIMIT_EXCEEDED,
+                        ErrorCode.FILE_SIZE_LIMIT_EXCEEDED,
+                        ErrorCode.CHUNK_CHECKSUM_MISMATCH,
+                        ErrorCode.UPLOAD_SIZE_MISMATCH,
+                        ErrorCode.UPLOAD_CHECKSUM_MISMATCH,
+                        -> 400
+                        ErrorCode.UPLOAD_LIMIT_REACHED -> 429
+                        ErrorCode.STORAGE_CAPACITY_INSUFFICIENT -> 507
+                        ErrorCode.STORAGE_UNAVAILABLE -> 503
+                        ErrorCode.DEVICE_REVOKED -> 403
+                        else -> 409
+                    }
+                server.enqueue(
+                    MockResponse()
+                        .setResponseCode(status)
+                        .setHeader("Content-Type", "application/json")
+                        .setBody(
+                            """{"code":"$code","message":"failed","requestId":"upload-error","details":{}}""",
+                        ),
+                )
+
+                val error =
+                    runCatching { api.getUploadSession("token", DEVICE_ID) }.exceptionOrNull()
+                        as KuraStorageException.Api
+
+                assertEquals(code, error.error.code)
+                assertEquals(status, error.error.statusCode)
+                assertEquals("upload-error", error.error.requestId)
+            }
+        }
+
     private fun resource(name: String) = checkNotNull(javaClass.classLoader?.getResource(name)).readText()
 
     private fun jsonResponse(body: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(body)
@@ -235,6 +367,23 @@ class KuraStorageApiContractTest {
         const val REFRESH_TOKEN = "refresh-token-with-more-than-thirty-two-characters"
         const val TARGET_PARENT_ID = "33333333-3333-3333-3333-333333333333"
         const val IDEMPOTENCY_KEY = "44444444-4444-4444-4444-444444444444"
+        const val TIME = "2026-08-23T00:00:00Z"
+        const val SHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        const val UPLOAD_SESSION_RESPONSE =
+            """
+            {"id":"$DEVICE_ID","status":"ACTIVE","size":5,"receivedBytes":0,"nextOffset":0,
+            "preferredChunkBytes":4194304,"maximumChunkBytes":8388608,"expiresAt":"$TIME",
+            "absoluteExpiresAt":"2026-08-29T00:00:00Z","resumable":true,"file":null}
+            """
+        const val UPLOAD_CHUNK_RESPONSE =
+            """
+            {"offset":0,"length":5,"sha256":"$SHA256","receivedBytes":5,"nextOffset":5,
+            "expiresAt":"$TIME","replayed":false}
+            """
+        const val UPLOAD_LIMIT_ERROR =
+            """
+            {"code":"UPLOAD_LIMIT_REACHED","message":"failed","requestId":"upload-request","details":{}}
+            """
         const val TOKEN_RESPONSE =
             """
             {"deviceId":"$DEVICE_ID","accessToken":"access-token","refreshToken":"$REFRESH_TOKEN",

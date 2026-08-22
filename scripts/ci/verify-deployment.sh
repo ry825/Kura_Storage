@@ -20,6 +20,10 @@ verify_systemd_unit() {
             printf '%s\n' "${output}" >&2
             exit 1
         fi
+        if grep -qF 'Unit postgresql.service not found' <<<"${output}"; then
+            printf 'systemd unit parsed; PostgreSQL service metadata is unavailable in this environment.\n'
+            return
+        fi
         grep -qE 'SO_PASSRIGHTS|SO_PASSCRED' <<<"${output}" || {
             printf '%s\n' "${output}" >&2
             exit 1
@@ -95,6 +99,9 @@ original_path="${PATH}"
 PATH="${fake_bin}:${PATH}"
 # shellcheck source=deployment/raspberry-pi/lib/common.sh
 source deployment/raspberry-pi/lib/common.sh
+ensure_upload_session_storage
+[[ -d "${KURASTORAGE_STORAGE_ROOT}/upload-sessions" ]]
+[[ "$(stat --format=%a "${KURASTORAGE_STORAGE_ROOT}/upload-sessions")" == "770" ]]
 configure_ufw_coexistence
 verify_ufw_coexistence
 remove_ufw_coexistence
@@ -126,12 +133,19 @@ with open(sys.argv[1], encoding="utf-8") as source:
     config = json.load(source)
 storage = config["Storage"]
 purge = config["TrashPurge"]
+upload = config["UploadSession"]
 log_levels = config["Logging"]["LogLevel"]
 assert storage["CapacityWarningFreeBytes"] >= storage["MinimumFreeBytes"] > 0
 assert purge["RetentionDays"] >= 30
 assert 1 <= purge["IntervalHours"] <= 168
 assert 1 <= purge["BatchSize"] <= 500
 assert 1 <= purge["RetryDelayMinutes"] <= 1440
+assert 262144 <= upload["PreferredChunkBytes"] <= upload["MaximumChunkBytes"]
+assert upload["MaximumChunkBytes"] == 8388608
+assert upload["IdleExpirationHours"] <= upload["AbsoluteExpirationHours"]
+assert 1 <= upload["CleanupBatchSize"] <= 500
+assert upload["MaximumActiveSessionsPerDevice"] <= upload["MaximumActiveSessionsPerUser"]
+assert 1 <= upload["MaximumConcurrentChunkWrites"] <= 16
 assert log_levels["Microsoft.AspNetCore.Http.Result.FileStreamResult"] == "Warning"
 PY
 
@@ -172,6 +186,8 @@ grep -q '^RestrictAddressFamilies=AF_UNIX$' "${validation_root}/kurastorage-work
 # shellcheck disable=SC2016
 grep -Fq '[[ -x "${INSTALL_ROOT}/current/KuraStorage.Worker" ]]' deployment/raspberry-pi/rollback.sh
 grep -Fq 'systemctl disable --now kurastorage-worker.service' deployment/raspberry-pi/rollback.sh
+grep -Fq 'verify_no_unfinished_upload_sessions' deployment/raspberry-pi/rollback.sh
+grep -Fq 'ensure_upload_session_storage' deployment/raspberry-pi/upgrade.sh
 # shellcheck disable=SC2016
 grep -Fq '[[ -x "${INSTALL_ROOT}/current/KuraStorage.Worker" ]]' deployment/raspberry-pi/verify.sh
 
@@ -248,6 +264,8 @@ http {
 }
 EOF
 nginx_output=""
+[[ "$(grep -c 'client_max_body_size 8m;' "${validation_root}/kurastorage-site.conf")" == "2" ]]
+[[ "$(grep -c 'proxy_request_buffering off;' "${validation_root}/kurastorage-site.conf")" -ge "2" ]]
 if ! nginx_output="$(nginx -t -p "${validation_root}" \
     -c "${validation_root}/nginx.conf" 2>&1)"; then
     if grep -q 'syntax is ok' <<<"${nginx_output}" &&
