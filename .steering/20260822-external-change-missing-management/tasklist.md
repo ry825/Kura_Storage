@@ -248,11 +248,11 @@
   - [x] Event Handlerが長時間I/OやDB処理を直接抱えず、boundedな処理境界になっている。
   - [x] systemd権限、sysctl、設定値が必要最小限で、秘密情報や実環境値を追跡していない。
   - [x] 検索、共有、派生データ本体を追加していない。
-- [ ] PR2を完了する。
-  - [ ] 2.1〜2.7のPR2対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR2を完了する。
+  - [x] 2.1〜2.7のPR2対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -387,15 +387,14 @@
 
 ### PR2: inotify追従・定期再スキャン・Worker運用
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
-
+- 完了日: 2026-08-22
+- Pull Request: [#17 Add external index watcher and rescan workers](https://github.com/ry825/Kura_Storage/pull/17)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-server.sh`（Domain 34件、Application 95件、Integration 75件、失敗0件）、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`./scripts/ci/verify-android.sh`（656タスク）、`dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`、`git diff --check`を実施し、すべて成功した。Pull RequestのGitHub Actions（Android、Config、Security、Server）もすべて成功した。
+- 手動確認・実機確認: 配置前のPostgreSQL・Storage Root Backupと復元可能性を確認し、Raspberry Pi 4と実exFAT HDDへMigration・Workerを配置した。外部作成・内容更新・Rename・Folder移動・削除・再発見、監視停止中の変更、Worker再起動、inotify overflow、HDD取外し・同一HDD再接続、PostgreSQL一時停止からの復旧を確認した。10,000件の再現可能な縮尺データでEvent収束、Dry-runのCPU・RSS・DB負荷・HDD I/Oを測定し、全件Scan中の一覧・Upload・Download内容一致・認証更新も成功した。測定結果は`docs/testing/20260822-external-indexing-e2e.md`へ記録し、専用試験データを削除して`Indexing.Enabled=false`、実行中Scan 0件、未完了FileOperation 0件、全Service activeを確認した。
+- 計画と実装の差分: 承認済みPR2範囲どおり、inotifyをHintとしてPR1の共通照合と全件Scanへ収束させた。実測で既定設定値を変更する必要はなく、PR3完了までは`Indexing.Enabled=false`を維持した。実機の`fs.inotify.max_user_watches=61621`は推奨65536未満のため、配置Scriptは自動変更せず警告し、運用文書へ測定に基づく変更手順を記載した。
+- 実装中に追加したタスクと理由: 実機のFolder移動で再配置後のwatchを`IN_MOVE_SELF`により失う問題を修正し、配下変更の回帰Testを追加した。10,000件試験でEvent追加とScan追加の一意制約競合、Worker中断後に残る`RUNNING` Scan、既存EntryごとのDB照会による負荷を検出したため、一意制約競合の再試行正規化、中断Runの`FAILED/WORKER_INTERRUPTED`回復、Path・Move候補・未完了操作のBatch照会とPostgreSQL回帰Testを追加した。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: PR #17のMergeとCI成功を確認してから最新`main`よりPR3 Branchを作成する。PR3でProtocol 2、MISSING API、索引削除、Android表示をまとめて配置するまでは`Indexing.Enabled=false`を維持する。本番有効化前に実Directory数と運用余裕を測定し、現在のwatch上限61621を推奨65536以上へレビュー済みsysctl設定で調整する。PR3実機回帰ではPR2の性能記録を基準に、既存Upload・Download・File操作と外部変更追従を再確認する。
 ### PR3: MISSING API・索引削除・Android表示と再確認
 
 - 完了日: 未完了
