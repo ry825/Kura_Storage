@@ -2,9 +2,11 @@ using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Identity;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
+using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Infrastructure.Configuration;
 using KuraStorage.Infrastructure.Identity;
+using KuraStorage.Infrastructure.Indexing;
 using KuraStorage.Infrastructure.Persistence;
 using KuraStorage.Infrastructure.Storage;
 using KuraStorage.Infrastructure.System;
@@ -74,6 +76,10 @@ public static class DependencyInjection
                     options.OverloadRetryAfterSeconds is >= 1 and <= 300,
                 "UploadSession resource limits are invalid.")
             .ValidateOnStart();
+        services.AddOptions<Configuration.IndexingOptions>()
+            .Bind(configuration.GetSection(Configuration.IndexingOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
 
         services.AddDbContext<KuraStorageDbContext>(
             (serviceProvider, options) =>
@@ -82,6 +88,9 @@ public static class DependencyInjection
         services.AddScoped<IIdentityRepository, IdentityRepository>();
         services.AddScoped<IFileRepository, FileRepository>();
         services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
+        services.AddScoped<IIndexCatalogRepository, IndexCatalogRepository>();
+        services.AddScoped<IIndexScanService, IndexScanService>();
+        services.AddSingleton<IIndexScanObserver, IndexScanLogObserver>();
         services.AddScoped<IdentityService>();
         services.AddScoped<FileService>();
         services.AddScoped<TrashPurgeService>();
@@ -107,12 +116,25 @@ public static class DependencyInjection
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
         services.AddSingleton<ISystemClock, SystemClock>();
         services.AddSingleton<IStorageGuard, StorageGuard>();
+        services.AddSingleton<IManagedFileSystemSnapshotReader, ManagedFileSystemSnapshotReader>();
         services.AddSingleton<IFileStore, FileStore>();
         services.AddSingleton<IUploadSessionStore>(
             serviceProvider => (IUploadSessionStore)serviceProvider.GetRequiredService<IFileStore>());
         services.AddSingleton(
             serviceProvider => serviceProvider.GetRequiredService<IOptions<UploadSessionOptions>>().Value);
         services.AddSingleton<UploadChunkLimiter>();
+        services.AddSingleton(
+            serviceProvider =>
+            {
+                var configured = serviceProvider.GetRequiredService<IOptions<Configuration.IndexingOptions>>().Value;
+                return new global::KuraStorage.Application.Indexing.IndexingOptions
+                {
+                    Enabled = configured.Enabled,
+                    BatchSize = configured.BatchSize,
+                    MissingConfirmationDelayMinutes = configured.MissingConfirmationDelayMinutes,
+                    StagingRetentionHours = configured.StagingRetentionHours,
+                };
+            });
         if (addFileRecoveryHostedService)
         {
             services.AddHostedService<FileRecoveryHostedService>();

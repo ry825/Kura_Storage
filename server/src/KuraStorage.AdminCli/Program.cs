@@ -1,6 +1,9 @@
 using KuraStorage.Application.Identity;
+using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Indexing;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Identity;
+using KuraStorage.Domain.Indexing;
 using KuraStorage.Infrastructure;
 using KuraStorage.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +20,7 @@ Usage:
   kurastorage-admin user unlock <username>
   kurastorage-admin device list <user-id>
   kurastorage-admin device revoke <user-id> <device-id>
+  kurastorage-admin index rescan [--dry-run]
   kurastorage-admin help
 
 Passwords are accepted only from standard input and are never accepted as command arguments.
@@ -51,8 +55,25 @@ try
         ["device", "list", var userId] => await ListDevicesAsync(scope.ServiceProvider, userId),
         ["device", "revoke", var userId, var deviceId] =>
             await RevokeDeviceAsync(scope.ServiceProvider, userId, deviceId),
+        ["index", "rescan"] => await RescanIndexAsync(scope.ServiceProvider, dryRun: false),
+        ["index", "rescan", "--dry-run"] => await RescanIndexAsync(scope.ServiceProvider, dryRun: true),
         _ => UnknownCommand(),
     };
+}
+catch (IndexScanAlreadyRunningException)
+{
+    Console.Error.WriteLine("Index scan failed: INDEX_SCAN_ALREADY_RUNNING");
+    return 3;
+}
+catch (IndexStorageUnavailableException)
+{
+    Console.Error.WriteLine("Index scan failed: STORAGE_UNAVAILABLE");
+    return 4;
+}
+catch (IndexSnapshotIncompleteException)
+{
+    Console.Error.WriteLine("Index scan failed: INDEX_SCAN_FAILED");
+    return 1;
 }
 catch (Exception exception) when (exception is ArgumentException or FormatException)
 {
@@ -144,6 +165,31 @@ static async Task<int> RevokeDeviceAsync(
     Console.WriteLine(revoked ? "Device revoked." : "Device was not found.");
     return revoked ? 0 : 1;
 }
+
+static async Task<int> RescanIndexAsync(IServiceProvider services, bool dryRun)
+{
+    var summary = await services.GetRequiredService<IIndexScanService>().RunAsync(
+        new IndexScanRequest(IndexScanTrigger.Admin, dryRun ? IndexScanMode.DryRun : IndexScanMode.Apply),
+        CancellationToken.None);
+    Console.WriteLine($"run_id={summary.RunId}");
+    Console.WriteLine($"status={StatusText(summary.Status)}");
+    Console.WriteLine($"enumerated={summary.EnumeratedCount}");
+    Console.WriteLine($"added={summary.AddedCount}");
+    Console.WriteLine($"updated={summary.UpdatedCount}");
+    Console.WriteLine($"moved={summary.MovedCount}");
+    Console.WriteLine($"candidate={summary.CandidateCount}");
+    Console.WriteLine($"missing={summary.MissingCount}");
+    Console.WriteLine($"revived={summary.RevivedCount}");
+    Console.WriteLine($"isolated={summary.IsolatedCount}");
+    Console.WriteLine($"errors={summary.ErrorCount}");
+    return summary.Status == IndexScanStatus.Completed ? 0 : 1;
+}
+
+static string StatusText(IndexScanStatus status) => status switch
+{
+    IndexScanStatus.CompletedWithWarnings => "COMPLETED_WITH_WARNINGS",
+    _ => status.ToString().ToUpperInvariant(),
+};
 
 static int UnknownCommand()
 {

@@ -134,6 +134,7 @@ with open(sys.argv[1], encoding="utf-8") as source:
 storage = config["Storage"]
 purge = config["TrashPurge"]
 upload = config["UploadSession"]
+indexing = config["Indexing"]
 log_levels = config["Logging"]["LogLevel"]
 assert storage["CapacityWarningFreeBytes"] >= storage["MinimumFreeBytes"] > 0
 assert purge["RetentionDays"] >= 30
@@ -146,6 +147,10 @@ assert upload["IdleExpirationHours"] <= upload["AbsoluteExpirationHours"]
 assert 1 <= upload["CleanupBatchSize"] <= 500
 assert upload["MaximumActiveSessionsPerDevice"] <= upload["MaximumActiveSessionsPerUser"]
 assert 1 <= upload["MaximumConcurrentChunkWrites"] <= 16
+assert indexing["Enabled"] is False
+assert 10 <= indexing["BatchSize"] <= 5000
+assert 1 <= indexing["MissingConfirmationDelayMinutes"] <= 1440
+assert 1 <= indexing["StagingRetentionHours"] <= 168
 assert log_levels["Microsoft.AspNetCore.Http.Result.FileStreamResult"] == "Warning"
 PY
 

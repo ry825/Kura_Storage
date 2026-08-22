@@ -873,9 +873,14 @@ sequenceDiagram
 ### 11.6 MVP後: `MISSING`判定
 
 - HDDが`AVAILABLE`の場合だけ個別ファイル不存在を評価する。
-- 初回不存在で`MISSING_CANDIDATE`へ変更する。
-- 別時刻の再確認でも存在しなければ`MISSING`へ変更する。
+- 全件Snapshotは`index_scan_items`へBatch保存し、列挙完走とStorage再確認後にだけDB索引へ適用する。DRY_RUNは専用Connectionの一時Tableを使い、`IndexScanRun`を含む永続変更を残さない。
+- 初回不存在でObservation ID、検出日時、最終確認日時を記録し、`MISSING_CANDIDATE`へ変更する。
+- 異なるObservationかつ5分以上後の再確認でも存在しなければ`MISSING`へ変更する。
 - HDD全体が未マウント・読取不可の場合はFileEntry状態を変更しない。
+- `FileEntry`の管理対象Pathと同名は`ACTIVE`、`MISSING_CANDIDATE`、`MISSING`を通じて一意にし、同じPathの再発見は新規行ではなく既存IDの復帰として扱う。
+- 補助同一性KeyはLinuxのdevice・inodeから生成するが、Owner、種類、Size、mtimeとの一意な組合せでだけ外部Moveへ使用する。
+- FileEntry更新はPostgreSQL `xmin`の楽観的並行制御を使用し、競合時は古いSnapshotを破棄して次回照合へ戻す。
+- Scan Runは開始・終了状態と件数を永続化し、Stagingは成功時または保持期限超過後に清掃する。同時全件Scanは固定advisory lockで拒否する。
 - `MISSING`項目の管理情報削除はユーザーまたは管理者の明示操作で行う。
 
 ---
