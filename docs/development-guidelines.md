@@ -45,6 +45,10 @@
 - Rename・Move・Trash・Restoreは、対象・source親・target親のGUIDから導出したPostgreSQL advisory lockを昇順に取得する。Recoveryも同じ規則を使い、全終了経路でlockを解放する。
 - 配置変更はHDD操作前に`FileOperation(PENDING)`を保存し、atomic rename後のFileEntry・配下Path・成功監査・`COMPLETED`を同じDB Transactionで確定する。未完了Rename・Moveの対象と配下は通常利用から隔離する。
 - API内Hosted Serviceは未完了Upload清掃と`FileOperation`復旧だけに限定し、長時間Media処理や自動Backupを実行しない。
+- 外部索引ScanはHDDを正とし、全件Snapshotの完走とStorage再確認前に不存在を確定しない。`MISSING`確定には異なるObservationと既定5分以上の間隔を要求する。
+- 全件ScanはPostgreSQL Stagingへ設定Batch単位で保存し、30万件をProcess Memoryへ全保持しない。DRY_RUNは専用Connectionの一時Tableだけを使用する。
+- Symlink、特殊File、未知User、不正Pathは通常索引へ公開せず、File名、Path、User ID、File ID、補助同一性KeyをMetric Labelまたは通常CLI出力へ含めない。
+- 外部MoveでIDを維持するのはdevice・inode、Owner、種類、Size、mtimeが1対1で一致するときだけとし、補助Key単独または曖昧な候補を自動結合しない。
 
 ---
 

@@ -63,6 +63,21 @@ public sealed class ConfigurationValidationTests
             () => provider.GetRequiredService<IOptions<UploadSessionOptions>>().Value);
     }
 
+    [Theory]
+    [InlineData("Indexing:BatchSize", "9")]
+    [InlineData("Indexing:BatchSize", "5001")]
+    [InlineData("Indexing:MissingConfirmationDelayMinutes", "0")]
+    [InlineData("Indexing:MissingConfirmationDelayMinutes", "1441")]
+    [InlineData("Indexing:StagingRetentionHours", "0")]
+    [InlineData("Indexing:StagingRetentionHours", "169")]
+    public void IndexingOptions_InvalidValue_IsRejected(string key, string value)
+    {
+        using var provider = BuildProvider(new Dictionary<string, string?> { [key] = value });
+
+        Assert.Throws<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<IndexingOptions>>().Value);
+    }
+
     private static ServiceProvider BuildProvider(IReadOnlyDictionary<string, string?> values)
     {
         var configuration = new ConfigurationBuilder()

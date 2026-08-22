@@ -1,6 +1,7 @@
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
+using KuraStorage.Domain.Indexing;
 using KuraStorage.Domain.Maintenance;
 using KuraStorage.Domain.Transfers;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +27,10 @@ public sealed class KuraStorageDbContext(DbContextOptions<KuraStorageDbContext> 
     public DbSet<TrashPurgeRun> TrashPurgeRuns => Set<TrashPurgeRun>();
 
     public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
+
+    public DbSet<IndexScanRun> IndexScanRuns => Set<IndexScanRun>();
+
+    public DbSet<IndexScanItem> IndexScanItems => Set<IndexScanItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

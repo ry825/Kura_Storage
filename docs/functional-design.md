@@ -1484,13 +1484,16 @@ SSID、BSSID、端末が保持する`deviceId`は接続経路の確定条件に�
 
 ## 7.8 MVP後: `MISSING`判定
 
-1. ストレージ状態が`AVAILABLE`か確認する。
-2. DB上`ACTIVE`の実パスを確認する。
-3. 存在しない場合、`MISSING_CANDIDATE`と検出時刻を記録する。
-4. 次回スキャンまたは一定時間後に再確認する。
-5. まだ存在せずHDDが正常なら`MISSING`へ変更する。
-6. 関連派生データを`BLOCKED_SOURCE_MISSING`へ変更し、配信しない。
-7. ユーザーが一覧から削除した場合、DB関連情報と全派生データを削除する。
+1. 全件再スキャンは固定PostgreSQL advisory lockを取得し、Storageが`AVAILABLE`であることを開始前、Batch境界、確定前に確認する。
+2. `users/{ownerUserId}/files`だけをSymlinkを辿らずStreaming列挙し、APPLYは`index_scan_items`、DRY_RUNは専用Connectionの一時Tableへ500件単位で保存する。
+3. HDD SnapshotとDBを比較し、外部追加、Metadata更新、一意に判定できるRename・Move、再発見を親から子の順で反映する。SizeまたはHDD更新日時が変わったFileだけ`fileVersion`を増分する。
+4. 正常に完走したSnapshotで`ACTIVE`項目が見つからず、確定直前の個別確認でも存在しない場合だけ`MISSING_CANDIDATE`と検出時刻・Observation IDを記録する。
+5. 最初と異なるObservation IDを持つ再確認が5分以上後に完了し、Storageが引き続き正常で実体が存在しない場合だけ`MISSING`へ変更する。
+6. HDD未Mount、Storage ID不一致、読取不能、Directory列挙失敗、取消、未完了`FileOperation`では欠損状態を進めない。Symlink、特殊File、未知User、不正Pathは通常索引へ公開せず理由別に隔離する。
+7. `MISSING_CANDIDATE`または`MISSING`のPathで実体を再発見した場合は、同じFile IDを`ACTIVE`へ戻して欠損情報を消去する。
+8. 管理CLIは`kurastorage-admin index rescan [--dry-run]`で同じApplication Serviceを呼び、Run IDと低Cardinalityの集計だけを表示する。
+9. 関連派生データを`BLOCKED_SOURCE_MISSING`へ変更し、配信しない。
+10. ユーザーが一覧から削除した場合、DB関連情報と全派生データを削除する。
 
 ## 7.9 アプリ内削除
 

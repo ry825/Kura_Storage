@@ -60,6 +60,18 @@ public sealed class FileEntry
 
     public DateTimeOffset? TrashedAt { get; private set; }
 
+    public DateTimeOffset? SourceModifiedAt { get; private set; }
+
+    public string? SourceFileKey { get; private set; }
+
+    public DateTimeOffset? SourceObservedAt { get; private set; }
+
+    public DateTimeOffset? MissingDetectedAt { get; private set; }
+
+    public DateTimeOffset? MissingLastCheckedAt { get; private set; }
+
+    public Guid? MissingObservationId { get; private set; }
+
     public long FileVersion { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
@@ -118,6 +130,7 @@ public sealed class FileEntry
     {
         RelativePath = trashPath.Value;
         Status = FileEntryStatus.Trashed;
+        ClearMissingMetadata();
         TrashedAt = now;
         UpdatedAt = now;
     }
@@ -169,13 +182,105 @@ public sealed class FileEntry
 
     public void RelocateDescendant(RelativeStoragePath targetPath, DateTimeOffset now)
     {
-        if (Status != FileEntryStatus.Active)
+        if (Status == FileEntryStatus.Trashed || ParentId is null)
         {
-            throw new InvalidFileOperationException("Only active descendants can be relocated.");
+            throw new InvalidFileOperationException("Only managed non-trashed descendants can be relocated.");
         }
 
         RelativePath = targetPath.Value;
         UpdatedAt = now;
+    }
+
+    public void ApplySourceObservation(
+        long size,
+        string? mimeType,
+        DateTimeOffset sourceModifiedAt,
+        string? sourceFileKey,
+        DateTimeOffset observedAt,
+        bool contentChanged)
+    {
+        if (ParentId is null || Status == FileEntryStatus.Trashed)
+        {
+            throw new InvalidFileOperationException("Only managed non-trashed entries can be observed.");
+        }
+
+        if (size < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(size));
+        }
+
+        if (sourceFileKey is { Length: > 128 })
+        {
+            throw new ArgumentException("The source file key is too long.", nameof(sourceFileKey));
+        }
+
+        if (contentChanged && EntryType == FileEntryType.File)
+        {
+            FileVersion = checked(FileVersion + 1);
+        }
+
+        Size = size;
+        MimeType = mimeType;
+        SourceModifiedAt = sourceModifiedAt;
+        SourceFileKey = sourceFileKey;
+        SourceObservedAt = observedAt;
+        Status = FileEntryStatus.Active;
+        ClearMissingMetadata();
+        UpdatedAt = observedAt;
+    }
+
+    public void MarkMissingCandidate(Guid observationId, DateTimeOffset checkedAt)
+    {
+        if (observationId == Guid.Empty)
+        {
+            throw new ArgumentException("An observation ID is required.", nameof(observationId));
+        }
+
+        if (Status != FileEntryStatus.Active || ParentId is null)
+        {
+            throw new InvalidFileOperationException("Only active non-root entries can become missing candidates.");
+        }
+
+        Status = FileEntryStatus.MissingCandidate;
+        MissingDetectedAt = checkedAt;
+        MissingLastCheckedAt = checkedAt;
+        MissingObservationId = observationId;
+        UpdatedAt = checkedAt;
+    }
+
+    public void ConfirmMissing(Guid observationId, DateTimeOffset checkedAt, TimeSpan confirmationDelay)
+    {
+        if (Status != FileEntryStatus.MissingCandidate ||
+            MissingDetectedAt is null ||
+            MissingObservationId is null)
+        {
+            throw new InvalidFileOperationException("Only a valid missing candidate can be confirmed missing.");
+        }
+
+        if (observationId == Guid.Empty || observationId == MissingObservationId)
+        {
+            throw new InvalidFileOperationException("Missing confirmation requires an independent observation.");
+        }
+
+        if (confirmationDelay <= TimeSpan.Zero || checkedAt < MissingDetectedAt.Value + confirmationDelay)
+        {
+            throw new InvalidFileOperationException("Missing confirmation was attempted before the confirmation delay elapsed.");
+        }
+
+        Status = FileEntryStatus.Missing;
+        MissingLastCheckedAt = checkedAt;
+        UpdatedAt = checkedAt;
+    }
+
+    public void RecordMissingCheck(DateTimeOffset checkedAt)
+    {
+        if (Status != FileEntryStatus.Missing)
+        {
+            throw new InvalidFileOperationException("Only missing entries can record a continuing absence.");
+        }
+
+        MissingLastCheckedAt = checkedAt;
+        UpdatedAt = checkedAt;
     }
 
     private void EnsureRelocatable()
@@ -189,6 +294,13 @@ public sealed class FileEntry
         {
             throw new InvalidFileOperationException("The storage root cannot be relocated.");
         }
+    }
+
+    private void ClearMissingMetadata()
+    {
+        MissingDetectedAt = null;
+        MissingLastCheckedAt = null;
+        MissingObservationId = null;
     }
 }
 

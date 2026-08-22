@@ -9,6 +9,8 @@ public enum FileEntryType
 public enum FileEntryStatus
 {
     Active,
+    MissingCandidate,
+    Missing,
     Trashed,
 }
 

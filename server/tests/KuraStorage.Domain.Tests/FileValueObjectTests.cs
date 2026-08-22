@@ -152,4 +152,106 @@ public sealed class FileValueObjectTests
                 RelativeStoragePath.Create($"users/{ownerId:N}/files/other/item"),
                 now));
     }
+
+    [Fact]
+    public void FileEntry_MissingLifecycle_RequiresIndependentDelayedObservationAndSupportsRevival()
+    {
+        var observedAt = DateTimeOffset.Parse("2026-08-22T00:00:00Z");
+        var ownerId = Guid.NewGuid();
+        var firstObservationId = Guid.NewGuid();
+        var entry = FileEntry.CreateFile(
+            Guid.NewGuid(),
+            ownerId,
+            Guid.NewGuid(),
+            FileName.Create("item.txt"),
+            RelativeStoragePath.Create($"users/{ownerId:N}/files/item.txt"),
+            "text/plain",
+            42,
+            observedAt);
+
+        entry.MarkMissingCandidate(firstObservationId, observedAt.AddMinutes(1));
+
+        Assert.Equal(FileEntryStatus.MissingCandidate, entry.Status);
+        Assert.Equal(observedAt.AddMinutes(1), entry.MissingDetectedAt);
+        Assert.Throws<InvalidFileOperationException>(() =>
+            entry.ConfirmMissing(firstObservationId, observedAt.AddMinutes(10), TimeSpan.FromMinutes(5)));
+        Assert.Throws<InvalidFileOperationException>(() =>
+            entry.ConfirmMissing(Guid.NewGuid(), observedAt.AddMinutes(4), TimeSpan.FromMinutes(5)));
+
+        entry.ConfirmMissing(Guid.NewGuid(), observedAt.AddMinutes(6), TimeSpan.FromMinutes(5));
+
+        Assert.Equal(FileEntryStatus.Missing, entry.Status);
+        entry.ApplySourceObservation(
+            42,
+            "text/plain",
+            observedAt,
+            "device:inode",
+            observedAt.AddMinutes(7),
+            contentChanged: false);
+
+        Assert.Equal(FileEntryStatus.Active, entry.Status);
+        Assert.Null(entry.MissingDetectedAt);
+        Assert.Null(entry.MissingLastCheckedAt);
+        Assert.Null(entry.MissingObservationId);
+        Assert.Equal(1, entry.FileVersion);
+    }
+
+    [Fact]
+    public void FileEntry_SourceObservation_IncrementsVersionOnlyForContentChanges()
+    {
+        var observedAt = DateTimeOffset.Parse("2026-08-22T00:00:00Z");
+        var ownerId = Guid.NewGuid();
+        var entry = FileEntry.CreateFile(
+            Guid.NewGuid(),
+            ownerId,
+            Guid.NewGuid(),
+            FileName.Create("item.txt"),
+            RelativeStoragePath.Create($"users/{ownerId:N}/files/item.txt"),
+            "text/plain",
+            42,
+            observedAt);
+
+        entry.ApplySourceObservation(42, "text/plain", observedAt, "key-1", observedAt, contentChanged: false);
+        entry.ApplySourceObservation(43, "text/plain", observedAt.AddMinutes(1), "key-1", observedAt.AddMinutes(1), contentChanged: true);
+
+        Assert.Equal(2, entry.FileVersion);
+        Assert.Equal(43, entry.Size);
+        Assert.Equal(observedAt.AddMinutes(1), entry.SourceModifiedAt);
+        Assert.Equal("key-1", entry.SourceFileKey);
+    }
+
+    [Fact]
+    public void FileEntry_RootAndTrashedEntries_CannotBecomeMissingCandidates()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var ownerId = Guid.NewGuid();
+        var root = FileEntry.CreateRoot(ownerId, now);
+        Assert.Throws<InvalidFileOperationException>(() => root.MarkMissingCandidate(Guid.NewGuid(), now));
+
+        var file = FileEntry.CreateFile(
+            Guid.NewGuid(), ownerId, root.Id, FileName.Create("item"),
+            RelativeStoragePath.Create($"users/{ownerId:N}/files/item"), null, 0, now);
+        file.Trash(RelativeStoragePath.Create($"users/{ownerId:N}/trash/{file.Id:N}/item"), now);
+        Assert.Throws<InvalidFileOperationException>(() => file.MarkMissingCandidate(Guid.NewGuid(), now));
+    }
+
+    [Fact]
+    public void FileEntry_MissingDescendantTrashedWithParent_ClearsMissingMetadata()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var ownerId = Guid.NewGuid();
+        var file = FileEntry.CreateFile(
+            Guid.NewGuid(), ownerId, Guid.NewGuid(), FileName.Create("item"),
+            RelativeStoragePath.Create($"users/{ownerId:N}/files/folder/item"), null, 0, now);
+        file.MarkMissingCandidate(Guid.NewGuid(), now.AddMinutes(1));
+
+        file.TrashDescendant(
+            RelativeStoragePath.Create($"users/{ownerId:N}/trash/root/folder/item"),
+            now.AddMinutes(2));
+
+        Assert.Equal(FileEntryStatus.Trashed, file.Status);
+        Assert.Null(file.MissingDetectedAt);
+        Assert.Null(file.MissingLastCheckedAt);
+        Assert.Null(file.MissingObservationId);
+    }
 }

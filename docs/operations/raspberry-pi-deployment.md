@@ -272,6 +272,37 @@ failure and recovery tests, reconcile the database, storage root, purge
 journals, audit records, and purge runs without writing file names or paths to
 logs.
 
+For a release that adds external index reconciliation, keep `Indexing:Enabled`
+set to `false` until the Worker and Android protocol work is deployed. After
+backing up PostgreSQL, apply the migration explicitly and inspect the catalog
+without exposing paths:
+
+```bash
+kurastorage-admin database migrate
+kurastorage-admin index rescan --dry-run
+kurastorage-admin index rescan
+```
+
+The commands print only a scan ID, status, and aggregate counts. Exit code `0`
+means a complete scan, `1` a failed, cancelled, or partially failed scan, `2`
+invalid arguments, `3` another scan holds the global lock, and `4` the mount or
+Storage ID is unavailable. Do not infer individual deletion from an unavailable
+HDD. Resolve the mount, identity, and read access first, then rerun dry-run.
+Failed APPLY staging is retained for 24 hours by default and is removed by a
+later scan after the retention boundary.
+
+Before rolling the schema back, require this query to return zero:
+
+```sql
+SELECT count(*)
+FROM file_entries
+WHERE status IN ('MISSING_CANDIDATE', 'MISSING');
+```
+
+Migration Down deliberately fails while either new status remains. Restore or
+otherwise reconcile those entries with the matching release before retrying
+schema rollback; do not rewrite the statuses merely to bypass the guard.
+
 Application rollback switches to `previous`:
 
 ```bash
