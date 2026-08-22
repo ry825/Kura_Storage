@@ -10,15 +10,25 @@ namespace KuraStorage.Infrastructure.Storage;
 public sealed class FileRecoveryHostedService(
     IServiceScopeFactory scopeFactory,
     ILogger<FileRecoveryHostedService> logger,
-    IOptions<UploadSessionOptions> configuredUploadOptions) : BackgroundService
+    IOptions<UploadSessionOptions> configuredUploadOptions) : BackgroundService, IHostedLifecycleService
 {
     private static readonly TimeSpan RecoveryInterval = TimeSpan.FromMinutes(5);
     private readonly TimeSpan cleanupInterval = TimeSpan.FromMinutes(configuredUploadOptions.Value.CleanupIntervalMinutes);
 
+    public async Task StartingAsync(CancellationToken cancellationToken)
+    {
+        await RecoverAsync(cancellationToken);
+        await CleanupAsync(cancellationToken);
+    }
+
+    public Task StartedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task StoppingAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task StoppedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await RecoverAsync(stoppingToken);
-        await CleanupAsync(stoppingToken);
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         var nextRecovery = DateTimeOffset.UtcNow.Add(RecoveryInterval);
         var nextCleanup = DateTimeOffset.UtcNow.Add(cleanupInterval);

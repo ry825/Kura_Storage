@@ -9,6 +9,7 @@ require_root
 load_config
 set_storage_owner_variables
 verify_storage_mount
+ensure_upload_session_storage
 verify_postgresql
 
 release_directory="$(install_release_artifact)"

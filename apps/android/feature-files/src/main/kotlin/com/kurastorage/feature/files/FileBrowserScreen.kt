@@ -10,6 +10,7 @@ package com.kurastorage.feature.files
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,14 +33,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.TransferEvent
-import com.kurastorage.core.ui.EmptyState
+import com.kurastorage.core.model.UploadState
 import com.kurastorage.core.ui.ErrorState
 import com.kurastorage.core.ui.LoadingState
 
@@ -102,7 +105,12 @@ fun FileBrowserScreen(
         state.placementResult?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
         state.error?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
         if (state.entries.isEmpty()) {
-            EmptyState(if (trashMode) "Trash is empty." else "This folder is empty.")
+            Box(
+                Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(if (trashMode) "Trash is empty." else "This folder is empty.")
+            }
         } else {
             LazyColumn(Modifier.weight(1f)) {
                 items(state.entries, key = { it.id }) { entry ->
@@ -454,6 +462,7 @@ private fun TransferPanel(
     onRetry: () -> Unit,
     onOpenDownload: (String) -> Unit,
 ) {
+    var confirmCancel by remember { mutableStateOf(false) }
     when (event) {
         is TransferEvent.Progress -> {
             val fraction = event.totalBytes?.takeIf { it > 0 }?.let { event.transferredBytes.toFloat() / it }
@@ -461,6 +470,37 @@ private fun TransferPanel(
                 if (fraction == null) LinearProgressIndicator() else LinearProgressIndicator({ fraction })
                 Text("${event.transferredBytes} / ${event.totalBytes ?: "?"} bytes")
                 TextButton(onClick = onCancel) { Text("Cancel") }
+            }
+        }
+        is TransferEvent.UploadStatus -> {
+            val operation = event.operation
+            val fraction =
+                if (operation.size > 0) operation.confirmedOffset.toFloat() / operation.size else 0f
+            Column(
+                Modifier.fillMaxWidth().testTag("upload-status"),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                LinearProgressIndicator({ fraction.coerceIn(0f, 1f) }, Modifier.fillMaxWidth())
+                Text(operation.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${operation.confirmedOffset} / ${operation.size} bytes")
+                Text(event.message ?: operation.state.uploadLabel())
+                if (event.canRetry) {
+                    Button(onClick = onRetry, modifier = Modifier.testTag("resume-upload")) {
+                        Text("Resume from confirmed position")
+                    }
+                }
+                if (operation.state in
+                    setOf(
+                        UploadState.PREPARING,
+                        UploadState.CREATING_SESSION,
+                        UploadState.UPLOADING,
+                        UploadState.PAUSED,
+                    )
+                ) {
+                    TextButton(onClick = { confirmCancel = true }, modifier = Modifier.testTag("cancel-upload")) {
+                        Text("Cancel upload")
+                    }
+                }
             }
         }
         is TransferEvent.Failed -> {
@@ -475,7 +515,36 @@ private fun TransferPanel(
         }
         null -> Unit
     }
+    if (confirmCancel) {
+        AlertDialog(
+            onDismissRequest = { confirmCancel = false },
+            title = { Text("Cancel upload?") },
+            text = { Text("The resumable server session and its temporary data will be removed.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmCancel = false
+                        onCancel()
+                    },
+                    modifier = Modifier.testTag("confirm-cancel-upload"),
+                ) { Text("Cancel upload") }
+            },
+            dismissButton = { TextButton(onClick = { confirmCancel = false }) { Text("Keep uploading") } },
+        )
+    }
 }
+
+private fun UploadState.uploadLabel() =
+    when (this) {
+        UploadState.PREPARING -> "Preparing and checking the selected file"
+        UploadState.CREATING_SESSION -> "Creating resumable upload"
+        UploadState.UPLOADING -> "Uploading"
+        UploadState.PAUSED -> "Upload paused; received bytes are safe on the server"
+        UploadState.VERIFYING -> "Verifying the completed file"
+        UploadState.COMPLETED -> "Upload completed"
+        UploadState.CANCELLED -> "Upload cancelled"
+        UploadState.FAILED -> "Upload needs attention"
+    }
 
 @Composable
 private fun ConfirmDialog(

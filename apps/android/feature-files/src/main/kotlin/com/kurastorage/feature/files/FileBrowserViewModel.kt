@@ -15,6 +15,7 @@ import com.kurastorage.core.model.FilePage
 import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadOperation
+import com.kurastorage.core.model.UploadState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -360,6 +361,7 @@ class FileBrowserViewModel(
         size: Long,
         contentType: String?,
     ) {
+        if (transferJob?.isActive == true) return
         val destination = mutableState.value.parentId ?: error("Root folder has not loaded")
         lastUpload = transfers.newUpload(sourceUri, destination, fileName, size, contentType)
         lastWasUpload = true
@@ -367,6 +369,7 @@ class FileBrowserViewModel(
     }
 
     fun retryTransfer() {
+        if (transferJob?.isActive == true) return
         if (lastWasUpload) {
             lastUpload?.let(::runUpload)
         } else {
@@ -391,7 +394,31 @@ class FileBrowserViewModel(
     fun cancelTransfer() {
         transferJob?.cancel()
         transferJob = null
-        mutableState.update { it.copy(transfer = null) }
+        val operation = lastUpload
+        if (lastWasUpload && operation != null) {
+            mutableState.update {
+                it.copy(transfer = TransferEvent.UploadStatus(operation, "Cancelling upload"))
+            }
+            viewModelScope.launch {
+                runCatching { transfers.cancelUpload(operation) }
+                    .onSuccess {
+                        val cancelled = operation.copy(state = UploadState.CANCELLED)
+                        lastUpload = cancelled
+                        mutableState.update {
+                            it.copy(transfer = TransferEvent.UploadStatus(cancelled, "Upload cancelled"), error = null)
+                        }
+                    }.onFailure { failure ->
+                        mutableState.update {
+                            it.copy(
+                                transfer = TransferEvent.Failed(failure),
+                                error = failure.toBrowserError(),
+                            )
+                        }
+                    }
+            }
+        } else {
+            mutableState.update { it.copy(transfer = null) }
+        }
     }
 
     private fun runUpload(operation: UploadOperation) = runTransfer(transfers.upload(operation), refreshAfter = true)
@@ -404,6 +431,7 @@ class FileBrowserViewModel(
         transferJob =
             viewModelScope.launch {
                 flow.collect { event ->
+                    if (event is TransferEvent.UploadStatus) lastUpload = event.operation
                     mutableState.update { it.copy(transfer = event, error = event.toBrowserError()) }
                     if (refreshAfter && event is TransferEvent.UploadCompleted) refresh()
                 }

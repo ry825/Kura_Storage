@@ -542,6 +542,34 @@ public sealed class UploadSessionApiTests(PostgreSqlAuthFlowFixture fixture)
     }
 
     [Fact]
+    public async Task RecoveryAndCleanupCandidateQueries_DoNotTrackStateBeforeSessionLockReload()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("resumable-candidate-tracking", "tracking-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var sessionId = await CreateSessionIdAsync(client, rootId, "tracking.bin", 1, Sha([1]));
+
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IUploadSessionRepository>();
+        var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+
+        var recoveryCandidate = (await repository.ListRecoveryCandidatesAsync(100, CancellationToken.None))
+            .Single(session => session.Id == sessionId);
+        Assert.Equal(EntityState.Detached, database.Entry(recoveryCandidate).State);
+
+        await database.UploadSessions
+            .Where(session => session.Id == sessionId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(
+                session => session.ExpiresAt,
+                DateTimeOffset.UtcNow.AddMinutes(-1)));
+        var cleanupCandidate = (await repository.ListCleanupCandidatesAsync(
+            DateTimeOffset.UtcNow,
+            100,
+            CancellationToken.None)).Single(session => session.Id == sessionId);
+        Assert.Equal(EntityState.Detached, database.Entry(cleanupCandidate).State);
+    }
+
+    [Fact]
     public async Task Cleanup_WhenCandidatesExceedBatch_ProcessesEveryExpiredSessionInBoundedBatches()
     {
         var authenticated = await fixture.CreateAuthenticatedClientAsync("resumable-cleanup-batch", "cleanup-password");

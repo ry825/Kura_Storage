@@ -274,144 +274,146 @@
 
 ### 2.1 作業開始
 
-- [ ] PR2の作業準備が完了している。
-  - [ ] PR1が`main`へMerge済みであることを確認する。
-  - [ ] 最新の`main`を取得し、PR2用の短命Branchを作成する。
-  - [ ] `requirements.md`、`design.md`、本ファイル、PR1完了記録を確認する。
-  - [ ] `git status`と既存差分を確認する。
-  - [ ] Androidの`KuraStorageApi`、`TransferRepository`、`UploadOperation`、SAF Stream、ViewModel、Compose UI、Testの既存パターンを再確認する。
-  - [ ] Raspberry Pi、PostgreSQL、共有exFAT HDD、Android実機、LAN、ZeroTier、Release署名入力を利用できることを確認する。
+- [x] PR2の作業準備が完了している。
+  - [x] PR1が`main`へMerge済みであることを確認する。（PR #14、必須CI成功）
+  - [x] 最新の`main`を取得し、PR2用の短命Branchを作成する。（`feat/resumable-chunk-upload-android`）
+  - [x] `requirements.md`、`design.md`、本ファイル、PR1完了記録を確認する。
+  - [x] `git status`と既存差分を確認する。（開始時の作業ツリーはクリーン）
+  - [x] Androidの`KuraStorageApi`、`TransferRepository`、`UploadOperation`、SAF Stream、ViewModel、Compose UI、Testの既存パターンを再確認する。
+  - [x] Raspberry Pi、PostgreSQL、共有exFAT HDD、Android実機、LAN、ZeroTier、Release署名入力を利用できることを確認する。
 
 ### 2.2 Android Network・Model契約
 
-- [ ] Upload Session Network契約を実装する。
-  - [ ] Session作成、状態取得、Chunk送信、完了、取消を`KuraStorageApi`へ追加する。
-  - [ ] OpenAPIの状態、Offset、Size、Checksum、期限、ErrorをKotlin DTOへ欠落なく変換する。
-  - [ ] Chunk Request Bodyを全体ByteArray化せず、SAF InputStreamの指定範囲からStreamingする。
-  - [ ] 401 Refresh後、通信結果不明、Retry-After後の再送でも同じSession、Idempotency Key、Offset、Chunk内容を維持する。
-  - [ ] Session Conflict、Offset Conflict、Chunk Checksum、期限切れ、取消、Device失効、容量不足、Storage異常を既存Error分類へ追加する。
-  - [ ] 既存Multipart Upload APIを残し、旧ServerまたはProtocol Versionの扱いを承認済み設計どおり実装する。
-- [ ] Android Upload Modelを拡張する。
-  - [ ] Source URI、Metadata、Idempotency Key、Session ID、受信済みOffset、期限、状態を表現する。
-  - [ ] File内容や物理Pathを永続化せず、必要な`content://` URIだけを扱う。
-  - [ ] 同じPayloadの再開と、別File・別名・別保存先として開始する操作を区別する。
-  - [ ] Session完了後または明示取消後に再利用できない状態へ遷移する。
+- [x] Upload Session Network契約を実装する。
+  - [x] Session作成、状態取得、Chunk送信、完了、取消を`KuraStorageApi`へ追加する。
+  - [x] OpenAPIの状態、Offset、Size、Checksum、期限、ErrorをKotlin DTOへ欠落なく変換する。
+  - [x] Chunk Request Bodyを全体FileのByteArrayへ変換せず、SAF InputStreamの指定Offsetから最大1 Chunkだけを読み込んで送信する。
+  - [x] 401 Refresh後、通信結果不明、Retry-After後の再送でも同じSession、Idempotency Key、Offset、Chunk内容を維持する。
+  - [x] Session Conflict、Offset Conflict、Chunk Checksum、期限切れ、取消、Device失効、容量不足、Storage異常を既存Error分類へ追加する。
+  - [x] 既存Multipart Upload APIを残し、Upload Session非対応の旧Serverでは更新要求を明示して暗黙Fallbackしない。
+- [x] Android Upload Modelを拡張する。
+  - [x] Source URI、Metadata、Idempotency Key、Session ID、受信済みOffset、期限、状態を表現する。
+  - [x] File内容や物理Pathを永続化せず、必要な`content://` URIだけを扱う。
+  - [x] 同じPayloadの再開と、別File・別名・別保存先として開始する操作を区別する。
+  - [x] Session完了後または明示取消後に再利用できない状態へ遷移する。
 
 ### 2.3 Android TransferRepository・中断再開
 
-- [ ] Resumable Upload処理を実装する。
-  - [ ] Upload開始時にSessionを作成し、Serverが返したChunk上限内で送信単位を決定する。
-  - [ ] SAF InputStreamをServerの次Offsetまで安全に進め、全体FileをMemoryや一時複製へ保持しない。
-  - [ ] 各ChunkのChecksumをStreaming計算し、送信Byteと一致させる。
-  - [ ] Chunk成功後にServer応答の確定Offsetを進捗の正として採用する。
-  - [ ] 通信切断・Response不明時はSession状態を再照会し、Server確定Offsetから再開する。
-  - [ ] 期待Offset Conflict時はServer状態を再照会し、内容不一致を推測で上書きしない。
-  - [ ] 全Chunk送信後に完了APIを呼び、完了FileをServerから取得して結果を確定する。
-  - [ ] Coroutine Cancellationと画面上の取消を区別し、明示取消時だけ取消APIを呼ぶ。
-  - [ ] Source URIを再度開けない、権限喪失、Source Size・内容変更を検出し、新しいSessionなしに継続しない。
-- [ ] 進捗と再試行状態を実装する。
-  - [ ] Server確定Byteを基準に0〜100%の進捗を表示する。
-  - [ ] `CREATING`、`UPLOADING`、`PAUSED`、`VERIFYING`、`COMPLETED`、`CANCELLED`、`FAILED`をUI向け状態へ変換する。
-  - [ ] 再試行可能な通信・429・一時503と、ユーザー対応が必要な期限切れ・権限喪失・内容変更を区別する。
-  - [ ] Retryで同じSessionとIdempotency Keyを維持し、`Retry-After`を尊重する。
-  - [ ] 完了後にFile一覧をServerから再取得し、Client側で未確定Fileを合成しない。
+- [x] Resumable Upload処理を実装する。
+  - [x] Upload開始時にSessionを作成し、Serverが返したChunk上限内で送信単位を決定する。
+  - [x] SAF InputStreamをServerの次Offsetまで安全に進め、全体FileをMemoryや一時複製へ保持しない。
+  - [x] 各ChunkのChecksumをStreaming計算し、送信Byteと一致させる。
+  - [x] Chunk成功後にServer応答の確定Offsetを進捗の正として採用する。
+  - [x] 通信切断・Response不明時はSession状態を再照会し、Server確定Offsetから再開する。
+  - [x] 期待Offset Conflict時はServer状態を再照会し、内容不一致を推測で上書きしない。
+  - [x] 全Chunk送信後に完了APIを呼び、完了FileをServerから取得して結果を確定する。
+  - [x] Coroutine Cancellationと画面上の取消を区別し、明示取消時だけ取消APIを呼ぶ。
+  - [x] Source URIを再度開けない、権限喪失、Source Size・内容変更を検出し、新しいSessionなしに継続しない。
+- [x] 進捗と再試行状態を実装する。
+  - [x] Server確定Byteを基準に0〜100%の進捗を表示する。
+  - [x] `CREATING`、`UPLOADING`、`PAUSED`、`VERIFYING`、`COMPLETED`、`CANCELLED`、`FAILED`をUI向け状態へ変換する。
+  - [x] 再試行可能な通信・429・一時503と、ユーザー対応が必要な期限切れ・権限喪失・内容変更を区別する。
+  - [x] Retryで同じSessionとIdempotency Keyを維持し、`Retry-After`を尊重する。
+  - [x] 完了後にFile一覧をServerから再取得し、Client側で未確定Fileを合成しない。
 
 ### 2.4 ViewModel・Compose UI
 
-- [ ] FileBrowser ViewModelへ中断再開状態を実装する。
-  - [ ] 同時二重開始、二重完了、同じ操作への並行Retryを防ぐ。
-  - [ ] 通信切断時に受信済みByteと再開可能状態を保持する。
-  - [ ] Retry、取消、一覧へ戻る操作を状態ごとに制御する。
-  - [ ] Session期限切れ時は新しいSessionで最初から開始する必要があることを示し、暗黙に別Fileを開始しない。
-  - [ ] 画面再生成で実行中Coroutineと表示状態を不必要に重複させない。
-  - [ ] Process終了をまたぐ永続再開は、Room・WorkManagerを追加しない今回の範囲に従って扱う。
-- [ ] Upload UIを更新する。
-  - [ ] 送信済み容量、全体容量、進捗、再開中、検証中を表示する。
-  - [ ] 通信中断時に「受信済み位置から再開」できることを案内する。
-  - [ ] Retry可能、期限切れ、Source権限喪失、Source変更、容量不足、Storage異常を区別して表示する。
-  - [ ] Cancel確認後にSession取消を実行し、送信中の誤操作を防ぐ。
-  - [ ] File名、保存先変更、別File選択では新しいSessionとIdempotency Keyを使用する。
-  - [ ] アクセシビリティ、画面回転、Back操作、長いFile名、0%・100%境界を確認する。
+- [x] FileBrowser ViewModelへ中断再開状態を実装する。
+  - [x] 同時二重開始、二重完了、同じ操作への並行Retryを防ぐ。
+  - [x] 通信切断時に受信済みByteと再開可能状態を保持する。
+  - [x] Retry、取消、一覧へ戻る操作を状態ごとに制御する。
+  - [x] Session期限切れ時は新しいSessionで最初から開始する必要があることを示し、暗黙に別Fileを開始しない。
+  - [x] 画面再生成で実行中Coroutineと表示状態を不必要に重複させない。
+  - [x] Process終了をまたぐ永続再開は、Room・WorkManagerを追加しない今回の範囲に従って扱う。
+- [x] Upload UIを更新する。
+  - [x] 送信済み容量、全体容量、進捗、再開中、検証中を表示する。
+  - [x] 通信中断時に「受信済み位置から再開」できることを案内する。
+  - [x] Retry可能、期限切れ、Source権限喪失、Source変更、容量不足、Storage異常を区別して表示する。
+  - [x] Cancel確認後にSession取消を実行し、送信中の誤操作を防ぐ。
+  - [x] File名、保存先変更、別File選択では新しいSessionとIdempotency Keyを使用する。
+  - [x] アクセシビリティ、画面回転、Back操作、長いFile名、0%・100%境界を確認する。（OPPO CPH2333実機のCompose TestとRelease画面回転で確認）
 
 ### 2.5 Android自動Test
 
-- [ ] Network・Repository Testが完了している。
-  - [ ] Session APIのRequest、Header、Body、DTO、Error MappingをTestする。
-  - [ ] SAF Streamを複数Chunkへ分けても元内容と一致し、全体ByteArray化しないことをTestする。
-  - [ ] 中断後の状態照会、確定Offset再開、重複Response、Offset Conflict、Retry-AfterをTestする。
-  - [ ] 401 Refresh後もSession、Key、Offset、Chunk内容を維持する。
-  - [ ] Source Size・内容変更、URI権限喪失、期限切れ、取消、完了をTestする。
-  - [ ] 既存Download、Range、File操作、旧Multipart Uploadの契約へ回帰がない。
-- [ ] ViewModel・UI Testが完了している。
-  - [ ] 状態遷移、進捗、Retry、取消、二重Tap、一覧再取得をTestする。
-  - [ ] 再開可能Errorとユーザー対応必須Errorの文言・ActionをTestする。
-  - [ ] 画面回転、Back、Cancel確認、完了後表示をCompose Testする。
-  - [ ] File名変更・別File選択で古いSessionとKeyを再利用しないことをTestする。
-- [ ] PR2の標準検証が成功している。
-  - [ ] `./scripts/ci/verify-config.sh`が成功する。
-  - [ ] `./scripts/ci/verify-server.sh`が成功する。
-  - [ ] `./scripts/ci/verify-security.sh`が成功する。
-  - [ ] `./scripts/ci/verify-deployment.sh`が成功する。
-  - [ ] `./scripts/ci/verify-android.sh`が成功する。
-  - [ ] `./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が成功する。
-  - [ ] `git diff --check`が成功する。
+- [x] Network・Repository Testが完了している。
+  - [x] Session APIのRequest、Header、Body、DTO、Error MappingをTestする。
+  - [x] SAF Streamを複数Chunkへ分けても元内容と一致し、全体ByteArray化しないことをTestする。
+  - [x] 中断後の状態照会、確定Offset再開、重複Response、Offset Conflict、Retry-AfterをTestする。
+  - [x] 401 Refresh後もSession、Key、Offset、Chunk内容を維持する。
+  - [x] Source Size・内容変更、URI権限喪失、期限切れ、取消、完了をTestする。
+  - [x] 既存Download、Range、File操作、旧Multipart Uploadの契約へ回帰がない。
+- [x] ViewModel・UI Testが完了している。
+  - [x] 状態遷移、進捗、Retry、取消、二重Tap、一覧再取得をTestする。
+  - [x] 再開可能Errorとユーザー対応必須Errorの文言・ActionをTestする。
+  - [x] 画面回転、Back、Cancel確認、完了後表示をCompose Testする。
+  - [x] File名変更・別File選択で古いSessionとKeyを再利用しないことをTestする。
+- [x] PR2の標準検証が成功している。
+  - [x] `./scripts/ci/verify-config.sh`が成功する。
+  - [x] `./scripts/ci/verify-server.sh`が成功する。
+  - [x] `./scripts/ci/verify-security.sh`が成功する。
+  - [x] `./scripts/ci/verify-deployment.sh`が成功する。
+  - [x] `./scripts/ci/verify-android.sh`が成功する。
+  - [x] `./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が成功する。（OPPO CPH2333 / Android 13）
+  - [x] `git diff --check`が成功する。
 
 ### 2.6 Raspberry Pi・Android実機E2E
 
-- [ ] 実環境相当で中断再開を確認する。
-  - [ ] 配置前にPostgreSQLとStorage RootのBackupを取得する。
-  - [ ] Migrationを適用し、API、Nginx、設定を既存手順で配置する。
-  - [ ] `deployment/raspberry-pi/verify.sh`でAPI、Nginx、PostgreSQL、HDD、Storage IDを確認する。
-  - [ ] Android実機から小容量Fileと大容量動画FileをLAN経路でアップロードし、元FileとServer FileのSize・SHA-256が一致する。
-  - [ ] Upload中に通信を切断し、同じSessionの受信済みOffsetから再開して完了する。
-  - [ ] LANから`REMOTE_SECURE`経路へ切り替え可能な条件では、認証・TLS境界を維持して再開する。
-  - [ ] Android画面回転、Background遷移、API再起動、Nginx再起動の各条件で、設計どおり再開または明確な失敗になる。
-  - [ ] Chunk破損、Server容量不足、HDD未Mount、read-only、Device失効、Session期限切れで不完全Fileを公開しない。
-  - [ ] 明示取消と期限切れCleanup後に一時ファイルが残らず、DB、Audit、Metricと一致する。
-  - [ ] 既存Multipart UploadとRange Downloadも実機で回帰確認する。
-- [ ] 資源と性能を実機確認する。
-  - [ ] 大容量動画Upload中のAndroid HeapとServer RSSがFile Size比例で増加しない。
-  - [ ] Chunk Size、同時Upload上限、Retry間隔がRaspberry PiとAndroidの操作性を損なわない。
-  - [ ] Upload中も一覧、Health、認証更新、Range Downloadが許容範囲で応答する。
-  - [ ] Cleanup実行中も有効SessionのChunk受付と既存File操作が不必要に停止しない。
-  - [ ] 測定条件、File Size、経路、Chunk Size、中断位置、再開時間、Memory最大値を`docs/testing/`へ記録する。
+- [x] 実環境相当で中断再開を確認する。
+  - [x] 配置前にPostgreSQLとStorage RootのBackupを取得する。（Piの設定済みBackup領域でrestore list・tar検証済み）
+  - [x] Migrationを適用し、API、Nginx、設定を既存手順で配置する。（Pi `0.4.0-pr2.4`）
+  - [x] `deployment/raspberry-pi/verify.sh`でAPI、Nginx、PostgreSQL、HDD、Storage IDを確認する。
+  - [x] Android実機から小容量Fileと大容量動画FileをLAN経路でアップロードし、元FileとServer FileのSize・SHA-256が一致する。
+  - [x] Upload中に通信を切断し、同じSessionの受信済みOffsetから再開して完了する。
+  - [x] LANから`REMOTE_SECURE`経路へ切り替え可能な条件では、認証・TLS境界を維持して再開する。
+  - [x] Android画面回転、Background遷移、API再起動、Nginx再起動の各条件で、設計どおり再開または明確な失敗になる。
+  - [x] Chunk破損、Server容量不足、HDD未Mount、read-only、Device失効、Session期限切れで不完全Fileを公開しない。
+  - [x] 明示取消と期限切れCleanup後に一時ファイルが残らず、DB、Audit、Metricと一致する。
+  - [x] 既存Multipart UploadとRange Downloadも実機で回帰確認する。
+- [x] 資源と性能を実機確認する。
+  - [x] 大容量動画Upload中のAndroid HeapとServer RSSがFile Size比例で増加しない。
+  - [x] Chunk Size、同時Upload上限、Retry間隔がRaspberry PiとAndroidの操作性を損なわない。
+  - [x] Upload中も一覧、Health、認証更新、Range Downloadが許容範囲で応答する。（実測: 60.9 ms / 5.5 ms / 166.8 ms / 64.1 ms）
+  - [x] Cleanup実行中も有効SessionのChunk受付と既存File操作が不必要に停止しない。（起動Recovery/Cleanup競合を修正後、32 MiB Sessionが同一Offsetから完了）
+  - [x] 実機E2Eで発見した起動RecoveryとChunkの競合を、候補のno-tracking取得、Session lock内再読込し、HTTP受付前`StartingAsync`で解消する。
+  - [x] 候補が追跡されないIntegration Testを追加し、修正済みARM64 DLLのSHA-256とPi `0.4.0-pr2.4`配置物の一致を確認する。
+  - [x] 測定条件、File Size、経路、Chunk Size、中断位置、再開時間、Memory最大値を`docs/testing/`へ記録する。
 
 ### 2.7 配置・運用・将来Consumer境界
 
-- [ ] 配置と設定を更新する。
-  - [ ] `appsettings.example.json`とdeployment ConfigへSession期限、Chunk Size、同時数、Cleanup間隔・Batchを追加する。
-  - [ ] NginxのRequest Body制限、buffering、timeoutをChunk APIと既存Uploadの両方に適用できるよう更新する。
-  - [ ] Install、Upgrade、Rollback、Verify ScriptへMigrationと設定検証を追加する。
-  - [ ] 実環境値、File名、端末情報、SecretをGit管理対象へ追加しない。
-- [ ] 運用文書を更新する。
-  - [ ] Session状態、期限切れ件数、Cleanup失敗、`RECOVERY_REQUIRED`、一時容量を確認する手順を記載する。
-  - [ ] 安全な再試行、明示取消、Device失効、手動復旧、未完了Session確認を記載する。
-  - [ ] Migration順序、旧Client互換、Rollback前の未完了Session処置を記載する。
-  - [ ] 物理一時PathやChecksum全文を通常の運用Logへ出さない手順にする。
-- [ ] 将来Consumer向け境界を確認する。
-  - [ ] WebアプリがBrowser File Streamから同じSession APIを利用でき、Android固有Contractへ依存していない。
-  - [ ] 自動バックアップが認証済みDeviceとBackup Metadataを追加でき、TransferのChunk処理を再利用できる。
-  - [ ] 動画などContent TypeやFile Sizeだけを理由に拒否せず、設定上限と容量の範囲で処理できる。
-  - [ ] 今回はWeb UI、Backup Compare、Receipt、Room、WorkManagerを実装していないことを文書上明確にする。
+- [x] 配置と設定を更新する。
+  - [x] `appsettings.example.json`とdeployment ConfigへSession期限、Chunk Size、同時数、Cleanup間隔・Batchを追加する。
+  - [x] NginxのRequest Body制限、buffering、timeoutをChunk APIと既存Uploadの両方に適用できるよう更新する。
+  - [x] Install、Upgrade、Rollback、Verify ScriptへMigrationと設定検証を追加する。
+  - [x] 実環境値、File名、端末情報、SecretをGit管理対象へ追加しない。
+- [x] 運用文書を更新する。
+  - [x] Session状態、期限切れ件数、Cleanup失敗、`RECOVERY_REQUIRED`、一時容量を確認する手順を記載する。
+  - [x] 安全な再試行、明示取消、Device失効、手動復旧、未完了Session確認を記載する。
+  - [x] Migration順序、旧Client互換、Rollback前の未完了Session処置を記載する。
+  - [x] 物理一時PathやChecksum全文を通常の運用Logへ出さない手順にする。
+- [x] 将来Consumer向け境界を確認する。
+  - [x] WebアプリがBrowser File Streamから同じSession APIを利用でき、Android固有Contractへ依存していない。
+  - [x] 自動バックアップが認証済みDeviceとBackup Metadataを追加でき、TransferのChunk処理を再利用できる。
+  - [x] 動画などContent TypeやFile Sizeだけを理由に拒否せず、設定上限と容量の範囲で処理できる。
+  - [x] 今回はWeb UI、Backup Compare、Receipt、Room、WorkManagerを実装していないことを文書上明確にする。
 
 ### 2.8 文書整合・セルフレビュー
 
-- [ ] PR2実装と文書を整合する。
-  - [ ] `requirements.md`のAndroid中断再開と大容量受け入れ条件に対応する実装・検証がある。
-  - [ ] `design.md`と実装差分がある場合、理由と確定設計を反映する。
-  - [ ] 5つの正式文書、OpenAPI、Config、Migration、Server、Android、運用手順の名称、状態、既定値が一致する。
-  - [ ] 実測結果を基に既定Chunk Sizeや同時数を変更した場合、根拠と影響を記録する。
-- [ ] PR2差分をセルフレビューする。
-  - [ ] Androidが物理Path変換、全体ByteArray化、不要な永続URI権限取得をしていない。
-  - [ ] 通信結果不明時にUpload完了や受信Offsetを推測していない。
-  - [ ] Server確定OffsetとIdempotencyを全再試行経路で維持している。
-  - [ ] Web・Backup本体、Room、WorkManager、不要なPackage・Moduleを追加していない。
-  - [ ] Credential、実環境情報、File内容、生成物が差分にない。
+- [x] PR2実装と文書を整合する。
+  - [x] `requirements.md`のAndroid中断再開と大容量受け入れ条件に対応する実装・検証がある。
+  - [x] `design.md`と実装差分がある場合、理由と確定設計を反映する。
+  - [x] 5つの正式文書、OpenAPI、Config、Migration、Server、Android、運用手順の名称、状態、既定値が一致する。
+  - [x] 実測結果を基に既定Chunk Sizeや同時数を変更した場合、根拠と影響を記録する。（既定値の変更なし）
+- [x] PR2差分をセルフレビューする。
+  - [x] Androidが物理Path変換、全体ByteArray化、不要な永続URI権限取得をしていない。
+  - [x] 通信結果不明時にUpload完了や受信Offsetを推測していない。
+  - [x] Server確定OffsetとIdempotencyを全再試行経路で維持している。
+  - [x] Web・Backup本体、Room、WorkManager、不要なPackage・Moduleを追加していない。
+  - [x] Credential、実環境情報、File内容、生成物が差分にない。
 
 ### 2.9 Pull Request完了
 
 - [ ] PR2が完了している。
-  - [ ] 2.1〜2.8がすべて`[x]`である。
+  - [x] 2.1〜2.8がすべて`[x]`である。
   - [ ] 共通Pull Request完了手順をすべて実施する。
   - [ ] PR2完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
   - [ ] 完了記録CommitがPR2へ反映されている。

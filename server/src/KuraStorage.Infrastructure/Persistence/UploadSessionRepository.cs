@@ -42,6 +42,7 @@ public sealed class UploadSessionRepository(KuraStorageDbContext dbContext) : IU
         int take,
         CancellationToken cancellationToken) =>
         await dbContext.UploadSessions
+            .AsNoTracking()
             .Where(session =>
                 (session.Status == UploadSessionStatus.Active &&
                  (session.ExpiresAt <= now || !dbContext.Devices.Any(device =>
@@ -57,6 +58,7 @@ public sealed class UploadSessionRepository(KuraStorageDbContext dbContext) : IU
         int take,
         CancellationToken cancellationToken) =>
         await dbContext.UploadSessions
+            .AsNoTracking()
             .Where(session =>
                 session.Status == UploadSessionStatus.Active ||
                 session.Status == UploadSessionStatus.Completing ||

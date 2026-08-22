@@ -1150,8 +1150,8 @@ Worker本体、最大割当、画像処理、将来のLibrary差分を含む余�
 - PostgreSQLの`upload_sessions`が状態、作成Device、確定済みOffset、最後のChunk検証情報、idle・絶対期限、一時相対Pathの正となる。`xmin`とSession ID由来のPostgreSQL advisory lockで複数API Processの書込みを直列化する。保存先FolderのPurgeはFKを`SET NULL`とし、SessionをCascade削除せず完了拒否と期限Cleanupへ収束させる。
 - 一時ファイルは`upload-sessions/<owner>/<session>.upload`に置き、検証済みStorage Rootと相対Path境界のみを使う。Chunkは64 KiB bufferでStreamingし、SHA-256計算とdurable flush完了後にだけDB Offsetを進める。不完全書込みは確定Offsetへtruncateする。
 - 公開は保存先Folder lockを加え、`FileOperation(PENDING)`、atomic rename、`FILESYSTEM_DONE`、FileEntry・Audit・Session・OperationのDB確定の順で行う。API停止後はSession復旧をFileOperation復旧より先に実行する。
-- 起動時と5分ごとのRecoveryはDB Offsetと実長を照合し、長い一時ファイルはtruncate、短い・欠落・矛盾は`RECOVERY_REQUIRED`とする。Storage ID不一致や未Mount時は推測せず延期する。
-- Cleanupは起動時と既定15分周期に固定Global advisory lockを取り、DBから期限・ID順に100件ずつ取得する。Session lock内で期限とDevice状態を再確認し、一時ファイルを冪等削除する。HDD全走査は行わない。
+- 起動時と5分ごとのRecoveryはDB Offsetと実長を照合し、長い一時ファイルはtruncate、短い・欠落・矛盾は`RECOVERY_REQUIRED`とする。Storage ID不一致や未Mount時は推測せず延期する。起動時RecoveryとCleanupはHTTP受付開始前のHosted Service `StartingAsync`で完了させる。
+- Cleanupは起動時と既定15分周期に固定Global advisory lockを取り、DBから期限・ID順に100件ずつno-trackingで候補取得する。RecoveryとCleanupはSession lock取得後に権威状態を再読込し、期限とDevice状態を再確認してから一時ファイルを冪等更新・削除する。HDD全走査は行わない。
 - 資源上限はFile 1 TiB、Chunk 8 MiB、同時Chunk書込み2、UserごとActive Session 10、Deviceごと5を既定とし、型付きOptionsで起動時検証する。上限到達は`429`と`Retry-After`で返し、既存Multipart UploadとLimiterを共有しない。
 - 期限切れ、明示取消、Device失効は未完了Sessionを停止し、一時ファイル削除失敗を次回Cleanup対象として残す。
 - Androidは通信再試行時に同じPayloadと`Idempotency-Key`を再利用し、別名保存でPayloadを変更する場合は新しいKeyを発行する。
@@ -1175,7 +1175,7 @@ Worker本体、最大割当、画像処理、将来のLibrary差分を含む余�
 
 ### 16.2 起動時復旧
 
-API起動時に次を実行する。
+API起動時に次をHTTP受付開始前に実行する。定期実行と同じ候補のno-tracking取得、advisory lock、lock内再読込の順序を守る。
 
 1. DB Migration Versionを確認する。
 2. HDDマウントとstorageIdを確認する。

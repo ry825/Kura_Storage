@@ -116,3 +116,38 @@ data class AdminStorageStatusDto(
     val recoveryRequiredPurgeCount: Int,
     val lastPurgeRun: TrashPurgeRunSummaryDto? = null,
 )
+
+@Serializable
+data class CreateUploadSessionRequestDto(
+    val destinationFolderId: String,
+    val fileName: String,
+    val contentType: String? = null,
+    val size: Long,
+    val sha256: String? = null,
+)
+
+@Serializable
+data class UploadSessionDto(
+    val id: String,
+    val status: String,
+    val size: Long,
+    val receivedBytes: Long,
+    val nextOffset: Long,
+    val preferredChunkBytes: Int,
+    val maximumChunkBytes: Int,
+    val expiresAt: String,
+    val absoluteExpiresAt: String,
+    val resumable: Boolean,
+    val file: FileEntryDto? = null,
+)
+
+@Serializable
+data class UploadChunkDto(
+    val offset: Long,
+    val length: Long,
+    val sha256: String,
+    val receivedBytes: Long,
+    val nextOffset: Long,
+    val expiresAt: String,
+    val replayed: Boolean,
+)

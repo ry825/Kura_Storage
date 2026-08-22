@@ -328,6 +328,7 @@ KuraStorage.Domain/
 - `Utils/`、`Helpers/`、`Common/`という曖昧なDirectoryを作らない。
 - Resumable UploadはDomainの`Transfers/`、Applicationの`Transfers/`/`Abstractions/UploadSessionAbstractions.cs`、Infrastructureの`Persistence/UploadSessionRepository.cs`・`Storage/FileStore.cs`・`Storage/FileRecoveryHostedService.cs`、APIの`Program.cs`に配置する。
 - Migrationは`Persistence/Migrations/`、OpenAPIは`contracts/openapi/kurastorage-api.yaml`、Domain・Application・API・Migration Testは各既存Test ProjectのUpload Session対応Fileへ配置する。
+- AndroidのResumable Upload契約は`core-network/KuraStorageApi.kt`、状態とOperationは`core-model/FileModels.kt`、SAF Chunk処理は`core-data/TransferRepository.kt`、表示と操作は`feature-files`へ配置する。Android固有型をServer契約へ持ち込まない。
 - Domain Eventを導入する場合は各Moduleの`Events/`へ置き、Infrastructure Eventと混同しない。
 
 ---

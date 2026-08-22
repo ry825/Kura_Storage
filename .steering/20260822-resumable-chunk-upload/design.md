@@ -305,8 +305,8 @@ File IDはSession作成時に予約し、一時Pathと公開後FileEntryで同�
 | `CANCELLED`/`EXPIRED` | なし | 存在 | 不在 | 不在 | 一時Fileを冪等削除 |
 | 任意 | 任意 | 不在 | 不在 | 存在 | 公開済み索引と物理不一致。既存Missing方針に従い隔離 |
 
-- `FileRecoveryHostedService`が既存`FileOperationRecoveryService`とUpload Session Recoveryを起動時および5分周期で実行する。
-- Recoveryは通常処理と同じSession・Destination lockと内部確定Methodを使用する。
+- `FileRecoveryHostedService`が既存`FileOperationRecoveryService`とUpload Session Recoveryを起動時および5分周期で実行する。起動時分は`IHostedLifecycleService.StartingAsync`でHTTP受付開始前に完了させる。
+- Recoveryは通常処理と同じSession・Destination lockと内部確定Methodを使用する。候補はno-trackingで取得し、Session lock取得後にDBの権威状態を再読込する。
 - Storage未利用時は物理状態を推測せず次回へ延期する。
 - Recovery成功AuditはOperation IDとActionの一意性で重複を防ぐ。
 
@@ -314,12 +314,12 @@ File IDはSession作成時に予約し、一時Pathと公開後FileEntryで同�
 
 ### 7.1 Cleanup処理
 
-`UploadSessionCleanupService`をApplicationへ置き、既存API内Hosted Serviceから起動時と15分周期に呼び出す。独立Workerは追加しない。
+`UploadSessionCleanupService`をApplicationへ置き、既存API内Hosted Serviceから起動時と15分周期に呼び出す。起動時分はRecoveryに続けてHTTP受付開始前に完了させ、独立Workerは追加しない。
 
 ```text
 1. 固定Global Cleanup advisory lockを取得する。取得できなければ今回Runを終了する。
-2. status=ACTIVEかつexpiresAt<=nowのSessionを期限順・ID順に100件取得する。
-3. SessionごとにSession lockを取得し、状態と期限を再検証する。
+2. status=ACTIVEかつexpiresAt<=nowのSessionを期限順・ID順に100件、no-trackingで取得する。
+3. SessionごとにSession lockを取得し、DBから権威状態を再読込して状態と期限を再検証する。
 4. ACTIVEならEXPIREDへ先にDB確定し、新規Chunkと完了を停止する。
 5. 一時Fileを冪等削除する。
 6. 削除失敗はEXPIREDのままerrorCodeを記録し、次回のterminal cleanup候補にする。
