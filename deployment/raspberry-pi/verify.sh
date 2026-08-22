@@ -31,6 +31,11 @@ if [[ -x "${INSTALL_ROOT}/current/KuraStorage.Worker" ]]; then
         die "Worker is not configured to run as kurastorage-api."
     [[ "$(systemctl show kurastorage-worker.service --property=Group --value)" == "${KURASTORAGE_STORAGE_ACCESS_GROUP}" ]] ||
         die "Worker does not use the shared storage group."
+    max_user_watches="$(< /proc/sys/fs/inotify/max_user_watches)"
+    [[ "${max_user_watches}" =~ ^[0-9]+$ ]] || die "Cannot read the inotify watch limit."
+    if (( max_user_watches < 65536 )); then
+        printf 'Warning: fs.inotify.max_user_watches=%s is below the recommended 65536.\n' "${max_user_watches}" >&2
+    fi
 else
     ! systemctl is-active --quiet kurastorage-worker.service ||
         die "Worker must be inactive when the current release does not contain it."

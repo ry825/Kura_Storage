@@ -414,7 +414,7 @@ Application Command / Query
 
 ### 6.4 KuraStorage.Worker
 
-現在のPhase 1拡張では`TrashPurgeWorker`だけを配置する。その他はMVP後に追加し、1つのWorker実行ファイル内へ配置する場合も各処理を独立したジョブ種別として扱う。
+`TrashPurgeWorker`に加え、外部変更追従では`IndexEventWorker`と`FullRescanWorker`を配置する。1つのWorker実行ファイル内でも各処理は独立したHosted Service、DI Scope、例外境界、再試行周期を持ち、相互に不要な直列化を行わない。
 
 - `MediaTranscodeWorker`
 - `ImageDerivativeWorker`
@@ -882,6 +882,10 @@ sequenceDiagram
 - FileEntry更新はPostgreSQL `xmin`の楽観的並行制御を使用し、競合時は古いSnapshotを破棄して次回照合へ戻す。
 - Scan Runは開始・終了状態と件数を永続化し、Stagingは成功時または保持期限超過後に清掃する。同時全件Scanは固定advisory lockで拒否する。
 - `MISSING`項目の管理情報削除はユーザーまたは管理者の明示操作で行う。
+- Linux watcherはlibcのinotifyだけを限定P/Invokeし、watch descriptorと検証済み相対DirectoryだけをProcess Memoryに保持する。file descriptorはSafeHandleで所有し、Worker停止時にcloseしてread loopを終了する。
+- native Eventはbounded channelへ渡し、同じPathを500ms debounceする。Move cookieは1秒のwindowで対応付け、queue overflow、watch limit、片側Move、監視停止は全件Scanまたは個別Path再照合へ変換する。
+- Worker起動時、6時間周期、overflow・監視再作成時にPR1と同じ`IndexScanService`を呼ぶ。PostgreSQL advisory lockにより管理CLIや別Workerとの重複実行を拒否する。
+- Watcher稼働、最終Event、queue長、overflow、最終成功Scan、候補・欠損件数は個人識別子をLabelに含めないMetricで観測する。
 
 ---
 

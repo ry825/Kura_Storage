@@ -61,6 +61,35 @@ public sealed class IndexCatalogRepository(KuraStorageDbContext dbContext) : IIn
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<FileEntry>> FindEntriesByPathsAsync(
+        IReadOnlyList<IndexPathKey> paths,
+        CancellationToken cancellationToken)
+    {
+        if (paths.Count == 0)
+        {
+            return [];
+        }
+
+        var requested = paths.ToHashSet();
+        var pathValues = paths.Select(path => path.RelativePath).Distinct(StringComparer.Ordinal).ToArray();
+        var result = dbContext.FileEntries.Local
+            .Where(entry => entry.Status != FileEntryStatus.Trashed &&
+                            requested.Contains(new IndexPathKey(entry.OwnerUserId, entry.RelativePath)))
+            .ToDictionary(entry => entry.Id);
+        var persisted = await dbContext.FileEntries
+            .Where(entry => entry.Status != FileEntryStatus.Trashed && pathValues.Contains(entry.RelativePath))
+            .ToListAsync(cancellationToken);
+        foreach (var entry in persisted)
+        {
+            if (requested.Contains(new IndexPathKey(entry.OwnerUserId, entry.RelativePath)))
+            {
+                result[entry.Id] = entry;
+            }
+        }
+
+        return result.Values.ToArray();
+    }
+
     public async Task<FileEntry?> FindEntryByIdAsync(Guid id, CancellationToken cancellationToken) =>
         dbContext.FileEntries.Local.SingleOrDefault(entry => entry.Id == id) ??
         await dbContext.FileEntries.SingleOrDefaultAsync(entry => entry.Id == id, cancellationToken);
@@ -87,6 +116,35 @@ public sealed class IndexCatalogRepository(KuraStorageDbContext dbContext) : IIn
                           (operation.TargetRelativePath != null && relativePath.StartsWith(operation.TargetRelativePath + "/"))),
             cancellationToken);
 
+    public async Task<IReadOnlySet<Guid>> FindEntriesWithIncompleteOperationsAsync(
+        IReadOnlyList<IndexOperationKey> entries,
+        CancellationToken cancellationToken)
+    {
+        if (entries.Count == 0)
+        {
+            return new HashSet<Guid>();
+        }
+
+        var owners = entries.Select(entry => entry.OwnerUserId).Distinct().ToArray();
+        var operations = await dbContext.FileOperations
+            .AsNoTracking()
+            .Where(operation => owners.Contains(operation.OwnerUserId) &&
+                                operation.Status != FileOperationStatus.Completed)
+            .ToListAsync(cancellationToken);
+        return entries
+            .Where(entry => operations.Any(operation =>
+                operation.OwnerUserId == entry.OwnerUserId &&
+                (operation.FileEntryId == entry.EntryId ||
+                 operation.SourceRelativePath == entry.RelativePath ||
+                 operation.TargetRelativePath == entry.RelativePath ||
+                 (operation.SourceRelativePath != null &&
+                  entry.RelativePath.StartsWith(operation.SourceRelativePath + "/", StringComparison.Ordinal)) ||
+                 (operation.TargetRelativePath != null &&
+                  entry.RelativePath.StartsWith(operation.TargetRelativePath + "/", StringComparison.Ordinal)))))
+            .Select(entry => entry.EntryId)
+            .ToHashSet();
+    }
+
     public async Task<IReadOnlyList<FileEntry>> ListDescendantsAsync(
         Guid ownerUserId,
         string relativePathPrefix,
@@ -97,6 +155,20 @@ public sealed class IndexCatalogRepository(KuraStorageDbContext dbContext) : IIn
                             entry.Status != FileEntryStatus.Trashed)
             .OrderBy(entry => entry.RelativePath)
             .ToListAsync(cancellationToken);
+
+    public async Task<(int CandidateCount, int MissingCount)> CountMissingStatesAsync(
+        CancellationToken cancellationToken)
+    {
+        var counts = await dbContext.FileEntries
+            .Where(entry => entry.Status == FileEntryStatus.MissingCandidate ||
+                            entry.Status == FileEntryStatus.Missing)
+            .GroupBy(entry => entry.Status)
+            .Select(group => new { Status = group.Key, Count = group.Count() })
+            .ToListAsync(cancellationToken);
+        return (
+            counts.SingleOrDefault(item => item.Status == FileEntryStatus.MissingCandidate)?.Count ?? 0,
+            counts.SingleOrDefault(item => item.Status == FileEntryStatus.Missing)?.Count ?? 0);
+    }
 
     public void Add(FileEntry entry) => dbContext.FileEntries.Add(entry);
     public void Add(IndexScanRun run) => dbContext.IndexScanRuns.Add(run);
@@ -122,6 +194,22 @@ public sealed class IndexCatalogRepository(KuraStorageDbContext dbContext) : IIn
 
             throw new IndexCatalogConcurrencyException();
         }
+        catch (DbUpdateException exception) when (
+            exception.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation,
+            })
+        {
+            // Event and full-scan reconciliation may discover the same new path concurrently.
+            // Keep the database winner and discard this stale batch; the next event/scan converges it.
+            foreach (var entry in dbContext.ChangeTracker.Entries<FileEntry>()
+                         .Where(entry => entry.State == EntityState.Added))
+            {
+                entry.State = EntityState.Detached;
+            }
+
+            throw new IndexCatalogConcurrencyException();
+        }
     }
 
     public async Task CleanupStagingAsync(DateTimeOffset cutoff, CancellationToken cancellationToken)
@@ -139,6 +227,21 @@ public sealed class IndexCatalogRepository(KuraStorageDbContext dbContext) : IIn
             .Where(item => dbContext.IndexScanRuns.Any(
                 run => run.Id == item.ScanId && run.StartedAt < cutoff && run.Status != IndexScanStatus.Running))
             .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    public async Task RecoverInterruptedRunsAsync(
+        DateTimeOffset recoveredAt,
+        CancellationToken cancellationToken)
+    {
+        await dbContext.IndexScanRuns
+            .Where(run => run.Status == IndexScanStatus.Running)
+            .ExecuteUpdateAsync(
+                updates => updates
+                    .SetProperty(run => run.Status, IndexScanStatus.Failed)
+                    .SetProperty(run => run.CompletedAt, recoveredAt)
+                    .SetProperty(run => run.ErrorCode, "WORKER_INTERRUPTED")
+                    .SetProperty(run => run.ErrorCount, run => run.ErrorCount + 1),
+                cancellationToken);
     }
 
     private sealed class IndexScanLock(NpgsqlConnection connection) : IIndexScanLock
@@ -326,6 +429,64 @@ public sealed class IndexCatalogRepository(KuraStorageDbContext dbContext) : IIn
                     reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7),
                     reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
                     reader.IsDBNull(9) ? null : reader.GetGuid(9)));
+            }
+
+            return result;
+        }
+
+        public async Task<IReadOnlyDictionary<string, IReadOnlyList<IndexedCatalogEntry>>> FindMoveCandidatesBatchAsync(
+            IReadOnlyList<StagedIndexEntry> observed,
+            CancellationToken cancellationToken)
+        {
+            var result = observed.ToDictionary(
+                entry => entry.RelativePath,
+                _ => (IReadOnlyList<IndexedCatalogEntry>)Array.Empty<IndexedCatalogEntry>(),
+                StringComparer.Ordinal);
+            var paths = observed
+                .Where(entry => entry.SourceFileKey is not null && entry.IsolationReason is null)
+                .Select(entry => entry.RelativePath)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (paths.Length == 0)
+            {
+                return result;
+            }
+
+            await using var command = new NpgsqlCommand(
+                $"SELECT s.relative_path, f.id, f.owner_user_id, f.relative_path, f.entry_type, f.status, f.source_file_key, f.size, f.source_modified_at, f.missing_detected_at, f.missing_observation_id FROM {TableName} s JOIN file_entries f ON f.owner_user_id = s.owner_user_id AND f.entry_type = s.entry_type AND f.source_file_key = s.source_file_key AND f.size = s.size AND f.source_modified_at = s.source_modified_at WHERE s.scan_id = @scan AND s.relative_path = ANY(@paths) AND s.source_file_key IS NOT NULL AND s.isolation_reason IS NULL AND f.parent_id IS NOT NULL AND f.status = 'ACTIVE' AND f.relative_path <> s.relative_path AND NOT EXISTS (SELECT 1 FROM {TableName} old WHERE old.scan_id = @scan AND old.owner_user_id = f.owner_user_id AND old.relative_path = f.relative_path) ORDER BY s.relative_path, f.id",
+                connection);
+            command.Parameters.AddWithValue("scan", scanId);
+            command.Parameters.Add(new NpgsqlParameter("paths", NpgsqlDbType.Array | NpgsqlDbType.Text)
+            {
+                Value = paths,
+            });
+            var candidates = new Dictionary<string, List<IndexedCatalogEntry>>(StringComparer.Ordinal);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var observedPath = reader.GetString(0);
+                if (!candidates.TryGetValue(observedPath, out var entries))
+                {
+                    entries = [];
+                    candidates[observedPath] = entries;
+                }
+
+                if (entries.Count < 2)
+                {
+                    entries.Add(new IndexedCatalogEntry(
+                        reader.GetGuid(1), reader.GetGuid(2), reader.GetString(3),
+                        Enum.Parse<FileEntryType>(reader.GetString(4), true),
+                        ParseFileEntryStatus(reader.GetString(5)),
+                        reader.IsDBNull(6) ? null : reader.GetString(6), reader.GetInt64(7),
+                        reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
+                        reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9),
+                        reader.IsDBNull(10) ? null : reader.GetGuid(10)));
+                }
+            }
+
+            foreach (var candidate in candidates)
+            {
+                result[candidate.Key] = candidate.Value;
             }
 
             return result;

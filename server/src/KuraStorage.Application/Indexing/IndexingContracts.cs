@@ -19,6 +19,28 @@ public sealed record ObservedStorageEntry(
 
 public sealed record IndexScanRequest(IndexScanTrigger Trigger, IndexScanMode Mode);
 
+public enum IndexChangeKind
+{
+    Reconcile,
+    Move,
+    Overflow,
+    WatcherStopped,
+}
+
+public sealed record IndexChangeEvent(
+    IndexChangeKind Kind,
+    string RelativePath,
+    string? PreviousRelativePath = null,
+    bool ContentMayHaveChanged = false);
+
+public enum IndexEventResult
+{
+    Applied,
+    Ignored,
+    Deferred,
+    RescanRequired,
+}
+
 public sealed record IndexScanSummary(
     Guid RunId,
     IndexScanStatus Status,
@@ -44,4 +66,10 @@ public sealed class IndexingOptions
     public int BatchSize { get; init; } = 500;
     public int MissingConfirmationDelayMinutes { get; init; } = 5;
     public int StagingRetentionHours { get; init; } = 24;
+    public int FullRescanIntervalMinutes { get; init; } = 360;
+    public bool RunOnStartup { get; init; } = true;
+    public int EventDebounceMilliseconds { get; init; } = 500;
+    public int MovePairingWindowMilliseconds { get; init; } = 1000;
+    public int EventQueueCapacity { get; init; } = 4096;
+    public int RetryBackoffSeconds { get; init; } = 30;
 }

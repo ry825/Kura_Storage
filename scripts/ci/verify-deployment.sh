@@ -151,6 +151,12 @@ assert indexing["Enabled"] is False
 assert 10 <= indexing["BatchSize"] <= 5000
 assert 1 <= indexing["MissingConfirmationDelayMinutes"] <= 1440
 assert 1 <= indexing["StagingRetentionHours"] <= 168
+assert 5 <= indexing["FullRescanIntervalMinutes"] <= 10080
+assert indexing["RunOnStartup"] is True
+assert 50 <= indexing["EventDebounceMilliseconds"] <= 10000
+assert 100 <= indexing["MovePairingWindowMilliseconds"] <= 30000
+assert 128 <= indexing["EventQueueCapacity"] <= 65536
+assert 1 <= indexing["RetryBackoffSeconds"] <= 3600
 assert log_levels["Microsoft.AspNetCore.Http.Result.FileStreamResult"] == "Warning"
 PY
 
@@ -188,6 +194,8 @@ sed -i \
 verify_systemd_unit "${validation_root}/kurastorage-worker.service"
 grep -q '^PrivateNetwork=true$' "${validation_root}/kurastorage-worker.service"
 grep -q '^RestrictAddressFamilies=AF_UNIX$' "${validation_root}/kurastorage-worker.service"
+grep -q '^TimeoutStopSec=45s$' "${validation_root}/kurastorage-worker.service"
+grep -q '^LimitNOFILE=65536$' "${validation_root}/kurastorage-worker.service"
 # shellcheck disable=SC2016
 grep -Fq '[[ -x "${INSTALL_ROOT}/current/KuraStorage.Worker" ]]' deployment/raspberry-pi/rollback.sh
 grep -Fq 'systemctl disable --now kurastorage-worker.service' deployment/raspberry-pi/rollback.sh

@@ -20,6 +20,24 @@ public interface IIndexScanService
     Task<IndexScanSummary> RunAsync(IndexScanRequest request, CancellationToken cancellationToken);
 }
 
+public interface IIndexEventService
+{
+    Task<IndexEventResult> ReconcileAsync(IndexChangeEvent change, CancellationToken cancellationToken);
+}
+
+public interface IIndexChangeWatcher
+{
+    IAsyncEnumerable<IndexChangeEvent> WatchAsync(CancellationToken cancellationToken);
+}
+
+public interface IIndexRescanSignal
+{
+    void Request(IndexScanTrigger trigger);
+    Task<IndexScanTrigger?> WaitAsync(TimeSpan timeout, CancellationToken cancellationToken);
+    void SetReady(bool ready);
+    Task WaitUntilReadyAsync(CancellationToken cancellationToken);
+}
+
 public interface IIndexScanObserver
 {
     void Started(Guid runId, IndexScanTrigger trigger, IndexScanMode mode);
@@ -51,6 +69,19 @@ public interface IIndexScanWorkspace : IAsyncDisposable
     Task<IReadOnlyList<IndexedCatalogEntry>> FindMoveCandidatesAsync(
         StagedIndexEntry observed,
         CancellationToken cancellationToken);
+
+    async Task<IReadOnlyDictionary<string, IReadOnlyList<IndexedCatalogEntry>>> FindMoveCandidatesBatchAsync(
+        IReadOnlyList<StagedIndexEntry> observed,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, IReadOnlyList<IndexedCatalogEntry>>(StringComparer.Ordinal);
+        foreach (var entry in observed)
+        {
+            result[entry.RelativePath] = await FindMoveCandidatesAsync(entry, cancellationToken);
+        }
+
+        return result;
+    }
 
     Task ClearAsync(CancellationToken cancellationToken);
 }
@@ -90,6 +121,23 @@ public interface IIndexCatalogRepository
 
     Task<FileEntry?> FindEntryByPathAsync(Guid ownerUserId, string relativePath, CancellationToken cancellationToken);
 
+    async Task<IReadOnlyList<FileEntry>> FindEntriesByPathsAsync(
+        IReadOnlyList<IndexPathKey> paths,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<FileEntry>(paths.Count);
+        foreach (var path in paths)
+        {
+            var entry = await FindEntryByPathAsync(path.OwnerUserId, path.RelativePath, cancellationToken);
+            if (entry is not null)
+            {
+                result.Add(entry);
+            }
+        }
+
+        return result;
+    }
+
     Task<FileEntry?> FindEntryByIdAsync(Guid id, CancellationToken cancellationToken);
 
     Task<FileEntry?> FindRootAsync(Guid ownerUserId, CancellationToken cancellationToken);
@@ -100,13 +148,41 @@ public interface IIndexCatalogRepository
         string relativePath,
         CancellationToken cancellationToken);
 
+    async Task<IReadOnlySet<Guid>> FindEntriesWithIncompleteOperationsAsync(
+        IReadOnlyList<IndexOperationKey> entries,
+        CancellationToken cancellationToken)
+    {
+        var result = new HashSet<Guid>();
+        foreach (var entry in entries)
+        {
+            if (await HasIncompleteOperationAsync(
+                    entry.OwnerUserId,
+                    entry.EntryId,
+                    entry.RelativePath,
+                    cancellationToken))
+            {
+                result.Add(entry.EntryId);
+            }
+        }
+
+        return result;
+    }
+
     Task<IReadOnlyList<FileEntry>> ListDescendantsAsync(
         Guid ownerUserId,
         string relativePathPrefix,
         CancellationToken cancellationToken);
 
+    Task<(int CandidateCount, int MissingCount)> CountMissingStatesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult((0, 0));
+
     void Add(FileEntry entry);
     void Add(IndexScanRun run);
     Task SaveChangesAsync(CancellationToken cancellationToken);
+    Task RecoverInterruptedRunsAsync(DateTimeOffset recoveredAt, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
     Task CleanupStagingAsync(DateTimeOffset cutoff, CancellationToken cancellationToken);
 }
+
+public readonly record struct IndexPathKey(Guid OwnerUserId, string RelativePath);
+public readonly record struct IndexOperationKey(Guid OwnerUserId, Guid EntryId, string RelativePath);

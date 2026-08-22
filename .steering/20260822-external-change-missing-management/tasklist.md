@@ -152,107 +152,107 @@
 
 ### 2.1 Linux inotify監視Adapter
 
-- [ ] Storage Rootの変更イベントを監視する。
-  - [ ] Linux libcへの限定P/Invokeでinotifyを使用し、正式User領域の作成、更新、Close Write、Rename、Move、削除を取得する。
-  - [ ] Move cookieを設定済みWindow内で対応付け、片側だけのMoveは個別Path再照合へ変換する。
-  - [ ] 監視開始前後の隙間を起動時再スキャンで補完する。
-  - [ ] 新規Folderへ監視を追加し、削除・移動済みFolderの監視を解放する。
-  - [ ] Cookie等で対応付け可能なMoveを組にし、未対応イベントは個別再照合へ収束させる。
-  - [ ] Burstをdebounce・coalesceし、同じPathへの大量イベントで無制限にQueueを増やさない。
-  - [ ] Queue overflow、watch limit、イベント欠落、監視停止を検出し、全件再スキャンを要求する。
-  - [ ] KuraStorage内部の一時・Trash・派生・管理領域イベントを除外しつつ、正式配置後の状態は取りこぼさない。
-  - [ ] Symbolic Link、Storage Root外へ解決されるPath、特殊Fileをイベント経由でも通常索引へ公開しない。
+- [x] Storage Rootの変更イベントを監視する。
+  - [x] Linux libcへの限定P/Invokeでinotifyを使用し、正式User領域の作成、更新、Close Write、Rename、Move、削除を取得する。
+  - [x] Move cookieを設定済みWindow内で対応付け、片側だけのMoveは個別Path再照合へ変換する。
+  - [x] 監視開始前後の隙間を起動時再スキャンで補完する。
+  - [x] 新規Folderへ監視を追加し、削除・移動済みFolderの監視を解放する。
+  - [x] Cookie等で対応付け可能なMoveを組にし、未対応イベントは個別再照合へ収束させる。
+  - [x] Burstをdebounce・coalesceし、同じPathへの大量イベントで無制限にQueueを増やさない。
+  - [x] Queue overflow、watch limit、イベント欠落、監視停止を検出し、全件再スキャンを要求する。
+  - [x] KuraStorage内部の一時・Trash・派生・管理領域イベントを除外しつつ、正式配置後の状態は取りこぼさない。
+  - [x] Symbolic Link、Storage Root外へ解決されるPath、特殊Fileをイベント経由でも通常索引へ公開しない。
 
 ### 2.2 Index Event処理
 
-- [ ] `IndexEventWorker`のApplication処理を実装する。
-  - [ ] EventをHintとして扱い、処理時にHDDの現在状態とStorage状態を再確認する。
-  - [ ] 作成・更新・Rename・Move・削除をPR1の共通照合処理へ委譲し、別の状態遷移を重複実装しない。
-  - [ ] 外部更新とKuraStorage内部操作の競合時にFileOperation・DB Versionを再確認する。
-  - [ ] Event順序逆転、重複、欠落、同一Path再作成を冪等に処理する。
-  - [ ] 単一イベントの不存在だけで`MISSING`へ確定せず、候補化後の再確認を予約する。
-  - [ ] HDD利用不可時はEventを根拠に欠損状態を更新せず、利用可能復帰後の再スキャンへ収束させる。
+- [x] `IndexEventWorker`のApplication処理を実装する。
+  - [x] EventをHintとして扱い、処理時にHDDの現在状態とStorage状態を再確認する。
+  - [x] 作成・更新・Rename・Move・削除をPR1の共通照合処理へ委譲し、別の状態遷移を重複実装しない。
+  - [x] 外部更新とKuraStorage内部操作の競合時にFileOperation・DB Versionを再確認する。
+  - [x] Event順序逆転、重複、欠落、同一Path再作成を冪等に処理する。
+  - [x] 単一イベントの不存在だけで`MISSING`へ確定せず、候補化後の再確認を予約する。
+  - [x] HDD利用不可時はEventを根拠に欠損状態を更新せず、利用可能復帰後の再スキャンへ収束させる。
 
 ### 2.3 定期・起動時再スキャン
 
-- [ ] `FullRescanWorker`を既存`KuraStorage.Worker`へ追加する。
-  - [ ] Worker起動時、設定周期、inotify overflow・監視異常時にPR1の全件再スキャンを実行する。
-  - [ ] DB Lockで複数Worker・管理CLIとの全件Scan重複を防ぐ。
-  - [ ] `Enabled`、再スキャン周期、起動時実行、Batch Size、debounce、Move pairing、Queue上限、欠損確認間隔、再試行Backoff、Staging保持を型付きOptionsにする。
-  - [ ] 既定値と安全な上下限を設定し、起動時に不正設定を拒否する。
-  - [ ] 1件のPoison Event、監視再作成失敗、DB一時障害でWorker全体が永久停止しない。
-  - [ ] API、TrashPurgeWorker、Upload Cleanup、FileOperation Recoveryと不要に直列化しない。
-- [ ] Storage状態遷移と監視Lifecycleを連携する。
-  - [ ] `UNAVAILABLE`またはStorage ID不一致で監視・再確認を停止する。
-  - [ ] `AVAILABLE`復帰時に監視を作り直し、全件再スキャン完了後に通常イベント処理へ戻る。
-  - [ ] 再接続後も別HDDの内容を既存索引へ結合しない。
-  - [ ] Worker停止・再起動中のイベント欠落を起動時再スキャンで修復する。
+- [x] `FullRescanWorker`を既存`KuraStorage.Worker`へ追加する。
+  - [x] Worker起動時、設定周期、inotify overflow・監視異常時にPR1の全件再スキャンを実行する。
+  - [x] DB Lockで複数Worker・管理CLIとの全件Scan重複を防ぐ。
+  - [x] `Enabled`、再スキャン周期、起動時実行、Batch Size、debounce、Move pairing、Queue上限、欠損確認間隔、再試行Backoff、Staging保持を型付きOptionsにする。
+  - [x] 既定値と安全な上下限を設定し、起動時に不正設定を拒否する。
+  - [x] 1件のPoison Event、監視再作成失敗、DB一時障害でWorker全体が永久停止しない。
+  - [x] API、TrashPurgeWorker、Upload Cleanup、FileOperation Recoveryと不要に直列化しない。
+- [x] Storage状態遷移と監視Lifecycleを連携する。
+  - [x] `UNAVAILABLE`またはStorage ID不一致で監視・再確認を停止する。
+  - [x] `AVAILABLE`復帰時に監視を作り直し、全件再スキャン完了後に通常イベント処理へ戻る。
+  - [x] 再接続後も別HDDの内容を既存索引へ結合しない。
+  - [x] Worker停止・再起動中のイベント欠落を起動時再スキャンで修復する。
 
 ### 2.4 配置・Security・観測性
 
-- [ ] Raspberry Pi配置を更新する。
-  - [ ] Workerのsystemd Unit、権限、HDD read access、Restart、停止Timeoutをinotify・再スキャンへ対応させる。
-  - [ ] inotify watch上限の必要値と確認方法を文書化し、無制限なsysctl変更を行わない。
-  - [ ] `appsettings.example.json`とdeployment設定へ監視・再スキャンOptionsを追加し、PR3のProtocol対応完了までは`Indexing.Enabled=false`を既定にする。
-  - [ ] Install、Upgrade、Rollback、Verify ScriptへWorker状態と設定検証を追加する。
-- [ ] 運用上必要な状態を観測できる。
-  - [ ] Watcher稼働、最終Event時刻、Queue長、Overflow、最終成功Scan、Scan遅延、候補・欠損件数を低Cardinalityで計測する。
-  - [ ] HDD利用不可と個別File欠損を別のLog・Metricとして識別できる。
-  - [ ] Path、File名、User ID、File IDをMetric Labelにせず、Logも必要最小限の識別子に限定する。
-  - [ ] 異常時の手動dry-run、再スキャン、Worker再起動、watch上限確認手順を記載する。
+- [x] Raspberry Pi配置を更新する。
+  - [x] Workerのsystemd Unit、権限、HDD read access、Restart、停止Timeoutをinotify・再スキャンへ対応させる。
+  - [x] inotify watch上限の必要値と確認方法を文書化し、無制限なsysctl変更を行わない。
+  - [x] `appsettings.example.json`とdeployment設定へ監視・再スキャンOptionsを追加し、PR3のProtocol対応完了までは`Indexing.Enabled=false`を既定にする。
+  - [x] Install、Upgrade、Rollback、Verify ScriptへWorker状態と設定検証を追加する。
+- [x] 運用上必要な状態を観測できる。
+  - [x] Watcher稼働、最終Event時刻、Queue長、Overflow、最終成功Scan、Scan遅延、候補・欠損件数を低Cardinalityで計測する。
+  - [x] HDD利用不可と個別File欠損を別のLog・Metricとして識別できる。
+  - [x] Path、File名、User ID、File IDをMetric Labelにせず、Logも必要最小限の識別子に限定する。
+  - [x] 異常時の手動dry-run、再スキャン、Worker再起動、watch上限確認手順を記載する。
 
 ### 2.5 PR2自動Test
 
-- [ ] inotify・Event処理Testが完了している。
-  - [ ] 外部作成、連続更新、Rename、同一Folder内Move、Folder間Move、削除、再作成をTestする。
-  - [ ] Event重複、順序逆転、対応しないMove、Burst、debounce、Queue上限をTestする。
-  - [ ] overflow、watch limit、監視停止から全件再スキャンへ収束することをTestする。
-  - [ ] Linux native descriptorを停止時に解放し、read loopをCancellationで終了できることをTestする。
-  - [ ] 内部操作のEventと外部Eventが競合しても二重索引、誤Version増分、誤欠損を作らない。
-- [ ] Worker・Integration Testが完了している。
-  - [ ] 起動時・周期・異常時Scan、Global Lock、Backoff、取消、graceful shutdownをTestする。
-  - [ ] Worker停止中に加えた変更が再起動後のScanで索引へ反映される。
-  - [ ] HDD切断中に全Fileが`MISSING`にならず、同一HDD再接続後に正しく収束する。
-  - [ ] 別Storage ID、read-only、権限Error、DB一時障害から安全に復帰する。
-  - [ ] 30万件相当とEvent BurstでQueue・Memory・DB負荷が設定上限内に収まる。
-- [ ] PR2の標準検証が成功している。
-  - [ ] `./scripts/ci/verify-config.sh`が成功する。
-  - [ ] `./scripts/ci/verify-server.sh`が成功する。
-  - [ ] `./scripts/ci/verify-security.sh`が成功する。
-  - [ ] `./scripts/ci/verify-deployment.sh`が成功する。
-  - [ ] `./scripts/ci/verify-android.sh`が既存Android実装に対して成功する。
-  - [ ] `git diff --check`が成功する。
+- [x] inotify・Event処理Testが完了している。
+  - [x] 外部作成、連続更新、Rename、同一Folder内Move、Folder間Move、削除、再作成をTestする。
+  - [x] Event重複、順序逆転、対応しないMove、Burst、debounce、Queue上限をTestする。
+  - [x] overflow、watch limit、監視停止から全件再スキャンへ収束することをTestする。
+  - [x] Linux native descriptorを停止時に解放し、read loopをCancellationで終了できることをTestする。
+  - [x] 内部操作のEventと外部Eventが競合しても二重索引、誤Version増分、誤欠損を作らない。
+- [x] Worker・Integration Testが完了している。
+  - [x] 起動時・周期・異常時Scan、Global Lock、Backoff、取消、graceful shutdownをTestする。
+  - [x] Worker停止中に加えた変更が再起動後のScanで索引へ反映される。
+  - [x] HDD切断中に全Fileが`MISSING`にならず、同一HDD再接続後に正しく収束する。
+  - [x] 別Storage ID、read-only、権限Error、DB一時障害から安全に復帰する。
+  - [x] 30万件相当とEvent BurstでQueue・Memory・DB負荷が設定上限内に収まる。
+- [x] PR2の標準検証が成功している。
+  - [x] `./scripts/ci/verify-config.sh`が成功する。
+  - [x] `./scripts/ci/verify-server.sh`が成功する。
+  - [x] `./scripts/ci/verify-security.sh`が成功する。
+  - [x] `./scripts/ci/verify-deployment.sh`が成功する。
+  - [x] `./scripts/ci/verify-android.sh`が既存Android実装に対して成功する。
+  - [x] `git diff --check`が成功する。
 
 ### 2.6 Raspberry Pi実機確認
 
-- [ ] 実HDD・Linux inotifyで外部変更追従を確認する。
-  - [ ] 配置前にPostgreSQLとStorage RootのBackupを取得し、復元可能性を確認する。
-  - [ ] MigrationとWorkerを配置し、API、Nginx、PostgreSQL、HDD、Storage IDを既存Verify手順で確認する。
-  - [ ] HDD上でFile・Folderを外部作成、更新、Rename、Move、削除し、DB索引が設計時間内に収束する。
-  - [ ] 大量変更と意図的な監視停止でイベント欠落を発生させ、再スキャンで修復する。
-  - [ ] HDD取外し中に全件欠損化せず、同一HDD再接続後に差分を回収する。
-  - [ ] Worker再起動、API操作との同時変更、DB一時停止から誤索引なく復旧する。
-- [ ] 資源・性能を実機確認する。
-  - [ ] 30万件相当の基準データまたは再現可能な縮尺データで走査時間、CPU、RSS、DB負荷、HDD I/Oを測定する。
-  - [ ] Event Burst・全件Scan中も一覧、Download、Upload、認証更新が許容範囲で応答する。
-  - [ ] 測定条件、件数、変更数、所要時間、最大Memory、HDD条件を`docs/testing/`へ記録する。
+- [x] 実HDD・Linux inotifyで外部変更追従を確認する。
+  - [x] 配置前にPostgreSQLとStorage RootのBackupを取得し、復元可能性を確認する。
+  - [x] MigrationとWorkerを配置し、API、Nginx、PostgreSQL、HDD、Storage IDを既存Verify手順で確認する。
+  - [x] HDD上でFile・Folderを外部作成、更新、Rename、Move、削除し、DB索引が設計時間内に収束する。
+  - [x] 大量変更と意図的な監視停止でイベント欠落を発生させ、再スキャンで修復する。
+  - [x] HDD取外し中に全件欠損化せず、同一HDD再接続後に差分を回収する。
+  - [x] Worker再起動、API操作との同時変更、DB一時停止から誤索引なく復旧する。
+- [x] 資源・性能を実機確認する。
+  - [x] 30万件相当の基準データまたは再現可能な縮尺データで走査時間、CPU、RSS、DB負荷、HDD I/Oを測定する。
+  - [x] Event Burst・全件Scan中も一覧、Download、Upload、認証更新が許容範囲で応答する。
+  - [x] 測定条件、件数、変更数、所要時間、最大Memory、HDD条件を`docs/testing/`へ記録する。
 
 ### 2.7 PR2文書・セルフレビュー・完了
 
-- [ ] PR2の文書と実装を整合する。
-  - [ ] 正式文書へinotify、Event Queue、overflow、起動時・定期Scan、Storage復帰手順を反映する。
-  - [ ] 設定値を実測で変更した場合は根拠と影響を記録する。
-  - [ ] Watcher停止、全件Scan失敗、HDD交換時の運用Runbookを更新する。
-- [ ] PR2差分をセルフレビューする。
-  - [ ] inotifyを唯一の正とせず、再スキャンで欠落を修復できる。
-  - [ ] Event Handlerが長時間I/OやDB処理を直接抱えず、boundedな処理境界になっている。
-  - [ ] systemd権限、sysctl、設定値が必要最小限で、秘密情報や実環境値を追跡していない。
-  - [ ] 検索、共有、派生データ本体を追加していない。
-- [ ] PR2を完了する。
-  - [ ] 2.1〜2.7のPR2対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR2の文書と実装を整合する。
+  - [x] 正式文書へinotify、Event Queue、overflow、起動時・定期Scan、Storage復帰手順を反映する。
+  - [x] 設定値を実測で変更した場合は根拠と影響を記録する。（既定値は変更せず、実測結果とwatch上限の警告を記録）
+  - [x] Watcher停止、全件Scan失敗、HDD交換時の運用Runbookを更新する。
+- [x] PR2差分をセルフレビューする。
+  - [x] inotifyを唯一の正とせず、再スキャンで欠落を修復できる。
+  - [x] Event Handlerが長時間I/OやDB処理を直接抱えず、boundedな処理境界になっている。
+  - [x] systemd権限、sysctl、設定値が必要最小限で、秘密情報や実環境値を追跡していない。
+  - [x] 検索、共有、派生データ本体を追加していない。
+- [x] PR2を完了する。
+  - [x] 2.1〜2.7のPR2対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -387,15 +387,14 @@
 
 ### PR2: inotify追従・定期再スキャン・Worker運用
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
-
+- 完了日: 2026-08-22
+- Pull Request: [#17 Add external index watcher and rescan workers](https://github.com/ry825/Kura_Storage/pull/17)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-server.sh`（Domain 34件、Application 95件、Integration 75件、失敗0件）、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`./scripts/ci/verify-android.sh`（656タスク）、`dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`、`git diff --check`を実施し、すべて成功した。Pull RequestのGitHub Actions（Android、Config、Security、Server）もすべて成功した。
+- 手動確認・実機確認: 配置前のPostgreSQL・Storage Root Backupと復元可能性を確認し、Raspberry Pi 4と実exFAT HDDへMigration・Workerを配置した。外部作成・内容更新・Rename・Folder移動・削除・再発見、監視停止中の変更、Worker再起動、inotify overflow、HDD取外し・同一HDD再接続、PostgreSQL一時停止からの復旧を確認した。10,000件の再現可能な縮尺データでEvent収束、Dry-runのCPU・RSS・DB負荷・HDD I/Oを測定し、全件Scan中の一覧・Upload・Download内容一致・認証更新も成功した。測定結果は`docs/testing/20260822-external-indexing-e2e.md`へ記録し、専用試験データを削除して`Indexing.Enabled=false`、実行中Scan 0件、未完了FileOperation 0件、全Service activeを確認した。
+- 計画と実装の差分: 承認済みPR2範囲どおり、inotifyをHintとしてPR1の共通照合と全件Scanへ収束させた。実測で既定設定値を変更する必要はなく、PR3完了までは`Indexing.Enabled=false`を維持した。実機の`fs.inotify.max_user_watches=61621`は推奨65536未満のため、配置Scriptは自動変更せず警告し、運用文書へ測定に基づく変更手順を記載した。
+- 実装中に追加したタスクと理由: 実機のFolder移動で再配置後のwatchを`IN_MOVE_SELF`により失う問題を修正し、配下変更の回帰Testを追加した。10,000件試験でEvent追加とScan追加の一意制約競合、Worker中断後に残る`RUNNING` Scan、既存EntryごとのDB照会による負荷を検出したため、一意制約競合の再試行正規化、中断Runの`FAILED/WORKER_INTERRUPTED`回復、Path・Move候補・未完了操作のBatch照会とPostgreSQL回帰Testを追加した。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: PR #17のMergeとCI成功を確認してから最新`main`よりPR3 Branchを作成する。PR3でProtocol 2、MISSING API、索引削除、Android表示をまとめて配置するまでは`Indexing.Enabled=false`を維持する。本番有効化前に実Directory数と運用余裕を測定し、現在のwatch上限61621を推奨65536以上へレビュー済みsysctl設定で調整する。PR3実機回帰ではPR2の性能記録を基準に、既存Upload・Download・File操作と外部変更追従を再確認する。
 ### PR3: MISSING API・索引削除・Android表示と再確認
 
 - 完了日: 未完了

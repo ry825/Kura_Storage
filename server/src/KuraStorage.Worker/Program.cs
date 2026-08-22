@@ -1,3 +1,4 @@
+using KuraStorage.Application.Abstractions;
 using KuraStorage.Infrastructure;
 using KuraStorage.Worker.Workers;
 
@@ -10,5 +11,9 @@ if (!string.IsNullOrWhiteSpace(secretsDirectory))
 
 builder.Services.AddKuraStorageInfrastructure(builder.Configuration, addFileRecoveryHostedService: false);
 builder.Services.AddSingleton<ITrashPurgeDelay, SystemTrashPurgeDelay>();
+builder.Services.AddSingleton<IIndexRescanSignal, IndexRescanSignal>();
+builder.Services.AddSingleton<IndexingWorkerMetrics>();
 builder.Services.AddHostedService<TrashPurgeWorker>();
+builder.Services.AddHostedService<IndexEventWorker>();
+builder.Services.AddHostedService<FullRescanWorker>();
 await builder.Build().RunAsync();

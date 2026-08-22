@@ -32,7 +32,13 @@
     "Enabled": false,
     "BatchSize": 500,
     "MissingConfirmationDelayMinutes": 5,
-    "StagingRetentionHours": 24
+    "StagingRetentionHours": 24,
+    "FullRescanIntervalMinutes": 360,
+    "RunOnStartup": true,
+    "EventDebounceMilliseconds": 500,
+    "MovePairingWindowMilliseconds": 1000,
+    "EventQueueCapacity": 4096,
+    "RetryBackoffSeconds": 30
   },
   "Authentication": {
     "JwtIssuer": "kurastorage",

@@ -1,5 +1,5 @@
 [Unit]
-Description=KuraStorage trash retention worker
+Description=KuraStorage maintenance and external index worker
 After=postgresql.service ${KURASTORAGE_STORAGE_MOUNT_UNIT}
 Requires=postgresql.service ${KURASTORAGE_STORAGE_MOUNT_UNIT}
 ConditionPathIsMountPoint=${KURASTORAGE_STORAGE_MOUNT_PATH}
@@ -16,6 +16,7 @@ Environment=DOTNET_EnableDiagnostics=0
 ExecStart=/opt/kurastorage/current/KuraStorage.Worker
 Restart=on-failure
 RestartSec=15s
+TimeoutStopSec=45s
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
@@ -32,7 +33,7 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 ReadOnlyPaths=/etc/kurastorage
 ReadWritePaths=${KURASTORAGE_STORAGE_ROOT}
-LimitNOFILE=4096
+LimitNOFILE=65536
 MemoryMax=3G
 CPUWeight=50
 IOWeight=50

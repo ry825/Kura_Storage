@@ -145,6 +145,58 @@ PostgreSQL, the HDD mount and identity, and read-only state before restarting
 the Worker. A restart recovers stopped runs and incomplete purge journals before
 examining new candidates. Do not edit run counters or delete journal rows.
 
+### External index watcher and rescan
+
+PR2 installs the inotify and full-rescan workers, but keeps `Indexing.Enabled`
+set to `false` until the PR3 API and Android protocol are deployed together.
+When that protocol is ready, first run a dry-run and review aggregate counts;
+the command does not print physical paths or persist scan state:
+
+```bash
+sudo -u kurastorage-api env \
+  DOTNET_ENVIRONMENT=Production \
+  KURASTORAGE_SECRETS_DIR=/etc/kurastorage/secrets \
+  /opt/kurastorage/current/KuraStorage.AdminCli index rescan --dry-run
+sudo -u kurastorage-api env \
+  DOTNET_ENVIRONMENT=Production \
+  KURASTORAGE_SECRETS_DIR=/etc/kurastorage/secrets \
+  /opt/kurastorage/current/KuraStorage.AdminCli index rescan
+```
+
+The defaults start a scan after Worker startup, scan every six hours, debounce
+the same relative path for 500ms, pair Move events for one second, and bound the
+event queue at 4096. The management CLI, startup scan, scheduled scan, and
+overflow recovery share one PostgreSQL advisory lock; an overlapping run is
+rejected and must not be treated as success.
+
+Check the process descriptor limit and the kernel watch limit before enabling:
+
+```bash
+systemctl show kurastorage-worker --property=LimitNOFILE
+sysctl fs.inotify.max_user_watches fs.inotify.max_queued_events
+find /srv/kurastorage/users -type d | wc -l
+```
+
+`LimitNOFILE` is 65536 and `fs.inotify.max_user_watches` should be at least
+65536 for the planned dataset. Raise a lower kernel value only to the measured
+directory count plus operational headroom through a reviewed file under
+`/etc/sysctl.d/`; do not set an unlimited or maximum integer value. The deploy
+scripts report a low value but do not mutate host sysctl settings.
+
+For a watcher stop, watch-limit error, queue overflow, or failed scan, keep the
+HDD mounted, inspect `journalctl -u kurastorage-worker`, run the dry-run command,
+and restart the Worker only after PostgreSQL, mount identity, and permissions
+are healthy. A restart recreates watches before the startup scan and resumes
+event processing only after a successful scan. Repeated individual-path errors
+must not be fixed by changing database rows manually.
+
+If the HDD is disconnected, leave the Worker running or stop it cleanly; it
+must not mark every entry missing. Reconnect only the HDD whose
+`.storage-identity` matches configuration, verify the mount, then restart the
+Worker and run a dry-run. For a replacement HDD, keep indexing disabled and use
+the documented storage replacement and database restore procedure. Never join
+a different Storage ID to the existing catalog.
+
 When the Admin API reports a capacity warning, first permanently delete only
 known-unneeded trash through the authenticated manual operation, then plan
 storage expansion, and finally investigate mount or filesystem faults. The

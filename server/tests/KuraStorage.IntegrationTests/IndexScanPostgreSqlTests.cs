@@ -105,6 +105,27 @@ public sealed class IndexScanPostgreSqlTests
                     new IndexCatalogRepository(secondContext).SaveChangesAsync(CancellationToken.None));
             }
 
+            await using (var eventContext = new KuraStorageDbContext(dbOptions))
+            await using (var scanContext = new KuraStorageDbContext(dbOptions))
+            {
+                var root = await eventContext.FileEntries.SingleAsync(entry => entry.ParentId == null);
+                var collisionPath = RelativeStoragePath.Create($"{root.RelativePath}/collision.txt");
+                eventContext.FileEntries.Add(FileEntry.CreateFile(
+                    Guid.NewGuid(), ownerId, root.Id, FileName.Create("collision.txt"),
+                    collisionPath, "text/plain", 1, now));
+                scanContext.FileEntries.Add(FileEntry.CreateFile(
+                    Guid.NewGuid(), ownerId, root.Id, FileName.Create("collision.txt"),
+                    collisionPath, "text/plain", 1, now));
+                await new IndexCatalogRepository(eventContext).SaveChangesAsync(CancellationToken.None);
+
+                await Assert.ThrowsAsync<IndexCatalogConcurrencyException>(() =>
+                    new IndexCatalogRepository(scanContext).SaveChangesAsync(CancellationToken.None));
+
+                Assert.DoesNotContain(
+                    scanContext.ChangeTracker.Entries<FileEntry>(),
+                    entry => entry.State == EntityState.Added);
+            }
+
             await using var heldLock = await catalog.TryAcquireScanLockAsync(CancellationToken.None);
             Assert.NotNull(heldLock);
             await Assert.ThrowsAsync<IndexScanAlreadyRunningException>(() => service.RunAsync(
@@ -159,6 +180,17 @@ public sealed class IndexScanPostgreSqlTests
 
         Assert.Equal(10, await database.IndexScanItems.CountAsync());
         Assert.Equal(IndexScanStatus.Failed, (await database.IndexScanRuns.SingleAsync()).Status);
+
+        var interrupted = new IndexScanRun(Guid.NewGuid(), IndexScanTrigger.Overflow, IndexScanMode.Apply, now);
+        database.IndexScanRuns.Add(interrupted);
+        await database.SaveChangesAsync();
+        var recoveryService = CreateService(catalog, new FailingSnapshot([], shouldFail: false), clock);
+        await recoveryService.RunAsync(
+            new IndexScanRequest(IndexScanTrigger.Startup, IndexScanMode.Apply),
+            CancellationToken.None);
+        await database.Entry(interrupted).ReloadAsync();
+        Assert.Equal(IndexScanStatus.Failed, interrupted.Status);
+        Assert.Equal("WORKER_INTERRUPTED", interrupted.ErrorCode);
 
         clock.UtcNow = now.AddHours(25);
         var cleanupService = CreateService(catalog, new FailingSnapshot([], shouldFail: false), clock);
