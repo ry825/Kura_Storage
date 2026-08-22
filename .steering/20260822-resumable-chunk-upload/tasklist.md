@@ -412,12 +412,12 @@
 
 ### 2.9 Pull Request完了
 
-- [ ] PR2が完了している。
+- [x] PR2が完了している。
   - [x] 2.1〜2.8がすべて`[x]`である。
-  - [ ] 共通Pull Request完了手順をすべて実施する。
-  - [ ] PR2完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
-  - [ ] 完了記録CommitがPR2へ反映されている。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+  - [x] 共通Pull Request完了手順をすべて実施する。
+  - [x] PR2完了記録を本ファイルへ追加し、同じBranchへCommit・Pushする。
+  - [x] 完了記録CommitがPR2へ反映されている。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -455,14 +455,33 @@
 
 ### PR2: Android中断再開・大容量実機E2E・運用文書
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続作業への引継ぎ事項: 未記録
+- 完了日: 2026-08-22
+- Pull Request: [#15 Add Android resumable upload and production recovery safeguards](https://github.com/ry825/Kura_Storage/pull/15)
+- 実施したTest・Build・静的解析:
+  - `./scripts/ci/verify-config.sh`: 成功
+  - `./scripts/ci/verify-server.sh`: 成功（Domain 28件、Application 51件、Integration 64件）
+  - `./scripts/ci/verify-security.sh`: 成功
+  - `./scripts/ci/verify-deployment.sh`: 成功
+  - `./scripts/ci/verify-android.sh`: 成功（Unit Test、ktlint、detekt、lint、Debug APK/Test APK Build）
+  - `./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`: 成功（OPPO CPH2333 / Android 13、feature-files 14件を含む全Module、失敗0）
+  - `git diff --check`: 成功
+  - GitHub Actions実装HEAD: Config、Server、Security、Androidの全Job成功
+- 手動確認・実機確認:
+  - Raspberry Pi 4とOPPO実機で1 MiB・256 MiBをLAN転送し、Nginx停止、API停止、LANからZeroTierへの経路切替後も同一SessionのServer確定Offsetから再開し、SizeとSHA-256一致を確認した。
+  - Chunk破損、容量不足、HDD未Mount・read-only、Device失効、Session期限切れ、明示取消で不完全Fileを公開せず、DB・Audit・一時Fileの整合を確認した。
+  - 256 MiB転送中のAndroid PSSとServer RSSがFile Size比例で増加しないこと、転送中の一覧・Health・認証更新・Range Download応答を確認した。
+  - 32 MiBの並行E2EでAPI再起動後も同一Sessionを完了し、期限切れSessionのCleanupと一時File削除を確認した。配置版はPi `0.4.0-pr2.4`で、修正済みInfrastructure DLLのSHA-256一致も確認した。
+  - 既存Multipart Upload、Range Download、画面回転、Background、system Back、長いFile名、0%・100%境界を回帰確認した。
+- 計画と実装の差分:
+  - Android ProcessがOSに回収された場合は、Room・WorkManagerを追加しない計画境界に従い、復元を推測せずSign inへ戻る明確な失敗として確定した。
+  - 実機で起動Recovery候補のEF Core追跡状態と同時Chunkの競合を発見したため、PR1のServer境界にno-tracking候補取得とHTTP受付前Recovery/Cleanupを追加した。
+  - Release Build・Upgradeの実行時に判明したAndroid SDK環境変数とRoot CA読込の相互作用を修正し、同一手順で再検証した。
+- 実装中に追加したタスクと理由:
+  - Recovery・Cleanup候補のno-tracking取得、Session lock内再読込し、`StartingAsync`による受付前実行、Integration回帰Testを追加した。確定済みOffsetを古い候補状態でtruncateする競合を防ぐため。
+  - Release ScriptのSDK変数分離・Root CA事前読込、Upload Session一時領域作成、Rollbackの未完了Sessionガード、配置検証を追加した。実際のBuild・Upgrade・Rollback運用を安全に再現するため。
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続作業への引継ぎ事項:
+  - 実装・文書・検証に未完了はない。Pull Request #15のReview・Mergeは作成者の承認後に行う。
 
 ---
 
@@ -472,24 +491,32 @@ PR1、PR2および本ファイルの全タスクが完了した後にだけ、`s
 
 ### 実装完了日
 
-未完了
+2026-08-22
 
 ### 計画と実績の差分
 
-- 未記録
+- PR1でServer・API・Migration・Cleanupを実装し、PR2でAndroid・配置・運用・実機E2Eを完了する2 PR構成は計画どおりとなった。
+- PR2実機E2Eで起動時Recoveryの競合を検出したため、対応するServer修正・Test・設計更新をPR2へ追加した。
+- AndroidのProcess終了越し復元は計画どおり対象外とし、ローカル状態から成功を推測しない明確な再認証に収束させた。
 
 ### 主な設計変更と理由
 
-- 未記録
+- `upload_sessions`とSession advisory lockを進捗の正とし、Chunkのdurable flush後にだけOffsetを進め、完了時にだけatomic publishする境界を確定した。
+- Recovery・Cleanup候補はno-trackingで取得し、Session lock内の権威状態再読込しを必須とした。起動時分はHTTP受付前に完了させる。
+- AndroidはSAF Streamと最大1 ChunkのMemoryだけを使い、Server確定Offset・同一Session・同一Idempotency Keyを全再試行経路で維持する。
 
 ### 技術的な学び
 
-- 未記録
+- advisory lockが処理を直列化しても、lock待ち前にEF Coreが追跡したEntityは権威状態にならない。候補選定とlock内処理のContext境界を分ける必要がある。
+- Resumable Uploadの受け入れ検証は通常の中断再開だけでなく、起動処理と最初のChunkを競合させる必要がある。
+- Release成果物はVersion表示だけでなく、ローカルArtifactと配置DLLのHash一致まで確認すると古いArtifactの参照を発見できる。
 
 ### プロセス上の改善点
 
-- 未記録
+- E2E用の認証Device・Session・一時FileのクリーンアップをScriptの正常・異常終了両方に最初から組み込むべきだった。
+- Release配置前に、設定したArtifact変数名とアーカイブ内DLLのHashを機械的に表示・比較するステップが必要だった。
 
 ### 次回への改善提案
 
-- 未記録
+- Recovery系E2Eは「停止中に中間状態を作る」だけでなく、「起動と通常要求を同時に開始する」ケースを標準化する。
+- 配置ScriptにArtifact内の主要DLL Hashをmanifestとして同梱し、配置後Verifyで自動比較する専用作業を別Steeringで検討する。
