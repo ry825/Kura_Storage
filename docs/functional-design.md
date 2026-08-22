@@ -1207,6 +1207,10 @@ MVP後の初回Media実装では、低・中画質動画をバックグラウン
 - 定期再スキャンでイベント取りこぼしを補完する。
 - HDDが正常な場合だけ`MISSING`候補を作成する。
 - DBにないHDDファイルを取り込み候補として登録する。
+- inotifyのMove cookieは1秒以内だけ対応付け、片側だけのMove、queue overflow、watch追加失敗、監視停止は個別再照合または全件再スキャンへ収束させる。
+- Event queueは4096件を上限とし、同じPathのEventを500ms debounceして現在のHDD状態を1回だけ再確認する。Event本文を存在・欠損の確定根拠にしない。
+- `IndexEventWorker`はWatcherと個別再照合、`FullRescanWorker`は起動時・6時間周期・監視異常時の全件再スキャンを独立して実行する。
+- Storageが`UNAVAILABLE`またはStorage ID不一致になった場合はWatcherと再確認を停止する。同じStorageの復帰後はWatcherを先に再作成し、全件再スキャン完了後にqueue処理を再開する。
 
 ### 6.2.11 MVP後: BackupService
 

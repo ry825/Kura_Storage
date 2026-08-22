@@ -90,6 +90,7 @@ public static class DependencyInjection
         services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
         services.AddScoped<IIndexCatalogRepository, IndexCatalogRepository>();
         services.AddScoped<IIndexScanService, IndexScanService>();
+        services.AddScoped<IIndexEventService, IndexEventService>();
         services.AddSingleton<IIndexScanObserver, IndexScanLogObserver>();
         services.AddScoped<IdentityService>();
         services.AddScoped<FileService>();
@@ -117,6 +118,7 @@ public static class DependencyInjection
         services.AddSingleton<ISystemClock, SystemClock>();
         services.AddSingleton<IStorageGuard, StorageGuard>();
         services.AddSingleton<IManagedFileSystemSnapshotReader, ManagedFileSystemSnapshotReader>();
+        services.AddSingleton<IIndexChangeWatcher, LinuxInotifyWatcher>();
         services.AddSingleton<IFileStore, FileStore>();
         services.AddSingleton<IUploadSessionStore>(
             serviceProvider => (IUploadSessionStore)serviceProvider.GetRequiredService<IFileStore>());
@@ -133,6 +135,12 @@ public static class DependencyInjection
                     BatchSize = configured.BatchSize,
                     MissingConfirmationDelayMinutes = configured.MissingConfirmationDelayMinutes,
                     StagingRetentionHours = configured.StagingRetentionHours,
+                    FullRescanIntervalMinutes = configured.FullRescanIntervalMinutes,
+                    RunOnStartup = configured.RunOnStartup,
+                    EventDebounceMilliseconds = configured.EventDebounceMilliseconds,
+                    MovePairingWindowMilliseconds = configured.MovePairingWindowMilliseconds,
+                    EventQueueCapacity = configured.EventQueueCapacity,
+                    RetryBackoffSeconds = configured.RetryBackoffSeconds,
                 };
             });
         if (addFileRecoveryHostedService)

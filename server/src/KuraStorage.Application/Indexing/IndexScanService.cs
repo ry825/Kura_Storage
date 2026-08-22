@@ -28,6 +28,11 @@ public sealed class IndexScanService(
             ?? throw new IndexScanAlreadyRunningException();
         await EnsureStorageAvailableAsync(cancellationToken);
 
+        if (request.Mode == IndexScanMode.Apply)
+        {
+            await catalog.RecoverInterruptedRunsAsync(clock.UtcNow, cancellationToken);
+        }
+
         var run = new IndexScanRun(Guid.NewGuid(), request.Trigger, request.Mode, clock.UtcNow);
         var startedTimestamp = Stopwatch.GetTimestamp();
         observer?.Started(run.Id, request.Trigger, request.Mode);
@@ -124,9 +129,32 @@ public sealed class IndexScanService(
                 return;
             }
 
+            var existingEntries = await catalog.FindEntriesByPathsAsync(
+                batch.Select(entry => new IndexPathKey(entry.OwnerUserId, entry.RelativePath)).ToArray(),
+                cancellationToken);
+            var entriesByPath = existingEntries.ToDictionary(
+                entry => new IndexPathKey(entry.OwnerUserId, entry.RelativePath));
+            var entriesWithIncompleteOperations = await catalog.FindEntriesWithIncompleteOperationsAsync(
+                existingEntries.Select(entry => new IndexOperationKey(
+                    entry.OwnerUserId,
+                    entry.Id,
+                    entry.RelativePath)).ToArray(),
+                cancellationToken);
+            var moveCandidates = await workspace.FindMoveCandidatesBatchAsync(batch, cancellationToken);
+            var roots = new Dictionary<Guid, FileEntry?>();
+
             foreach (var observed in batch)
             {
-                await ReconcileObservedEntryAsync(run, workspace, observed, mode, cancellationToken);
+                await ReconcileObservedEntryAsync(
+                    run,
+                    workspace,
+                    observed,
+                    mode,
+                    entriesByPath,
+                    entriesWithIncompleteOperations,
+                    moveCandidates,
+                    roots,
+                    cancellationToken);
                 cursor = observed.RelativePath;
             }
 
@@ -144,6 +172,10 @@ public sealed class IndexScanService(
         IIndexScanWorkspace workspace,
         StagedIndexEntry observed,
         IndexScanMode mode,
+        IDictionary<IndexPathKey, FileEntry> entriesByPath,
+        IReadOnlySet<Guid> entriesWithIncompleteOperations,
+        IReadOnlyDictionary<string, IReadOnlyList<IndexedCatalogEntry>> moveCandidatesByPath,
+        IDictionary<Guid, FileEntry?> roots,
         CancellationToken cancellationToken)
     {
         if (observed.IsolationReason is not null)
@@ -152,18 +184,13 @@ public sealed class IndexScanService(
             return;
         }
 
-        var existing = await catalog.FindEntryByPathAsync(
-            observed.OwnerUserId,
-            observed.RelativePath,
-            cancellationToken);
+        entriesByPath.TryGetValue(
+            new IndexPathKey(observed.OwnerUserId, observed.RelativePath),
+            out var existing);
         if (existing is not null)
         {
             if (existing.EntryType != observed.EntryType ||
-                await catalog.HasIncompleteOperationAsync(
-                    existing.OwnerUserId,
-                    existing.Id,
-                    existing.RelativePath,
-                    cancellationToken))
+                entriesWithIncompleteOperations.Contains(existing.Id))
             {
                 run.RecordIsolated();
                 return;
@@ -188,28 +215,43 @@ public sealed class IndexScanService(
 
             if (mode == IndexScanMode.Apply)
             {
-                existing.ApplySourceObservation(
+                IndexReconciliationPrimitives.ApplyPresent(
+                    existing,
                     observed.Size,
                     observed.MimeType,
                     observed.SourceModifiedAt,
                     observed.SourceFileKey,
                     clock.UtcNow,
-                    contentChanged);
+                    contentMayHaveChanged: contentChanged);
             }
 
             return;
         }
 
-        if (await catalog.FindRootAsync(observed.OwnerUserId, cancellationToken) is null)
+        if (!roots.TryGetValue(observed.OwnerUserId, out var root))
+        {
+            root = await catalog.FindRootAsync(observed.OwnerUserId, cancellationToken);
+            roots[observed.OwnerUserId] = root;
+        }
+
+        if (root is null)
         {
             run.RecordIsolated();
             return;
         }
 
-        var parent = await catalog.FindEntryByPathAsync(
-            observed.OwnerUserId,
-            observed.ParentRelativePath,
-            cancellationToken);
+        var parentKey = new IndexPathKey(observed.OwnerUserId, observed.ParentRelativePath);
+        if (!entriesByPath.TryGetValue(parentKey, out var parent))
+        {
+            parent = await catalog.FindEntryByPathAsync(
+                observed.OwnerUserId,
+                observed.ParentRelativePath,
+                cancellationToken);
+            if (parent is not null)
+            {
+                entriesByPath[parentKey] = parent;
+            }
+        }
         var parentExistsInSnapshot = await workspace.ContainsAsync(
             observed.OwnerUserId,
             observed.ParentRelativePath,
@@ -221,7 +263,7 @@ public sealed class IndexScanService(
             return;
         }
 
-        var moveCandidates = await workspace.FindMoveCandidatesAsync(observed, cancellationToken);
+        var moveCandidates = moveCandidatesByPath.GetValueOrDefault(observed.RelativePath) ?? [];
         if (moveCandidates.Count == 1)
         {
             var candidate = moveCandidates[0];
@@ -240,29 +282,19 @@ public sealed class IndexScanService(
             {
                 var entry = await catalog.FindEntryByIdAsync(candidate.Id, cancellationToken)
                     ?? throw new InvalidOperationException("The move candidate disappeared.");
-                var oldPrefix = entry.RelativePath;
-                if (entry.Name != observed.Name)
+                var relocated = await IndexReconciliationPrimitives.RelocateAsync(
+                    entry,
+                    parent!,
+                    observed.Name,
+                    observed.RelativePath,
+                    catalog,
+                    clock.UtcNow,
+                    cancellationToken);
+                foreach (var relocatedEntry in relocated)
                 {
-                    entry.Rename(FileName.Create(observed.Name), RelativeStoragePath.Create(observed.RelativePath), clock.UtcNow);
-                }
-
-                if (entry.ParentId != parent!.Id)
-                {
-                    entry.MoveTo(parent.Id, RelativeStoragePath.Create(observed.RelativePath), clock.UtcNow);
-                }
-
-                if (entry.EntryType == FileEntryType.Folder)
-                {
-                    foreach (var descendant in await catalog.ListDescendantsAsync(
-                                 entry.OwnerUserId,
-                                 oldPrefix,
-                                 cancellationToken))
-                    {
-                        var suffix = descendant.RelativePath[oldPrefix.Length..];
-                        descendant.RelocateDescendant(
-                            RelativeStoragePath.Create(observed.RelativePath + suffix),
-                            clock.UtcNow);
-                    }
+                    entriesByPath[new IndexPathKey(
+                        relocatedEntry.OwnerUserId,
+                        relocatedEntry.RelativePath)] = relocatedEntry;
                 }
             }
 
@@ -285,14 +317,16 @@ public sealed class IndexScanService(
                 : FileEntry.CreateFile(
                     Guid.NewGuid(), observed.OwnerUserId, parent!.Id, FileName.Create(observed.Name),
                     RelativeStoragePath.Create(observed.RelativePath), observed.MimeType, observed.Size, clock.UtcNow);
-            entry.ApplySourceObservation(
+            IndexReconciliationPrimitives.ApplyPresent(
+                entry,
                 observed.Size,
                 observed.MimeType,
                 observed.SourceModifiedAt,
                 observed.SourceFileKey,
                 clock.UtcNow,
-                contentChanged: false);
+                contentMayHaveChanged: false);
             catalog.Add(entry);
+            entriesByPath[new IndexPathKey(entry.OwnerUserId, entry.RelativePath)] = entry;
         }
     }
 

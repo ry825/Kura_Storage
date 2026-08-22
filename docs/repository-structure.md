@@ -603,7 +603,7 @@ KuraStorage.Worker/
 └── packages.lock.json
 ```
 
-- 現在のPhase 1拡張では`TrashPurgeWorker`だけを配置する。Media変換、派生画像、Cache、Index、再Scan等のWorkerはMVP後に追加する。
+- `KuraStorage.Worker/Workers/`には独立した`TrashPurgeWorker`、`IndexEventWorker`、`FullRescanWorker`を配置する。inotify P/InvokeはInfrastructureの`Indexing/LinuxInotifyWatcher.cs`、Event業務処理はApplicationの`Indexing/IndexEventService.cs`へ置き、WorkerにDB・絶対Pathの業務判定を持たせない。
 - Worker classはJob取得・Application呼び出し・結果記録に限定する。
 - 変換や復旧の業務ロジックをWorker classへ直接書かない。
 - WorkerごとにCancellation、Lease、Retry、Concurrencyを定義する。

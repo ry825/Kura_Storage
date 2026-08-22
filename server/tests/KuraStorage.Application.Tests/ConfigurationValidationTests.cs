@@ -70,6 +70,14 @@ public sealed class ConfigurationValidationTests
     [InlineData("Indexing:MissingConfirmationDelayMinutes", "1441")]
     [InlineData("Indexing:StagingRetentionHours", "0")]
     [InlineData("Indexing:StagingRetentionHours", "169")]
+    [InlineData("Indexing:FullRescanIntervalMinutes", "4")]
+    [InlineData("Indexing:FullRescanIntervalMinutes", "10081")]
+    [InlineData("Indexing:EventDebounceMilliseconds", "49")]
+    [InlineData("Indexing:MovePairingWindowMilliseconds", "30001")]
+    [InlineData("Indexing:EventQueueCapacity", "127")]
+    [InlineData("Indexing:EventQueueCapacity", "65537")]
+    [InlineData("Indexing:RetryBackoffSeconds", "0")]
+    [InlineData("Indexing:RetryBackoffSeconds", "3601")]
     public void IndexingOptions_InvalidValue_IsRejected(string key, string value)
     {
         using var provider = BuildProvider(new Dictionary<string, string?> { [key] = value });
