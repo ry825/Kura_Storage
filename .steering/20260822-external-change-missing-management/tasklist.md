@@ -362,11 +362,11 @@
 
 ### 3.8 PR3完了
 
-- [ ] PR3を完了する。
-  - [ ] 3.1〜3.8のPR3対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR3を完了する。
+  - [x] 3.1〜3.8のPR3対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -395,16 +395,17 @@
 - 実装中に追加したタスクと理由: 実機のFolder移動で再配置後のwatchを`IN_MOVE_SELF`により失う問題を修正し、配下変更の回帰Testを追加した。10,000件試験でEvent追加とScan追加の一意制約競合、Worker中断後に残る`RUNNING` Scan、既存EntryごとのDB照会による負荷を検出したため、一意制約競合の再試行正規化、中断Runの`FAILED/WORKER_INTERRUPTED`回復、Path・Move候補・未完了操作のBatch照会とPostgreSQL回帰Testを追加した。
 - 技術的に不要になったタスク・理由・代替実装: なし。
 - 後続Pull Requestへの引継ぎ事項: PR #17のMergeとCI成功を確認してから最新`main`よりPR3 Branchを作成する。PR3でProtocol 2、MISSING API、索引削除、Android表示をまとめて配置するまでは`Indexing.Enabled=false`を維持する。本番有効化前に実Directory数と運用余裕を測定し、現在のwatch上限61621を推奨65536以上へレビュー済みsysctl設定で調整する。PR3実機回帰ではPR2の性能記録を基準に、既存Upload・Download・File操作と外部変更追従を再確認する。
+
 ### PR3: MISSING API・索引削除・Android表示と再確認
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続作業への引継ぎ事項: 未記録
+- 完了日: 2026-08-23
+- Pull Request: [#18 Add missing file management and Android recovery UI](https://github.com/ry825/Kura_Storage/pull/18)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-server.sh`（Domain 34件、Application 107件、Integration 77件、失敗0件）、`./scripts/ci/verify-android.sh`（656タスク）、実Android端末で`connectedDebugAndroidTest --max-workers=1`（app 3件、core-data 2件、feature-auth 2件、feature-connection 1件、feature-files 16件、失敗0件）、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`dotnet format --verify-no-changes`、EF Core `migrations has-pending-model-changes`、`git diff --check`を実施し、すべて成功した。Pull RequestのGitHub Actions（Android、Config、Security、Server）もすべて成功した。
+- 手動確認・実機確認: 配置前にPostgreSQLとStorage RootをBackupし、署名済みProtocol 2 Android Release、API、WorkerをRaspberry Pi 4と実exFAT HDDへ配置した。外部削除の`MISSING_CANDIDATE`から5分後の別Scanによる`MISSING`確定、同一ID復活、他User 404、HDD利用不可中の索引のみ削除204、外部Rename・Move・内容更新・Folder削除、監視停止・API/Worker再起動・201項目Burst・HDD再接続を確認した。Upload、2分割Resume、Download、Range、Folder作成、Rename、Move、Trash、Restore、Purgeも成功し、Androidで候補・確定欠損・再確認・HDD非削除確認Dialog・索引削除後再取得・Storage unavailable表示を確認した。結果は`docs/testing/20260822-missing-management-e2e.md`へ記録し、専用試験User・物理領域・DB関連情報・資格情報を削除した。最終状態はStorage ID一致、全Service active、Indexing有効、候補・欠損・実行中Scan・未完了FileOperationが各0件である。
+- 計画と実装の差分: 一覧からの索引削除は、ユーザー承認により削除時点の物理再出現をHDDで確認せず、DB索引状態だけをLock後に再読込して判定する設計へ統一した。物理再出現がまだ索引化されていない場合もHDD非依存で索引を削除し、後続EventまたはScanが新しい索引項目を作成する。Production有効化では実機確認に基づき、Workerの標準.NET環境変数`Indexing__Enabled=true`とRelease directoryを作業DirectoryにしたAdmin CLI実行手順を明記した。
+- 実装中に追加したタスクと理由: 実機でAPI操作とinotify照合を即時連続させた際、Filesystem変更後の楽観的DB競合が500になる問題を検出したため、Rename・Move・Trash・Restoreの確定競合を`RECOVERY_REQUIRED`へ正規化し、`FILESYSTEM_DONE`から起動時Recoveryで収束するUnit Testと実機回帰を追加した。Androidの索引削除結果不明時も、Server再取得後に対象が残る場合だけ再試行可能とし、対象が消えている場合は成功を推測せず中立メッセージで閉じるTestを追加した。
+- 技術的に不要になったタスク・理由・代替実装: 削除直前にHDDを直接検査する暫定案は、「索引削除はHDDを一切参照せず、HDD利用不可でも完了する」という正式契約と矛盾するため採用しなかった。代替として、索引行と欠損子孫をLock後に再読込し、索引上で復活済みなら競合、未索引の物理再出現は後続Event・Scanで新規索引化する。
+- 後続作業への引継ぎ事項: 後続Pull Requestはない。PR #18をReview・Merge後、運用Runbookの順序でProtocol 2 Android、API、Workerを同時Rolloutし、現行ホストの`fs.inotify.max_user_watches=61621`警告について推奨65536以上への変更を別途Reviewする。KuraStorageはsysctlを自動変更しない。
 
 ---
 
