@@ -140,11 +140,11 @@
   - [x] `MISSING_CANDIDATE`を経由せず`MISSING`へ確定する経路がない。
   - [x] 検索、共有、派生データ本体や不要なPackageを先行追加していない。
   - [x] Credential、実環境情報、物理Path、生成物が差分にない。
-- [ ] PR1を完了する。
-  - [ ] 1.1〜1.7のPR1対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR1を完了する。
+  - [x] 1.1〜1.7のPR1対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -376,14 +376,14 @@
 
 ### PR1: 索引整合性モデル・全件再スキャン・管理CLI
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
+- 完了日: 2026-08-22
+- Pull Request: [#16 Add external index reconciliation foundation](https://github.com/ry825/Kura_Storage/pull/16)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-server.sh`（Domain 33件、Application 72件、Integration 70件、失敗0件）、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`./scripts/ci/verify-android.sh`、EF Core `migrations has-pending-model-changes`、`git diff --check`を実施し、すべて成功した。Pull RequestのGitHub Actions（Android、Config、Security、Server）もすべて成功した。
+- 手動確認・実機確認: 実HDDとRaspberry Piへの配置はPR1の対象外として未実施。PostgreSQL実DBと一時領域上の実Filesystemを使用したIntegration Testで、Migration、Scan Lock、APPLY・DRY_RUN、状態直列化、競合、Symlink・特殊File隔離を確認した。
+- 計画と実装の差分: 承認済みPR1範囲どおり実装した。Linuxの補助同一性情報は追加Packageを使わず`statx`限定P/Invokeで取得し、`MissingCandidate`のDB表現は正式名称`MISSING_CANDIDATE`へ明示変換した。OpenAPIとAndroid契約は変更していない。
+- 実装中に追加したタスクと理由: タスクリストへの追加タスクはなし。セルフレビューで列挙途中の権限・I/O Errorを不完全Scanとして扱う安全なEnumerator終了処理と、状態名の明示変換を補強した。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: PR #16のMergeとCI成功を確認してから最新`main`よりPR2 Branchを作成する。PR2ではPR1の共通照合Service・Global Lock・Storage検証を再利用し、inotifyをHintとして起動時・周期・overflow時の全件再スキャンへ収束させる。PR3のProtocol対応完了までは`Indexing.Enabled=false`を維持する。
 
 ### PR2: inotify追従・定期再スキャン・Worker運用
 
