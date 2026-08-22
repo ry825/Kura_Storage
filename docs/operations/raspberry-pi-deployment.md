@@ -148,20 +148,45 @@ examining new candidates. Do not edit run counters or delete journal rows.
 ### External index watcher and rescan
 
 PR2 installs the inotify and full-rescan workers, but keeps `Indexing.Enabled`
-set to `false` until the PR3 API and Android protocol are deployed together.
-When that protocol is ready, first run a dry-run and review aggregate counts;
+set to `false` until the Protocol 2 Android app, API, Worker, and migration are
+deployed as one reviewed rollout. Deploy in this order: distribute and verify
+the Android Protocol 2 build; stop mutation traffic for the maintenance window;
+back up PostgreSQL and the Storage Root; deploy API and Worker artifacts; apply
+the migration; run the dry-run below; set the .NET environment key
+`Indexing__Enabled=true` for the Worker; restart the Worker; then run and verify
+a full APPLY scan. Do not enable indexing while a
+Protocol 1 client can still reach File APIs. First review aggregate dry-run counts;
 the command does not print physical paths or persist scan state:
 
 ```bash
+cd /opt/kurastorage/current
 sudo -u kurastorage-api env \
   DOTNET_ENVIRONMENT=Production \
   KURASTORAGE_SECRETS_DIR=/etc/kurastorage/secrets \
-  /opt/kurastorage/current/KuraStorage.AdminCli index rescan --dry-run
-sudo -u kurastorage-api env \
-  DOTNET_ENVIRONMENT=Production \
-  KURASTORAGE_SECRETS_DIR=/etc/kurastorage/secrets \
-  /opt/kurastorage/current/KuraStorage.AdminCli index rescan
+  ./KuraStorage.AdminCli index rescan --dry-run
+sudo install -d -m 0755 /etc/systemd/system/kurastorage-worker.service.d
+printf '[Service]\nEnvironment=Indexing__Enabled=true\n' | \
+  sudo tee /etc/systemd/system/kurastorage-worker.service.d/indexing.conf >/dev/null
+sudo systemctl daemon-reload
+sudo systemctl restart kurastorage-worker
 ```
+
+The Admin CLI working directory must be the selected release directory so it
+loads that release's `appsettings.json`. After enabling the Worker, inspect its
+startup APPLY summary instead of starting a competing manual APPLY scan. To
+disable indexing, remove only the reviewed `indexing.conf` drop-in, run
+`systemctl daemon-reload`, and restart the Worker. Do not use
+`KURASTORAGE_Indexing__Enabled`; the standard .NET configuration provider reads
+the unprefixed `Indexing__Enabled` key.
+
+After deployment, confirm Health reports `protocolVersion: 2`. On Android,
+verify `MISSING_CANDIDATE` is shown as an item being checked, `MISSING` exposes
+recheck and index-only deletion, and an unknown status requests an app update.
+The index-only delete endpoint must remain usable while the HDD is unavailable
+because it changes only PostgreSQL. Its confirmation must explicitly state that
+no HDD file is deleted. Recheck requires the matching mounted Storage ID and
+returns `STORAGE_UNAVAILABLE` without advancing missing state when storage or an
+individual path cannot be read safely.
 
 The defaults start a scan after Worker startup, scan every six hours, debounce
 the same relative path for 500ms, pair Move events for one second, and bound the
@@ -325,14 +350,20 @@ journals, audit records, and purge runs without writing file names or paths to
 logs.
 
 For a release that adds external index reconciliation, keep `Indexing:Enabled`
-set to `false` until the Worker and Android protocol work is deployed. After
-backing up PostgreSQL, apply the migration explicitly and inspect the catalog
-without exposing paths:
+set to `false` until the Protocol 2 Android build and matching Server/Worker are
+deployed. After backing up PostgreSQL and the Storage Root, apply the migration
+explicitly and inspect the catalog without exposing paths:
 
 ```bash
-kurastorage-admin database migrate
-kurastorage-admin index rescan --dry-run
-kurastorage-admin index rescan
+cd /opt/kurastorage/current
+sudo -u kurastorage-api env \
+  DOTNET_ENVIRONMENT=Production \
+  KURASTORAGE_SECRETS_DIR=/etc/kurastorage/secrets \
+  ./KuraStorage.AdminCli database migrate
+sudo -u kurastorage-api env \
+  DOTNET_ENVIRONMENT=Production \
+  KURASTORAGE_SECRETS_DIR=/etc/kurastorage/secrets \
+  ./KuraStorage.AdminCli index rescan --dry-run
 ```
 
 The commands print only a scan ID, status, and aggregate counts. Exit code `0`

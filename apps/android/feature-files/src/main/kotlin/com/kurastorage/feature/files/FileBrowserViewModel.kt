@@ -37,8 +37,17 @@ data class FileBrowserState(
     val rename: RenameState? = null,
     val movePicker: MovePickerState? = null,
     val permanentDelete: PermanentDeleteState? = null,
+    val missingIndexDelete: MissingIndexDeleteState? = null,
+    val missingActionIds: Set<String> = emptySet(),
     val retention: RetentionDisplayState? = null,
     val placementResult: String? = null,
+    val error: BrowserError? = null,
+)
+
+data class MissingIndexDeleteState(
+    val target: FileEntry,
+    val submitting: Boolean = false,
+    val resultUnknown: Boolean = false,
     val error: BrowserError? = null,
 )
 
@@ -97,7 +106,7 @@ private data class PickerLocation(
     val name: String,
 )
 
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LargeClass")
 class FileBrowserViewModel(
     private val files: FileRepository,
     private val transfers: TransferRepository,
@@ -137,12 +146,13 @@ class FileBrowserViewModel(
                     )
                 }
             }
+            reconcileUnknownMissingIndexDelete(page)
         }
 
     fun loadMore() = load(action = { pager.loadNext() })
 
     fun open(entry: FileEntry) {
-        if (entry.entryType == FileEntryType.FOLDER && !trashMode) {
+        if (entry.entryType == FileEntryType.FOLDER && entry.status == FileEntryStatus.ACTIVE && !trashMode) {
             folderStack.addLast(entry.id)
             pager = pager(entry.id)
             refresh()
@@ -165,7 +175,111 @@ class FileBrowserViewModel(
 
     fun createFolder(name: String) = mutate { files.createFolder(folderStack.last(), name) }
 
-    fun trash(entry: FileEntry) = mutate { files.trash(entry.id) }
+    fun trash(entry: FileEntry) {
+        if (entry.status == FileEntryStatus.ACTIVE) mutate { files.trash(entry.id) }
+    }
+
+    fun recheckMissing(entry: FileEntry) {
+        if (entry.status !in setOf(FileEntryStatus.MISSING, FileEntryStatus.MISSING_CANDIDATE) ||
+            entry.id in mutableState.value.missingActionIds
+        ) {
+            return
+        }
+        mutableState.update { it.copy(missingActionIds = it.missingActionIds + entry.id, error = null) }
+        viewModelScope.launch {
+            val result = runCatching { files.recheckMissing(entry.id) }
+            val refreshed = runCatching { pager.refresh() }
+            refreshed.onSuccess(::showPage)
+            result
+                .onSuccess { updated ->
+                    mutableState.update {
+                        it.copy(
+                            selected = updated.takeUnless { item -> item.status == FileEntryStatus.ACTIVE },
+                            missingActionIds = it.missingActionIds - entry.id,
+                            placementResult =
+                                if (updated.status == FileEntryStatus.ACTIVE) "ファイルを再発見しました。" else "再確認しました。",
+                            error = refreshed.exceptionOrNull()?.toBrowserError(),
+                        )
+                    }
+                }.onFailure { failure ->
+                    mutableState.update {
+                        it.copy(
+                            missingActionIds = it.missingActionIds - entry.id,
+                            error = failure.toBrowserError(),
+                        )
+                    }
+                }
+        }
+    }
+
+    fun beginMissingIndexDelete(entry: FileEntry) {
+        if (entry.status != FileEntryStatus.MISSING ||
+            entry.id in mutableState.value.missingActionIds
+        ) {
+            return
+        }
+        mutableState.update {
+            it.copy(
+                missingIndexDelete = MissingIndexDeleteState(entry),
+                selected = null,
+                error = null,
+            )
+        }
+    }
+
+    fun cancelMissingIndexDelete() {
+        val deletion = mutableState.value.missingIndexDelete ?: return
+        if (!deletion.submitting && !deletion.resultUnknown) {
+            mutableState.update { it.copy(missingIndexDelete = null) }
+        }
+    }
+
+    fun confirmMissingIndexDelete() {
+        val deletion = mutableState.value.missingIndexDelete ?: return
+        if (deletion.submitting || deletion.target.id in mutableState.value.missingActionIds) return
+        mutableState.update {
+            it.copy(
+                missingIndexDelete = deletion.copy(submitting = true, error = null),
+                missingActionIds = it.missingActionIds + deletion.target.id,
+            )
+        }
+        viewModelScope.launch {
+            val result = runCatching { files.deleteMissingIndexEntry(deletion.target.id) }
+            val refreshed = runCatching { pager.refresh() }
+            refreshed.onSuccess(::showPage)
+            result
+                .onSuccess {
+                    mutableState.update {
+                        it.copy(
+                            selected = null,
+                            missingIndexDelete = null,
+                            missingActionIds = it.missingActionIds - deletion.target.id,
+                            placementResult = "一覧から削除しました。HDD上のファイルは削除していません。",
+                            error = refreshed.exceptionOrNull()?.toBrowserError(),
+                        )
+                    }
+                }.onFailure { failure ->
+                    val error = failure.toBrowserError()
+                    val page = refreshed.getOrNull()
+                    if (error.resultUnknown && page != null) {
+                        reconcileUnknownMissingIndexDelete(page, deletion.copy(resultUnknown = true))
+                    } else {
+                        mutableState.update {
+                            it.copy(
+                                missingIndexDelete =
+                                    deletion.copy(
+                                        submitting = false,
+                                        resultUnknown = error.resultUnknown,
+                                        error = error,
+                                    ),
+                                missingActionIds = it.missingActionIds - deletion.target.id,
+                                error = null,
+                            )
+                        }
+                    }
+                }
+        }
+    }
 
     fun restore(entry: FileEntry) {
         val deletion = mutableState.value.permanentDelete
@@ -242,7 +356,7 @@ class FileBrowserViewModel(
     }
 
     fun beginRename(entry: FileEntry) {
-        if (trashMode) return
+        if (trashMode || entry.status != FileEntryStatus.ACTIVE) return
         placementDetailId =
             mutableState.value.selected
                 ?.id
@@ -284,7 +398,7 @@ class FileBrowserViewModel(
     }
 
     fun beginMove(entry: FileEntry) {
-        if (trashMode) return
+        if (trashMode || entry.status != FileEntryStatus.ACTIVE) return
         placementDetailId =
             mutableState.value.selected
                 ?.id
@@ -383,6 +497,7 @@ class FileBrowserViewModel(
         file: FileEntry,
         destinationUri: String,
     ) {
+        if (file.status != FileEntryStatus.ACTIVE) return
         lastDownload = DownloadOperation(file, destinationUri)
         lastWasUpload = false
         runTransfer(transfers.download(checkNotNull(lastDownload)), refreshAfter = false)
@@ -483,6 +598,41 @@ class FileBrowserViewModel(
                 entries = page.items,
                 parentId = page.parentId,
                 canLoadMore = page.hasNextPage,
+            )
+        }
+    }
+
+    private fun reconcileUnknownMissingIndexDelete(
+        page: FilePage,
+        deletion: MissingIndexDeleteState? = mutableState.value.missingIndexDelete,
+    ) {
+        if (deletion?.resultUnknown != true) return
+        val stillPresent = page.items.any { it.id == deletion.target.id }
+        mutableState.update {
+            it.copy(
+                missingIndexDelete =
+                    if (stillPresent) {
+                        deletion.copy(
+                            submitting = false,
+                            resultUnknown = false,
+                            error =
+                                BrowserError(
+                                    message = "最新の一覧では索引項目が残っています。必要なら再試行してください。",
+                                    category = ErrorCategory.CONNECTION,
+                                ),
+                        )
+                    } else {
+                        null
+                    },
+                selected = if (stillPresent) it.selected else null,
+                missingActionIds = it.missingActionIds - deletion.target.id,
+                placementResult =
+                    if (stillPresent) {
+                        it.placementResult
+                    } else {
+                        "最新の一覧を取得しました。対象は一覧にありません。"
+                    },
+                error = null,
             )
         }
     }
@@ -615,6 +765,9 @@ class FileBrowserViewModel(
             ErrorCode.FILE_MOVE_CYCLE -> "This folder cannot be moved there. Choose another folder."
             ErrorCode.FILE_NOT_FOUND -> "The item or destination is no longer available. Refresh the list."
             ErrorCode.RECOVERY_REQUIRED -> "Recovery is required before this item can be changed."
+            ErrorCode.FILE_MISSING_CANDIDATE -> "ファイルを確認中です。しばらくしてから再確認してください。"
+            ErrorCode.FILE_MISSING -> "ファイルが見つかりません。"
+            ErrorCode.FILE_STATE_CONFLICT, ErrorCode.INDEX_CONFLICT -> "状態が変更されました。一覧を更新してください。"
             ErrorCode.IDEMPOTENCY_CONFLICT -> "This deletion key conflicts with another request. Refresh the list."
             ErrorCode.STORAGE_UNAVAILABLE, ErrorCode.STORAGE_CAPACITY_INSUFFICIENT -> "Storage is unavailable."
             else -> categoryErrorMessage(code, category, resultUnknown)

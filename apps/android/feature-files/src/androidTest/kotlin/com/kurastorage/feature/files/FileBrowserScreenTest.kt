@@ -684,6 +684,82 @@ class FileBrowserScreenTest {
         compose.onAllNodesWithText("Storage capacity warning").assertCountEquals(0)
     }
 
+    @Test
+    fun missingEntryShowsAccessibleStateAndIndexOnlyConfirmation() {
+        val missing =
+            file().copy(
+                status = FileEntryStatus.MISSING,
+                missingDetectedAt = Instant.parse("2026-08-22T00:00:00Z"),
+                missingLastCheckedAt = Instant.parse("2026-08-22T00:05:00Z"),
+            )
+        var rechecks = 0
+        val screenState = mutableStateOf(FileBrowserState(loading = false, entries = listOf(missing), selected = missing))
+        compose.setContent {
+            FileBrowserScreen(
+                state = screenState.value,
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onRecheckMissing = { rechecks++ },
+                onBeginMissingIndexDelete = {
+                    screenState.value = screenState.value.copy(selected = null, missingIndexDelete = MissingIndexDeleteState(it))
+                },
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onAllNodesWithText("ファイルが見つかりません").assertCountEquals(2)
+        compose.onNodeWithText("最終確認: 2026-08-22T00:05:00Z").assertIsDisplayed()
+        compose.onNodeWithTag("recheck-missing").performClick()
+        compose.runOnIdle { assertEquals(1, rechecks) }
+        compose.onNodeWithTag("delete-missing-index").performClick()
+        compose.onNodeWithText("KuraStorageの索引だけを削除します。HDD上のファイルは削除しません。").assertIsDisplayed()
+        compose.onNodeWithText("索引だけ削除").assertIsDisplayed()
+        compose.onAllNodesWithText("Download").assertCountEquals(0)
+        compose.onAllNodesWithText("Move to trash").assertCountEquals(0)
+    }
+
+    @Test
+    fun candidateAndUnknownStatusesDoNotExposeDestructiveActions() {
+        val candidate = file().copy(status = FileEntryStatus.MISSING_CANDIDATE)
+        val unknown = file().copy(id = "future", name = "future.txt", status = FileEntryStatus.UNKNOWN)
+        compose.setContent {
+            FileBrowserScreen(
+                state = FileBrowserState(loading = false, entries = listOf(candidate, unknown)),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("ファイルを確認中").assertIsDisplayed()
+        compose.onNodeWithText("アプリの更新が必要です").assertIsDisplayed()
+        compose.onAllNodesWithTag("delete-missing-index").assertCountEquals(0)
+    }
+
     private fun file() =
         FileEntry(
             "file",

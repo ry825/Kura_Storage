@@ -283,6 +283,17 @@ public sealed class FileEntry
         UpdatedAt = checkedAt;
     }
 
+    public void RecordMissingCandidateCheck(DateTimeOffset checkedAt)
+    {
+        if (Status != FileEntryStatus.MissingCandidate)
+        {
+            throw new InvalidFileOperationException("Only missing candidates can record a continuing absence.");
+        }
+
+        MissingLastCheckedAt = checkedAt;
+        UpdatedAt = checkedAt;
+    }
+
     private void EnsureRelocatable()
     {
         if (Status != FileEntryStatus.Active)

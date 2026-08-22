@@ -4,6 +4,7 @@
     "LongMethod",
     "LongParameterList",
     "CyclomaticComplexMethod",
+    "TooManyFunctions",
 )
 
 package com.kurastorage.feature.files
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.FileEntry
+import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadState
@@ -63,6 +65,10 @@ fun FileBrowserScreen(
     onBeginPermanentDelete: (FileEntry) -> Unit = {},
     onConfirmPermanentDelete: () -> Unit = {},
     onCancelPermanentDelete: () -> Unit = {},
+    onRecheckMissing: (FileEntry) -> Unit = {},
+    onBeginMissingIndexDelete: (FileEntry) -> Unit = {},
+    onConfirmMissingIndexDelete: () -> Unit = {},
+    onCancelMissingIndexDelete: () -> Unit = {},
     onRename: (FileEntry) -> Unit = {},
     onRenameInput: (String) -> Unit = {},
     onSubmitRename: () -> Unit = {},
@@ -118,7 +124,10 @@ fun FileBrowserScreen(
                         Modifier.fillMaxWidth().clickable { onOpen(entry) }.padding(vertical = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text("${if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File"}: ${entry.name}")
+                        Column {
+                            Text("${if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File"}: ${entry.name}")
+                            missingStatusText(entry)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        }
                         if (!trashMode) {
                             TextButton(onClick = { onShowDetails(entry) }) { Text("Actions") }
                         } else {
@@ -149,6 +158,8 @@ fun FileBrowserScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("${entry.entryType} • ${entry.size} bytes\nUpdated ${entry.updatedAt}")
+                    missingStatusText(entry)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    entry.missingLastCheckedAt?.let { Text("最終確認: $it") }
                     if (trashMode) Text(state.retention?.text ?: "Automatic deletion time is unavailable.")
                 }
             },
@@ -169,6 +180,26 @@ fun FileBrowserScreen(
                             modifier = Modifier.testTag("delete-permanently"),
                         ) { Text("Delete permanently") }
                     }
+                } else if (entry.status == FileEntryStatus.MISSING) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        OutlinedButton(
+                            onClick = { onRecheckMissing(entry) },
+                            enabled = entry.id !in state.missingActionIds,
+                            modifier = Modifier.testTag("recheck-missing"),
+                        ) { Text(if (entry.id in state.missingActionIds) "確認中…" else "再確認") }
+                        Button(
+                            onClick = { onBeginMissingIndexDelete(entry) },
+                            enabled = entry.id !in state.missingActionIds,
+                            modifier = Modifier.testTag("delete-missing-index"),
+                        ) { Text("一覧から削除") }
+                    }
+                } else if (entry.status == FileEntryStatus.MISSING_CANDIDATE) {
+                    TextButton(
+                        onClick = { onRecheckMissing(entry) },
+                        enabled = entry.id !in state.missingActionIds,
+                    ) { Text(if (entry.id in state.missingActionIds) "確認中…" else "再確認") }
+                } else if (entry.status == FileEntryStatus.UNKNOWN) {
+                    Text("アプリの更新が必要です", color = MaterialTheme.colorScheme.error)
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         if (entry.entryType == FileEntryType.FILE) {
@@ -183,7 +214,7 @@ fun FileBrowserScreen(
                 }
             },
             dismissButton = {
-                if (!trashMode) {
+                if (!trashMode && entry.status == FileEntryStatus.ACTIVE) {
                     TextButton(onClick = {
                         pendingTrash = entry
                         onDismissDetail()
@@ -220,6 +251,14 @@ fun FileBrowserScreen(
             onRefresh = onRefresh,
         )
     }
+    state.missingIndexDelete?.let { deletion ->
+        MissingIndexDeleteDialog(
+            state = deletion,
+            onDismiss = onCancelMissingIndexDelete,
+            onConfirm = onConfirmMissingIndexDelete,
+            onRefresh = onRefresh,
+        )
+    }
     state.rename?.let { rename ->
         RenameDialog(
             state = rename,
@@ -240,6 +279,50 @@ fun FileBrowserScreen(
             onRefresh = onRefreshPlacement,
         )
     }
+}
+
+private fun missingStatusText(entry: FileEntry): String? =
+    when (entry.status) {
+        FileEntryStatus.MISSING -> "ファイルが見つかりません"
+        FileEntryStatus.MISSING_CANDIDATE -> "ファイルを確認中"
+        FileEntryStatus.UNKNOWN -> "アプリの更新が必要です"
+        else -> null
+    }
+
+@Composable
+private fun MissingIndexDeleteDialog(
+    state: MissingIndexDeleteState,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!state.submitting && !state.resultUnknown) onDismiss() },
+        title = { Text("一覧から削除しますか？") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("KuraStorageの索引だけを削除します。HDD上のファイルは削除しません。")
+                if (state.target.entryType == FileEntryType.FOLDER) {
+                    Text("欠損している配下項目も一覧から削除されます。")
+                }
+                state.error?.let {
+                    Text(it.message, color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = onRefresh, enabled = !state.submitting) { Text("一覧を更新") }
+                }
+                if (state.submitting) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !state.submitting && !state.resultUnknown,
+                modifier = Modifier.testTag("confirm-delete-missing-index"),
+            ) { Text(if (state.submitting) "削除中…" else "索引だけ削除") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !state.submitting && !state.resultUnknown) { Text("キャンセル") }
+        },
+    )
 }
 
 @Composable

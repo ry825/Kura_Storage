@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package com.kurastorage.core.data
 
 import com.kurastorage.core.model.AdminStorageStatus
@@ -50,6 +52,14 @@ interface FileRepository {
 
     suspend fun restore(fileId: String): FileEntry
 
+    suspend fun recheckMissing(fileId: String): FileEntry {
+        error("Missing recheck is not implemented by this test double")
+    }
+
+    suspend fun deleteMissingIndexEntry(fileId: String) {
+        error("Missing index deletion is not implemented by this test double")
+    }
+
     suspend fun purge(
         fileId: String,
         idempotencyKey: String,
@@ -95,6 +105,12 @@ class DefaultFileRepository(
     ) = authenticated { api.listTrash(it, page, pageSize) }.toModel()
 
     override suspend fun restore(fileId: String) = authenticated { api.restore(it, fileId) }.toModel()
+
+    override suspend fun recheckMissing(fileId: String) = authenticated { api.recheckMissing(it, fileId) }.toModel()
+
+    override suspend fun deleteMissingIndexEntry(fileId: String) {
+        authenticated { api.deleteMissingIndexEntry(it, fileId) }
+    }
 
     override suspend fun purge(
         fileId: String,
@@ -162,12 +178,14 @@ internal fun FileEntryDto.toModel() =
         entryType = FileEntryType.valueOf(entryType),
         mimeType = mimeType,
         size = size,
-        status = FileEntryStatus.valueOf(status),
+        status = FileEntryStatus.entries.firstOrNull { it.name == status } ?: FileEntryStatus.UNKNOWN,
         fileVersion = fileVersion,
         trashedAt = trashedAt?.let(Instant::parse),
         createdAt = Instant.parse(createdAt),
         updatedAt = Instant.parse(updatedAt),
         purgeEligibleAt = purgeEligibleAt?.let(Instant::parse),
+        missingDetectedAt = missingDetectedAt?.let(Instant::parse),
+        missingLastCheckedAt = missingLastCheckedAt?.let(Instant::parse),
     )
 
 @Suppress("MaxLineLength")

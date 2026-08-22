@@ -45,6 +45,12 @@ fun ConnectionScreen(
                 detail = "The server certificate or hostname could not be verified.",
                 onRecheck = onRecheck,
             )
+        ConnectionStatus.IncompatibleProtocol ->
+            ActionState(
+                title = "アプリの更新が必要です",
+                detail = "このServerのProtocol 2に対応したアプリへ更新してください。",
+                onRecheck = onRecheck,
+            )
     }
 }
 

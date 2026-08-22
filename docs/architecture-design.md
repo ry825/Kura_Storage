@@ -882,6 +882,10 @@ sequenceDiagram
 - FileEntry更新はPostgreSQL `xmin`の楽観的並行制御を使用し、競合時は古いSnapshotを破棄して次回照合へ戻す。
 - Scan Runは開始・終了状態と件数を永続化し、Stagingは成功時または保持期限超過後に清掃する。同時全件Scanは固定advisory lockで拒否する。
 - `MISSING`項目の管理情報削除はユーザーまたは管理者の明示操作で行う。
+- File一覧・詳細はDB索引のみを読み、Content Openは`IManagedFileSystemSnapshotReader.InspectAsync`とStorage GuardをOpen直前に実行する。`ACTIVE`実体がない場合は同じ対象Lock内で候補化し、要求内で直接`MISSING`へ確定しない。
+- 明示再確認は`MissingEntryService`へ集約し、対象・親のMutation Lock、Storage再確認、`xmin`による楽観的競合検出を通して、再発見を同じFile IDへ適用する。
+- 一覧から削除は`IFileIndexDeletionParticipant`だけへ関連DB情報の整理を委譲する。この境界は物理完全削除用`IPermanentDeleteParticipant`と分離し、`IFileStore`やFilesystem participantを参照しない。
+- Folder索引削除は対象と全子孫が確定`MISSING`で未完了操作がない場合だけ、子孫の深い順に同一Transactionで削除する。部分再発見・同時更新は`FILE_STATE_CONFLICT`または`INDEX_CONFLICT`で中止する。
 - Linux watcherはlibcのinotifyだけを限定P/Invokeし、watch descriptorと検証済み相対DirectoryだけをProcess Memoryに保持する。file descriptorはSafeHandleで所有し、Worker停止時にcloseしてread loopを終了する。
 - native Eventはbounded channelへ渡し、同じPathを500ms debounceする。Move cookieは1秒のwindowで対応付け、queue overflow、watch limit、片側Move、監視停止は全件Scanまたは個別Path再照合へ変換する。
 - Worker起動時、6時間周期、overflow・監視再作成時にPR1と同じ`IndexScanService`を呼ぶ。PostgreSQL advisory lockにより管理CLIや別Workerとの重複実行を拒否する。
@@ -942,6 +946,7 @@ sequenceDiagram
 - v1内では任意項目追加を許可する。
 - enum追加時に古いクライアントが安全に未知値を扱える設計にする。
 - Androidは`protocolVersion`をHealth APIで確認し、非互換時は更新要求を表示する。
+- 現行AndroidとServerのFile契約は`protocolVersion: 2`とし、Protocol不一致では認証後のFile APIへ進まない。enum未知値は`UNKNOWN`へ閉じ、Download・Rename・Move・Trash・索引削除を表示しない。
 
 ---
 

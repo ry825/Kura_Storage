@@ -4,7 +4,7 @@ import java.time.Instant
 
 enum class FileEntryType { FILE, FOLDER }
 
-enum class FileEntryStatus { ACTIVE, TRASHED }
+enum class FileEntryStatus { ACTIVE, MISSING_CANDIDATE, MISSING, TRASHED, UNKNOWN }
 
 data class FileEntry(
     val id: String,
@@ -19,6 +19,8 @@ data class FileEntry(
     val createdAt: Instant,
     val updatedAt: Instant,
     val purgeEligibleAt: Instant? = null,
+    val missingDetectedAt: Instant? = null,
+    val missingLastCheckedAt: Instant? = null,
 )
 
 data class TrashPurgeRunSummary(

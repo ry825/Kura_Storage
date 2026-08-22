@@ -28,6 +28,7 @@ class ConnectionScreenTest {
                 ) to "Connected through ZeroTier",
                 ConnectionStatus.Disconnected to "KuraStorage is unreachable",
                 ConnectionStatus.TlsFailure to "Secure connection failed",
+                ConnectionStatus.IncompatibleProtocol to "アプリの更新が必要です",
                 ConnectionStatus.Connected(
                     ConnectionRoute.LOCAL_DIRECT,
                     StorageAvailability.UNAVAILABLE,

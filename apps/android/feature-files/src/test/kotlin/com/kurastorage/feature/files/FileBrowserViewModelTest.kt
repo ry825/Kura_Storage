@@ -74,6 +74,71 @@ class FileBrowserViewModelTest {
         }
 
     @Test
+    fun `missing recheck blocks duplicate and refreshes page one after rediscovery`() =
+        runTest(dispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            val target = file("missing").copy(status = FileEntryStatus.MISSING)
+            val files = MissingFiles(target, recheckGate = gate)
+            val viewModel = FileBrowserViewModel(files, FakeTransfers())
+
+            viewModel.select(target)
+            viewModel.recheckMissing(target)
+            viewModel.recheckMissing(target)
+            assertEquals(1, files.recheckCalls)
+            assertEquals(setOf(target.id), viewModel.state.value.missingActionIds)
+
+            gate.complete(Unit)
+            assertEquals(1, files.recheckCalls)
+            assertEquals(FileEntryStatus.ACTIVE, files.target.status)
+            assertEquals(emptySet<String>(), viewModel.state.value.missingActionIds)
+            assertEquals(null, viewModel.state.value.selected)
+            assertEquals(2, files.listCalls)
+        }
+
+    @Test
+    fun `unknown missing index deletion uses refreshed presence and allows retry`() =
+        runTest(dispatcher) {
+            val target = file("missing").copy(status = FileEntryStatus.MISSING)
+            val files =
+                MissingFiles(target).apply {
+                    deleteFailure = KuraStorageException.Network(IOException("response unknown"))
+                }
+            val viewModel = FileBrowserViewModel(files, FakeTransfers())
+
+            viewModel.beginMissingIndexDelete(target)
+            viewModel.confirmMissingIndexDelete()
+
+            assertEquals(1, files.deleteCalls)
+            assertEquals(true, files.present)
+            assertEquals(
+                false,
+                viewModel.state.value.missingIndexDelete
+                    ?.resultUnknown,
+            )
+            assertEquals(2, files.listCalls)
+        }
+
+    @Test
+    fun `unknown missing index deletion closes only after authoritative refresh no longer contains target`() =
+        runTest(dispatcher) {
+            val target = file("missing").copy(status = FileEntryStatus.MISSING)
+            val files =
+                MissingFiles(target).apply {
+                    deleteFailure = KuraStorageException.Network(IOException("response unknown"))
+                }
+            val viewModel = FileBrowserViewModel(files, FakeTransfers())
+            files.present = false
+
+            viewModel.beginMissingIndexDelete(target)
+            viewModel.confirmMissingIndexDelete()
+
+            assertEquals(1, files.deleteCalls)
+            assertNull(viewModel.state.value.missingIndexDelete)
+            assertEquals("最新の一覧を取得しました。対象は一覧にありません。", viewModel.state.value.placementResult)
+            assertEquals(2, files.listCalls)
+        }
+
+    @Test
     fun `load error is mapped and refresh retries successfully`() =
         runTest(dispatcher) {
             val files = FakeFiles(failNext = true)
@@ -632,6 +697,67 @@ class FileBrowserViewModelTest {
             destinationUri: String,
             mimeType: String?,
         ): Intent = error("unused")
+    }
+
+    private class MissingFiles(
+        initial: FileEntry,
+        private val recheckGate: CompletableDeferred<Unit>? = null,
+    ) : FileRepository {
+        var target = initial
+        var present = true
+        var listCalls = 0
+        var recheckCalls = 0
+        var deleteCalls = 0
+        var deleteFailure: Throwable? = null
+
+        override suspend fun list(
+            parentId: String?,
+            page: Int,
+            pageSize: Int,
+        ): FilePage {
+            listCalls++
+            return FilePage("root", if (present) listOf(target) else emptyList(), 1, 100, if (present) 1 else 0)
+        }
+
+        override suspend fun detail(fileId: String) = target
+
+        override suspend fun createFolder(
+            parentId: String?,
+            name: String,
+        ) = target
+
+        override suspend fun rename(
+            fileId: String,
+            name: String,
+        ) = target
+
+        override suspend fun move(
+            fileId: String,
+            targetParentId: String,
+        ) = target
+
+        override suspend fun trash(fileId: String) = target
+
+        override suspend fun listTrash(
+            page: Int,
+            pageSize: Int,
+        ) = FilePage(null, emptyList(), 1, 100, 0)
+
+        override suspend fun restore(fileId: String) = target
+
+        override suspend fun recheckMissing(fileId: String): FileEntry {
+            recheckCalls++
+            recheckGate?.await()
+            return target
+                .copy(status = FileEntryStatus.ACTIVE, missingDetectedAt = null, missingLastCheckedAt = null)
+                .also { target = it }
+        }
+
+        override suspend fun deleteMissingIndexEntry(fileId: String) {
+            deleteCalls++
+            deleteFailure?.let { throw it }
+            present = false
+        }
     }
 
     private class PurgeFiles(

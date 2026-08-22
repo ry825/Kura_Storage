@@ -13,6 +13,8 @@ public sealed record FileItem(
     long FileVersion,
     DateTimeOffset? TrashedAt,
     DateTimeOffset? PurgeEligibleAt,
+    DateTimeOffset? MissingDetectedAt,
+    DateTimeOffset? MissingLastCheckedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
 
@@ -67,6 +69,17 @@ public sealed record PermanentDeleteTarget(
     RelativeStoragePath TrashContainer,
     IReadOnlyList<Guid> DescendantIds,
     long TotalSize);
+
+public sealed record MissingFileCommand(
+    Guid OwnerUserId,
+    Guid ActorDeviceId,
+    Guid FileEntryId,
+    string RequestId);
+
+public sealed record FileIndexDeletionTarget(
+    Guid RootId,
+    Guid OwnerUserId,
+    IReadOnlyList<Guid> EntryIds);
 
 public sealed class TrashPurgeOptions
 {
@@ -123,6 +136,10 @@ public static class FileErrorCodes
     public const string FileRestoreConflict = "FILE_RESTORE_CONFLICT";
     public const string FileMoveCycle = "FILE_MOVE_CYCLE";
     public const string FileOperationNotAllowed = "FILE_OPERATION_NOT_ALLOWED";
+    public const string FileMissingCandidate = "FILE_MISSING_CANDIDATE";
+    public const string FileMissing = "FILE_MISSING";
+    public const string FileStateConflict = "FILE_STATE_CONFLICT";
+    public const string IndexConflict = "INDEX_CONFLICT";
     public const string IdempotencyConflict = "IDEMPOTENCY_CONFLICT";
     public const string UploadSizeMismatch = "UPLOAD_SIZE_MISMATCH";
     public const string UploadChecksumMismatch = "UPLOAD_CHECKSUM_MISMATCH";

@@ -62,6 +62,6 @@ for _ in {1..60}; do
 done
 grep -q '"api":"AVAILABLE"' <<<"${health_json}" || die "API health is unavailable."
 grep -q '"storage":"AVAILABLE"' <<<"${health_json}" || die "Storage health is unavailable."
-grep -q '"protocolVersion":1' <<<"${health_json}" || die "Unexpected API protocol version."
+grep -q '"protocolVersion":2' <<<"${health_json}" || die "Unexpected API protocol version."
 
 printf 'KuraStorage deployment verified: %s\n' "${KURASTORAGE_VERSION}"

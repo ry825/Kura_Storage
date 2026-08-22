@@ -37,6 +37,7 @@ class ConnectionDetector(
     private val localNetworkSource: LocalNetworkSource,
     private val healthProbe: HealthProbe,
 ) {
+    @Suppress("ReturnCount")
     suspend fun detect(): ConnectionStatus {
         val local = localNetworkSource.currentBaseNetwork()
         var tlsFailure = false
@@ -49,6 +50,7 @@ class ConnectionDetector(
                     )
             ) {
                 is ConnectionStatus.Connected -> return status
+                ConnectionStatus.IncompatibleProtocol -> return status
                 ConnectionStatus.TlsFailure -> tlsFailure = true
                 else -> Unit
             }
@@ -62,6 +64,7 @@ class ConnectionDetector(
                 )
         ) {
             is ConnectionStatus.Connected -> status
+            ConnectionStatus.IncompatibleProtocol -> status
             ConnectionStatus.TlsFailure -> ConnectionStatus.TlsFailure
             else -> if (tlsFailure) ConnectionStatus.TlsFailure else ConnectionStatus.Disconnected
         }
@@ -74,7 +77,7 @@ class ConnectionDetector(
         try {
             val health = healthProbe.check(target)
             if (health.protocolVersion != EXPECTED_PROTOCOL_VERSION) {
-                null
+                ConnectionStatus.IncompatibleProtocol
             } else {
                 ConnectionStatus.Connected(route, health.storage)
             }
@@ -103,6 +106,6 @@ class ConnectionDetector(
     }
 
     private companion object {
-        const val EXPECTED_PROTOCOL_VERSION = 1
+        const val EXPECTED_PROTOCOL_VERSION = 2
     }
 }

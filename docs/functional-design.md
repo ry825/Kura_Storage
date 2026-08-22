@@ -1498,6 +1498,9 @@ SSID、BSSID、端末が保持する`deviceId`は接続経路の確定条件に�
 8. 管理CLIは`kurastorage-admin index rescan [--dry-run]`で同じApplication Serviceを呼び、Run IDと低Cardinalityの集計だけを表示する。
 9. 関連派生データを`BLOCKED_SOURCE_MISSING`へ変更し、配信しない。
 10. ユーザーが一覧から削除した場合、DB関連情報と全派生データを削除する。
+11. 一覧・詳細はDB索引から`ACTIVE`、`MISSING_CANDIDATE`、`MISSING`を返し、要求ごとのHDD全走査は行わない。Responseには`missingDetectedAt`と`missingLastCheckedAt`を含める。
+12. `POST /api/v1/files/{fileId}/missing/recheck`は所有する候補・欠損項目だけを安全に個別確認し、再発見時は同じIDを`ACTIVE`へ戻す。Storage利用不可または読取不能時は`503 STORAGE_UNAVAILABLE`とし、欠損状態を進めない。
+13. `DELETE /api/v1/files/{fileId}/missing-index-entry`は所有する確定`MISSING`だけを対象とし、FileEntryと実装済み関連管理情報を同一DB Transactionで削除する。HDD境界は呼び出さず、Folderは全子孫が`MISSING`の場合だけ深い順に削除する。
 
 ## 7.9 アプリ内削除
 
@@ -1616,7 +1619,7 @@ DB.fileVersion != expectedVersion
 ```json
 {
   "api": "AVAILABLE",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "storage": "AVAILABLE"
 }
 ```
@@ -2520,10 +2523,11 @@ flowchart LR
 
 ## 11.12 MVP後: `MISSING`項目画面
 
-- ファイル名と元の場所
-- 検出日時
-- 再確認
-- 一覧から削除
+- `MISSING_CANDIDATE`は「ファイルを確認中」、`MISSING`は「ファイルが見つかりません」と表示する。
+- ファイル名、検出日時、最終確認日時を表示する。物理PathはAPIにも画面にも公開しない。
+- 未知Statusは`UNKNOWN`へ変換し「アプリの更新が必要です」と表示して破壊的操作を無効にする。
+- `MISSING_CANDIDATE`と`MISSING`に再確認を提供し、File IDごとの二重送信を防ぐ。
+- 確定`MISSING`だけに一覧から削除を提供し、成功後または通信結果不明後はServerの一覧1ページ目を再取得する。
 
 確認ダイアログ。
 
@@ -2551,6 +2555,10 @@ flowchart LR
 | `FILE_RESTORE_CONFLICT` | 409 | Restore拒否、既存項目維持 | 復元先に同じ名前の項目があります |
 | `FILE_MOVE_CYCLE` | 409 | 自分自身・子孫への移動を拒否 | そのフォルダの配下へは移動できません |
 | `FILE_OPERATION_NOT_ALLOWED` | 409 | Rootまたは変更不可状態を拒否 | この項目は変更できません |
+| `FILE_MISSING_CANDIDATE` | 409 | 内容操作を拒否し再確認へ収束 | ファイルを確認中です |
+| `FILE_MISSING` | 409 | 不存在の内容操作を拒否 | ファイルが見つかりません |
+| `FILE_STATE_CONFLICT` | 409 | 部分再発見・未完了操作との競合を拒否 | 一覧を更新してください |
+| `INDEX_CONFLICT` | 409 | 古い索引状態による更新を拒否 | 一覧を更新して再試行してください |
 | `RECOVERY_REQUIRED` | 409 | 対象を通常利用から隔離 | 操作結果を確認中です |
 | `IDEMPOTENCY_CONFLICT` | 409 | 異なるPayloadでのKey再利用拒否 | 転送を最初からやり直してください |
 | `UPLOAD_SIZE_MISMATCH` | 422 | 正式公開しない | ファイルサイズが一致しません |

@@ -583,6 +583,45 @@ paths:
           $ref: "#/components/responses/NotFound"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /files/{fileId}/missing/recheck:
+    parameters:
+      - $ref: "#/components/parameters/FileId"
+    post:
+      tags: [Files]
+      operationId: recheckMissingFile
+      summary: Safely recheck an owned missing or missing-candidate entry
+      responses:
+        "200":
+          description: Current entry metadata after rechecking the managed path.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntry"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /files/{fileId}/missing-index-entry:
+    parameters:
+      - $ref: "#/components/parameters/FileId"
+    delete:
+      tags: [Files]
+      operationId: deleteMissingFileIndexEntry
+      summary: Delete only database-managed index information for an owned missing entry
+      description: This operation never deletes, moves, or creates HDD content.
+      responses:
+        "204":
+          description: Missing index entry and eligible missing descendants were deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /trash:
     get:
       tags: [Trash]
@@ -780,7 +819,7 @@ components:
           enum: [AVAILABLE]
         protocolVersion:
           type: integer
-          const: 1
+          const: 2
         storage:
           type: string
           enum: [AVAILABLE, UNAVAILABLE]
@@ -1077,7 +1116,7 @@ components:
     FileEntry:
       type: object
       additionalProperties: false
-      required: [id, name, entryType, size, status, fileVersion, trashedAt, purgeEligibleAt, createdAt, updatedAt]
+      required: [id, name, entryType, size, status, fileVersion, trashedAt, purgeEligibleAt, missingDetectedAt, missingLastCheckedAt, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -1108,6 +1147,14 @@ components:
           type: [string, "null"]
           format: date-time
           description: Server-computed retention deadline for a trashed root; null otherwise.
+        missingDetectedAt:
+          type: [string, "null"]
+          format: date-time
+          description: First confirmed observation time for the current missing episode.
+        missingLastCheckedAt:
+          type: [string, "null"]
+          format: date-time
+          description: Most recent safe filesystem check for the current missing episode.
         createdAt:
           type: string
           format: date-time
@@ -1142,7 +1189,7 @@ components:
       enum: [FILE, FOLDER]
     FileEntryStatus:
       type: string
-      enum: [ACTIVE, TRASHED]
+      enum: [ACTIVE, MISSING_CANDIDATE, MISSING, TRASHED]
     SortOrder:
       type: string
       enum: [asc, desc]

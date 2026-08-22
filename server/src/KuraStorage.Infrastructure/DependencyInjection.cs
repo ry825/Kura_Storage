@@ -94,6 +94,7 @@ public static class DependencyInjection
         services.AddSingleton<IIndexScanObserver, IndexScanLogObserver>();
         services.AddScoped<IdentityService>();
         services.AddScoped<FileService>();
+        services.AddScoped<MissingEntryService>();
         services.AddScoped<TrashPurgeService>();
         services.AddScoped<TrashPurgeRunner>();
         services.AddScoped<ITrashPurgeRunner>(serviceProvider => serviceProvider.GetRequiredService<TrashPurgeRunner>());

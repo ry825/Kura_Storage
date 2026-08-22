@@ -1280,6 +1280,117 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         Assert.DoesNotContain("lastPurgeRun", healthJson, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task MissingEndpoints_EnforceProtocolStateOwnershipAndDatabaseOnlyDeletion()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("missing-owner", "missing-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var downloadTarget = await UploadAsync(
+            client, rootId, "download-missing.txt", [1, 2, 3], Guid.NewGuid().ToString());
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var entry = await database.FileEntries.SingleAsync(item => item.Id == downloadTarget.Id);
+            await scope.ServiceProvider.GetRequiredService<IFileStore>().DeleteIfExistsAsync(
+                RelativeStoragePath.Create(entry.RelativePath), CancellationToken.None);
+        }
+
+        using (var download = await client.GetAsync($"/api/v1/files/{downloadTarget.Id}/content"))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, download.StatusCode);
+            await AssertErrorAsync(download, FileErrorCodes.FileMissing);
+        }
+        using (var detail = await client.GetAsync($"/api/v1/files/{downloadTarget.Id}"))
+        {
+            detail.EnsureSuccessStatusCode();
+            using var json = await JsonDocument.ParseAsync(await detail.Content.ReadAsStreamAsync());
+            Assert.Equal("MISSING_CANDIDATE", json.RootElement.GetProperty("status").GetString());
+            Assert.Equal(JsonValueKind.String, json.RootElement.GetProperty("missingDetectedAt").ValueKind);
+            Assert.Equal(JsonValueKind.String, json.RootElement.GetProperty("missingLastCheckedAt").ValueKind);
+        }
+
+        var deleteTarget = await UploadAsync(
+            client, rootId, "index-only.txt", [4, 5], Guid.NewGuid().ToString());
+        Guid ownerId;
+        string relativePath;
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var entry = await database.FileEntries.SingleAsync(item => item.Id == deleteTarget.Id);
+            ownerId = entry.OwnerUserId;
+            relativePath = entry.RelativePath;
+            await scope.ServiceProvider.GetRequiredService<IFileStore>().DeleteIfExistsAsync(
+                RelativeStoragePath.Create(relativePath), CancellationToken.None);
+            var first = Guid.NewGuid();
+            entry.MarkMissingCandidate(first, DateTimeOffset.UtcNow.AddMinutes(-10));
+            entry.ConfirmMissing(Guid.NewGuid(), DateTimeOffset.UtcNow.AddMinutes(-5), TimeSpan.FromMinutes(5));
+            await database.SaveChangesAsync();
+        }
+
+        var other = await fixture.CreateAuthenticatedClientAsync("missing-other", "other-password");
+        using (other.Client)
+        using (var hidden = await other.Client.PostAsync($"/api/v1/files/{deleteTarget.Id}/missing/recheck", null))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+            Assert.DoesNotContain("index-only", await hidden.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+
+        using (var deletion = await client.DeleteAsync($"/api/v1/files/{deleteTarget.Id}/missing-index-entry"))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, deletion.StatusCode);
+        }
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.False(await database.FileEntries.AnyAsync(entry => entry.Id == deleteTarget.Id));
+            Assert.False(await scope.ServiceProvider.GetRequiredService<IFileStore>().ExistsAsync(
+                RelativeStoragePath.Create(relativePath), false, CancellationToken.None));
+            Assert.True(await database.AuditLogs.AnyAsync(
+                audit => audit.ActorUserId == ownerId && audit.Action == "FILE_MISSING_INDEX_DELETE"));
+        }
+        using var repeated = await client.DeleteAsync($"/api/v1/files/{deleteTarget.Id}/missing-index-entry");
+        Assert.Equal(HttpStatusCode.NotFound, repeated.StatusCode);
+    }
+
+    [Fact]
+    public async Task MissingRecheck_ReappearedContent_RevivesSameId()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("missing-revive", "revive-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var target = await UploadAsync(client, rootId, "revive.txt", [7], Guid.NewGuid().ToString());
+        string relativePath;
+        Guid ownerId;
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var entry = await database.FileEntries.SingleAsync(item => item.Id == target.Id);
+            ownerId = entry.OwnerUserId;
+            relativePath = entry.RelativePath;
+            var store = scope.ServiceProvider.GetRequiredService<IFileStore>();
+            await store.DeleteIfExistsAsync(RelativeStoragePath.Create(relativePath), CancellationToken.None);
+            var first = Guid.NewGuid();
+            entry.MarkMissingCandidate(first, DateTimeOffset.UtcNow.AddMinutes(-10));
+            entry.ConfirmMissing(Guid.NewGuid(), DateTimeOffset.UtcNow.AddMinutes(-5), TimeSpan.FromMinutes(5));
+            await database.SaveChangesAsync();
+
+            await using var content = new MemoryStream([8, 9, 10]);
+            var staged = await store.WriteUploadTempAsync(ownerId, Guid.NewGuid(), content, 3, CancellationToken.None);
+            await store.MoveAsync(
+                staged.Path, RelativeStoragePath.Create(relativePath), false, CancellationToken.None);
+        }
+
+        using var response = await client.PostAsync($"/api/v1/files/{target.Id}/missing/recheck", null);
+        response.EnsureSuccessStatusCode();
+        using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.Equal(target.Id, json.RootElement.GetProperty("id").GetGuid());
+        Assert.Equal("ACTIVE", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal(3, json.RootElement.GetProperty("size").GetInt64());
+        Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("missingDetectedAt").ValueKind);
+    }
+
     private static async Task<Guid> GetRootIdAsync(HttpClient client)
     {
         using var response = await client.GetAsync("/api/v1/files");
