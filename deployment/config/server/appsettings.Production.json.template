@@ -15,6 +15,19 @@
     "BatchSize": ${KURASTORAGE_TRASH_BATCH_SIZE},
     "RetryDelayMinutes": ${KURASTORAGE_TRASH_RETRY_DELAY_MINUTES}
   },
+  "UploadSession": {
+    "PreferredChunkBytes": 4194304,
+    "MaximumChunkBytes": 8388608,
+    "MaximumFileBytes": 1099511627776,
+    "IdleExpirationHours": 24,
+    "AbsoluteExpirationHours": 168,
+    "CleanupIntervalMinutes": 15,
+    "CleanupBatchSize": 100,
+    "MaximumActiveSessionsPerUser": 10,
+    "MaximumActiveSessionsPerDevice": 5,
+    "MaximumConcurrentChunkWrites": 2,
+    "OverloadRetryAfterSeconds": 5
+  },
   "Authentication": {
     "JwtIssuer": "kurastorage",
     "JwtAudience": "kurastorage-android",

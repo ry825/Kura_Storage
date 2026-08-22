@@ -88,6 +88,8 @@ public enum FileFailureKind
     NotFound,
     Conflict,
     Unprocessable,
+    PayloadTooLarge,
+    TooManyRequests,
     StorageUnavailable,
     CapacityInsufficient,
 }
@@ -127,4 +129,14 @@ public static class FileErrorCodes
     public const string StorageUnavailable = "STORAGE_UNAVAILABLE";
     public const string StorageCapacityInsufficient = "STORAGE_CAPACITY_INSUFFICIENT";
     public const string RecoveryRequired = "RECOVERY_REQUIRED";
+    public const string UploadSessionNotFound = "UPLOAD_SESSION_NOT_FOUND";
+    public const string UploadOffsetMismatch = "UPLOAD_OFFSET_MISMATCH";
+    public const string UploadIncomplete = "UPLOAD_INCOMPLETE";
+    public const string UploadSessionExpired = "UPLOAD_SESSION_EXPIRED";
+    public const string UploadSessionCancelled = "UPLOAD_SESSION_CANCELLED";
+    public const string UploadSessionCompleted = "UPLOAD_SESSION_COMPLETED";
+    public const string ChunkChecksumMismatch = "CHUNK_CHECKSUM_MISMATCH";
+    public const string ChunkSizeLimitExceeded = "CHUNK_SIZE_LIMIT_EXCEEDED";
+    public const string FileSizeLimitExceeded = "FILE_SIZE_LIMIT_EXCEEDED";
+    public const string UploadLimitReached = "UPLOAD_LIMIT_REACHED";
 }

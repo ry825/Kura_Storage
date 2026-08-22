@@ -298,10 +298,8 @@ KuraStorage.Domain/
 │   ├── Policies/
 │   └── Errors/
 ├── Transfer/
-│   ├── Entities/
-│   ├── ValueObjects/
-│   ├── Enums/
-│   └── Errors/
+│   ├── UploadSession.cs
+│   └── UploadSessionStatus.cs
 ├── Media/
 │   ├── Entities/
 │   ├── ValueObjects/
@@ -328,6 +326,8 @@ KuraStorage.Domain/
 - HTTP Status、EF Attribute、JSON Attributeを置かない。
 - `SharedKernel/`には2つ以上のDomain Moduleで本当に共通のものだけを置く。
 - `Utils/`、`Helpers/`、`Common/`という曖昧なDirectoryを作らない。
+- Resumable UploadはDomainの`Transfers/`、Applicationの`Transfers/`/`Abstractions/UploadSessionAbstractions.cs`、Infrastructureの`Persistence/UploadSessionRepository.cs`・`Storage/FileStore.cs`・`Storage/FileRecoveryHostedService.cs`、APIの`Program.cs`に配置する。
+- Migrationは`Persistence/Migrations/`、OpenAPIは`contracts/openapi/kurastorage-api.yaml`、Domain・Application・API・Migration Testは各既存Test ProjectのUpload Session対応Fileへ配置する。
 - Domain Eventを導入する場合は各Moduleの`Events/`へ置き、Infrastructure Eventと混同しない。
 
 ---

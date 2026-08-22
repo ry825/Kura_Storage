@@ -44,6 +44,14 @@ public sealed class TrashPurgeMigrationTests
                 "SELECT count(*) FROM information_schema.tables WHERE table_name = 'trash_purge_runs'",
                 connection);
             Assert.Equal(1L, await runTable.ExecuteScalarAsync());
+            await using var uploadTable = new NpgsqlCommand(
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'upload_sessions'",
+                connection);
+            Assert.Equal(1L, await uploadTable.ExecuteScalarAsync());
+            await using var uploadIndexes = new NpgsqlCommand(
+                "SELECT count(*) FROM pg_indexes WHERE indexname IN ('ux_upload_sessions_owner_idempotency_key', 'ix_upload_sessions_cleanup_candidates', 'ix_upload_sessions_device_status')",
+                connection);
+            Assert.Equal(3L, await uploadIndexes.ExecuteScalarAsync());
             await using var invalidRun = new NpgsqlCommand(
                 "INSERT INTO trash_purge_runs (id, started_at, completed_at, status, examined_root_count, deleted_root_count, released_bytes, error_count) VALUES (@id, now(), NULL, 'COMPLETED', 0, 0, 0, 0)",
                 connection);
@@ -79,6 +87,16 @@ public sealed class TrashPurgeMigrationTests
                 var exception = await Assert.ThrowsAsync<PostgresException>(() => duplicate.ExecuteNonQueryAsync());
                 Assert.Equal(PostgresErrorCodes.UniqueViolation, exception.SqlState);
             }
+        }
+
+        await database.Database.MigrateAsync("20260820125242_AddTrashPurgeRuns");
+        await using (var uploadRolledBack = new NpgsqlConnection(postgres.GetConnectionString()))
+        {
+            await uploadRolledBack.OpenAsync();
+            await using var uploadTable = new NpgsqlCommand(
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'upload_sessions'",
+                uploadRolledBack);
+            Assert.Equal(0L, await uploadTable.ExecuteScalarAsync());
         }
 
         await database.Database.MigrateAsync("20260820114500_AddTrashPurgeFoundation");

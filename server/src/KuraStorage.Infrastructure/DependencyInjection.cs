@@ -2,6 +2,7 @@ using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Identity;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
+using KuraStorage.Application.Transfers;
 using KuraStorage.Infrastructure.Configuration;
 using KuraStorage.Infrastructure.Identity;
 using KuraStorage.Infrastructure.Persistence;
@@ -48,6 +49,31 @@ public static class DependencyInjection
             .ValidateDataAnnotations()
             .Validate(options => File.Exists(options.JwtSigningKeyFile), "Authentication:JwtSigningKeyFile must exist.")
             .ValidateOnStart();
+        services.AddOptions<UploadSessionOptions>()
+            .Bind(configuration.GetSection(UploadSessionOptions.SectionName))
+            .Validate(
+                options => options.PreferredChunkBytes is >= UploadSessionOptions.MinimumChunkBytes and <= 67_108_864 &&
+                    options.MaximumChunkBytes is >= UploadSessionOptions.MinimumChunkBytes and <= 67_108_864 &&
+                    options.PreferredChunkBytes <= options.MaximumChunkBytes,
+                "UploadSession chunk sizes are invalid.")
+            .Validate(options => options.MaximumFileBytes > 0, "UploadSession:MaximumFileBytes must be positive.")
+            .Validate(
+                options => options.IdleExpirationHours is >= 1 and <= 168 &&
+                    options.AbsoluteExpirationHours >= options.IdleExpirationHours &&
+                    options.AbsoluteExpirationHours <= 720,
+                "UploadSession expiration settings are invalid.")
+            .Validate(
+                options => options.CleanupIntervalMinutes is >= 1 and <= 1440 &&
+                    options.CleanupBatchSize is >= 1 and <= 500,
+                "UploadSession cleanup settings are invalid.")
+            .Validate(
+                options => options.MaximumActiveSessionsPerUser is >= 1 and <= 100 &&
+                    options.MaximumActiveSessionsPerDevice is >= 1 and <= 50 &&
+                    options.MaximumActiveSessionsPerDevice <= options.MaximumActiveSessionsPerUser &&
+                    options.MaximumConcurrentChunkWrites is >= 1 and <= 16 &&
+                    options.OverloadRetryAfterSeconds is >= 1 and <= 300,
+                "UploadSession resource limits are invalid.")
+            .ValidateOnStart();
 
         services.AddDbContext<KuraStorageDbContext>(
             (serviceProvider, options) =>
@@ -55,6 +81,7 @@ public static class DependencyInjection
                     serviceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString));
         services.AddScoped<IIdentityRepository, IdentityRepository>();
         services.AddScoped<IFileRepository, FileRepository>();
+        services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
         services.AddScoped<IdentityService>();
         services.AddScoped<FileService>();
         services.AddScoped<TrashPurgeService>();
@@ -71,6 +98,9 @@ public static class DependencyInjection
         services.AddSingleton(
             serviceProvider => serviceProvider.GetRequiredService<IOptions<TrashPurgeOptions>>().Value);
         services.AddScoped<FileOperationRecoveryService>();
+        services.AddScoped<UploadSessionService>();
+        services.AddScoped<UploadSessionRecoveryService>();
+        services.AddScoped<UploadSessionCleanupService>();
         services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IRefreshTokenService, RefreshTokenService>();
@@ -78,6 +108,11 @@ public static class DependencyInjection
         services.AddSingleton<ISystemClock, SystemClock>();
         services.AddSingleton<IStorageGuard, StorageGuard>();
         services.AddSingleton<IFileStore, FileStore>();
+        services.AddSingleton<IUploadSessionStore>(
+            serviceProvider => (IUploadSessionStore)serviceProvider.GetRequiredService<IFileStore>());
+        services.AddSingleton(
+            serviceProvider => serviceProvider.GetRequiredService<IOptions<UploadSessionOptions>>().Value);
+        services.AddSingleton<UploadChunkLimiter>();
         if (addFileRecoveryHostedService)
         {
             services.AddHostedService<FileRecoveryHostedService>();

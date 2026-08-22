@@ -10,6 +10,7 @@ tags:
   - name: System
   - name: Authentication
   - name: Files
+  - name: Transfers
   - name: Trash
   - name: Administration
 paths:
@@ -257,6 +258,148 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /upload-sessions:
+    post:
+      tags: [Transfers]
+      operationId: createUploadSession
+      summary: Create or idempotently resume a sequential upload session
+      description: The Idempotency-Key is scoped to the authenticated user. Reusing it with identical metadata returns the existing session; different metadata returns 409.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUploadSessionRequest"
+      responses:
+        "200":
+          description: Existing session returned for an idempotent retry.
+          headers:
+            Upload-Offset:
+              $ref: "#/components/headers/UploadOffset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadSession"
+        "201":
+          description: Session created.
+          headers:
+            Location:
+              schema:
+                type: string
+            Upload-Offset:
+              $ref: "#/components/headers/UploadOffset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadSession"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        "507": { $ref: "#/components/responses/InsufficientStorage" }
+  /upload-sessions/{sessionId}:
+    parameters:
+      - $ref: "#/components/parameters/UploadSessionId"
+    get:
+      tags: [Transfers]
+      operationId: getUploadSession
+      summary: Get the authoritative state and next offset for an upload session
+      responses:
+        "200":
+          description: Current session state. A read does not extend its expiry.
+          headers:
+            Upload-Offset:
+              $ref: "#/components/headers/UploadOffset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadSession"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      tags: [Transfers]
+      operationId: cancelUploadSession
+      summary: Idempotently cancel an unfinished upload and remove its temporary file
+      responses:
+        "204":
+          description: Session cancelled or already cancelled.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /upload-sessions/{sessionId}/chunks:
+    parameters:
+      - $ref: "#/components/parameters/UploadSessionId"
+    put:
+      tags: [Transfers]
+      operationId: uploadSessionChunk
+      summary: Stream the next contiguous chunk into an upload session
+      description: Chunks are sequential. An exact retry of the last accepted offset, length, and SHA-256 is idempotent; gaps, overlaps, changed retries, and expired sessions return 409.
+      parameters:
+        - name: Upload-Offset
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: X-Chunk-Sha256
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Fa-f0-9]{64}$
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Chunk accepted or verified as an exact replay. A successful new chunk extends idle expiry without exceeding absolute expiry.
+          headers:
+            Upload-Offset:
+              $ref: "#/components/headers/UploadOffset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadChunkResult"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /upload-sessions/{sessionId}/complete:
+    parameters:
+      - $ref: "#/components/parameters/UploadSessionId"
+    post:
+      tags: [Transfers]
+      operationId: completeUploadSession
+      summary: Verify and atomically publish a completed upload
+      responses:
+        "200":
+          description: Published file, or the same file for an idempotent completion retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileEntry"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /folders:
     post:
       tags: [Files]
@@ -540,6 +683,20 @@ components:
       schema:
         type: string
         format: uuid
+    UploadSessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  headers:
+    UploadOffset:
+      description: Authoritative next byte offset persisted by the server.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
   responses:
     BadRequest:
       description: Request validation failed.
@@ -579,6 +736,35 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     InternalServerError:
       description: An unexpected server error occurred.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PayloadTooLarge:
+      description: The file or chunk exceeds its configured size limit.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnprocessableEntity:
+      description: A chunk or completed file failed checksum or length verification.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooManyRequests:
+      description: The active-session or concurrent-chunk limit was reached.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InsufficientStorage:
+      description: Dedicated storage does not have sufficient safe capacity.
       content:
         application/json:
           schema:
@@ -770,6 +956,99 @@ components:
         file:
           type: string
           format: binary
+    CreateUploadSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [destinationFolderId, fileName, size]
+      properties:
+        destinationFolderId:
+          type: string
+          format: uuid
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1099511627776
+        contentType:
+          type: [string, "null"]
+          maxLength: 255
+        sha256:
+          type: [string, "null"]
+          pattern: ^[A-Fa-f0-9]{64}$
+    UploadSession:
+      type: object
+      additionalProperties: false
+      required: [id, status, size, receivedBytes, nextOffset, preferredChunkBytes, maximumChunkBytes, expiresAt, absoluteExpiresAt, resumable, file]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETING, COMPLETED, CANCELLED, EXPIRED, RECOVERY_REQUIRED]
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+        receivedBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        nextOffset:
+          type: integer
+          format: int64
+          minimum: 0
+        preferredChunkBytes:
+          type: integer
+          minimum: 262144
+        maximumChunkBytes:
+          type: integer
+          minimum: 262144
+        expiresAt:
+          type: string
+          format: date-time
+        absoluteExpiresAt:
+          type: string
+          format: date-time
+        resumable:
+          type: boolean
+        file:
+          oneOf:
+            - $ref: "#/components/schemas/FileEntry"
+            - type: "null"
+    UploadChunkResult:
+      type: object
+      additionalProperties: false
+      required: [offset, length, sha256, receivedBytes, nextOffset, expiresAt, replayed]
+      properties:
+        offset:
+          type: integer
+          format: int64
+          minimum: 0
+        length:
+          type: integer
+          format: int64
+          minimum: 1
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        receivedBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        nextOffset:
+          type: integer
+          format: int64
+          minimum: 0
+        expiresAt:
+          type: string
+          format: date-time
+        replayed:
+          type: boolean
     CreateFolderRequest:
       type: object
       additionalProperties: false
@@ -906,6 +1185,14 @@ components:
         - UPLOAD_SIZE_MISMATCH
         - UPLOAD_CHECKSUM_MISMATCH
         - OPERATION_SIZE_LIMIT_EXCEEDED
+        - UPLOAD_SESSION_NOT_FOUND
+        - UPLOAD_SESSION_EXPIRED
+        - UPLOAD_SESSION_NOT_ACTIVE
+        - UPLOAD_OFFSET_MISMATCH
+        - CHUNK_CHECKSUM_MISMATCH
+        - CHUNK_SIZE_LIMIT_EXCEEDED
+        - FILE_SIZE_LIMIT_EXCEEDED
+        - UPLOAD_LIMIT_REACHED
         - INTERNAL_ERROR
 security:
   - bearerAuth: []

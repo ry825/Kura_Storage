@@ -134,7 +134,17 @@ SSIDやBSSIDは`LOCAL_DIRECT`の判定条件に使用しない。異なるIPサ�
 
 ### 2.2 MVP後の機能追加
 
-名前変更・移動、および完全削除・30日保持・容量警告は、MVP完成後のPhase 1拡張として実装する。自動バックアップ、共有、検索・最近使用、分割Upload、アプリ内Media表示、サムネイル・低中画質生成、動画変換、テキスト編集、外部変更監視・`MISSING`判定は、引き続き機能単位の別Steeringで計画・実装する。
+名前変更・移動、完全削除・30日保持・容量警告、およびResumable Chunk Uploadは、MVP完成後のPhase 1拡張として実装する。自動バックアップ、共有、検索・最近使用、アプリ内Media表示、サムネイル・低中画質生成、動画変換、テキスト編集、外部変更監視・`MISSING`判定は、引き続き機能単位の別Steeringで計画・実装する。
+
+#### 2.2.1 Resumable Chunk Upload受け入れ条件
+
+- 認証済みUserとDeviceは、保存先、名前、期待Size、任意の全体SHA-256を指定してUpload Sessionを冪等作成できる。
+- ClientはServerが返す連続OffsetからChunk送信を再開でき、Serverは宣言長、実長、範囲、SHA-256、最大Sizeを検証する。
+- 中断、再接続、同一Chunk再送、API再起動後も、確定済みOffsetより前の内容を重複して公開しない。
+- 全体Sizeと任意SHA-256が一致したSessionだけをatomic publishし、完了前の一時ファイルは一覧・詳細・Downloadへ公開しない。
+- 未完了Sessionは明示取消でき、期限切れまたは作成Device失効後は照会・Chunk・完了を拒否して一時ファイルを冪等清掃する。
+- 既存`POST /api/v1/files/upload`は互換性のため維持し、Resumable APIの導入で挙動を変更しない。
+- Server契約は将来のWebアプリと自動バックアップから再利用可能にするが、それらのClient実装はこの拡張へ含めない。
 
 ### 2.3 Phase 2
 
@@ -1496,7 +1506,7 @@ MVPでは次を対象外とする。
 - ファイル・フォルダ共有、検索、最近使用
 - 名前変更、別Folderへの移動
 - ゴミ箱の完全削除、30日保持、自動清掃
-- Upload Session、Chunk転送、中断位置からの再開
+- Upload Session、Chunk転送、中断位置からの再開（初期MVPの履歴上の対象外。Phase 1拡張で追加）
 - アプリ内Photo・Video・Audio・PDF・Text表示編集
 - Thumbnail、低・中画質派生データ、動画変換、Cache
 - 外部変更監視、全件再Scan、`MISSING`判定、高度な自動復旧

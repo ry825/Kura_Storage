@@ -2,6 +2,7 @@ using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Maintenance;
+using KuraStorage.Domain.Transfers;
 using Microsoft.EntityFrameworkCore;
 
 namespace KuraStorage.Infrastructure.Persistence;
@@ -23,6 +24,8 @@ public sealed class KuraStorageDbContext(DbContextOptions<KuraStorageDbContext> 
     public DbSet<FileOperation> FileOperations => Set<FileOperation>();
 
     public DbSet<TrashPurgeRun> TrashPurgeRuns => Set<TrashPurgeRun>();
+
+    public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
