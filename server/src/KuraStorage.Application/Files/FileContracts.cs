@@ -32,26 +32,42 @@ public sealed record FilePage(
     int TotalCount);
 
 public sealed record UploadFileCommand(
+    Guid ActorUserId,
+    Guid ActorDeviceId,
     Guid DestinationFolderId,
     string FileName,
     long Size,
     string? ContentType,
     string? Sha256,
     string IdempotencyKey,
+    string RequestId,
     Stream Content);
 
+public sealed record CreateFolderCommand(
+    Guid ActorUserId,
+    Guid ActorDeviceId,
+    Guid? ParentId,
+    string Name,
+    string RequestId);
+
 public sealed record RenameFileCommand(
-    Guid OwnerUserId,
+    Guid ActorUserId,
     Guid ActorDeviceId,
     Guid FileEntryId,
     string Name,
     string RequestId);
 
 public sealed record MoveFileCommand(
-    Guid OwnerUserId,
+    Guid ActorUserId,
     Guid ActorDeviceId,
     Guid FileEntryId,
     Guid TargetParentId,
+    string RequestId);
+
+public sealed record TrashFileCommand(
+    Guid ActorUserId,
+    Guid ActorDeviceId,
+    Guid FileEntryId,
     string RequestId);
 
 public enum PurgeTrigger

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using KuraStorage.Infrastructure.Persistence;
+using KuraStorage.Application.Maintenance;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Sharing;
@@ -392,6 +393,13 @@ public sealed class SharingApiTests(PostgreSqlAuthFlowFixture fixture)
             await Assert.ThrowsAsync<SharePersistenceConflictException>(
                 () => secondRepository.SaveChangesAsync(CancellationToken.None));
         }
+
+        var reloaded = await secondRepository.ReloadAsync(second, CancellationToken.None);
+        Assert.NotNull(reloaded);
+        Assert.NotSame(second, reloaded);
+        Assert.Equal(
+            SharePermission.Editor,
+            Assert.Single(reloaded.Members, member => member.UserId == memberId).Permission);
     }
 
     [Fact]
@@ -440,6 +448,268 @@ public sealed class SharingApiTests(PostgreSqlAuthFlowFixture fixture)
         await AssertErrorAsync(hiddenShare, "SHARE_NOT_FOUND");
     }
 
+    [Fact]
+    public async Task SharedFolderMutations_EnforcePermissionMatrixAndSeparateActorFromOwner()
+    {
+        var ownerAuth = await fixture.CreateAuthenticatedClientAsync("mutation-owner", "owner-password");
+        var viewerAuth = await fixture.CreateAuthenticatedClientAsync("mutation-viewer", "viewer-password");
+        var contributorAuth = await fixture.CreateAuthenticatedClientAsync("mutation-contributor", "contributor-password");
+        var editorAuth = await fixture.CreateAuthenticatedClientAsync("mutation-editor", "editor-password");
+        var managerAuth = await fixture.CreateAuthenticatedClientAsync("mutation-manager", "manager-password");
+        using var owner = ownerAuth.Client;
+        using var viewer = viewerAuth.Client;
+        using var contributor = contributorAuth.Client;
+        using var editor = editorAuth.Client;
+        using var manager = managerAuth.Client;
+        var ownerId = await UserIdAsync("MUTATION-OWNER");
+        var viewerId = await UserIdAsync("MUTATION-VIEWER");
+        var contributorId = await UserIdAsync("MUTATION-CONTRIBUTOR");
+        var editorId = await UserIdAsync("MUTATION-EDITOR");
+        var managerId = await UserIdAsync("MUTATION-MANAGER");
+        var rootId = await RootIdAsync(owner);
+        var sharedFolderId = await CreateFolderAsync(owner, rootId, "MutationShared");
+
+        using (var share = await owner.PostAsJsonAsync(
+            "/api/v1/shares",
+            new
+            {
+                targetEntryId = sharedFolderId,
+                members = new object[]
+                {
+                    new { userId = viewerId, permission = "VIEWER" },
+                    new { userId = contributorId, permission = "CONTRIBUTOR" },
+                    new { userId = editorId, permission = "EDITOR" },
+                    new { userId = managerId, permission = "MANAGER" },
+                },
+            }))
+        {
+            share.EnsureSuccessStatusCode();
+        }
+
+        using (var rejectedFolder = await viewer.PostAsJsonAsync(
+            "/api/v1/folders", new { parentId = sharedFolderId, name = "ViewerDenied" }))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, rejectedFolder.StatusCode);
+            await AssertErrorAsync(rejectedFolder, "FILE_NOT_FOUND");
+        }
+
+        using (var rejectedUpload = await SendUploadAsync(viewer, sharedFolderId, "viewer.bin", [1]))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, rejectedUpload.StatusCode);
+            await AssertErrorAsync(rejectedUpload, "FILE_NOT_FOUND");
+        }
+
+        var contributorFolderId = await CreateFolderAsync(contributor, sharedFolderId, "ContributorFolder");
+        var contributorFileId = await UploadAsync(contributor, contributorFolderId, "contributor.bin", [2, 3]);
+        var directShareId = await CreateShareAsync(owner, contributorFileId, viewerId);
+        long initialFileVersion;
+        using (var initialDetail = await viewer.GetAsync($"/api/v1/files/{contributorFileId}"))
+        {
+            initialDetail.EnsureSuccessStatusCode();
+            initialFileVersion = (await initialDetail.Content.ReadFromJsonAsync<JsonElement>())
+                .GetProperty("fileVersion").GetInt64();
+        }
+        using (var rejectedRename = await contributor.PatchAsJsonAsync(
+            $"/api/v1/files/{contributorFileId}", new { name = "denied.bin" }))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, rejectedRename.StatusCode);
+            await AssertErrorAsync(rejectedRename, "FILE_NOT_FOUND");
+        }
+
+        var destinationId = await CreateFolderAsync(editor, sharedFolderId, "EditorDestination");
+        using (var rename = await editor.PatchAsJsonAsync(
+            $"/api/v1/files/{contributorFileId}", new { name = "renamed.bin" }))
+        {
+            rename.EnsureSuccessStatusCode();
+        }
+        using (var move = await editor.PatchAsJsonAsync(
+            $"/api/v1/files/{contributorFileId}", new { parentId = destinationId }))
+        {
+            move.EnsureSuccessStatusCode();
+        }
+        using (var trash = await editor.DeleteAsync($"/api/v1/files/{contributorFileId}"))
+        {
+            Assert.Equal(HttpStatusCode.OK, trash.StatusCode);
+        }
+        using (var hidden = await viewer.GetAsync($"/api/v1/files/{contributorFileId}"))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        }
+        using (var recipientRestore = await manager.PostAsync(
+            $"/api/v1/files/{contributorFileId}/restore", null))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, recipientRestore.StatusCode);
+            await AssertErrorAsync(recipientRestore, "FILE_NOT_FOUND");
+        }
+        using (var restore = await owner.PostAsync($"/api/v1/files/{contributorFileId}/restore", null))
+        {
+            restore.EnsureSuccessStatusCode();
+        }
+        using (var managerRename = await manager.PatchAsJsonAsync(
+            $"/api/v1/files/{contributorFileId}", new { name = "manager.bin" }))
+        {
+            managerRename.EnsureSuccessStatusCode();
+        }
+        using (var directShareRestored = await viewer.GetAsync($"/api/v1/files/{contributorFileId}"))
+        {
+            directShareRestored.EnsureSuccessStatusCode();
+            var item = await directShareRestored.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(contributorFileId, item.GetProperty("id").GetGuid());
+            Assert.Equal(ownerId, item.GetProperty("owner").GetProperty("id").GetGuid());
+            Assert.Equal(initialFileVersion, item.GetProperty("fileVersion").GetInt64());
+            Assert.Equal("DIRECT", item.GetProperty("permissionSource").GetString());
+        }
+
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        var createdEntries = await database.FileEntries
+            .Where(entry => entry.Id == contributorFolderId || entry.Id == contributorFileId || entry.Id == destinationId)
+            .ToListAsync();
+        Assert.Equal(3, createdEntries.Count);
+        Assert.All(createdEntries, entry => Assert.Equal(ownerId, entry.OwnerUserId));
+        var file = Assert.Single(createdEntries, entry => entry.Id == contributorFileId);
+        Assert.Equal(destinationId, file.ParentId);
+        Assert.Equal("manager.bin", file.Name);
+        Assert.True(await database.Shares.AnyAsync(share =>
+            share.Id == directShareId && share.TargetEntryId == contributorFileId));
+        Assert.Contains(await database.AuditLogs.ToListAsync(), audit =>
+            audit.Action == "FOLDER_CREATE" && audit.ActorUserId == contributorId && audit.TargetId == contributorFolderId.ToString());
+        Assert.Contains(await database.AuditLogs.ToListAsync(), audit =>
+            audit.Action == "FILE_UPLOAD" && audit.ActorUserId == contributorId && audit.TargetId == contributorFileId.ToString());
+        Assert.Contains(await database.AuditLogs.ToListAsync(), audit =>
+            audit.Action == "FILE_RENAME" && audit.ActorUserId == editorId && audit.TargetId == contributorFileId.ToString());
+    }
+
+    [Fact]
+    public async Task PurgeAndMissingIndexDeletion_RemoveTargetAndDescendantSharesWithMembers()
+    {
+        var ownerAuth = await fixture.CreateAuthenticatedClientAsync("share-delete-owner", "owner-password");
+        _ = await fixture.CreateAuthenticatedClientAsync("share-delete-member", "member-password");
+        using var owner = ownerAuth.Client;
+        var memberId = await UserIdAsync("SHARE-DELETE-MEMBER");
+        var rootId = await RootIdAsync(owner);
+        var folderId = await CreateFolderAsync(owner, rootId, "ShareDeleteTree");
+        var childId = await UploadAsync(owner, folderId, "child.bin", [5]);
+        var folderShareId = await CreateShareAsync(owner, folderId, memberId);
+        var childShareId = await CreateShareAsync(owner, childId, memberId);
+
+        using (var trash = await owner.DeleteAsync($"/api/v1/files/{folderId}"))
+        {
+            trash.EnsureSuccessStatusCode();
+        }
+        using (var purgeRequest = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/trash/{folderId}"))
+        {
+            purgeRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString());
+            using var purge = await owner.SendAsync(purgeRequest);
+            Assert.Equal(HttpStatusCode.NoContent, purge.StatusCode);
+        }
+
+        var missingId = await UploadAsync(owner, rootId, "missing-share.bin", [7]);
+        var missingShareId = await CreateShareAsync(owner, missingId, memberId);
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var entry = await database.FileEntries.SingleAsync(item => item.Id == missingId);
+            await scope.ServiceProvider.GetRequiredService<IFileStore>().DeleteIfExistsAsync(
+                RelativeStoragePath.Create(entry.RelativePath), CancellationToken.None);
+            entry.MarkMissingCandidate(Guid.NewGuid(), DateTimeOffset.UtcNow.AddMinutes(-10));
+            entry.ConfirmMissing(Guid.NewGuid(), DateTimeOffset.UtcNow.AddMinutes(-5), TimeSpan.FromMinutes(5));
+            await database.SaveChangesAsync();
+        }
+        using (var deletion = await owner.DeleteAsync($"/api/v1/files/{missingId}/missing-index-entry"))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, deletion.StatusCode);
+        }
+
+        var retentionFolderId = await CreateFolderAsync(owner, rootId, "RetentionShareDelete");
+        var retentionChildId = await UploadAsync(owner, retentionFolderId, "retention-child.bin", [9]);
+        var retentionFolderShareId = await CreateShareAsync(owner, retentionFolderId, memberId);
+        var retentionChildShareId = await CreateShareAsync(owner, retentionChildId, memberId);
+        using (var trash = await owner.DeleteAsync($"/api/v1/files/{retentionFolderId}"))
+        {
+            trash.EnsureSuccessStatusCode();
+        }
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            await database.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE file_entries SET trashed_at = {DateTimeOffset.UtcNow.AddDays(-31)} WHERE id = {retentionFolderId}");
+            await scope.ServiceProvider.GetRequiredService<TrashPurgeRunner>().RunAsync(CancellationToken.None);
+        }
+
+        var deletedShareIds = new[]
+        {
+            folderShareId,
+            childShareId,
+            missingShareId,
+            retentionFolderShareId,
+            retentionChildShareId,
+        };
+        await using var verifyScope = fixture.Factory.Services.CreateAsyncScope();
+        var verifyDatabase = verifyScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        Assert.False(await verifyDatabase.Shares.AnyAsync(share => deletedShareIds.Contains(share.Id)));
+        Assert.False(await verifyDatabase.ShareMembers.AnyAsync(member => deletedShareIds.Contains(member.ShareId)));
+    }
+
+    [Fact]
+    public async Task Move_ReevaluatesInheritedPathWhileKeepingDirectShare()
+    {
+        var ownerAuth = await fixture.CreateAuthenticatedClientAsync("move-share-owner", "owner-password");
+        var editorAuth = await fixture.CreateAuthenticatedClientAsync("move-share-editor", "editor-password");
+        var observerAuth = await fixture.CreateAuthenticatedClientAsync("move-share-observer", "observer-password");
+        using var owner = ownerAuth.Client;
+        using var editor = editorAuth.Client;
+        using var observer = observerAuth.Client;
+        var editorId = await UserIdAsync("MOVE-SHARE-EDITOR");
+        var observerId = await UserIdAsync("MOVE-SHARE-OBSERVER");
+        var rootId = await RootIdAsync(owner);
+        var sourceId = await CreateFolderAsync(owner, rootId, "MoveSharedSource");
+        var targetId = await CreateFolderAsync(owner, rootId, "MoveSharedTarget");
+        var inheritedOnlyId = await UploadAsync(owner, sourceId, "inherited-only.bin", [1]);
+        var directlySharedId = await UploadAsync(owner, sourceId, "direct.bin", [2]);
+        using (var sourceShare = await owner.PostAsJsonAsync(
+            "/api/v1/shares",
+            new
+            {
+                targetEntryId = sourceId,
+                members = new object[]
+                {
+                    new { userId = editorId, permission = "EDITOR" },
+                    new { userId = observerId, permission = "VIEWER" },
+                },
+            }))
+        {
+            sourceShare.EnsureSuccessStatusCode();
+        }
+        _ = await CreateShareAsync(owner, targetId, editorId, "EDITOR");
+        var directShareId = await CreateShareAsync(owner, directlySharedId, observerId);
+
+        using (var before = await observer.GetAsync($"/api/v1/files/{inheritedOnlyId}"))
+        {
+            before.EnsureSuccessStatusCode();
+        }
+        foreach (var fileId in new[] { inheritedOnlyId, directlySharedId })
+        {
+            using var move = await editor.PatchAsJsonAsync(
+                $"/api/v1/files/{fileId}", new { parentId = targetId });
+            move.EnsureSuccessStatusCode();
+        }
+
+        using (var inheritedRevoked = await observer.GetAsync($"/api/v1/files/{inheritedOnlyId}"))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, inheritedRevoked.StatusCode);
+        }
+        using (var directRemains = await observer.GetAsync($"/api/v1/files/{directlySharedId}"))
+        {
+            directRemains.EnsureSuccessStatusCode();
+            Assert.Equal("DIRECT", (await directRemains.Content.ReadFromJsonAsync<JsonElement>())
+                .GetProperty("permissionSource").GetString());
+        }
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        Assert.True(await scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>().Shares
+            .AnyAsync(share => share.Id == directShareId && share.TargetEntryId == directlySharedId));
+    }
+
     private async Task<Guid> UserIdAsync(string normalizedUsername)
     {
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
@@ -467,6 +737,36 @@ public sealed class SharingApiTests(PostgreSqlAuthFlowFixture fixture)
 
     private static async Task<Guid> UploadAsync(HttpClient client, Guid parentId, string name, byte[] content)
     {
+        using var response = await SendUploadAsync(client, parentId, name, content);
+        response.EnsureSuccessStatusCode();
+        using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        return json.RootElement.GetProperty("id").GetGuid();
+    }
+
+    private static async Task<Guid> CreateShareAsync(
+        HttpClient owner,
+        Guid targetEntryId,
+        Guid memberId,
+        string permission = "VIEWER")
+    {
+        using var response = await owner.PostAsJsonAsync(
+            "/api/v1/shares",
+            new
+            {
+                targetEntryId,
+                members = new[] { new { userId = memberId, permission } },
+            });
+        response.EnsureSuccessStatusCode();
+        using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        return json.RootElement.GetProperty("id").GetGuid();
+    }
+
+    private static async Task<HttpResponseMessage> SendUploadAsync(
+        HttpClient client,
+        Guid parentId,
+        string name,
+        byte[] content)
+    {
         using var multipart = new MultipartFormDataContent
         {
             { new StringContent(parentId.ToString()), "destinationFolderId" },
@@ -477,10 +777,7 @@ public sealed class SharingApiTests(PostgreSqlAuthFlowFixture fixture)
         };
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/files/upload") { Content = multipart };
         request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString());
-        using var response = await client.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-        using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
-        return json.RootElement.GetProperty("id").GetGuid();
+        return await client.SendAsync(request);
     }
 
     private static async Task AssertErrorAsync(HttpResponseMessage response, string code)

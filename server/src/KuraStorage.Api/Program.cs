@@ -554,13 +554,21 @@ app.MapPost(
         FileService files,
         CancellationToken cancellationToken) =>
     {
-        if (!TryAuthenticatedUserId(context, out var userId))
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
         {
             return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
         }
 
         return ToFileHttpResult(
-            await files.CreateFolderAsync(userId, request.ParentId, request.Name ?? string.Empty, cancellationToken),
+            await files.CreateFolderAsync(
+                new CreateFolderCommand(
+                    userId,
+                    deviceId,
+                    request.ParentId,
+                    request.Name ?? string.Empty,
+                    context.TraceIdentifier),
+                cancellationToken),
             context);
     });
 
@@ -571,12 +579,13 @@ app.MapPost(
         FileService files,
         CancellationToken cancellationToken) =>
     {
-        if (!TryAuthenticatedUserId(context, out var userId))
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
         {
             return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
         }
 
-        return await HandleUploadAsync(userId, context, files, cancellationToken);
+        return await HandleUploadAsync(userId, deviceId, context, files, cancellationToken);
     });
 
 app.MapPost(
@@ -793,12 +802,17 @@ app.MapDelete(
         FileService files,
         CancellationToken cancellationToken) =>
     {
-        if (!TryAuthenticatedUserId(context, out var userId))
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
         {
             return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
         }
 
-        return ToFileHttpResult(await files.TrashAsync(userId, fileId, cancellationToken), context);
+        return ToFileHttpResult(
+            await files.TrashAsync(
+                new TrashFileCommand(userId, deviceId, fileId, context.TraceIdentifier),
+                cancellationToken),
+            context);
     });
 
 app.MapGet(
@@ -995,6 +1009,7 @@ static IResult TransferError(
 
 static async Task<IResult> HandleUploadAsync(
     Guid userId,
+    Guid deviceId,
     HttpContext context,
     FileService files,
     CancellationToken cancellationToken)
@@ -1057,14 +1072,16 @@ static async Task<IResult> HandleUploadAsync(
         }
 
         uploadResult = await files.UploadAsync(
-            userId,
             new UploadFileCommand(
+                userId,
+                deviceId,
                 destinationFolderId,
                 GetField(fields, "fileName") ?? string.Empty,
                 size,
                 GetField(fields, "contentType") ?? section.ContentType,
                 GetField(fields, "sha256"),
                 idempotencyKey,
+                context.TraceIdentifier,
                 section.Body),
             cancellationToken);
     }

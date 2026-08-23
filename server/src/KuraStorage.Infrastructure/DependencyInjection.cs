@@ -91,6 +91,11 @@ public static class DependencyInjection
         services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
         services.AddScoped<IAuthorizationRepository, AuthorizationRepository>();
         services.AddScoped<IShareRepository, ShareRepository>();
+        services.AddScoped<SharingDeletionParticipant>();
+        services.AddScoped<IPermanentDeleteParticipant>(
+            serviceProvider => serviceProvider.GetRequiredService<SharingDeletionParticipant>());
+        services.AddScoped<IFileIndexDeletionParticipant>(
+            serviceProvider => serviceProvider.GetRequiredService<SharingDeletionParticipant>());
         services.AddScoped<IIndexCatalogRepository, IndexCatalogRepository>();
         services.AddScoped<IIndexScanService, IndexScanService>();
         services.AddScoped<IIndexEventService, IndexEventService>();

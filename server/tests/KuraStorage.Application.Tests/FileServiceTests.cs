@@ -112,6 +112,93 @@ public sealed class FileServiceTests
     }
 
     [Fact]
+    public async Task CreateFolderAsync_SharedContributor_CreatesForParentOwnerAndAuditsActor()
+    {
+        var now = DateTimeOffset.Parse("2026-08-23T01:00:00Z");
+        var ownerId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid();
+        var root = FileEntry.CreateRoot(ownerId, now);
+        var parent = FileEntry.CreateFolder(
+            Guid.NewGuid(), ownerId, root.Id, FileName.Create("Shared"),
+            RelativeStoragePath.Create($"{root.RelativePath}/Shared"), now);
+        var repository = new FakeFileRepository(root, parent);
+        var store = new FakeFileStore(parent.RelativePath);
+        var shareTargetId = Guid.NewGuid();
+        var authorization = new SequenceAuthorizationService(
+            shareTargetId, EffectivePermissionLevel.Contributor, EffectivePermissionLevel.Contributor);
+        var service = new FileService(
+            repository, store, new AvailableStorageGuard(), new EmptySnapshotReader(),
+            new NoOpProvisioner(), new FixedClock(now), null, authorization);
+
+        var result = await service.CreateFolderAsync(
+            new CreateFolderCommand(actorId, deviceId, parent.Id, "CreatedByRecipient", "request-shared-create"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ownerId, result.Value!.Owner!.Id);
+        Assert.Equal(parent.Id, result.Value.ParentId);
+        Assert.Equal(new[] { parent.Id, shareTargetId }.Order(), repository.LastLockIds);
+        Assert.Contains(repository.Audits, audit =>
+            audit.Action == "FOLDER_CREATE" && audit.ActorUserId == actorId &&
+            audit.ActorDeviceId == deviceId && audit.RequestId == "request-shared-create");
+    }
+
+    [Fact]
+    public async Task CreateFolderAsync_PermissionRevokedAfterLock_DoesNotTouchFilesystem()
+    {
+        var now = DateTimeOffset.Parse("2026-08-23T01:10:00Z");
+        var ownerId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var root = FileEntry.CreateRoot(ownerId, now);
+        var parent = FileEntry.CreateFolder(
+            Guid.NewGuid(), ownerId, root.Id, FileName.Create("Shared"),
+            RelativeStoragePath.Create($"{root.RelativePath}/Shared"), now);
+        var repository = new FakeFileRepository(root, parent);
+        var store = new FakeFileStore(parent.RelativePath);
+        var authorization = new SequenceAuthorizationService(
+            parent.Id, EffectivePermissionLevel.Contributor, EffectivePermissionLevel.Viewer);
+        var service = new FileService(
+            repository, store, new AvailableStorageGuard(), new EmptySnapshotReader(),
+            new NoOpProvisioner(), new FixedClock(now), null, authorization);
+
+        var result = await service.CreateFolderAsync(
+            new CreateFolderCommand(actorId, Guid.NewGuid(), parent.Id, "MustNotExist", "request-revoked"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(FileErrorCodes.FileNotFound, result.Failure!.Code);
+        Assert.DoesNotContain($"{parent.RelativePath}/MustNotExist", store.Paths);
+        Assert.Empty(repository.Audits);
+    }
+
+    [Fact]
+    public async Task CreateFolderAsync_PermissionSourceChangesWhileWaitingForLock_DoesNotTouchFilesystem()
+    {
+        var now = DateTimeOffset.Parse("2026-08-23T01:20:00Z");
+        var ownerId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var root = FileEntry.CreateRoot(ownerId, now);
+        var parent = FileEntry.CreateFolder(
+            Guid.NewGuid(), ownerId, root.Id, FileName.Create("Shared"),
+            RelativeStoragePath.Create($"{root.RelativePath}/Shared"), now);
+        var repository = new FakeFileRepository(root, parent);
+        var store = new FakeFileStore(parent.RelativePath);
+        var authorization = new ChangingScopeAuthorizationService(Guid.NewGuid(), Guid.NewGuid());
+        var service = new FileService(
+            repository, store, new AvailableStorageGuard(), new EmptySnapshotReader(),
+            new NoOpProvisioner(), new FixedClock(now), null, authorization);
+
+        var result = await service.CreateFolderAsync(
+            new CreateFolderCommand(actorId, Guid.NewGuid(), parent.Id, "MustNotExist", "request-scope-change"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(FileErrorCodes.FileNotFound, result.Failure!.Code);
+        Assert.DoesNotContain($"{parent.RelativePath}/MustNotExist", store.Paths);
+    }
+
+    [Fact]
     public async Task RenameAsync_ValidFile_MovesStorageAndPreservesVersion()
     {
         var now = DateTimeOffset.UtcNow;
@@ -194,7 +281,9 @@ public sealed class FileServiceTests
         var store = new FakeFileStore(root.RelativePath, file.RelativePath);
         var service = CreateService(repository, store, now.AddMinutes(1));
 
-        var result = await service.TrashAsync(ownerId, file.Id, CancellationToken.None);
+        var result = await service.TrashAsync(
+            new TrashFileCommand(ownerId, Guid.NewGuid(), file.Id, "request-trash-race"),
+            CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(FileErrorCodes.RecoveryRequired, result.Failure!.Code);
@@ -265,6 +354,44 @@ public sealed class FileServiceTests
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task MoveAsync_RequiresEditorForEntrySourceAndTarget(int deniedPosition)
+    {
+        var now = DateTimeOffset.Parse("2026-08-23T02:00:00Z");
+        var ownerId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var root = FileEntry.CreateRoot(ownerId, now);
+        var source = FileEntry.CreateFolder(
+            Guid.NewGuid(), ownerId, root.Id, FileName.Create("Source"),
+            RelativeStoragePath.Create($"{root.RelativePath}/Source"), now);
+        var target = FileEntry.CreateFolder(
+            Guid.NewGuid(), ownerId, root.Id, FileName.Create("Target"),
+            RelativeStoragePath.Create($"{root.RelativePath}/Target"), now);
+        var file = FileEntry.CreateFile(
+            Guid.NewGuid(), ownerId, source.Id, FileName.Create("item.bin"),
+            RelativeStoragePath.Create($"{source.RelativePath}/item.bin"),
+            "application/octet-stream", 1, now);
+        var entries = new[] { file, source, target };
+        var levels = entries.Select((entry, index) => new KeyValuePair<Guid, EffectivePermissionLevel>(
+            entry.Id, index == deniedPosition ? EffectivePermissionLevel.Contributor : EffectivePermissionLevel.Editor));
+        var repository = new FakeFileRepository(root, source, target, file);
+        var store = new FakeFileStore(root.RelativePath, source.RelativePath, target.RelativePath, file.RelativePath);
+        var service = new FileService(
+            repository, store, new AvailableStorageGuard(), new EmptySnapshotReader(),
+            new NoOpProvisioner(), new FixedClock(now), null, new MapAuthorizationService(levels));
+
+        var result = await service.MoveAsync(
+            new MoveFileCommand(actorId, Guid.NewGuid(), file.Id, target.Id, "request-boundary"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(FileErrorCodes.FileNotFound, result.Failure!.Code);
+        Assert.Equal(0, store.MoveCount);
+    }
+
+    [Theory]
     [InlineData(63, true)]
     [InlineData(64, false)]
     public async Task MoveAsync_DepthBoundary_Allows64AndRejects65BeforeStorageMutation(
@@ -328,6 +455,8 @@ public sealed class FileServiceTests
 
         public List<AuditLog> Audits { get; } = [];
 
+        public IReadOnlyList<Guid> LastLockIds { get; private set; } = [];
+
         public Task<IFileTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IFileTransaction>(new NoOpTransaction());
 
@@ -388,8 +517,11 @@ public sealed class FileServiceTests
 
         public Task<IFileMutationLock> AcquireMutationLocksAsync(
             IEnumerable<Guid> entryIds,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IFileMutationLock>(new NoOpMutationLock());
+            CancellationToken cancellationToken)
+        {
+            LastLockIds = entryIds.Distinct().Order().ToArray();
+            return Task.FromResult<IFileMutationLock>(new NoOpMutationLock());
+        }
 
         public Task<IReadOnlyList<FileEntry>> ListActiveChildrenAsync(
             Guid ownerUserId,
@@ -630,6 +762,107 @@ public sealed class FileServiceTests
                 PermissionSource.Inherited,
                 shareTargetId,
                 Guid.NewGuid());
+    }
+
+    private sealed class SequenceAuthorizationService(
+        Guid shareTargetId,
+        params EffectivePermissionLevel[] permissions) : IAuthorizationService
+    {
+        private int callIndex;
+
+        public Task<EffectivePermission> ResolveAsync(
+            Guid actorUserId,
+            Guid entryId,
+            CancellationToken cancellationToken)
+        {
+            var permission = permissions[Math.Min(callIndex, permissions.Length - 1)];
+            callIndex++;
+            return Task.FromResult(new EffectivePermission(
+                entryId, permission, PermissionSource.Inherited, shareTargetId, Guid.NewGuid()));
+        }
+
+        public async Task<IReadOnlyDictionary<Guid, EffectivePermission>> ResolveBatchAsync(
+            Guid actorUserId,
+            IReadOnlyCollection<Guid> entryIds,
+            CancellationToken cancellationToken)
+        {
+            var result = new Dictionary<Guid, EffectivePermission>();
+            foreach (var entryId in entryIds)
+            {
+                result[entryId] = await ResolveAsync(actorUserId, entryId, cancellationToken);
+            }
+
+            return result;
+        }
+
+        public async Task<bool> AllowsAsync(
+            Guid actorUserId,
+            Guid entryId,
+            ShareOperation operation,
+            CancellationToken cancellationToken) =>
+            (await ResolveAsync(actorUserId, entryId, cancellationToken)).Allows(operation);
+    }
+
+    private sealed class MapAuthorizationService(
+        IEnumerable<KeyValuePair<Guid, EffectivePermissionLevel>> configuredPermissions) : IAuthorizationService
+    {
+        private readonly IReadOnlyDictionary<Guid, EffectivePermissionLevel> permissions =
+            configuredPermissions.ToDictionary();
+
+        public Task<EffectivePermission> ResolveAsync(
+            Guid actorUserId,
+            Guid entryId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Permission(entryId));
+
+        public Task<IReadOnlyDictionary<Guid, EffectivePermission>> ResolveBatchAsync(
+            Guid actorUserId,
+            IReadOnlyCollection<Guid> entryIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, EffectivePermission>>(
+                entryIds.ToDictionary(entryId => entryId, Permission));
+
+        public Task<bool> AllowsAsync(
+            Guid actorUserId,
+            Guid entryId,
+            ShareOperation operation,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Permission(entryId).Allows(operation));
+
+        private EffectivePermission Permission(Guid entryId) =>
+            new(entryId, permissions[entryId], PermissionSource.Direct, entryId, Guid.NewGuid());
+    }
+
+    private sealed class ChangingScopeAuthorizationService(Guid firstTargetId, Guid secondTargetId) : IAuthorizationService
+    {
+        private int calls;
+
+        public Task<EffectivePermission> ResolveAsync(
+            Guid actorUserId,
+            Guid entryId,
+            CancellationToken cancellationToken)
+        {
+            var targetId = calls++ == 0 ? firstTargetId : secondTargetId;
+            return Task.FromResult(new EffectivePermission(
+                entryId,
+                EffectivePermissionLevel.Contributor,
+                PermissionSource.Inherited,
+                targetId,
+                Guid.NewGuid()));
+        }
+
+        public Task<IReadOnlyDictionary<Guid, EffectivePermission>> ResolveBatchAsync(
+            Guid actorUserId,
+            IReadOnlyCollection<Guid> entryIds,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<bool> AllowsAsync(
+            Guid actorUserId,
+            Guid entryId,
+            ShareOperation operation,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private sealed class NoOpTransaction : IFileTransaction

@@ -27,6 +27,8 @@ public interface IShareRepository
 
     Task<Share?> FindByTargetAsync(Guid targetEntryId, CancellationToken cancellationToken);
 
+    Task<Share?> ReloadAsync(Share share, CancellationToken cancellationToken) => Task.FromResult<Share?>(share);
+
     Task<ShareView?> GetViewAsync(Guid shareId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ShareView>> ListViewsAsync(

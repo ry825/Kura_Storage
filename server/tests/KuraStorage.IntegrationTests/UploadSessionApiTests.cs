@@ -696,6 +696,104 @@ public sealed class UploadSessionApiTests(PostgreSqlAuthFlowFixture fixture)
         Assert.False(File.Exists(temporaryPath));
     }
 
+    [Fact]
+    public async Task SharedDestination_UsesTargetOwnerAndRejectsCompletionAfterPermissionDowngrade()
+    {
+        var ownerAuth = await fixture.CreateAuthenticatedClientAsync("shared-session-owner", "owner-password");
+        var contributorAuth = await fixture.CreateAuthenticatedClientAsync("shared-session-contributor", "contributor-password");
+        using var owner = ownerAuth.Client;
+        using var contributor = contributorAuth.Client;
+        Guid ownerId;
+        Guid contributorId;
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            ownerId = await database.Users.Where(user => user.UsernameNormalized == "SHARED-SESSION-OWNER")
+                .Select(user => user.Id).SingleAsync();
+            contributorId = await database.Users.Where(user => user.UsernameNormalized == "SHARED-SESSION-CONTRIBUTOR")
+                .Select(user => user.Id).SingleAsync();
+        }
+
+        var rootId = await GetRootIdAsync(owner);
+        using var createFolder = await owner.PostAsJsonAsync(
+            "/api/v1/folders", new { parentId = rootId, name = "SharedSessionTarget" });
+        createFolder.EnsureSuccessStatusCode();
+        var folderId = (await createFolder.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        Guid shareId;
+        using (var createShare = await owner.PostAsJsonAsync(
+            "/api/v1/shares",
+            new
+            {
+                targetEntryId = folderId,
+                members = new[] { new { userId = contributorId, permission = "CONTRIBUTOR" } },
+            }))
+        {
+            createShare.EnsureSuccessStatusCode();
+            shareId = (await createShare.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        }
+
+        var content = new byte[] { 41 };
+        var successfulSessionId = await CreateSessionIdAsync(
+            contributor, folderId, "shared-complete.bin", content.Length, Sha(content));
+        using (var chunk = await SendChunkAsync(contributor, successfulSessionId, 0, content, Sha(content)))
+        {
+            chunk.EnsureSuccessStatusCode();
+        }
+        Guid fileId;
+        using (var complete = await contributor.PostAsync(
+            $"/api/v1/upload-sessions/{successfulSessionId}/complete", null))
+        {
+            complete.EnsureSuccessStatusCode();
+            var item = await complete.Content.ReadFromJsonAsync<JsonElement>();
+            fileId = item.GetProperty("id").GetGuid();
+            Assert.Equal(ownerId, item.GetProperty("owner").GetProperty("id").GetGuid());
+            Assert.Equal("CONTRIBUTOR", item.GetProperty("permission").GetString());
+        }
+        using (var repeated = await contributor.PostAsync(
+            $"/api/v1/upload-sessions/{successfulSessionId}/complete", null))
+        {
+            repeated.EnsureSuccessStatusCode();
+            var item = await repeated.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(fileId, item.GetProperty("id").GetGuid());
+            Assert.Equal(ownerId, item.GetProperty("owner").GetProperty("id").GetGuid());
+            Assert.Equal("CONTRIBUTOR", item.GetProperty("permission").GetString());
+        }
+
+        var revokedSessionId = await CreateSessionIdAsync(
+            contributor, folderId, "shared-revoked.bin", content.Length, Sha(content));
+        using (var chunk = await SendChunkAsync(contributor, revokedSessionId, 0, content, Sha(content)))
+        {
+            chunk.EnsureSuccessStatusCode();
+        }
+        using (var downgrade = await owner.PutAsJsonAsync(
+            $"/api/v1/shares/{shareId}/members/{contributorId}", new { permission = "VIEWER" }))
+        {
+            downgrade.EnsureSuccessStatusCode();
+        }
+        using (var rejected = await contributor.PostAsync(
+            $"/api/v1/upload-sessions/{revokedSessionId}/complete", null))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, rejected.StatusCode);
+            await AssertErrorAsync(rejected, "FILE_NOT_FOUND");
+        }
+        using (var cancel = await contributor.DeleteAsync($"/api/v1/upload-sessions/{revokedSessionId}"))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, cancel.StatusCode);
+        }
+
+        await using var verifyScope = fixture.Factory.Services.CreateAsyncScope();
+        var verifyDatabase = verifyScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        var successfulSession = await verifyDatabase.UploadSessions.SingleAsync(session => session.Id == successfulSessionId);
+        Assert.Equal(contributorId, successfulSession.ActorUserId);
+        Assert.Equal(ownerId, successfulSession.TargetOwnerUserId);
+        Assert.Equal(ownerId, (await verifyDatabase.FileEntries.SingleAsync(entry => entry.Id == fileId)).OwnerUserId);
+        Assert.Single(await verifyDatabase.FileEntries.Where(entry => entry.Id == fileId).ToListAsync());
+        Assert.Contains(await verifyDatabase.AuditLogs.ToListAsync(), audit =>
+            audit.Action == "UPLOAD_SESSION_COMPLETE" && audit.ActorUserId == contributorId &&
+            audit.TargetId == successfulSessionId.ToString());
+        Assert.False(await verifyDatabase.FileEntries.AnyAsync(entry => entry.Name == "shared-revoked.bin"));
+    }
+
     private static async Task<Guid> GetRootIdAsync(HttpClient client)
     {
         using var response = await client.GetAsync("/api/v1/files");

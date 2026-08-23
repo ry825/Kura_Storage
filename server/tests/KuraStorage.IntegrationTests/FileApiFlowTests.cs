@@ -626,8 +626,8 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
             using var foreignDestination = await client.PatchAsJsonAsync(
                 $"/api/v1/files/{source.Id}",
                 new { parentId = otherFolder.Id });
-            Assert.Equal(HttpStatusCode.NotFound, foreignDestination.StatusCode);
-            await AssertErrorAsync(foreignDestination, "FILE_NOT_FOUND");
+            Assert.Equal(HttpStatusCode.Conflict, foreignDestination.StatusCode);
+            await AssertErrorAsync(foreignDestination, "FILE_OPERATION_NOT_ALLOWED");
 
             using var idor = await other.Client.PatchAsJsonAsync(
                 $"/api/v1/files/{source.Id}",
