@@ -335,11 +335,11 @@
   - [x] Migration順序、Server Rollout、Rollback制約、Share失効中のSession清掃を運用文書へ反映する。
   - [x] HDD更新前とLock後の認可再確認があり、File ID・Owner・Share・`fileVersion`を予期せず変更しない。
   - [x] 不要なPackage、生成物、実環境情報、Credentialが差分にない。
-- [ ] PR3を完了する。
-  - [ ] 3.1〜3.7のPR3対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR3を完了する。
+  - [x] 3.1〜3.7のPR3対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -535,14 +535,41 @@
 
 ### PR3: 共有先の作成・Upload・変更と整合性
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未完了
-- 実装中に追加したタスクと理由: 未完了
-- 技術的に不要になったタスク・理由・代替実装: 未完了
-- 後続Pull Requestへの引継ぎ事項: 未完了
+- 完了日: 2026-08-23
+- Pull Request: [#21 Authorize shared file mutations and uploads](https://github.com/ry825/Kura_Storage/pull/21)
+- 実施したTest・Build・静的解析:
+  - `./scripts/ci/verify-config.sh`: 成功
+  - `./scripts/ci/verify-server.sh`: 成功（Domain 49件、Application 133件、Integration 89件）
+  - `./scripts/ci/verify-security.sh`: 成功
+  - `./scripts/ci/verify-deployment.sh`: 成功
+  - `./scripts/ci/verify-android.sh`: 成功（656 Gradle task）
+  - `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`: 成功
+  - File sharing Migration・未反映Migration・OpenAPI Contract Test: 成功
+  - `git diff --check`: 成功
+  - 並行Rename Test: CI失敗の修正後にローカル3回連続成功し、Server全Testでも成功
+  - GitHub Actions: Android、Config、Security、Serverの必須Checkがすべて成功
+- 手動確認・実機確認:
+  - 一時PostgreSQL 17、ローカルKestrelのUnix socket、`curl`、実Storage Rootを使用したAPI Client E2Eに成功した。
+  - ViewerのFolder作成拒否、ContributorのFolder作成・Multipart/Resumable Upload、EditorのRename・Move・Trash、Owner Restoreを確認した。
+  - 作成File/Folderと再開Upload完了FileがOwner Treeに所有され、Purge後に対象Shareが消えることを確認した。
+  - MISSING索引削除、Retention Purge、Share/Member削除、直接Share維持、継承経路変更は実PostgreSQL・実FileStoreのIntegration Testで確認した。
+  - Android共有UIとAndroid実機の共有操作はPR4対象のため、PR3では既存AndroidのBuild・Test・Lint回帰を確認した。
+- 計画と実装の差分:
+  - PR1で追加済みの`AddFileSharing` MigrationとUpload SessionのActor/Target Owner列を使用したため、PR3では新しいMigrationを追加しなかった。
+  - 外部Request schemaは変更せず、Actor User/DeviceをJWT Claimから取得し、Target OwnerをDestination/対象Entryから導出した。
+  - Permission再確認だけでなく、最初にLockした`ShareTargetId`とLock後の権限元が一致することを要求し、階層変更時の未Lock共有元利用を防止した。
+- 実装中に追加したタスクと理由:
+  - 手動E2Eで再開Upload完了ResponseのOwner/Permission metadata欠落を検出し、初回・再送Responseを通常File APIと同じMappingへ統一した。
+  - Share変更とFile mutationの競合レビューで、追跡済みMember collectionが古く残る可能性を検出し、Lock内でShare graph全体をDBから再読込するようにした。
+  - CIの並行Rename TestでLock前の未完了操作判定による一時的な409を検出し、Rename/Move/TrashはLock後の最新状態で隔離判定して正常な並行操作を直列化するようにした。
+  - Retention Worker経由でも対象・子孫Share/Memberが削除されるIntegration Testを追加した。
+- 技術的に不要になったタスク・理由・代替実装:
+  - PR3固有のMigration追加は不要。PR1 MigrationがActor/Target Owner分離とSharing schemaを先行提供し、PR3はApplication/APIの認可と整合性を接続した。
+- 後続Pull Requestへの引継ぎ事項:
+  - PR4はPR3のMerge後、最新`main`から開始する。
+  - AndroidはServerの`owner`、`permission`、`permissionSource`、`shareTargetId`を表示・操作可否へ使用し、未知値または欠落値ではFail-closedとする。
+  - Contributorは作成・Uploadだけ、Editorは既存Entry変更、Managerは共有管理も可能、Trash管理・Restore・Purge・MISSINGはOwner限定という境界をUIでも維持する。
+  - Raspberry Pi・Android実機E2Eでは共有失効中のUpload Sessionを取消または期限清掃し、Down Migrationを強制しない。
 
 ### PR4: Android共有UI・権限表示・実機E2E
 
