@@ -237,109 +237,109 @@
 
 ### 3.1 作業開始
 
-- [ ] PR3の作業準備を完了する。
-  - [ ] PR2が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`からPR3用の短命Branchを作成する。
-  - [ ] Steering文書、PR1・PR2完了記録、`git status`、File mutation・Upload・Recovery・Participantの既存パターンを再確認する。
+- [x] PR3の作業準備を完了する。
+  - [x] PR2が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`からPR3用の短命Branchを作成する。
+  - [x] Steering文書、PR1・PR2完了記録、`git status`、File mutation・Upload・Recovery・Participantの既存パターンを再確認する。
 
 ### 3.2 ContributorのFolder作成とMultipart Upload
 
-- [ ] Folder作成のActor/Owner分離をTDDで実装する。
-  - [ ] CommandにActor User・Device・親Folder・Request IDを持たせ、Ownerを親Folderから導出する。
-  - [ ] 親Folderへ`CONTRIBUTOR`以上を要求し、`VIEWER`と未共有UserをHDD更新前に拒否する。
-  - [ ] 作成するFolderの`OwnerUserId`を親Folder Ownerとし、AuditのActorは実際の作成User/Deviceとする。
-  - [ ] 同名、Storage不可、未完了Operation、Share解除競合を従来の整合性契約で扱う。
-- [ ] Multipart UploadをContributor対応する。
-  - [ ] Actor User/DeviceとDestination FolderからTarget Ownerを導出し、`CONTRIBUTOR`以上を要求する。
-  - [ ] 正式公開直前にDestination状態・Owner・Permission・同名をLock内で再検証する。
-  - [ ] FileEntry/FileOperationのOwnerはTarget Owner、AuditのActorはUpload User/Deviceとする。
-  - [ ] Request BodyのStreaming、Size/Checksum、Idempotency、atomic publish、Recoveryの現行契約を維持する。
+- [x] Folder作成のActor/Owner分離をTDDで実装する。
+  - [x] CommandにActor User・Device・親Folder・Request IDを持たせ、Ownerを親Folderから導出する。
+  - [x] 親Folderへ`CONTRIBUTOR`以上を要求し、`VIEWER`と未共有UserをHDD更新前に拒否する。
+  - [x] 作成するFolderの`OwnerUserId`を親Folder Ownerとし、AuditのActorは実際の作成User/Deviceとする。
+  - [x] 同名、Storage不可、未完了Operation、Share解除競合を従来の整合性契約で扱う。
+- [x] Multipart UploadをContributor対応する。
+  - [x] Actor User/DeviceとDestination FolderからTarget Ownerを導出し、`CONTRIBUTOR`以上を要求する。
+  - [x] 正式公開直前にDestination状態・Owner・Permission・同名をLock内で再検証する。
+  - [x] FileEntry/FileOperationのOwnerはTarget Owner、AuditのActorはUpload User/Deviceとする。
+  - [x] Request BodyのStreaming、Size/Checksum、Idempotency、atomic publish、Recoveryの現行契約を維持する。
 
 ### 3.3 Resumable Upload SessionのActor/Target Owner対応
 
-- [ ] Upload Session DomainとRepositoryをActor/Target Ownerに対応する。
-  - [ ] Session作成時にActor、Device、Target Owner、Destination Folderを固定する。
-  - [ ] Idempotency、User別上限、Device活性、参照・Chunk・取消はActor User/Deviceに対して評価する。
-  - [ ] 一時PathをServerがActor/Session IDから生成し、Target OwnerやClient指定Pathを信用しない。
-  - [ ] 既存の個人Upload Sessionの冪等性、Offset、Checksum、期限、Cleanup、Recoveryを維持する。
-- [ ] Session作成と完了の認可をTDDで実装する。
-  - [ ] CreateでDestination Folderへ`CONTRIBUTOR`以上を要求する。
-  - [ ] CompleteでDestinationの存在・Owner・`CONTRIBUTOR`・同名・Storage状態をLock内で再検証する。
-  - [ ] Create後のShare解除またはPermission低下時は、Chunkの一時保存を正式公開と扱わず、Completeを拒否して取消・Cleanup可能な状態にする。
-  - [ ] 完了FileEntry/FileOperationのOwnerをTarget Owner、AuditのActorをSession Actorとする。
-  - [ ] 通信結果不明のComplete再送で二重FileEntryを作成しない。
+- [x] Upload Session DomainとRepositoryをActor/Target Ownerに対応する。
+  - [x] Session作成時にActor、Device、Target Owner、Destination Folderを固定する。
+  - [x] Idempotency、User別上限、Device活性、参照・Chunk・取消はActor User/Deviceに対して評価する。
+  - [x] 一時PathをServerがActor/Session IDから生成し、Target OwnerやClient指定Pathを信用しない。
+  - [x] 既存の個人Upload Sessionの冪等性、Offset、Checksum、期限、Cleanup、Recoveryを維持する。
+- [x] Session作成と完了の認可をTDDで実装する。
+  - [x] CreateでDestination Folderへ`CONTRIBUTOR`以上を要求する。
+  - [x] CompleteでDestinationの存在・Owner・`CONTRIBUTOR`・同名・Storage状態をLock内で再検証する。
+  - [x] Create後のShare解除またはPermission低下時は、Chunkの一時保存を正式公開と扱わず、Completeを拒否して取消・Cleanup可能な状態にする。
+  - [x] 完了FileEntry/FileOperationのOwnerをTarget Owner、AuditのActorをSession Actorとする。
+  - [x] 通信結果不明のComplete再送で二重FileEntryを作成しない。
 
 ### 3.4 Rename・Move・Trashの共有認可
 
-- [ ] Renameを`EDITOR`対応する。
-  - [ ] Commandの`OwnerUserId`とActorの混同を解消し、対象OwnerをFileEntryから導出する。
-  - [ ] 対象の`EDITOR`以上をLock後に再確認し、Root、非`ACTIVE`、同名、未完了Operationを従来どおり拒否する。
-  - [ ] Rename後もFile ID・Owner・Share行・`fileVersion`を維持し、一覧に最新名を返す。
-- [ ] Moveを権限境界迂回なしで実装する。
-  - [ ] 対象、source parent、target parentをIDで取得し、3対象すべてに`EDITOR`以上を要求する。
-  - [ ] 対象・source・targetが同一Owner Treeであることを要求し、異Owner Treeへの移動をHDD変更前に拒否する。
-  - [ ] 3対象のMutation Lockを安定順で取得し、Reload後に状態・Owner・Permission・競合を再検証する。
-  - [ ] 循環、深度64、同名、同じ親への再送、Recoveryの現行契約を維持する。
-  - [ ] 直接Share行は維持し、移動後の新祖先チェーンから次要求で継承Permissionを再解決する。
-- [ ] Trashを`EDITOR`対応する。
-  - [ ] 対象の`EDITOR`以上をLock内で確認し、対象OwnerのTrash Containerへ移動する。
-  - [ ] ActorとOwnerをAudit/FileOperationで混同せず、対象と子孫のShare行を保持する。
-  - [ ] Trash完了後は対象を受信Share一覧、通常一覧、詳細、Download、追加変更から除外する。
+- [x] Renameを`EDITOR`対応する。
+  - [x] Commandの`OwnerUserId`とActorの混同を解消し、対象OwnerをFileEntryから導出する。
+  - [x] 対象の`EDITOR`以上をLock後に再確認し、Root、非`ACTIVE`、同名、未完了Operationを従来どおり拒否する。
+  - [x] Rename後もFile ID・Owner・Share行・`fileVersion`を維持し、一覧に最新名を返す。
+- [x] Moveを権限境界迂回なしで実装する。
+  - [x] 対象、source parent、target parentをIDで取得し、3対象すべてに`EDITOR`以上を要求する。
+  - [x] 対象・source・targetが同一Owner Treeであることを要求し、異Owner Treeへの移動をHDD変更前に拒否する。
+  - [x] 3対象のMutation Lockを安定順で取得し、Reload後に状態・Owner・Permission・競合を再検証する。
+  - [x] 循環、深度64、同名、同じ親への再送、Recoveryの現行契約を維持する。
+  - [x] 直接Share行は維持し、移動後の新祖先チェーンから次要求で継承Permissionを再解決する。
+- [x] Trashを`EDITOR`対応する。
+  - [x] 対象の`EDITOR`以上をLock内で確認し、対象OwnerのTrash Containerへ移動する。
+  - [x] ActorとOwnerをAudit/FileOperationで混同せず、対象と子孫のShare行を保持する。
+  - [x] Trash完了後は対象を受信Share一覧、通常一覧、詳細、Download、追加変更から除外する。
 
 ### 3.5 Restore・Purge・MISSING整合性
 
-- [ ] Trash管理はOwner限定を維持する。
-  - [ ] Trash一覧、Restore、手動Purgeは対象Ownerだけが実行でき、Recipientの`EDITOR | MANAGER`に開放しない。
-  - [ ] RestoreはShare行を更新・複製せず、復元先の祖先チェーンと保持した直接Shareを次要求で再解決する。
-  - [ ] Restoreの同名競合、Storage異常、RecoveryでShare行が壊れず、途中状態を公開しない。
-- [ ] Sharingの関連データ削除participantを実装する。
-  - [ ] `IPermanentDeleteParticipant`でPurge対象と子孫のShare/MemberをFileEntry削除と同じDB Transaction内で削除する。
-  - [ ] `IFileIndexDeletionParticipant`でMISSING索引削除対象と子孫のShare/MemberをHDD操作なしで削除する。
-  - [ ] Participantの再送を冪等にし、関連Shareが0件でも成功させる。
-  - [ ] Retention Workerの自動Purgeでも同じApplication participantを使用する。
-- [ ] Recoveryと並行操作を共有認可と整合させる。
-  - [ ] Rename、Move、Trash、Restore、Uploadの未完了対象と子孫をShare一覧・認可から隔離する。
-  - [ ] HDD変更後のDB競合は`RECOVERY_REQUIRED`へ正規化し、復旧後に最新階層からPermissionを解決する。
-  - [ ] Share解除・Permission変更とFile mutationの競合で、Lock後の古い認可によるHDD変更を起こさない。
-  - [ ] Lock順序が安定し、無関係なUser/Treeを不要に直列化しない。
+- [x] Trash管理はOwner限定を維持する。
+  - [x] Trash一覧、Restore、手動Purgeは対象Ownerだけが実行でき、Recipientの`EDITOR | MANAGER`に開放しない。
+  - [x] RestoreはShare行を更新・複製せず、復元先の祖先チェーンと保持した直接Shareを次要求で再解決する。
+  - [x] Restoreの同名競合、Storage異常、RecoveryでShare行が壊れず、途中状態を公開しない。
+- [x] Sharingの関連データ削除participantを実装する。
+  - [x] `IPermanentDeleteParticipant`でPurge対象と子孫のShare/MemberをFileEntry削除と同じDB Transaction内で削除する。
+  - [x] `IFileIndexDeletionParticipant`でMISSING索引削除対象と子孫のShare/MemberをHDD操作なしで削除する。
+  - [x] Participantの再送を冪等にし、関連Shareが0件でも成功させる。
+  - [x] Retention Workerの自動Purgeでも同じApplication participantを使用する。
+- [x] Recoveryと並行操作を共有認可と整合させる。
+  - [x] Rename、Move、Trash、Restore、Uploadの未完了対象と子孫をShare一覧・認可から隔離する。
+  - [x] HDD変更後のDB競合は`RECOVERY_REQUIRED`へ正規化し、復旧後に最新階層からPermissionを解決する。
+  - [x] Share解除・Permission変更とFile mutationの競合で、Lock後の古い認可によるHDD変更を起こさない。
+  - [x] Lock順序が安定し、無関係なUser/Treeを不要に直列化しない。
 
 ### 3.6 PR3自動Test
 
-- [ ] 作成・UploadのUnit/Integration Testを完了する。
-  - [ ] `VIEWER`拒否、`CONTRIBUTOR`作成・Upload、`EDITOR | MANAGER`の上位互換をTestする。
-  - [ ] 作成File/FolderのOwnerがDestination Owner、Audit ActorがRecipientであることをTestする。
-  - [ ] MultipartとResumableのPermission失効競合、同名、Idempotency、二重完了、RecoveryをTestする。
-  - [ ] Session Migration後の既存個人Upload、Chunk、Cleanup、Device失効への回帰がない。
-- [ ] Rename・Move・Trash・Restore・PurgeのUnit/Integration Testを完了する。
-  - [ ] 各4Permissionの許可・拒否とOwnerをTestする。
-  - [ ] Moveの対象/source/target Permissionの全不足パターン、異Owner、循環、深度、同名をTestする。
-  - [ ] Rename/Move前後のFile ID、Owner、`fileVersion`、直接Share維持と継承Permission変化をTestする。
-  - [ ] Trash中の非公開、Owner Restore後の直接/継承Share復活、Recipient Restore拒否をTestする。
-  - [ ] Purge、Retention Purge、MISSING索引削除後に対象・子孫Share/Memberと孤立行が残らない。
-  - [ ] Share変更競合、FileOperation中断、API再起動復旧後の認可整合性をTestする。
-- [ ] Security・回帰・標準検証を完了する。
-  - [ ] 他User ID/File ID推測、Client Owner/Device偽造、物理Path、Symlink、Storage Root外を拒否する。
-  - [ ] 個人領域のFolder作成、Multipart/Resumable Upload、Download、Rename、Move、Trash、Restore、Purge、MISSING管理へ回帰がない。
-  - [ ] `./scripts/ci/verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、`verify-android.sh`が成功する。
-  - [ ] `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`、Migration整合、OpenAPI Contract Test、`git diff --check`が成功する。
+- [x] 作成・UploadのUnit/Integration Testを完了する。
+  - [x] `VIEWER`拒否、`CONTRIBUTOR`作成・Upload、`EDITOR | MANAGER`の上位互換をTestする。
+  - [x] 作成File/FolderのOwnerがDestination Owner、Audit ActorがRecipientであることをTestする。
+  - [x] MultipartとResumableのPermission失効競合、同名、Idempotency、二重完了、RecoveryをTestする。
+  - [x] Session Migration後の既存個人Upload、Chunk、Cleanup、Device失効への回帰がない。
+- [x] Rename・Move・Trash・Restore・PurgeのUnit/Integration Testを完了する。
+  - [x] 各4Permissionの許可・拒否とOwnerをTestする。
+  - [x] Moveの対象/source/target Permissionの全不足パターン、異Owner、循環、深度、同名をTestする。
+  - [x] Rename/Move前後のFile ID、Owner、`fileVersion`、直接Share維持と継承Permission変化をTestする。
+  - [x] Trash中の非公開、Owner Restore後の直接/継承Share復活、Recipient Restore拒否をTestする。
+  - [x] Purge、Retention Purge、MISSING索引削除後に対象・子孫Share/Memberと孤立行が残らない。
+  - [x] Share変更競合、FileOperation中断、API再起動復旧後の認可整合性をTestする。
+- [x] Security・回帰・標準検証を完了する。
+  - [x] 他User ID/File ID推測、Client Owner/Device偽造、物理Path、Symlink、Storage Root外を拒否する。
+  - [x] 個人領域のFolder作成、Multipart/Resumable Upload、Download、Rename、Move、Trash、Restore、Purge、MISSING管理へ回帰がない。
+  - [x] `./scripts/ci/verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、`verify-android.sh`が成功する。
+  - [x] `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`、Migration整合、OpenAPI Contract Test、`git diff --check`が成功する。
 
 ### 3.7 PR3手動確認・文書・完了
 
-- [ ] API Clientと実FilesystemでPR3の主要フローを確認する。
-  - [ ] Contributorが共有FolderへFolder作成、Multipart Upload、中断再開Uploadを行い、OwnerのTreeに所有される。
-  - [ ] EditorがRename、同一Owner Tree内Move、Trashを行い、Viewer/Contributorの不足操作は拒否される。
-  - [ ] Move前後の直接Share維持、継承経路変化、Trash中の非公開、Owner Restore後の再公開を確認する。
-  - [ ] PurgeとMISSING索引削除でShare関連行が消え、対象が共有一覧・認可Queryから消える。
-- [ ] PR3の文書と差分をセルフレビューする。
-  - [ ] 3.1〜3.6、正式文書、Steering、OpenAPI、Migration、Server実装のActor/Owner・Permission・状態・Error用語が一致する。
-  - [ ] Migration順序、Server Rollout、Rollback制約、Share失効中のSession清掃を運用文書へ反映する。
-  - [ ] HDD更新前とLock後の認可再確認があり、File ID・Owner・Share・`fileVersion`を予期せず変更しない。
-  - [ ] 不要なPackage、生成物、実環境情報、Credentialが差分にない。
-- [ ] PR3を完了する。
-  - [ ] 3.1〜3.7のPR3対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] API Clientと実FilesystemでPR3の主要フローを確認する。
+  - [x] Contributorが共有FolderへFolder作成、Multipart Upload、中断再開Uploadを行い、OwnerのTreeに所有される。
+  - [x] EditorがRename、同一Owner Tree内Move、Trashを行い、Viewer/Contributorの不足操作は拒否される。
+  - [x] Move前後の直接Share維持、継承経路変化、Trash中の非公開、Owner Restore後の再公開を確認する。
+  - [x] PurgeとMISSING索引削除でShare関連行が消え、対象が共有一覧・認可Queryから消える。
+- [x] PR3の文書と差分をセルフレビューする。
+  - [x] 3.1〜3.6、正式文書、Steering、OpenAPI、Migration、Server実装のActor/Owner・Permission・状態・Error用語が一致する。
+  - [x] Migration順序、Server Rollout、Rollback制約、Share失効中のSession清掃を運用文書へ反映する。
+  - [x] HDD更新前とLock後の認可再確認があり、File ID・Owner・Share・`fileVersion`を予期せず変更しない。
+  - [x] 不要なPackage、生成物、実環境情報、Credentialが差分にない。
+- [x] PR3を完了する。
+  - [x] 3.1〜3.7のPR3対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -535,14 +535,41 @@
 
 ### PR3: 共有先の作成・Upload・変更と整合性
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未完了
-- 実装中に追加したタスクと理由: 未完了
-- 技術的に不要になったタスク・理由・代替実装: 未完了
-- 後続Pull Requestへの引継ぎ事項: 未完了
+- 完了日: 2026-08-23
+- Pull Request: [#21 Authorize shared file mutations and uploads](https://github.com/ry825/Kura_Storage/pull/21)
+- 実施したTest・Build・静的解析:
+  - `./scripts/ci/verify-config.sh`: 成功
+  - `./scripts/ci/verify-server.sh`: 成功（Domain 49件、Application 133件、Integration 89件）
+  - `./scripts/ci/verify-security.sh`: 成功
+  - `./scripts/ci/verify-deployment.sh`: 成功
+  - `./scripts/ci/verify-android.sh`: 成功（656 Gradle task）
+  - `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`: 成功
+  - File sharing Migration・未反映Migration・OpenAPI Contract Test: 成功
+  - `git diff --check`: 成功
+  - 並行Rename Test: CI失敗の修正後にローカル3回連続成功し、Server全Testでも成功
+  - GitHub Actions: Android、Config、Security、Serverの必須Checkがすべて成功
+- 手動確認・実機確認:
+  - 一時PostgreSQL 17、ローカルKestrelのUnix socket、`curl`、実Storage Rootを使用したAPI Client E2Eに成功した。
+  - ViewerのFolder作成拒否、ContributorのFolder作成・Multipart/Resumable Upload、EditorのRename・Move・Trash、Owner Restoreを確認した。
+  - 作成File/Folderと再開Upload完了FileがOwner Treeに所有され、Purge後に対象Shareが消えることを確認した。
+  - MISSING索引削除、Retention Purge、Share/Member削除、直接Share維持、継承経路変更は実PostgreSQL・実FileStoreのIntegration Testで確認した。
+  - Android共有UIとAndroid実機の共有操作はPR4対象のため、PR3では既存AndroidのBuild・Test・Lint回帰を確認した。
+- 計画と実装の差分:
+  - PR1で追加済みの`AddFileSharing` MigrationとUpload SessionのActor/Target Owner列を使用したため、PR3では新しいMigrationを追加しなかった。
+  - 外部Request schemaは変更せず、Actor User/DeviceをJWT Claimから取得し、Target OwnerをDestination/対象Entryから導出した。
+  - Permission再確認だけでなく、最初にLockした`ShareTargetId`とLock後の権限元が一致することを要求し、階層変更時の未Lock共有元利用を防止した。
+- 実装中に追加したタスクと理由:
+  - 手動E2Eで再開Upload完了ResponseのOwner/Permission metadata欠落を検出し、初回・再送Responseを通常File APIと同じMappingへ統一した。
+  - Share変更とFile mutationの競合レビューで、追跡済みMember collectionが古く残る可能性を検出し、Lock内でShare graph全体をDBから再読込するようにした。
+  - CIの並行Rename TestでLock前の未完了操作判定による一時的な409を検出し、Rename/Move/TrashはLock後の最新状態で隔離判定して正常な並行操作を直列化するようにした。
+  - Retention Worker経由でも対象・子孫Share/Memberが削除されるIntegration Testを追加した。
+- 技術的に不要になったタスク・理由・代替実装:
+  - PR3固有のMigration追加は不要。PR1 MigrationがActor/Target Owner分離とSharing schemaを先行提供し、PR3はApplication/APIの認可と整合性を接続した。
+- 後続Pull Requestへの引継ぎ事項:
+  - PR4はPR3のMerge後、最新`main`から開始する。
+  - AndroidはServerの`owner`、`permission`、`permissionSource`、`shareTargetId`を表示・操作可否へ使用し、未知値または欠落値ではFail-closedとする。
+  - Contributorは作成・Uploadだけ、Editorは既存Entry変更、Managerは共有管理も可能、Trash管理・Restore・Purge・MISSINGはOwner限定という境界をUIでも維持する。
+  - Raspberry Pi・Android実機E2Eでは共有失効中のUpload Sessionを取消または期限清掃し、Down Migrationを強制しない。
 
 ### PR4: Android共有UI・権限表示・実機E2E
 

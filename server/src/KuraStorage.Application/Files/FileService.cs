@@ -113,7 +113,7 @@ public sealed class FileService(
         CancellationToken cancellationToken)
     {
         if (!FileName.TryCreate(command.Name, out var name) ||
-            command.OwnerUserId == Guid.Empty ||
+            command.ActorUserId == Guid.Empty ||
             command.ActorDeviceId == Guid.Empty ||
             command.FileEntryId == Guid.Empty ||
             string.IsNullOrWhiteSpace(command.RequestId))
@@ -127,7 +127,7 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
         }
 
-        var initial = await repository.FindOwnedAsync(command.OwnerUserId, command.FileEntryId, cancellationToken);
+        var initial = await repository.FindByIdAsync(command.FileEntryId, cancellationToken);
         if (initial is null || initial.Status != FileEntryStatus.Active)
         {
             await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
@@ -140,24 +140,36 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.FileOperationNotAllowed, FileFailureKind.Conflict);
         }
 
-        if (await IsBlockedAsync(command.OwnerUserId, initial, cancellationToken))
-        {
-            await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
-            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
-        }
-
-        await using var mutationLock = await repository.AcquireMutationLocksAsync(
-            [initial.Id, parentId],
-            cancellationToken);
-        var entryExists = await repository.ReloadAsync(initial, cancellationToken);
-        var entry = initial;
-        if (!entryExists || entry.Status != FileEntryStatus.Active)
+        var initialOwnerUserId = initial.OwnerUserId;
+        var initialPermission = await ResolvePermissionAsync(command.ActorUserId, initial, cancellationToken);
+        if (!initialPermission.Allows(ShareOperation.Edit))
         {
             await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
-        if (await IsBlockedAsync(command.OwnerUserId, entry, cancellationToken))
+        await using var mutationLock = await repository.AcquireMutationLocksAsync(
+            new[] { initial.Id, parentId }
+                .Concat(OptionalId(initialPermission.ShareTargetId)),
+            cancellationToken);
+        var entryExists = await repository.ReloadAsync(initial, cancellationToken);
+        var entry = initial;
+        if (!entryExists || entry.Status != FileEntryStatus.Active ||
+            entry.OwnerUserId != initialOwnerUserId || entry.ParentId != parentId)
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        var lockedPermission = await ResolvePermissionAsync(command.ActorUserId, entry, cancellationToken);
+        if (!SamePermissionLockScope(initialPermission, lockedPermission) ||
+            !lockedPermission.Allows(ShareOperation.Edit))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(entry.OwnerUserId, entry, cancellationToken))
         {
             await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
             return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
@@ -170,7 +182,7 @@ public sealed class FileService(
         }
 
         if (await repository.FindActiveChildAsync(
-                command.OwnerUserId,
+                entry.OwnerUserId,
                 parentId,
                 name.Value,
                 cancellationToken) is not null)
@@ -187,6 +199,7 @@ public sealed class FileService(
             target,
             parentId,
             FileOperationType.Rename,
+            command.ActorUserId,
             command.ActorDeviceId,
             command.RequestId,
             cancellationToken);
@@ -196,7 +209,7 @@ public sealed class FileService(
         MoveFileCommand command,
         CancellationToken cancellationToken)
     {
-        if (command.OwnerUserId == Guid.Empty ||
+        if (command.ActorUserId == Guid.Empty ||
             command.ActorDeviceId == Guid.Empty ||
             command.FileEntryId == Guid.Empty ||
             command.TargetParentId == Guid.Empty ||
@@ -211,11 +224,8 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
         }
 
-        var initial = await repository.FindOwnedAsync(command.OwnerUserId, command.FileEntryId, cancellationToken);
-        var initialTarget = await repository.FindOwnedAsync(
-            command.OwnerUserId,
-            command.TargetParentId,
-            cancellationToken);
+        var initial = await repository.FindByIdAsync(command.FileEntryId, cancellationToken);
+        var initialTarget = await repository.FindByIdAsync(command.TargetParentId, cancellationToken);
         if (initial is null || initial.Status != FileEntryStatus.Active || !IsActiveFolder(initialTarget))
         {
             await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
@@ -228,28 +238,61 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.FileOperationNotAllowed, FileFailureKind.Conflict);
         }
 
-        if (await IsBlockedAsync(command.OwnerUserId, initial, cancellationToken) ||
-            await IsBlockedAsync(command.OwnerUserId, initialTarget!, cancellationToken))
+        var initialSource = await repository.FindByIdAsync(sourceParentId, cancellationToken);
+        if (!IsActiveFolder(initialSource) || initialSource!.OwnerUserId != initial.OwnerUserId ||
+            initialTarget!.OwnerUserId != initial.OwnerUserId)
         {
-            await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
-            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+            await AuditFailureAsync(command, FileErrorCodes.FileOperationNotAllowed, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileOperationNotAllowed, FileFailureKind.Conflict);
         }
 
-        await using var mutationLock = await repository.AcquireMutationLocksAsync(
-            [initial.Id, sourceParentId, command.TargetParentId],
+        var initialPermissions = await ResolvePermissionsAsync(
+            command.ActorUserId,
+            [initial, initialSource, initialTarget],
             cancellationToken);
-        var entryExists = await repository.ReloadAsync(initial, cancellationToken);
-        var targetExists = await repository.ReloadAsync(initialTarget!, cancellationToken);
-        var entry = initial;
-        var targetParent = initialTarget;
-        if (!entryExists || !targetExists || entry.Status != FileEntryStatus.Active || !IsActiveFolder(targetParent))
+        if (initialPermissions.Values.Any(permission => !permission.Allows(ShareOperation.Edit)))
         {
             await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
-        if (await IsBlockedAsync(command.OwnerUserId, entry, cancellationToken) ||
-            await IsBlockedAsync(command.OwnerUserId, targetParent!, cancellationToken))
+        await using var mutationLock = await repository.AcquireMutationLocksAsync(
+            new[] { initial.Id, sourceParentId, command.TargetParentId }
+                .Concat(initialPermissions.Values
+                    .Where(permission => permission.ShareTargetId is not null)
+                    .Select(permission => permission.ShareTargetId!.Value)),
+            cancellationToken);
+        var entryExists = await repository.ReloadAsync(initial, cancellationToken);
+        var sourceExists = await repository.ReloadAsync(initialSource, cancellationToken);
+        var targetExists = await repository.ReloadAsync(initialTarget!, cancellationToken);
+        var entry = initial;
+        var sourceParent = initialSource;
+        var targetParent = initialTarget;
+        if (!entryExists || !sourceExists || !targetExists ||
+            entry.Status != FileEntryStatus.Active || !IsActiveFolder(sourceParent) || !IsActiveFolder(targetParent) ||
+            entry.ParentId != sourceParentId || sourceParent.OwnerUserId != entry.OwnerUserId ||
+            targetParent!.OwnerUserId != entry.OwnerUserId)
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        var lockedPermissions = await ResolvePermissionsAsync(
+            command.ActorUserId,
+            [entry, sourceParent, targetParent],
+            cancellationToken);
+        if (lockedPermissions.Any(candidate =>
+                !initialPermissions.TryGetValue(candidate.Key, out var initialPermission) ||
+                !SamePermissionLockScope(initialPermission, candidate.Value) ||
+                !candidate.Value.Allows(ShareOperation.Edit)))
+        {
+            await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(entry.OwnerUserId, entry, cancellationToken) ||
+            await IsBlockedAsync(entry.OwnerUserId, sourceParent, cancellationToken) ||
+            await IsBlockedAsync(entry.OwnerUserId, targetParent, cancellationToken))
         {
             await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
             return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
@@ -270,7 +313,7 @@ public sealed class FileService(
         }
 
         if (await repository.FindActiveChildAsync(
-                command.OwnerUserId,
+                entry.OwnerUserId,
                 targetParent!.Id,
                 entry.Name,
                 cancellationToken) is not null)
@@ -281,7 +324,7 @@ public sealed class FileService(
 
         var target = RelativeStoragePath.Create(targetParent.RelativePath).Append(FileName.Create(entry.Name));
         var descendants = entry.EntryType == FileEntryType.Folder
-            ? await repository.ListDescendantsAsync(command.OwnerUserId, entry.RelativePath, cancellationToken)
+            ? await repository.ListDescendantsAsync(entry.OwnerUserId, entry.RelativePath, cancellationToken)
             : [];
         if (ExceedsMaximumDepth(target.Value, entry.RelativePath, descendants))
         {
@@ -294,6 +337,7 @@ public sealed class FileService(
             target,
             targetParent.Id,
             FileOperationType.Move,
+            command.ActorUserId,
             command.ActorDeviceId,
             command.RequestId,
             cancellationToken,
@@ -301,12 +345,12 @@ public sealed class FileService(
     }
 
     public async Task<FileResult<FileItem>> CreateFolderAsync(
-        Guid ownerUserId,
-        Guid? parentId,
-        string name,
+        CreateFolderCommand command,
         CancellationToken cancellationToken)
     {
-        if (!FileName.TryCreate(name, out var fileName))
+        if (!FileName.TryCreate(command.Name, out var fileName) ||
+            command.ActorUserId == Guid.Empty || command.ActorDeviceId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(command.RequestId))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.ValidationFailed, FileFailureKind.BadRequest);
         }
@@ -316,21 +360,46 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
         }
 
-        await provisioner.ProvisionAsync(ownerUserId, clock.UtcNow, cancellationToken);
-        var parent = parentId is null
-            ? await repository.FindRootAsync(ownerUserId, cancellationToken)
-            : await repository.FindOwnedAsync(ownerUserId, parentId.Value, cancellationToken);
+        if (command.ParentId is null)
+        {
+            await provisioner.ProvisionAsync(command.ActorUserId, clock.UtcNow, cancellationToken);
+        }
+
+        var parent = command.ParentId is null
+            ? await repository.FindRootAsync(command.ActorUserId, cancellationToken)
+            : await repository.FindByIdAsync(command.ParentId.Value, cancellationToken);
         if (!IsActiveFolder(parent))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
-        if (await IsBlockedAsync(ownerUserId, parent!, cancellationToken))
+        var ownerUserId = parent!.OwnerUserId;
+        var permission = await ResolvePermissionAsync(command.ActorUserId, parent, cancellationToken);
+        if (!permission.Allows(ShareOperation.Contribute))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        await using var mutationLock = await repository.AcquireMutationLocksAsync(
+            new[] { parent.Id }.Concat(OptionalId(permission.ShareTargetId)),
+            cancellationToken);
+        var parentExists = await repository.ReloadAsync(parent, cancellationToken);
+        var lockedPermission = parentExists
+            ? await ResolvePermissionAsync(command.ActorUserId, parent, cancellationToken)
+            : null;
+        if (!parentExists || !IsActiveFolder(parent) || parent.OwnerUserId != ownerUserId ||
+            lockedPermission is null || !SamePermissionLockScope(permission, lockedPermission) ||
+            !lockedPermission.Allows(ShareOperation.Contribute))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(ownerUserId, parent, cancellationToken))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
-        if (await repository.FindActiveChildAsync(ownerUserId, parent!.Id, fileName.Value, cancellationToken) is not null)
+        if (await repository.FindActiveChildAsync(ownerUserId, parent.Id, fileName.Value, cancellationToken) is not null)
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNameConflict, FileFailureKind.Conflict);
         }
@@ -353,7 +422,10 @@ public sealed class FileService(
             entry.RelativePath,
             null,
             null,
-            now);
+            now,
+            command.ActorDeviceId,
+            command.RequestId,
+            "FOLDER_CREATE");
         repository.Add(operation);
         await repository.SaveChangesAsync(cancellationToken);
         try
@@ -362,31 +434,40 @@ public sealed class FileService(
         }
         catch (IOException)
         {
+            operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            await repository.SaveChangesAsync(CancellationToken.None);
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNameConflict, FileFailureKind.Conflict);
         }
 
         operation.MarkFilesystemDone(clock.UtcNow);
         await repository.SaveChangesAsync(cancellationToken);
+        var completedAt = clock.UtcNow;
+        await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         repository.Add(entry);
-        operation.Complete(clock.UtcNow);
+        repository.Add(CreateAudit(
+            command.ActorUserId, command.ActorDeviceId, entry.Id,
+            FileOperationType.CreateFolder, "SUCCESS", command.RequestId, completedAt));
+        operation.Complete(completedAt);
         try
         {
             await repository.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
         catch (FilePersistenceConflictException)
         {
-            return FileResult<FileItem>.Fail(FileErrorCodes.FileNameConflict, FileFailureKind.Conflict);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
         return FileResult<FileItem>.Success(await MapOwnerAsync(entry, cancellationToken));
     }
 
     public async Task<FileResult<FileItem>> UploadAsync(
-        Guid ownerUserId,
         UploadFileCommand command,
         CancellationToken cancellationToken)
     {
         if (!FileName.TryCreate(command.FileName, out var fileName) ||
+            command.ActorUserId == Guid.Empty || command.ActorDeviceId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(command.RequestId) ||
             command.Size < 0 ||
             !Guid.TryParse(command.IdempotencyKey, out _) ||
             !ValidSha256(command.Sha256))
@@ -406,13 +487,34 @@ public sealed class FileService(
                 FileFailureKind.CapacityInsufficient);
         }
 
-        var parent = await repository.FindOwnedAsync(ownerUserId, command.DestinationFolderId, cancellationToken);
+        var parent = await repository.FindByIdAsync(command.DestinationFolderId, cancellationToken);
         if (!IsActiveFolder(parent))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
-        if (await IsBlockedAsync(ownerUserId, parent!, cancellationToken))
+        var ownerUserId = parent!.OwnerUserId;
+        var permission = await ResolvePermissionAsync(command.ActorUserId, parent, cancellationToken);
+        if (!permission.Allows(ShareOperation.Contribute))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        await using var mutationLock = await repository.AcquireMutationLocksAsync(
+            new[] { parent.Id }.Concat(OptionalId(permission.ShareTargetId)),
+            cancellationToken);
+        var parentExists = await repository.ReloadAsync(parent, cancellationToken);
+        var lockedPermission = parentExists
+            ? await ResolvePermissionAsync(command.ActorUserId, parent, cancellationToken)
+            : null;
+        if (!parentExists || !IsActiveFolder(parent) || parent.OwnerUserId != ownerUserId ||
+            lockedPermission is null || !SamePermissionLockScope(permission, lockedPermission) ||
+            !lockedPermission.Allows(ShareOperation.Contribute))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(ownerUserId, parent, cancellationToken))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
@@ -474,7 +576,10 @@ public sealed class FileService(
             target.Value,
             command.Size,
             command.Sha256?.ToLowerInvariant(),
-            now);
+            now,
+            command.ActorDeviceId,
+            command.RequestId,
+            "MULTIPART");
         if (existingOperation is null)
         {
             repository.Add(operation);
@@ -552,15 +657,21 @@ public sealed class FileService(
             NormalizeContentType(command.ContentType),
             stored.Size,
             now);
+        var completedAt = clock.UtcNow;
+        await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         repository.Add(entry);
-        operation.Complete(clock.UtcNow);
+        repository.Add(CreateAudit(
+            command.ActorUserId, command.ActorDeviceId, entry.Id,
+            FileOperationType.Upload, "SUCCESS", command.RequestId, completedAt));
+        operation.Complete(completedAt);
         try
         {
             await repository.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
         catch (FilePersistenceConflictException)
         {
-            return FileResult<FileItem>.Fail(FileErrorCodes.FileNameConflict, FileFailureKind.Conflict);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
         return FileResult<FileItem>.Success(await MapOwnerAsync(entry, cancellationToken));
@@ -680,31 +791,46 @@ public sealed class FileService(
     }
 
     public async Task<FileResult<FileItem>> TrashAsync(
-        Guid ownerUserId,
-        Guid entryId,
+        TrashFileCommand command,
         CancellationToken cancellationToken)
     {
+        if (command.ActorUserId == Guid.Empty || command.ActorDeviceId == Guid.Empty ||
+            command.FileEntryId == Guid.Empty || string.IsNullOrWhiteSpace(command.RequestId))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.ValidationFailed, FileFailureKind.BadRequest);
+        }
+
         if (!await StorageAvailableAsync(StorageIntent.CreateOrUpdate, cancellationToken))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
         }
 
-        var entry = await repository.FindOwnedAsync(ownerUserId, entryId, cancellationToken);
+        var entry = await repository.FindByIdAsync(command.FileEntryId, cancellationToken);
         if (entry is null || entry.Status != FileEntryStatus.Active || entry.ParentId is not Guid parentId)
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
-        if (await IsBlockedAsync(ownerUserId, entry, cancellationToken))
+        var ownerUserId = entry.OwnerUserId;
+        var permission = await ResolvePermissionAsync(command.ActorUserId, entry, cancellationToken);
+        if (!permission.Allows(ShareOperation.Edit))
         {
-            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
         await using var mutationLock = await repository.AcquireMutationLocksAsync(
-            [entry.Id, parentId],
+            new[] { entry.Id, parentId }.Concat(OptionalId(permission.ShareTargetId)),
             cancellationToken);
         var entryExists = await repository.ReloadAsync(entry, cancellationToken);
-        if (!entryExists || entry.Status != FileEntryStatus.Active || entry.ParentId is null)
+        if (!entryExists || entry.Status != FileEntryStatus.Active || entry.ParentId != parentId ||
+            entry.OwnerUserId != ownerUserId)
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        var lockedPermission = await ResolvePermissionAsync(command.ActorUserId, entry, cancellationToken);
+        if (!SamePermissionLockScope(permission, lockedPermission) ||
+            !lockedPermission.Allows(ShareOperation.Edit))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
@@ -727,7 +853,10 @@ public sealed class FileService(
             target.Value,
             null,
             null,
-            now);
+            now,
+            command.ActorDeviceId,
+            command.RequestId,
+            "USER");
         repository.Add(operation);
         await repository.SaveChangesAsync(cancellationToken);
         var trashContainer = RelativeStoragePath.Create($"users/{ownerUserId:N}/trash/{entry.Id:N}");
@@ -741,12 +870,18 @@ public sealed class FileService(
         var descendants = entry.EntryType == FileEntryType.Folder
             ? await repository.ListDescendantsAsync(ownerUserId, source.Value, cancellationToken)
             : [];
-        entry.Trash(target, clock.UtcNow);
-        ApplyDescendantPaths(descendants, source.Value, target.Value, true, clock.UtcNow);
-        operation.Complete(clock.UtcNow);
+        var completedAt = clock.UtcNow;
+        await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
+        entry.Trash(target, completedAt);
+        ApplyDescendantPaths(descendants, source.Value, target.Value, true, completedAt);
+        repository.Add(CreateAudit(
+            command.ActorUserId, command.ActorDeviceId, entry.Id,
+            FileOperationType.Trash, "SUCCESS", command.RequestId, completedAt));
+        operation.Complete(completedAt);
         try
         {
             await repository.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
         catch (FilePersistenceConflictException)
         {
@@ -851,6 +986,7 @@ public sealed class FileService(
         RelativeStoragePath target,
         Guid targetParentId,
         FileOperationType operationType,
+        Guid actorUserId,
         Guid actorDeviceId,
         string requestId,
         CancellationToken cancellationToken,
@@ -863,7 +999,7 @@ public sealed class FileService(
         if (!await fileStore.ExistsAsync(targetParentPath, true, cancellationToken))
         {
             await RecordAuditAsync(
-                entry.OwnerUserId,
+                actorUserId,
                 actorDeviceId,
                 entry.Id,
                 operationType,
@@ -877,7 +1013,7 @@ public sealed class FileService(
             await fileStore.ExistsAsync(target, !directory, cancellationToken))
         {
             await RecordAuditAsync(
-                entry.OwnerUserId,
+                actorUserId,
                 actorDeviceId,
                 entry.Id,
                 operationType,
@@ -890,7 +1026,7 @@ public sealed class FileService(
         if (!await fileStore.ExistsAsync(source, directory, cancellationToken))
         {
             await RecordAuditAsync(
-                entry.OwnerUserId,
+                actorUserId,
                 actorDeviceId,
                 entry.Id,
                 operationType,
@@ -910,7 +1046,10 @@ public sealed class FileService(
             target.Value,
             null,
             null,
-            clock.UtcNow);
+            clock.UtcNow,
+            actorDeviceId,
+            requestId,
+            operationType.ToString().ToUpperInvariant());
         repository.Add(operation);
         await repository.SaveChangesAsync(cancellationToken);
         try
@@ -934,7 +1073,7 @@ public sealed class FileService(
                     ? FileErrorCodes.FileNameConflict
                     : FileErrorCodes.RecoveryRequired;
                 await RecordAuditAsync(
-                    entry.OwnerUserId,
+                    actorUserId,
                     actorDeviceId,
                     entry.Id,
                     operationType,
@@ -979,7 +1118,7 @@ public sealed class FileService(
 
         repository.Add(
             CreateAudit(
-                entry.OwnerUserId,
+                actorUserId,
                 actorDeviceId,
                 entry.Id,
                 operationType,
@@ -1017,7 +1156,7 @@ public sealed class FileService(
         string code,
         CancellationToken cancellationToken) =>
         await RecordAuditAsync(
-            command.OwnerUserId,
+            command.ActorUserId,
             command.ActorDeviceId,
             command.FileEntryId,
             FileOperationType.Rename,
@@ -1030,7 +1169,7 @@ public sealed class FileService(
         string code,
         CancellationToken cancellationToken) =>
         await RecordAuditAsync(
-            command.OwnerUserId,
+            command.ActorUserId,
             command.ActorDeviceId,
             command.FileEntryId,
             FileOperationType.Move,
@@ -1042,7 +1181,7 @@ public sealed class FileService(
         RenameFileCommand command,
         CancellationToken cancellationToken) =>
         await RecordAuditAsync(
-            command.OwnerUserId,
+            command.ActorUserId,
             command.ActorDeviceId,
             command.FileEntryId,
             FileOperationType.Rename,
@@ -1054,7 +1193,7 @@ public sealed class FileService(
         MoveFileCommand command,
         CancellationToken cancellationToken) =>
         await RecordAuditAsync(
-            command.OwnerUserId,
+            command.ActorUserId,
             command.ActorDeviceId,
             command.FileEntryId,
             FileOperationType.Move,
@@ -1063,7 +1202,7 @@ public sealed class FileService(
             cancellationToken);
 
     private async Task RecordAuditAsync(
-        Guid ownerUserId,
+        Guid actorUserId,
         Guid actorDeviceId,
         Guid entryId,
         FileOperationType operationType,
@@ -1073,7 +1212,7 @@ public sealed class FileService(
     {
         repository.Add(
             CreateAudit(
-                ownerUserId,
+                actorUserId,
                 actorDeviceId,
                 entryId,
                 operationType,
@@ -1084,7 +1223,7 @@ public sealed class FileService(
     }
 
     private static AuditLog CreateAudit(
-        Guid ownerUserId,
+        Guid actorUserId,
         Guid actorDeviceId,
         Guid entryId,
         FileOperationType operationType,
@@ -1093,10 +1232,18 @@ public sealed class FileService(
         DateTimeOffset now) =>
         new(
             Guid.NewGuid(),
-            ownerUserId,
+            actorUserId,
             actorDeviceId,
             null,
-            operationType == FileOperationType.Rename ? "FILE_RENAME" : "FILE_MOVE",
+            operationType switch
+            {
+                FileOperationType.CreateFolder => "FOLDER_CREATE",
+                FileOperationType.Upload => "FILE_UPLOAD",
+                FileOperationType.Rename => "FILE_RENAME",
+                FileOperationType.Move => "FILE_MOVE",
+                FileOperationType.Trash => "FILE_TRASH",
+                _ => "FILE_MUTATION",
+            },
             "FILE_ENTRY",
             entryId.ToString(),
             result,
@@ -1121,6 +1268,19 @@ public sealed class FileService(
                 descendant.RelativePath.Count(character => character == '/') -
                 sourceSegments > 64);
     }
+
+    private static IEnumerable<Guid> OptionalId(Guid? value)
+    {
+        if (value is Guid id)
+        {
+            yield return id;
+        }
+    }
+
+    private static bool SamePermissionLockScope(
+        EffectivePermission initial,
+        EffectivePermission current) =>
+        initial.ShareTargetId == current.ShareTargetId;
 
     private async Task<bool> StorageAvailableAsync(StorageIntent intent, CancellationToken cancellationToken) =>
         await storageGuard.InspectAsync(intent, cancellationToken) == StorageStatus.Available;
@@ -1232,19 +1392,20 @@ public sealed class FileService(
         IReadOnlyList<FileEntry> entries,
         CancellationToken cancellationToken)
     {
-        if (entries.Count == 0)
+        var uniqueEntries = entries.DistinctBy(entry => entry.Id).ToArray();
+        if (uniqueEntries.Length == 0)
         {
             return new Dictionary<Guid, EffectivePermission>();
         }
 
-        if (entries.All(entry => entry.OwnerUserId == actorUserId) || authorizationService is null)
+        if (uniqueEntries.All(entry => entry.OwnerUserId == actorUserId) || authorizationService is null)
         {
-            return entries.ToDictionary(entry => entry.Id, entry => OwnerPermission(entry.Id));
+            return uniqueEntries.ToDictionary(entry => entry.Id, entry => OwnerPermission(entry.Id));
         }
 
         return await authorizationService.ResolveBatchAsync(
             actorUserId,
-            entries.Select(entry => entry.Id).ToArray(),
+            uniqueEntries.Select(entry => entry.Id).ToArray(),
             cancellationToken);
     }
 
@@ -1264,7 +1425,7 @@ public sealed class FileService(
             OwnerPermission(entry.Id),
             retentionDaysOverride);
 
-    private static FileItem Map(
+    internal static FileItem Map(
         FileEntry entry,
         FileOwnerItem owner,
         EffectivePermission permission,

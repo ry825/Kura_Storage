@@ -43,6 +43,19 @@ public sealed class ShareRepository(KuraStorageDbContext dbContext) : IShareRepo
             .Include(share => share.Members)
             .SingleOrDefaultAsync(share => share.TargetEntryId == targetEntryId, cancellationToken);
 
+    public async Task<Share?> ReloadAsync(Share share, CancellationToken cancellationToken)
+    {
+        foreach (var member in share.Members)
+        {
+            dbContext.Entry(member).State = EntityState.Detached;
+        }
+
+        dbContext.Entry(share).State = EntityState.Detached;
+        return await dbContext.Shares
+            .Include(candidate => candidate.Members)
+            .SingleOrDefaultAsync(candidate => candidate.Id == share.Id, cancellationToken);
+    }
+
     public async Task<ShareView?> GetViewAsync(Guid shareId, CancellationToken cancellationToken)
     {
         var rows = await ViewRows([shareId]).ToListAsync(cancellationToken);

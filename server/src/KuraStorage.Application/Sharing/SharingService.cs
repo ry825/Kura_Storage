@@ -9,7 +9,8 @@ namespace KuraStorage.Application.Sharing;
 public sealed class SharingService(
     IShareRepository repository,
     IAuthorizationService authorizationService,
-    ISystemClock clock)
+    ISystemClock clock,
+    IFileRepository? files = null)
 {
     public async Task<SharingResult<IReadOnlyList<ShareCandidate>>> ListCandidatesAsync(
         Guid actorUserId,
@@ -41,6 +42,16 @@ public sealed class SharingService(
 
         var target = await repository.FindEntryAsync(command.TargetEntryId, cancellationToken);
         if (!ValidShareTarget(target) || target!.OwnerUserId != command.ActorUserId)
+        {
+            return Fail<ShareItem>(SharingErrorCodes.ShareNotFound, SharingFailureKind.NotFound);
+        }
+
+        await using var targetLock = files is null
+            ? null
+            : await files.AcquireMutationLocksAsync([target.Id], cancellationToken);
+        if (files is not null &&
+            (!await files.ReloadAsync(target, cancellationToken) ||
+             !ValidShareTarget(target) || target.OwnerUserId != command.ActorUserId))
         {
             return Fail<ShareItem>(SharingErrorCodes.ShareNotFound, SharingFailureKind.NotFound);
         }
@@ -150,6 +161,19 @@ public sealed class SharingService(
             return Fail<ShareItem>(SharingErrorCodes.ShareNotFound, SharingFailureKind.NotFound);
         }
 
+        await using var targetLock = files is null
+            ? null
+            : await files.AcquireMutationLocksAsync([share.TargetEntryId], cancellationToken);
+        if (files is not null)
+        {
+            share = await repository.ReloadAsync(share, cancellationToken);
+        }
+
+        if (share is null || !CanManage(share, command.ActorUserId))
+        {
+            return Fail<ShareItem>(SharingErrorCodes.ShareNotFound, SharingFailureKind.NotFound);
+        }
+
         var target = await repository.FindEntryAsync(share.TargetEntryId, cancellationToken);
         if (!ValidShareTarget(target) || target!.OwnerUserId != share.OwnerUserId)
         {
@@ -201,6 +225,19 @@ public sealed class SharingService(
             return Fail<bool>(SharingErrorCodes.ShareNotFound, SharingFailureKind.NotFound);
         }
 
+        await using var targetLock = files is null
+            ? null
+            : await files.AcquireMutationLocksAsync([share.TargetEntryId], cancellationToken);
+        if (files is not null)
+        {
+            share = await repository.ReloadAsync(share, cancellationToken);
+        }
+
+        if (share is null || !CanManage(share, command.ActorUserId))
+        {
+            return Fail<bool>(SharingErrorCodes.ShareNotFound, SharingFailureKind.NotFound);
+        }
+
         if (!share.Members.Any(member => member.UserId == command.MemberUserId))
         {
             return Fail<bool>(SharingErrorCodes.ShareMemberNotFound, SharingFailureKind.NotFound);
@@ -238,6 +275,19 @@ public sealed class SharingService(
         }
 
         var share = await repository.FindByIdAsync(command.ShareId, cancellationToken);
+        if (share is null || !CanManage(share, command.ActorUserId))
+        {
+            return Fail<bool>(SharingErrorCodes.ShareNotFound, SharingFailureKind.NotFound);
+        }
+
+        await using var targetLock = files is null
+            ? null
+            : await files.AcquireMutationLocksAsync([share.TargetEntryId], cancellationToken);
+        if (files is not null)
+        {
+            share = await repository.ReloadAsync(share, cancellationToken);
+        }
+
         if (share is null || !CanManage(share, command.ActorUserId))
         {
             return Fail<bool>(SharingErrorCodes.ShareNotFound, SharingFailureKind.NotFound);

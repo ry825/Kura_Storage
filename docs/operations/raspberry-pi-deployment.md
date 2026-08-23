@@ -293,6 +293,41 @@ check in addition to unfinished purge journals. If the old release cannot read
 the newer schema, restore the reviewed PostgreSQL and storage-root backup as a
 matched pair; never roll back only one side.
 
+### File sharing rollout and rollback
+
+File sharing and shared-destination uploads require the `AddFileSharing`
+migration. During the maintenance window, stop API and Worker mutation traffic,
+take matched PostgreSQL and Storage Root backups, apply migrations explicitly,
+then deploy and start the API and Worker from the same release. Do not start a
+sharing-capable server against the previous schema, and do not expose sharing
+endpoints until migration and health checks have succeeded.
+
+After rollout, verify aggregate state without recording names or paths:
+
+```sql
+SELECT count(*) AS shares, (SELECT count(*) FROM share_members) AS members
+FROM shares;
+
+SELECT status, count(*)
+FROM upload_sessions
+GROUP BY status
+ORDER BY status;
+```
+
+If a member is removed or reduced below `CONTRIBUTOR` while an Upload Session
+is active, completion is intentionally rejected and its temporary content is
+not published. Have the same authenticated actor/device cancel the session, or
+allow expiry and the normal cleanup worker to remove the temporary file. Never
+move a session temporary file into an owner's tree manually.
+
+Migration Down refuses to run while any Share exists or any Upload Session has
+different actor and target-owner IDs. Before a schema rollback, remove Shares
+through the authenticated API, cancel or finish shared-target sessions on the
+current release, wait for cleanup, and verify both conditions with aggregate
+queries. If those conditions cannot be met safely, restore the pre-upgrade
+PostgreSQL and Storage Root backups as a matched pair instead of forcing the
+migration or deleting rows directly.
+
 Before an upgrade or rollback that includes the permanent-delete migration,
 take PostgreSQL and Storage Root backups, stop the Worker, and inspect unresolved purge journals without selecting file names
 or paths:
