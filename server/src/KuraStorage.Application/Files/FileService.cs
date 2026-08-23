@@ -148,12 +148,6 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
-        if (await IsBlockedAsync(initialOwnerUserId, initial, cancellationToken))
-        {
-            await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
-            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
-        }
-
         await using var mutationLock = await repository.AcquireMutationLocksAsync(
             new[] { initial.Id, parentId }
                 .Concat(OptionalId(initialPermission.ShareTargetId)),
@@ -260,14 +254,6 @@ public sealed class FileService(
         {
             await AuditFailureAsync(command, FileErrorCodes.FileNotFound, cancellationToken);
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
-        }
-
-        if (await IsBlockedAsync(initial.OwnerUserId, initial, cancellationToken) ||
-            await IsBlockedAsync(initial.OwnerUserId, initialSource, cancellationToken) ||
-            await IsBlockedAsync(initial.OwnerUserId, initialTarget, cancellationToken))
-        {
-            await AuditFailureAsync(command, FileErrorCodes.RecoveryRequired, cancellationToken);
-            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
         await using var mutationLock = await repository.AcquireMutationLocksAsync(
@@ -830,11 +816,6 @@ public sealed class FileService(
         if (!permission.Allows(ShareOperation.Edit))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
-        }
-
-        if (await IsBlockedAsync(ownerUserId, entry, cancellationToken))
-        {
-            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
         await using var mutationLock = await repository.AcquireMutationLocksAsync(
