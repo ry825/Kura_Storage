@@ -137,94 +137,94 @@
 
 ### 2.1 作業開始
 
-- [ ] PR2の作業準備を完了する。
-  - [ ] PR1が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`からPR2用の短命Branchを作成する。
-  - [ ] `requirements.md`、`design.md`、本ファイル、PR1完了記録を確認する。
-  - [ ] `git status`、PR1のSchema・AuthorizationService、既存API/OpenAPI/Integration Testパターンを確認する。
+- [x] PR2の作業準備を完了する。
+  - [x] PR1が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`からPR2用の短命Branchを作成する。
+  - [x] `requirements.md`、`design.md`、本ファイル、PR1完了記録を確認する。
+  - [x] `git status`、PR1のSchema・AuthorizationService、既存API/OpenAPI/Integration Testパターンを確認する。
 
 ### 2.2 SharingServiceとRepository
 
-- [ ] 共有候補Use CaseをTDDで実装する。
-  - [ ] 認証User本人を除く`ACTIVE`なUserを表示名・IDの安定順で取得する。
-  - [ ] 非`ACTIVE` User、ロック状態の扱い、候補APIが返す最小情報を正式文書と一致させる。
-  - [ ] 候補APIからUser作成、無効化、Role変更を実行できない。
-- [ ] Share作成Use CaseをTDDで実装する。
-  - [ ] 対象をIDで取得し、`ACTIVE`、非Root、ActorがOwner、File/Folderのどちらかを再検証する。
-  - [ ] 初期Memberを1件以上必須とし、重複、本人/所有者、非`ACTIVE` Userを拒否する。
-  - [ ] File共有の`CONTRIBUTOR`を`INVALID_SHARE_PERMISSION`で拒否し、Folder共有の4権限を許可する。
-  - [ ] Share、Member、監査Logを同一DB Transactionで作成し、一意制約競合を`SHARE_CONFLICT`へ変換する。
-- [ ] 所有・受信共有一覧とShare詳細Use Caseを実装する。
-  - [ ] `scope=owned|received`、`targetType=FILE|FOLDER`、page、pageSizeを検証する。
-  - [ ] 受信一覧は直接Shareのルートだけを返し、Folder子孫を個別展開しない。
-  - [ ] `TRASHED`、Purge中、未完了配置操作中の対象を通常共有一覧から除外する。
-  - [ ] Shareの所有者または有効なMemberだけが詳細を取得できる。
-  - [ ] Entry名、種別、Owner、Recipientの実効Permission、Member一覧を過不足なく返す。
-- [ ] Member更新・解除とShare全体解除をTDDで実装する。
-  - [ ] Ownerまたは現在の`MANAGER`にだけ操作を許可する。
-  - [ ] `PUT members/{userId}`を未登録の追加と登録済みのPermission更新として冪等にする。
-  - [ ] 更新時にもFileの`CONTRIBUTOR`、所有者、非`ACTIVE` Userを再検証する。
-  - [ ] 最後のMember解除でShare自体を削除し、同一Transactionで監査Logを追記する。
-  - [ ] 解除後の次File API要求でアクセスが失効し、他の共有経路があればその最強権限を維持する。
+- [x] 共有候補Use CaseをTDDで実装する。
+- [x] 認証User本人を除く`ACTIVE`なUserを表示名・IDの安定順で取得する。
+- [x] 非`ACTIVE` User、ロック状態の扱い、候補APIが返す最小情報を正式文書と一致させる。
+- [x] 候補APIからUser作成、無効化、Role変更を実行できない。
+- [x] Share作成Use CaseをTDDで実装する。
+- [x] 対象をIDで取得し、`ACTIVE`、非Root、ActorがOwner、File/Folderのどちらかを再検証する。
+- [x] 初期Memberを1件以上必須とし、重複、本人/所有者、非`ACTIVE` Userを拒否する。
+- [x] File共有の`CONTRIBUTOR`を`INVALID_SHARE_PERMISSION`で拒否し、Folder共有の4権限を許可する。
+- [x] Share、Member、監査Logを同一DB Transactionで作成し、一意制約競合を`SHARE_CONFLICT`へ変換する。
+- [x] 所有・受信共有一覧とShare詳細Use Caseを実装する。
+- [x] `scope=owned|received`、`targetType=FILE|FOLDER`、page、pageSizeを検証する。
+- [x] 受信一覧は直接Shareのルートだけを返し、Folder子孫を個別展開しない。
+- [x] `TRASHED`、Purge中、未完了配置操作中の対象を通常共有一覧から除外する。
+- [x] Shareの所有者または有効なMemberだけが詳細を取得できる。
+- [x] Entry名、種別、Owner、Recipientの実効Permission、Member一覧を過不足なく返す。
+- [x] Member更新・解除とShare全体解除をTDDで実装する。
+- [x] Ownerまたは現在の`MANAGER`にだけ操作を許可する。
+- [x] `PUT members/{userId}`を未登録の追加と登録済みのPermission更新として冪等にする。
+- [x] 更新時にもFileの`CONTRIBUTOR`、所有者、非`ACTIVE` Userを再検証する。
+- [x] 最後のMember解除でShare自体を削除し、同一Transactionで監査Logを追記する。
+- [x] 解除後の次File API要求でアクセスが失効し、他の共有経路があればその最強権限を維持する。
 
 ### 2.3 Share API・OpenAPI・Error
 
-- [ ] 共有EndpointをApplication Use Caseへ接続する。
-  - [ ] `GET /api/v1/shares/candidates`を追加する。
-  - [ ] `POST /api/v1/shares`と`GET /api/v1/shares`を追加する。
-  - [ ] `GET /api/v1/shares/{shareId}`を追加する。
-  - [ ] `PUT /api/v1/shares/{shareId}/members/{userId}`とMember解除Endpointを追加する。
-  - [ ] `DELETE /api/v1/shares/{shareId}`を追加する。
-  - [ ] EndpointはJWTの`sub`、`device_id`、Request IDを使い、Client指定のOwner/Actor/Deviceを受け付けない。
-- [ ] 共有ContractとError mappingを実装する。
-  - [ ] `ShareCandidate`、`ShareMemberItem`、`ShareItem`、一覧Page、Create/Update Requestを定義する。
-  - [ ] `INVALID_SHARE_PERMISSION`、`SHARE_NOT_FOUND`、`SHARE_MEMBER_NOT_FOUND`、`SHARE_CONFLICT`、`SHARE_OPERATION_NOT_ALLOWED`を安定したHTTP応答へMappingする。
-  - [ ] 存在を隠すべきFile/Shareは404へ統一し、Owner、Member、Path、SQLをErrorに含めない。
-  - [ ] `contracts/openapi/kurastorage-api.yaml`に全Endpoint、Schema、Paging、Filter、Error、認証を反映する。
+- [x] 共有EndpointをApplication Use Caseへ接続する。
+- [x] `GET /api/v1/shares/candidates`を追加する。
+- [x] `POST /api/v1/shares`と`GET /api/v1/shares`を追加する。
+- [x] `GET /api/v1/shares/{shareId}`を追加する。
+- [x] `PUT /api/v1/shares/{shareId}/members/{userId}`とMember解除Endpointを追加する。
+- [x] `DELETE /api/v1/shares/{shareId}`を追加する。
+- [x] EndpointはJWTの`sub`、`device_id`、Request IDを使い、Client指定のOwner/Actor/Deviceを受け付けない。
+- [x] 共有ContractとError mappingを実装する。
+- [x] `ShareCandidate`、`ShareMemberItem`、`ShareItem`、一覧Page、Create/Update Requestを定義する。
+- [x] `INVALID_SHARE_PERMISSION`、`SHARE_NOT_FOUND`、`SHARE_MEMBER_NOT_FOUND`、`SHARE_CONFLICT`、`SHARE_OPERATION_NOT_ALLOWED`を安定したHTTP応答へMappingする。
+- [x] 存在を隠すべきFile/Shareは404へ統一し、Owner、Member、Path、SQLをErrorに含めない。
+- [x] `contracts/openapi/kurastorage-api.yaml`に全Endpoint、Schema、Paging、Filter、Error、認証を反映する。
 
 ### 2.4 File一覧・詳細・Downloadの共有認可
 
-- [ ] File response契約を後方互換に拡張する。
-  - [ ] `FileItem`にOwner ID・表示名、Permission、`OWNER | DIRECT | INHERITED`、`shareTargetId?`を追加する。
-  - [ ] Ownerには`permission=MANAGER`、`permissionSource=OWNER`を返し、`shareTargetId`を省略する。
-  - [ ] v1の追加Fieldとして旧Clientが無視でき、破壊的変更がないため`protocolVersion: 2`を維持する。
-- [ ] 認証UserとFile Ownerを分離した参照フローを実装する。
-  - [ ] `GET /files?parentId=null`は従来どおり認証UserのPersonal RootをProvision・取得する。
-  - [ ] `parentId`/`fileId`ありはEntryをIDで取得し、Actorの`VIEWER`以上を確認する。
-  - [ ] Folder一覧はOwner Treeの直下を取得し、Page内のPermissionをBatch解決する。
-  - [ ] File直接Shareで親・兄弟を取得できず、Folder Shareの子孫だけを階層閲覧できる。
-  - [ ] `DownloadAsync`はContent Open直前にActorの`VIEWER`を再確認し、対象のOwnerから安全な相対Pathを解決する。
-  - [ ] Share解除、User非`ACTIVE`化、Entry状態変更の直後に古いPermissionで読み続けられない。
+- [x] File response契約を後方互換に拡張する。
+- [x] `FileItem`にOwner ID・表示名、Permission、`OWNER | DIRECT | INHERITED`、`shareTargetId?`を追加する。
+- [x] Ownerには`permission=MANAGER`、`permissionSource=OWNER`を返し、`shareTargetId`を省略する。
+- [x] v1の追加Fieldとして旧Clientが無視でき、破壊的変更がないため`protocolVersion: 2`を維持する。
+- [x] 認証UserとFile Ownerを分離した参照フローを実装する。
+- [x] `GET /files?parentId=null`は従来どおり認証UserのPersonal RootをProvision・取得する。
+- [x] `parentId`/`fileId`ありはEntryをIDで取得し、Actorの`VIEWER`以上を確認する。
+- [x] Folder一覧はOwner Treeの直下を取得し、Page内のPermissionをBatch解決する。
+- [x] File直接Shareで親・兄弟を取得できず、Folder Shareの子孫だけを階層閲覧できる。
+- [x] `DownloadAsync`はContent Open直前にActorの`VIEWER`を再確認し、対象のOwnerから安全な相対Pathを解決する。
+- [x] Share解除、User非`ACTIVE`化、Entry状態変更の直後に古いPermissionで読み続けられない。
 
 ### 2.5 PR2 Test・手動確認
 
-- [ ] SharingServiceとShare APIの自動Testを完了する。
-  - [ ] 候補、Share作成、所有/受信一覧、詳細、Member追加・更新・解除、Share解除の正常系をTestする。
-  - [ ] Fileへの`CONTRIBUTOR`、本人・非`ACTIVE` User、重複Share/Member、無権限、Root、Trash対象をTestする。
-  - [ ] Owner、Manager、Editor、Viewer、未共有、Adminごとの参照・管理境界をTestする。
-  - [ ] Share解除後の即時失効と別経路維持、同時Member更新競合をTestする。
-- [ ] 共有File参照の自動Testを完了する。
-  - [ ] 所有者、File直接Share、Folder継承、最強経路のList/Get/DownloadをTestする。
-  - [ ] Fileの兄弟漏えい、祖先未共有、Admin暗黙アクセス、無権限ID推測をTestする。
-  - [ ] Range Download、MISSING表示、Storage unavailable、未完了Operation隔離の回帰をTestする。
-  - [ ] 100件PageのPermission付与がN+1 Queryにならないことを確認する。
-- [ ] API ClientでPR2の主要フローを手動確認する。
-  - [ ] OwnerがFileとFolderを複数Userへ共有し、所有・受信一覧と詳細を確認する。
-  - [ ] RecipientがFileだけまたはFolder子孫を閲覧・Range Downloadできる。
-  - [ ] ManagerがMemberとPermissionを更新し、解除後にアクセスが失効する。
-  - [ ] Error responseやLogから他UserのOwner、File名、物理Path、SQLが漏えいしない。
-- [ ] PR2の標準検証を完了する。
-  - [ ] `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-server.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`が成功する。
-  - [ ] `./scripts/ci/verify-android.sh`が既存Androidに対して成功する。
-  - [ ] `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`、OpenAPI Contract Test、`git diff --check`が成功する。
+- [x] SharingServiceとShare APIの自動Testを完了する。
+  - [x] 候補、Share作成、所有/受信一覧、詳細、Member追加・更新・解除、Share解除の正常系をTestする。
+  - [x] Fileへの`CONTRIBUTOR`、本人・非`ACTIVE` User、重複Share/Member、無権限、Root、Trash対象をTestする。
+  - [x] Owner、Manager、Editor、Viewer、未共有、Adminごとの参照・管理境界をTestする。
+  - [x] Share解除後の即時失効と別経路維持、同時Member更新競合をTestする。
+- [x] 共有File参照の自動Testを完了する。
+  - [x] 所有者、File直接Share、Folder継承、最強経路のList/Get/DownloadをTestする。
+  - [x] Fileの兄弟漏えい、祖先未共有、Admin暗黙アクセス、無権限ID推測をTestする。
+  - [x] Range Download、MISSING表示、Storage unavailable、未完了Operation隔離の回帰をTestする。
+  - [x] 100件PageのPermission付与がN+1 Queryにならないことを確認する。
+- [x] API ClientでPR2の主要フローを手動確認する。
+  - [x] OwnerがFileとFolderを複数Userへ共有し、所有・受信一覧と詳細を確認する。
+  - [x] RecipientがFileだけまたはFolder子孫を閲覧・Range Downloadできる。
+  - [x] ManagerがMemberとPermissionを更新し、解除後にアクセスが失効する。
+  - [x] Error responseやLogから他UserのOwner、File名、物理Path、SQLが漏えいしない。
+- [x] PR2の標準検証を完了する。
+  - [x] `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-server.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`が成功する。
+  - [x] `./scripts/ci/verify-android.sh`が既存Androidに対して成功する。
+  - [x] `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`、OpenAPI Contract Test、`git diff --check`が成功する。
 
 ### 2.6 PR2完了
 
-- [ ] PR2差分をセルフレビューする。
-  - [ ] 2.1〜2.5と承認済み要求・設計・OpenAPIが対応している。
-  - [ ] EndpointからDbContext/FileStoreを直接呼ばず、全参照要求でAuthorizationServiceを使用している。
-  - [ ] Permissionをクライアントだけで判定せず、共有解除を即時反映している。
-  - [ ] 不要なPackage、生成物、実環境情報、Credentialが差分にない。
+- [x] PR2差分をセルフレビューする。
+  - [x] 2.1〜2.5と承認済み要求・設計・OpenAPIが対応している。
+  - [x] EndpointからDbContext/FileStoreを直接呼ばず、全参照要求でAuthorizationServiceを使用している。
+  - [x] Permissionをクライアントだけで判定せず、共有解除を即時反映している。
+  - [x] 不要なPackage、生成物、実環境情報、Credentialが差分にない。
 - [ ] PR2を完了する。
   - [ ] 2.1〜2.6のPR2対象項目がすべて`[x]`である。
   - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。

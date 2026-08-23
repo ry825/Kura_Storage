@@ -2,6 +2,8 @@ using KuraStorage.Domain.Files;
 
 namespace KuraStorage.Application.Files;
 
+public sealed record FileOwnerItem(Guid Id, string DisplayName);
+
 public sealed record FileItem(
     Guid Id,
     Guid? ParentId,
@@ -16,7 +18,11 @@ public sealed record FileItem(
     DateTimeOffset? MissingDetectedAt,
     DateTimeOffset? MissingLastCheckedAt,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    FileOwnerItem? Owner = null,
+    string? Permission = null,
+    string? PermissionSource = null,
+    Guid? ShareTargetId = null);
 
 public sealed record FilePage(
     Guid? ParentId,

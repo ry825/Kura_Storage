@@ -10,6 +10,7 @@ tags:
   - name: System
   - name: Authentication
   - name: Files
+  - name: Sharing
   - name: Transfers
   - name: Trash
   - name: Administration
@@ -157,6 +158,169 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /shares/candidates:
+    get:
+      tags: [Sharing]
+      operationId: listShareCandidates
+      summary: List active family users available as share recipients
+      responses:
+        "200":
+          description: Active users other than the authenticated user, ordered by display name and ID.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 500
+                items:
+                  $ref: "#/components/schemas/ShareCandidate"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /shares:
+    post:
+      tags: [Sharing]
+      operationId: createShare
+      summary: Share an owned active file or folder with one or more users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateShareRequest"
+      responses:
+        "201":
+          description: The share was created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    get:
+      tags: [Sharing]
+      operationId: listShares
+      summary: List owned shares or directly received share roots
+      parameters:
+        - name: scope
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [owned, received]
+        - name: targetType
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/FileEntryType"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: A page of direct share roots; folder descendants are not expanded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SharePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /shares/{shareId}:
+    parameters:
+      - $ref: "#/components/parameters/ShareId"
+    get:
+      tags: [Sharing]
+      operationId: getShare
+      summary: Get a share visible to its owner or an active direct member
+      responses:
+        "200":
+          description: Share details including current members.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Sharing]
+      operationId: deleteShare
+      summary: Remove a share as its owner or a current manager
+      responses:
+        "204":
+          description: The share and all memberships were removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /shares/{shareId}/members/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/ShareId"
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Sharing]
+      operationId: setShareMember
+      summary: Add a member or idempotently replace the current permission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetShareMemberRequest"
+      responses:
+        "200":
+          description: The updated share.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Sharing]
+      operationId: removeShareMember
+      summary: Remove one member and remove an empty share
+      responses:
+        "204":
+          description: The membership was removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /files:
     get:
       tags: [Files]
@@ -729,6 +893,13 @@ components:
       schema:
         type: string
         format: uuid
+    ShareId:
+      name: shareId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   headers:
     UploadOffset:
       description: Authoritative next byte offset persisted by the server.
@@ -1113,10 +1284,137 @@ components:
         parentId:
           type: string
           format: uuid
+    SharePermission:
+      type: string
+      enum: [VIEWER, CONTRIBUTOR, EDITOR, MANAGER]
+    PermissionSource:
+      type: string
+      enum: [OWNER, DIRECT, INHERITED]
+    OwnerSummary:
+      type: object
+      additionalProperties: false
+      required: [id, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+    ShareCandidate:
+      type: object
+      additionalProperties: false
+      required: [userId, displayName]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+    ShareMemberItem:
+      type: object
+      additionalProperties: false
+      required: [userId, displayName, permission]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+        permission:
+          $ref: "#/components/schemas/SharePermission"
+    CreateShareMember:
+      type: object
+      additionalProperties: false
+      required: [userId, permission]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        permission:
+          $ref: "#/components/schemas/SharePermission"
+    CreateShareRequest:
+      type: object
+      additionalProperties: false
+      required: [targetEntryId, members]
+      properties:
+        targetEntryId:
+          type: string
+          format: uuid
+        members:
+          type: array
+          minItems: 1
+          maxItems: 500
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/CreateShareMember"
+    SetShareMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [permission]
+      properties:
+        permission:
+          $ref: "#/components/schemas/SharePermission"
+    ShareItem:
+      type: object
+      additionalProperties: false
+      required: [id, targetEntryId, entryType, name, owner, permission, members, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        targetEntryId:
+          type: string
+          format: uuid
+        entryType:
+          $ref: "#/components/schemas/FileEntryType"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        owner:
+          $ref: "#/components/schemas/OwnerSummary"
+        permission:
+          $ref: "#/components/schemas/SharePermission"
+        members:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/ShareMemberItem"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SharePage:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, totalCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShareItem"
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 500
+        totalCount:
+          type: integer
+          minimum: 0
     FileEntry:
       type: object
       additionalProperties: false
-      required: [id, name, entryType, size, status, fileVersion, trashedAt, purgeEligibleAt, missingDetectedAt, missingLastCheckedAt, createdAt, updatedAt]
+      required: [id, name, entryType, size, status, fileVersion, trashedAt, purgeEligibleAt, missingDetectedAt, missingLastCheckedAt, createdAt, updatedAt, owner, permission, permissionSource]
       properties:
         id:
           type: string
@@ -1161,6 +1459,15 @@ components:
         updatedAt:
           type: string
           format: date-time
+        owner:
+          $ref: "#/components/schemas/OwnerSummary"
+        permission:
+          $ref: "#/components/schemas/SharePermission"
+        permissionSource:
+          $ref: "#/components/schemas/PermissionSource"
+        shareTargetId:
+          type: [string, "null"]
+          format: uuid
     FileEntryPage:
       type: object
       additionalProperties: false
@@ -1240,6 +1547,11 @@ components:
         - CHUNK_SIZE_LIMIT_EXCEEDED
         - FILE_SIZE_LIMIT_EXCEEDED
         - UPLOAD_LIMIT_REACHED
+        - INVALID_SHARE_PERMISSION
+        - SHARE_NOT_FOUND
+        - SHARE_MEMBER_NOT_FOUND
+        - SHARE_CONFLICT
+        - SHARE_OPERATION_NOT_ALLOWED
         - INTERNAL_ERROR
 security:
   - bearerAuth: []

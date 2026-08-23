@@ -3,6 +3,8 @@ using KuraStorage.Application.Abstractions;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 using KuraStorage.Application.Indexing;
+using KuraStorage.Application.Sharing;
+using KuraStorage.Domain.Sharing;
 
 namespace KuraStorage.Application.Files;
 
@@ -13,7 +15,8 @@ public sealed class FileService(
     IManagedFileSystemSnapshotReader snapshotReader,
     IUserStorageProvisioner provisioner,
     ISystemClock clock,
-    TrashPurgeOptions? purgeOptions = null)
+    TrashPurgeOptions? purgeOptions = null,
+    IAuthorizationService? authorizationService = null)
 {
     private readonly int retentionDays = purgeOptions?.RetentionDays ?? 30;
     public async Task<FileResult<FilePage>> ListAsync(
@@ -40,27 +43,41 @@ public sealed class FileService(
 
         var parent = parentId is null
             ? await repository.FindRootAsync(ownerUserId, cancellationToken)
-            : await repository.FindOwnedAsync(ownerUserId, parentId.Value, cancellationToken);
+            : authorizationService is null
+                ? await repository.FindOwnedAsync(ownerUserId, parentId.Value, cancellationToken)
+                : await repository.FindByIdAsync(parentId.Value, cancellationToken);
         if (!IsActiveFolder(parent))
         {
             return FileResult<FilePage>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
-        if (await IsBlockedAsync(ownerUserId, parent!, cancellationToken))
+        if (!await CanViewAsync(ownerUserId, parent!, cancellationToken))
+        {
+            return FileResult<FilePage>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(parent!.OwnerUserId, parent, cancellationToken))
         {
             return FileResult<FilePage>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
         var skip = checked((page - 1) * pageSize);
         var entries = await repository.ListActiveChildrenAsync(
-            ownerUserId,
+            parent.OwnerUserId,
             parent!.Id,
             skip,
             pageSize,
             cancellationToken);
-        var count = await repository.CountActiveChildrenAsync(ownerUserId, parent.Id, cancellationToken);
+        var count = await repository.CountActiveChildrenAsync(parent.OwnerUserId, parent.Id, cancellationToken);
+        var permissions = await ResolvePermissionsAsync(ownerUserId, entries, cancellationToken);
+        var owner = await ResolveOwnerAsync(parent.OwnerUserId, cancellationToken);
         return FileResult<FilePage>.Success(
-            new FilePage(parent.Id, entries.Select(Map).ToArray(), page, pageSize, count));
+            new FilePage(
+                parent.Id,
+                entries.Select(entry => Map(entry, owner, permissions[entry.Id])).ToArray(),
+                page,
+                pageSize,
+                count));
     }
 
     public async Task<FileResult<FileItem>> GetAsync(
@@ -68,15 +85,27 @@ public sealed class FileService(
         Guid entryId,
         CancellationToken cancellationToken)
     {
-        var entry = await repository.FindOwnedAsync(ownerUserId, entryId, cancellationToken);
+        var entry = authorizationService is null
+            ? await repository.FindOwnedAsync(ownerUserId, entryId, cancellationToken)
+            : await repository.FindByIdAsync(entryId, cancellationToken);
         if (entry is null || entry.Status == FileEntryStatus.Trashed)
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
-        return await IsBlockedAsync(ownerUserId, entry, cancellationToken)
-            ? FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict)
-            : FileResult<FileItem>.Success(Map(entry));
+        if (!await CanViewAsync(ownerUserId, entry, cancellationToken))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (await IsBlockedAsync(entry.OwnerUserId, entry, cancellationToken))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
+        var permission = await ResolvePermissionAsync(ownerUserId, entry, cancellationToken);
+        return FileResult<FileItem>.Success(
+            Map(entry, await ResolveOwnerAsync(entry.OwnerUserId, cancellationToken), permission));
     }
 
     public async Task<FileResult<FileItem>> RenameAsync(
@@ -137,7 +166,7 @@ public sealed class FileService(
         if (string.Equals(entry.Name, name.Value, StringComparison.Ordinal))
         {
             await AuditSuccessAsync(command, cancellationToken);
-            return FileResult<FileItem>.Success(Map(entry));
+            return FileResult<FileItem>.Success(await MapOwnerAsync(entry, cancellationToken));
         }
 
         if (await repository.FindActiveChildAsync(
@@ -229,7 +258,7 @@ public sealed class FileService(
         if (entry.ParentId == command.TargetParentId)
         {
             await AuditSuccessAsync(command, cancellationToken);
-            return FileResult<FileItem>.Success(Map(entry));
+            return FileResult<FileItem>.Success(await MapOwnerAsync(entry, cancellationToken));
         }
 
         if (entry.EntryType == FileEntryType.Folder &&
@@ -349,7 +378,7 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNameConflict, FileFailureKind.Conflict);
         }
 
-        return FileResult<FileItem>.Success(Map(entry));
+        return FileResult<FileItem>.Success(await MapOwnerAsync(entry, cancellationToken));
     }
 
     public async Task<FileResult<FileItem>> UploadAsync(
@@ -406,7 +435,7 @@ public sealed class FileService(
                 var completed = await repository.FindOwnedAsync(ownerUserId, completedId, cancellationToken);
                 if (completed is not null)
                 {
-                    return FileResult<FileItem>.Success(Map(completed));
+                    return FileResult<FileItem>.Success(await MapOwnerAsync(completed, cancellationToken));
                 }
             }
 
@@ -534,7 +563,7 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNameConflict, FileFailureKind.Conflict);
         }
 
-        return FileResult<FileItem>.Success(Map(entry));
+        return FileResult<FileItem>.Success(await MapOwnerAsync(entry, cancellationToken));
     }
 
     public async Task<FileResult<DownloadFile>> DownloadAsync(
@@ -542,8 +571,15 @@ public sealed class FileService(
         Guid entryId,
         CancellationToken cancellationToken)
     {
-        var entry = await repository.FindOwnedAsync(ownerUserId, entryId, cancellationToken);
+        var entry = authorizationService is null
+            ? await repository.FindOwnedAsync(ownerUserId, entryId, cancellationToken)
+            : await repository.FindByIdAsync(entryId, cancellationToken);
         if (entry is null || entry.Status == FileEntryStatus.Trashed || entry.EntryType != FileEntryType.File)
+        {
+            return FileResult<DownloadFile>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        if (!await CanViewAsync(ownerUserId, entry, cancellationToken))
         {
             return FileResult<DownloadFile>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
@@ -558,7 +594,7 @@ public sealed class FileService(
             return FileResult<DownloadFile>.Fail(FileErrorCodes.FileMissing, FileFailureKind.Conflict);
         }
 
-        if (await IsBlockedAsync(ownerUserId, entry, cancellationToken))
+        if (await IsBlockedAsync(entry.OwnerUserId, entry, cancellationToken))
         {
             return FileResult<DownloadFile>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
@@ -585,7 +621,7 @@ public sealed class FileService(
         }
 
         if (observed.IsolationReason is not null ||
-            observed.OwnerUserId != ownerUserId ||
+            observed.OwnerUserId != entry.OwnerUserId ||
             observed.EntryType != FileEntryType.File ||
             !string.Equals(observed.RelativePath.Value, entry.RelativePath, StringComparison.Ordinal) ||
             !await StorageAvailableAsync(StorageIntent.Read, cancellationToken))
@@ -595,9 +631,15 @@ public sealed class FileService(
 
         try
         {
+            if (!await CanViewAsync(ownerUserId, entry, cancellationToken))
+            {
+                return FileResult<DownloadFile>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+            }
+
+            var permission = await ResolvePermissionAsync(ownerUserId, entry, cancellationToken);
             return FileResult<DownloadFile>.Success(
                 new DownloadFile(
-                    Map(entry),
+                    Map(entry, await ResolveOwnerAsync(entry.OwnerUserId, cancellationToken), permission),
                     await fileStore.OpenReadAsync(RelativeStoragePath.Create(entry.RelativePath), cancellationToken)));
         }
         catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
@@ -627,8 +669,14 @@ public sealed class FileService(
             pageSize,
             cancellationToken);
         var count = await repository.CountTrashedAsync(ownerUserId, cancellationToken);
+        var owner = await ResolveOwnerAsync(ownerUserId, cancellationToken);
         return FileResult<FilePage>.Success(
-            new FilePage(null, entries.Select(entry => Map(entry, retentionDays)).ToArray(), page, pageSize, count));
+            new FilePage(
+                null,
+                entries.Select(entry => Map(entry, owner, OwnerPermission(entry.Id), retentionDays)).ToArray(),
+                page,
+                pageSize,
+                count));
     }
 
     public async Task<FileResult<FileItem>> TrashAsync(
@@ -705,7 +753,7 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
-        return FileResult<FileItem>.Success(Map(entry, retentionDays));
+        return FileResult<FileItem>.Success(await MapOwnerAsync(entry, cancellationToken, retentionDays));
     }
 
     public async Task<FileResult<FileItem>> RestoreAsync(
@@ -795,7 +843,7 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
-        return FileResult<FileItem>.Success(Map(entry));
+        return FileResult<FileItem>.Success(await MapOwnerAsync(entry, cancellationToken));
     }
 
     private async Task<FileResult<FileItem>> RelocateAsync(
@@ -951,7 +999,7 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
 
-        return FileResult<FileItem>.Success(Map(entry));
+        return FileResult<FileItem>.Success(await MapOwnerAsync(entry, cancellationToken));
     }
 
     private async Task<bool> IsBlockedAsync(
@@ -1162,6 +1210,79 @@ public sealed class FileService(
             entry.MissingLastCheckedAt,
             entry.CreatedAt,
             entry.UpdatedAt);
+
+    private async Task<bool> CanViewAsync(
+        Guid actorUserId,
+        FileEntry entry,
+        CancellationToken cancellationToken) =>
+        actorUserId == entry.OwnerUserId ||
+        authorizationService is not null &&
+        await authorizationService.AllowsAsync(actorUserId, entry.Id, ShareOperation.View, cancellationToken);
+
+    private async Task<EffectivePermission> ResolvePermissionAsync(
+        Guid actorUserId,
+        FileEntry entry,
+        CancellationToken cancellationToken) =>
+        actorUserId == entry.OwnerUserId || authorizationService is null
+            ? OwnerPermission(entry.Id)
+            : await authorizationService.ResolveAsync(actorUserId, entry.Id, cancellationToken);
+
+    private async Task<IReadOnlyDictionary<Guid, EffectivePermission>> ResolvePermissionsAsync(
+        Guid actorUserId,
+        IReadOnlyList<FileEntry> entries,
+        CancellationToken cancellationToken)
+    {
+        if (entries.Count == 0)
+        {
+            return new Dictionary<Guid, EffectivePermission>();
+        }
+
+        if (entries.All(entry => entry.OwnerUserId == actorUserId) || authorizationService is null)
+        {
+            return entries.ToDictionary(entry => entry.Id, entry => OwnerPermission(entry.Id));
+        }
+
+        return await authorizationService.ResolveBatchAsync(
+            actorUserId,
+            entries.Select(entry => entry.Id).ToArray(),
+            cancellationToken);
+    }
+
+    private async Task<FileOwnerItem> ResolveOwnerAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
+        await repository.FindOwnerAsync(ownerUserId, cancellationToken) ?? new FileOwnerItem(ownerUserId, string.Empty);
+
+    private static EffectivePermission OwnerPermission(Guid entryId) =>
+        new(entryId, EffectivePermissionLevel.Owner, PermissionSource.Owner, null, null);
+
+    private async Task<FileItem> MapOwnerAsync(
+        FileEntry entry,
+        CancellationToken cancellationToken,
+        int retentionDaysOverride = 30) =>
+        Map(
+            entry,
+            await ResolveOwnerAsync(entry.OwnerUserId, cancellationToken),
+            OwnerPermission(entry.Id),
+            retentionDaysOverride);
+
+    private static FileItem Map(
+        FileEntry entry,
+        FileOwnerItem owner,
+        EffectivePermission permission,
+        int retentionDaysOverride = 30) =>
+        Map(entry, retentionDaysOverride) with
+        {
+            Owner = owner,
+            Permission = permission.Permission switch
+            {
+                EffectivePermissionLevel.Owner or EffectivePermissionLevel.Manager => "MANAGER",
+                EffectivePermissionLevel.Editor => "EDITOR",
+                EffectivePermissionLevel.Contributor => "CONTRIBUTOR",
+                EffectivePermissionLevel.Viewer => "VIEWER",
+                _ => null,
+            },
+            PermissionSource = permission.Source?.ToString().ToUpperInvariant(),
+            ShareTargetId = permission.Source == PermissionSource.Owner ? null : permission.ShareTargetId,
+        };
 }
 
 public sealed class UploadSizeMismatchException : IOException

@@ -1,14 +1,50 @@
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Indexing;
+using KuraStorage.Application.Sharing;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Sharing;
 using Xunit;
 
 namespace KuraStorage.Application.Tests;
 
 public sealed class FileServiceTests
 {
+    [Fact]
+    public async Task ListAsync_SharedPage_ResolvesOneHundredChildPermissionsInOneBatch()
+    {
+        var now = DateTimeOffset.Parse("2026-08-23T00:00:00Z");
+        var ownerId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var root = FileEntry.CreateRoot(ownerId, now);
+        var folder = FileEntry.CreateFolder(
+            Guid.NewGuid(), ownerId, root.Id, FileName.Create("Shared"),
+            RelativeStoragePath.Create($"{root.RelativePath}/Shared"), now);
+        var children = Enumerable.Range(0, 100).Select(index => FileEntry.CreateFile(
+            Guid.NewGuid(), ownerId, folder.Id, FileName.Create($"item-{index:D3}.txt"),
+            RelativeStoragePath.Create($"{folder.RelativePath}/item-{index:D3}.txt"),
+            "text/plain", index, now)).ToArray();
+        var repository = new FakeFileRepository([root, folder, .. children]);
+        var authorization = new RecordingAuthorizationService(folder.Id);
+        var service = new FileService(
+            repository,
+            new FakeFileStore(),
+            new AvailableStorageGuard(),
+            new EmptySnapshotReader(),
+            new NoOpProvisioner(),
+            new FixedClock(now),
+            null,
+            authorization);
+
+        var result = await service.ListAsync(actorId, folder.Id, 1, 100, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(100, result.Value!.Items.Count);
+        Assert.Equal(1, authorization.BatchCalls);
+        Assert.All(result.Value.Items, item => Assert.Equal("INHERITED", item.PermissionSource));
+    }
+
     [Fact]
     public async Task ListAsync_IncludesMissingStateAndTimestampsWithoutFilesystemScan()
     {
@@ -301,6 +337,12 @@ public sealed class FileServiceTests
             CancellationToken cancellationToken) =>
             Task.FromResult(entries.SingleOrDefault(entry => entry.OwnerUserId == ownerUserId && entry.Id == entryId));
 
+        public Task<FileEntry?> FindByIdAsync(Guid entryId, CancellationToken cancellationToken) =>
+            Task.FromResult(entries.SingleOrDefault(entry => entry.Id == entryId));
+
+        public Task<FileOwnerItem?> FindOwnerAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
+            Task.FromResult<FileOwnerItem?>(new FileOwnerItem(ownerUserId, "Owner"));
+
         public Task<bool> ReloadAsync(FileEntry entry, CancellationToken cancellationToken) => Task.FromResult(true);
 
         public Task<FileEntry?> FindRootAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
@@ -553,6 +595,41 @@ public sealed class FileServiceTests
     private sealed class FixedClock(DateTimeOffset now) : ISystemClock
     {
         public DateTimeOffset UtcNow => now;
+    }
+
+    private sealed class RecordingAuthorizationService(Guid shareTargetId) : IAuthorizationService
+    {
+        public int BatchCalls { get; private set; }
+
+        public Task<EffectivePermission> ResolveAsync(
+            Guid actorUserId,
+            Guid entryId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Permission(entryId));
+
+        public Task<IReadOnlyDictionary<Guid, EffectivePermission>> ResolveBatchAsync(
+            Guid actorUserId,
+            IReadOnlyCollection<Guid> entryIds,
+            CancellationToken cancellationToken)
+        {
+            BatchCalls++;
+            return Task.FromResult<IReadOnlyDictionary<Guid, EffectivePermission>>(
+                entryIds.ToDictionary(entryId => entryId, Permission));
+        }
+
+        public Task<bool> AllowsAsync(
+            Guid actorUserId,
+            Guid entryId,
+            ShareOperation operation,
+            CancellationToken cancellationToken) => Task.FromResult(true);
+
+        private EffectivePermission Permission(Guid entryId) =>
+            new(
+                entryId,
+                EffectivePermissionLevel.Viewer,
+                PermissionSource.Inherited,
+                shareTargetId,
+                Guid.NewGuid());
     }
 
     private sealed class NoOpTransaction : IFileTransaction
