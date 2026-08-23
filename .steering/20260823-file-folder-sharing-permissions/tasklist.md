@@ -125,11 +125,11 @@
   - [x] Domain/Application/Infrastructureの依存方向と単一設置を家族境界とする前提が明確である。
   - [x] 新しい外部Package、将来用Column、Group/Deny ACL、検索を追加していない。
   - [x] Credential、実環境値、物理Path、生成物が差分に含まれていない。
-- [ ] PR1を完了する。
-  - [ ] 1.1〜1.6のPR1対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR1を完了する。
+  - [x] 1.1〜1.6のPR1対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -471,14 +471,34 @@
 
 ### PR1: Sharing domain・Persistence・Authorization基盤
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未完了
-- 実装中に追加したタスクと理由: 未完了
-- 技術的に不要になったタスク・理由・代替実装: 未完了
-- 後続Pull Requestへの引継ぎ事項: 未完了
+- 完了日: 2026-08-23
+- Pull Request: [#19 Add file sharing authorization foundation](https://github.com/ry825/Kura_Storage/pull/19)
+- 実施したTest・Build・静的解析:
+  - `./scripts/ci/verify-config.sh`: 成功
+  - `./scripts/ci/verify-server.sh`: 成功（Domain 49件、Application 119件、Integration 79件）
+  - `./scripts/ci/verify-security.sh`: 成功
+  - `./scripts/ci/verify-deployment.sh`: 成功
+  - `./scripts/ci/verify-android.sh`: 成功
+  - `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`: 成功
+  - `dotnet ef migrations has-pending-model-changes`: 未反映のModel変更なし
+  - `git diff --check`: 成功
+  - Line Coverage: `AuthorizationService` 100%、Domain 85.61%、Application 80.33%
+  - GitHub Actions: Android、Config、Security、Serverの必須Checkがすべて成功
+- 手動確認・実機確認:
+  - PR1はAPI・Android UIへ接続しない基盤PRのため、ユーザーフローの手動確認と実機確認はなし。
+  - PostgreSQLの`EXPLAIN`で、共有Member検索が追加Indexを使用することを確認した。
+- 計画と実装の差分:
+  - 承認済みのPR1範囲どおりに実装し、Share API、既存File APIへの認可接続、Android共有UIは後続PRへ維持した。
+  - MigrationのDownは、Shareが存在する場合に加え、ActorとTarget Ownerが異なるUpload Sessionが存在する場合も明示的に拒否する安全策とした。
+- 実装中に追加したタスクと理由:
+  - 非ACTIVE Actorの拒否と、祖先階層のOwner・Folder種別の連続性検証をセルフレビューで追加し、異常データ時もFail-closedとなるようにした。
+  - Schema変更に伴い、既存のTrash purge Migration TestのIndex期待値を更新した。
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続Pull Requestへの引継ぎ事項:
+  - PR2はPR1のMerge後、最新`main`から開始する。
+  - `SharingService`では最後のMember削除時に空のShareも同一Transactionで削除する。
+  - File参照系は`AuthorizationService`のBatch認可を使用し、File直接Shareを子へ継承せず、長期Permission Cacheを追加しない。
+  - PR3では`TargetOwnerUserId`を使用し、File Lock取得後に認可を再評価する。既存Create系がPersonal限定である点はPR1では意図的に維持している。
 
 ### PR2: 共有管理APIと共有Fileの閲覧
 
