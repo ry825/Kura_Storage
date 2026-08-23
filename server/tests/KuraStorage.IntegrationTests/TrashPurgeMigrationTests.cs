@@ -49,7 +49,7 @@ public sealed class TrashPurgeMigrationTests
                 connection);
             Assert.Equal(1L, await uploadTable.ExecuteScalarAsync());
             await using var uploadIndexes = new NpgsqlCommand(
-                "SELECT count(*) FROM pg_indexes WHERE indexname IN ('ux_upload_sessions_owner_idempotency_key', 'ix_upload_sessions_cleanup_candidates', 'ix_upload_sessions_device_status')",
+                "SELECT count(*) FROM pg_indexes WHERE indexname IN ('ux_upload_sessions_actor_idempotency_key', 'ix_upload_sessions_cleanup_candidates', 'ix_upload_sessions_device_status')",
                 connection);
             Assert.Equal(3L, await uploadIndexes.ExecuteScalarAsync());
             await using var invalidRun = new NpgsqlCommand(

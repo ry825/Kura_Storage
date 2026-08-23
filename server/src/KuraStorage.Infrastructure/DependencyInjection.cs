@@ -2,6 +2,7 @@ using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Identity;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
+using KuraStorage.Application.Sharing;
 using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Infrastructure.Configuration;
@@ -88,6 +89,7 @@ public static class DependencyInjection
         services.AddScoped<IIdentityRepository, IdentityRepository>();
         services.AddScoped<IFileRepository, FileRepository>();
         services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
+        services.AddScoped<IAuthorizationRepository, AuthorizationRepository>();
         services.AddScoped<IIndexCatalogRepository, IndexCatalogRepository>();
         services.AddScoped<IIndexScanService, IndexScanService>();
         services.AddScoped<IIndexEventService, IndexEventService>();
@@ -112,6 +114,7 @@ public static class DependencyInjection
         services.AddScoped<UploadSessionService>();
         services.AddScoped<UploadSessionRecoveryService>();
         services.AddScoped<UploadSessionCleanupService>();
+        services.AddScoped<IAuthorizationService, AuthorizationService>();
         services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IRefreshTokenService, RefreshTokenService>();

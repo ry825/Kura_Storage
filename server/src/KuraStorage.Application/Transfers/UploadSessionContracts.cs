@@ -31,7 +31,7 @@ public sealed class UploadSessionOptions
 }
 
 public sealed record CreateUploadSessionCommand(
-    Guid OwnerUserId,
+    Guid ActorUserId,
     Guid DeviceId,
     Guid DestinationFolderId,
     string FileName,
@@ -42,7 +42,7 @@ public sealed record CreateUploadSessionCommand(
     string RequestId);
 
 public sealed record UploadChunkCommand(
-    Guid OwnerUserId,
+    Guid ActorUserId,
     Guid DeviceId,
     Guid SessionId,
     long Offset,

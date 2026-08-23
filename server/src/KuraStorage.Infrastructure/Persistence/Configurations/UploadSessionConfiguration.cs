@@ -23,7 +23,8 @@ public sealed class UploadSessionConfiguration : IEntityTypeConfiguration<Upload
             });
         builder.HasKey(session => session.Id);
         builder.Property(session => session.Id).HasColumnName("id");
-        builder.Property(session => session.OwnerUserId).HasColumnName("owner_user_id");
+        builder.Property(session => session.ActorUserId).HasColumnName("actor_user_id");
+        builder.Property(session => session.TargetOwnerUserId).HasColumnName("target_owner_user_id");
         builder.Property(session => session.DeviceId).HasColumnName("device_id");
         builder.Property(session => session.DestinationFolderId).HasColumnName("destination_folder_id");
         builder.Property(session => session.FileEntryId).HasColumnName("file_entry_id");
@@ -52,7 +53,11 @@ public sealed class UploadSessionConfiguration : IEntityTypeConfiguration<Upload
         builder.Property<uint>("xmin").IsRowVersion();
         builder.HasOne<User>()
             .WithMany()
-            .HasForeignKey(session => session.OwnerUserId)
+            .HasForeignKey(session => session.ActorUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<User>()
+            .WithMany()
+            .HasForeignKey(session => session.TargetOwnerUserId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Device>()
             .WithMany()
@@ -62,9 +67,9 @@ public sealed class UploadSessionConfiguration : IEntityTypeConfiguration<Upload
             .WithMany()
             .HasForeignKey(session => session.DestinationFolderId)
             .OnDelete(DeleteBehavior.SetNull);
-        builder.HasIndex(session => new { session.OwnerUserId, session.IdempotencyKey })
+        builder.HasIndex(session => new { session.ActorUserId, session.IdempotencyKey })
             .IsUnique()
-            .HasDatabaseName("ux_upload_sessions_owner_idempotency_key");
+            .HasDatabaseName("ux_upload_sessions_actor_idempotency_key");
         builder.HasIndex(session => session.FileOperationId)
             .IsUnique()
             .HasFilter("\"file_operation_id\" IS NOT NULL")
@@ -73,7 +78,7 @@ public sealed class UploadSessionConfiguration : IEntityTypeConfiguration<Upload
             .HasDatabaseName("ix_upload_sessions_cleanup_candidates");
         builder.HasIndex(session => new { session.DeviceId, session.Status, session.Id })
             .HasDatabaseName("ix_upload_sessions_device_status");
-        builder.HasIndex(session => new { session.OwnerUserId, session.Status })
-            .HasDatabaseName("ix_upload_sessions_owner_status");
+        builder.HasIndex(session => new { session.ActorUserId, session.Status })
+            .HasDatabaseName("ix_upload_sessions_actor_status");
     }
 }

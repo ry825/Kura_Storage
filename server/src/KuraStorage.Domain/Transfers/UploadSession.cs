@@ -8,7 +8,8 @@ public sealed class UploadSession
 
     public UploadSession(
         Guid id,
-        Guid ownerUserId,
+        Guid actorUserId,
+        Guid targetOwnerUserId,
         Guid deviceId,
         Guid destinationFolderId,
         Guid fileEntryId,
@@ -22,7 +23,7 @@ public sealed class UploadSession
         DateTimeOffset expiresAt,
         DateTimeOffset absoluteExpiresAt)
     {
-        if (id == Guid.Empty || ownerUserId == Guid.Empty || deviceId == Guid.Empty ||
+        if (id == Guid.Empty || actorUserId == Guid.Empty || targetOwnerUserId == Guid.Empty || deviceId == Guid.Empty ||
             destinationFolderId == Guid.Empty || fileEntryId == Guid.Empty || expectedSize < 0 ||
             string.IsNullOrWhiteSpace(idempotencyKey) || string.IsNullOrWhiteSpace(fileName) ||
             string.IsNullOrWhiteSpace(temporaryRelativePath) || expiresAt <= now ||
@@ -32,7 +33,8 @@ public sealed class UploadSession
         }
 
         Id = id;
-        OwnerUserId = ownerUserId;
+        ActorUserId = actorUserId;
+        TargetOwnerUserId = targetOwnerUserId;
         DeviceId = deviceId;
         DestinationFolderId = destinationFolderId;
         FileEntryId = fileEntryId;
@@ -51,7 +53,9 @@ public sealed class UploadSession
 
     public Guid Id { get; private set; }
 
-    public Guid OwnerUserId { get; private set; }
+    public Guid ActorUserId { get; private set; }
+
+    public Guid TargetOwnerUserId { get; private set; }
 
     public Guid DeviceId { get; private set; }
 

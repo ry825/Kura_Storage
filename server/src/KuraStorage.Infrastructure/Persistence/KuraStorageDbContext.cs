@@ -3,6 +3,7 @@ using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Indexing;
 using KuraStorage.Domain.Maintenance;
+using KuraStorage.Domain.Sharing;
 using KuraStorage.Domain.Transfers;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,6 +28,10 @@ public sealed class KuraStorageDbContext(DbContextOptions<KuraStorageDbContext> 
     public DbSet<TrashPurgeRun> TrashPurgeRuns => Set<TrashPurgeRun>();
 
     public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
+
+    public DbSet<Share> Shares => Set<Share>();
+
+    public DbSet<ShareMember> ShareMembers => Set<ShareMember>();
 
     public DbSet<IndexScanRun> IndexScanRuns => Set<IndexScanRun>();
 

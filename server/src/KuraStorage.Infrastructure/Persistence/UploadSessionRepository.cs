@@ -8,28 +8,28 @@ namespace KuraStorage.Infrastructure.Persistence;
 
 public sealed class UploadSessionRepository(KuraStorageDbContext dbContext) : IUploadSessionRepository
 {
-    public async Task<UploadSession?> FindByOwnerAndKeyAsync(
-        Guid ownerUserId,
+    public async Task<UploadSession?> FindByActorAndKeyAsync(
+        Guid actorUserId,
         string idempotencyKey,
         CancellationToken cancellationToken) =>
         await dbContext.UploadSessions.SingleOrDefaultAsync(
-            session => session.OwnerUserId == ownerUserId && session.IdempotencyKey == idempotencyKey,
+            session => session.ActorUserId == actorUserId && session.IdempotencyKey == idempotencyKey,
             cancellationToken);
 
     public async Task<UploadSession?> FindAsync(Guid sessionId, CancellationToken cancellationToken) =>
         await dbContext.UploadSessions.SingleOrDefaultAsync(session => session.Id == sessionId, cancellationToken);
 
     public async Task<bool> IsDeviceActiveAsync(
-        Guid ownerUserId,
+        Guid actorUserId,
         Guid deviceId,
         CancellationToken cancellationToken) =>
         await dbContext.Devices.AnyAsync(
-            device => device.Id == deviceId && device.UserId == ownerUserId && device.Status == DeviceStatus.Active,
+            device => device.Id == deviceId && device.UserId == actorUserId && device.Status == DeviceStatus.Active,
             cancellationToken);
 
-    public async Task<int> CountActiveForUserAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
+    public async Task<int> CountActiveForActorAsync(Guid actorUserId, CancellationToken cancellationToken) =>
         await dbContext.UploadSessions.CountAsync(
-            session => session.OwnerUserId == ownerUserId && session.Status == UploadSessionStatus.Active,
+            session => session.ActorUserId == actorUserId && session.Status == UploadSessionStatus.Active,
             cancellationToken);
 
     public async Task<int> CountActiveForDeviceAsync(Guid deviceId, CancellationToken cancellationToken) =>

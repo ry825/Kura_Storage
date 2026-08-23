@@ -83,6 +83,8 @@ kurastorage/
 
 Rename・Moveは現行のServer File機能を拡張し、Domainは`KuraStorage.Domain/Files/`、Command・契約・Recoveryは`KuraStorage.Application/Files/`、RepositoryとFileStoreは既存Infrastructure、Endpointは既存`KuraStorage.Api/Program.cs`へ配置する。専用Project、Worker、将来用Directory、DB Tableは追加しない。Android側も既存`core-network`、`core-data`、`feature-files`内へ配置する。
 
+ファイル・フォルダ共有は、Domainを`KuraStorage.Domain/Sharing/`、有効権限解決と共有Use Caseを`KuraStorage.Application/Sharing/`、永続化とBatch認可Queryを`KuraStorage.Infrastructure/Persistence/`、Endpointを現行`KuraStorage.Api/Program.cs`へ配置する。共有固有のAndroid UIは必要になった本拡張で`feature-sharing`として追加し、Domain model、API契約、Repositoryはそれぞれ既存`core-model`、`core-network`、`core-data`へ配置する。共有Folder配下の閲覧・File操作は`feature-files`を再利用する。
+
 外部欠損の再確認と索引削除は`KuraStorage.Application/Files/MissingEntryService.cs`へ配置する。DB関連情報だけを消すConsumerは`IFileIndexDeletionParticipant`を実装し、物理完全削除用`IPermanentDeleteParticipant`へ混在させない。AndroidのProtocol 2 DTO・未知Status変換・Repository操作は既存`core-network`、`core-model`、`core-data`、表示と二重送信防止は`feature-files`へ配置する。
 
 ```text
@@ -858,7 +860,7 @@ feature-files/
 | `feature-auth` | 初回Device登録、Login、Refresh、Logout、Device失効対応 |
 | `feature-files` | Home、一覧、詳細、Folder作成、Streaming Upload、Range Download、Trash、Restore、Rename、Move、MISSING表示・再確認・索引削除確認 |
 
-`feature-media`、`feature-sharing`、`feature-backup`、`feature-settings`はMVP後に必要となった時点で追加する。
+`feature-sharing`はMVP後のファイル・フォルダ共有拡張で追加し、共有一覧、候補・権限選択、Member管理を担当する。`feature-media`、`feature-backup`、`feature-settings`はMVP後に必要となった時点で追加する。
 
 ### 8.6 Gradle Build Logic
 

@@ -6,16 +6,16 @@ namespace KuraStorage.Application.Abstractions;
 
 public interface IUploadSessionRepository
 {
-    Task<UploadSession?> FindByOwnerAndKeyAsync(
-        Guid ownerUserId,
+    Task<UploadSession?> FindByActorAndKeyAsync(
+        Guid actorUserId,
         string idempotencyKey,
         CancellationToken cancellationToken);
 
     Task<UploadSession?> FindAsync(Guid sessionId, CancellationToken cancellationToken);
 
-    Task<bool> IsDeviceActiveAsync(Guid ownerUserId, Guid deviceId, CancellationToken cancellationToken);
+    Task<bool> IsDeviceActiveAsync(Guid actorUserId, Guid deviceId, CancellationToken cancellationToken);
 
-    Task<int> CountActiveForUserAsync(Guid ownerUserId, CancellationToken cancellationToken);
+    Task<int> CountActiveForActorAsync(Guid actorUserId, CancellationToken cancellationToken);
 
     Task<int> CountActiveForDeviceAsync(Guid deviceId, CancellationToken cancellationToken);
 

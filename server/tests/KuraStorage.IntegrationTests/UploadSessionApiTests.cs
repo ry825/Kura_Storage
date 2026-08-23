@@ -342,7 +342,7 @@ public sealed class UploadSessionApiTests(PostgreSqlAuthFlowFixture fixture)
             var target = RelativeStoragePath.Create(parent.RelativePath).Append(FileName.Create(session.FileName));
             var operation = new FileOperation(
                 operationId,
-                session.OwnerUserId,
+                session.TargetOwnerUserId,
                 FileOperationType.Upload,
                 fileId,
                 session.IdempotencyKey,
@@ -593,6 +593,7 @@ public sealed class UploadSessionApiTests(PostgreSqlAuthFlowFixture fixture)
                 database.UploadSessions.Add(
                     new UploadSession(
                         id,
+                        ownerId,
                         ownerId,
                         deviceId,
                         rootId,

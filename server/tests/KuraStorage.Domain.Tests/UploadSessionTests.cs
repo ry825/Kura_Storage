@@ -94,7 +94,21 @@ public sealed class UploadSessionTests
         Assert.False(session.SameMetadata(deviceId, folderId, "other.bin", "application/octet-stream", 7, new string('a', 64)));
     }
 
+    [Fact]
+    public void Constructor_SeparatesActorFromTargetOwner()
+    {
+        var actorUserId = Guid.NewGuid();
+        var targetOwnerUserId = Guid.NewGuid();
+
+        var session = Create(actorUserId: actorUserId, targetOwnerUserId: targetOwnerUserId);
+
+        Assert.Equal(actorUserId, session.ActorUserId);
+        Assert.Equal(targetOwnerUserId, session.TargetOwnerUserId);
+    }
+
     private static UploadSession Create(
+        Guid? actorUserId = null,
+        Guid? targetOwnerUserId = null,
         Guid? deviceId = null,
         Guid? destinationFolderId = null,
         long expectedSize = 1,
@@ -102,7 +116,8 @@ public sealed class UploadSessionTests
         DateTimeOffset? absoluteExpiresAt = null) =>
         new(
             Guid.NewGuid(),
-            Guid.NewGuid(),
+            actorUserId ?? Guid.NewGuid(),
+            targetOwnerUserId ?? Guid.NewGuid(),
             deviceId ?? Guid.NewGuid(),
             destinationFolderId ?? Guid.NewGuid(),
             Guid.NewGuid(),

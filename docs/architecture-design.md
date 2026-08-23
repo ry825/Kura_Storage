@@ -563,6 +563,9 @@ SSIDとBSSIDは外部Wi-Fiで自動バックアップを許可するポリシー
 - Migrationはコードレビュー対象とし、前方移行を基本とする。
 - `file_entries`はゴミ箱内の`TRASHED`までを管理対象とし、完全削除後の行を保持しない。
 - 完全削除時は、関連テーブルを明示的なApplication処理または適切な外部キー制約で整理してから`FileEntry`を削除する。監査ログは削除対象の業務データから独立させる。
+- `shares`は`target_entry_id`を一意とし、`file_entries(id)`の削除からCascadeする。`share_members`は`(share_id, user_id)`をPrimary Keyとし、Permissionを`VIEWER`、`CONTRIBUTOR`、`EDITOR`、`MANAGER`の4値に制限する。
+- `shares.owner_user_id`は対象FileEntryの所有者を重複保持し、Applicationが作成時にFileEntryから導出して一致を保証する。Client指定のOwnerは使用しない。
+- Upload Sessionは操作者の`actor_user_id`と対象Treeの`target_owner_user_id`を分離する。既存行は前方MigrationでActorをTarget OwnerへBackfillし、個人Uploadの意味を維持する。
 
 ### 8.3 主要Index
 
@@ -570,6 +573,7 @@ SSIDとBSSIDは外部Wi-Fiで自動バックアップを許可するポリシー
 | --- | --- |
 | `file_entries` | `(parent_id, status, name)`、`(owner_user_id, status)`、`relative_path`一意、`updated_at` |
 | 名前検索 | `pg_trgm`を有効化し、正規化した`lower(name)`へGIN trigram Index |
+| `shares` | `target_entry_id`一意、`(owner_user_id, updated_at, id)` |
 | `share_members` | `(user_id, share_id)`、`(share_id, user_id)`一意 |
 | `file_derivatives` | `(source_file_id, source_version, derivative_type, profile_version)`一意、`status`、`expires_at`、`last_accessed_at` |
 | `transcode_jobs` | `(status, created_at)`、`derivative_id` |
@@ -1035,6 +1039,10 @@ DevelopmentとTestingでPathを省略した場合だけ、Process内に一時的
 - `CONTRIBUTOR`はフォルダ共有だけに許可する。
 - `ADMIN` RoleもファイルAPIでは暗黙の横断権限を持たず、所有者または明示的な共有権限として評価する。
 - クライアント指定の`userId`、`ownerUserId`、`deviceId`を信用しない。
+- 認可候補はActor User IDと対象Entry ID群からBatch取得し、直接Shareと祖先Folder Shareを最大深度64の有界な再帰Queryまたは同等のQueryで解決する。File一覧の各行で個別Queryを実行しない。
+- 複数経路の最強権限が同値な場合、説明用の権限元は直接Share、最も近い祖先Folder Shareの順に優先する。
+- 認可結果は要求を超えてCacheせず、Share解除やPermission変更の次要求で再評価する。
+- File mutationは対象と必要な親FolderのMutation Lockを安定順で取得し、Reload後かつHDD変更前に権限を再評価する。
 
 ### 13.8 ファイルとメディア
 
