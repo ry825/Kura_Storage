@@ -449,6 +449,8 @@ interface ShareMember {
 - `CONTRIBUTOR`は配下へ項目を作成できるフォルダ共有だけで使用し、ファイル共有には設定できない。
 - 親フォルダから継承された権限を個別ファイル共有で弱める拒否・例外設定はMVPでは設けない。
 - 同一ユーザーに複数の共有経路が適用される場合、最も強い権限を有効権限とする。
+- ファイルの種別と`CONTRIBUTOR`の組合せは別Tableをまたぐため、Applicationが共有作成とMember更新の両方で現在の`FileEntry.entryType`を取得して検証する。DBはPermission列自体を4値に制限する。
+- クライアントから`ownerUserId`を受け取らず、共有の所有者は対象`FileEntry.ownerUserId`から導出する。
 
 ### 5.4 MVP後: 派生データ・キャッシュ
 
@@ -888,13 +890,13 @@ flowchart TB
 
 ```
 
-- `UploadSession.userId`には操作したUserを保存する。
+- `UploadSession.actorUserId`には操作したUser、`targetOwnerUserId`には作成先Treeの所有Userを保存する。個人領域では両者が同じUserになる。
 
 - `UploadSession.deviceId`には送信元Deviceを保存する。
 
 - `destinationFolderId`には保存先フォルダのFileEntry IDを保存する。
 
-- Upload Session完了後、正式なFileEntryを作成する。
+- Upload Session完了時は、保存先Folderの状態、所有者、操作Userの`CONTRIBUTOR`以上、同名競合をLock内で再検証する。共有解除または権限低下後は一時ファイルを正式公開せず、取消・清掃可能な状態にする。検証成功後に`targetOwnerUserId`を所有者とする正式なFileEntryを作成する。
 
 #### ファイル操作履歴
 
@@ -1320,6 +1322,8 @@ VIEWER < CONTRIBUTOR < EDITOR < MANAGER
 6. 操作に必要な権限以上か判定し、満たさない場合は拒否する。
 7. 直接共有も継承共有も存在しない場合は拒否する。
 
+最強権限が同じ候補に複数ある場合、返却する権限元は直接共有を継承共有より優先する。継承共有同士では対象に最も近い祖先フォルダを説明用の共有元とする。この優先順は有効権限の強度を変更しない。
+
 `ADMIN` RoleはUser、Device、Security Lock等の管理CLI操作に使用するが、ファイルAPIでは他Userの個人領域へ暗黙の権限を付与しない。`ADMIN`も他Userの項目には直接共有または祖先Folder共有が必要であり、付与された`VIEWER`、`CONTRIBUTOR`、`EDITOR`、`MANAGER`の範囲だけを利用できる。
 
 ファイル共有は対象ファイルへの直接共有だけを成立させる。フォルダ共有は共有対象フォルダ自身と配下項目に適用する。MVP後の初回共有実装では個別ファイルに拒否設定を持たせないため、直接共有によって祖先フォルダから継承した権限を弱めることはできない。
@@ -1330,6 +1334,12 @@ VIEWER < CONTRIBUTOR < EDITOR < MANAGER
 | アップロード・新規作成           | CONTRIBUTOR | フォルダ共有だけで使用可能       |
 | 名前変更・移動・編集・削除       | EDITOR      | 対象項目または継承範囲内の項目   |
 | メンバー管理・権限変更・共有解除 | MANAGER     | 共有対象単位                     |
+
+認証ContextのUserは`ActorUserId`、対象Treeの所有者は`OwnerUserId`として分離する。共有フォルダ配下に作成・Uploadされる項目の`ownerUserId`は親フォルダの所有者を引き継ぎ、実際のActor UserとDeviceは監査ログに記録する。
+
+共有先UserによるRenameは対象の`EDITOR`以上を要求する。Moveは権限境界の迂回を防ぐため、対象、移動元フォルダ、移動先フォルダのすべてに`EDITOR`以上を要求し、同一Owner Tree内だけを許可する。対象と親のLock取得後に状態と権限を再評価し、HDD変更前に拒否を確定する。
+
+Trashへの移動は対象の`EDITOR`以上を要求し、対象OwnerのTrashへ配置する。Trash一覧、Restore、手動Purge、`MISSING`索引管理はOwnerに限定する。`TRASHED`中は直接共有を保持するが、共有一覧と通常の認可解決から除外する。OwnerによるRestore後は保持した直接共有と復元先の祖先フォルダ共有を次要求で再評価する。Purgeまたは`MISSING`索引削除時は対象と子孫の共有管理情報をFileEntryと同じDB Transaction内で整理する。
 
 ## 7.3 MVP後: 写真の品質別プレビュー生成
 

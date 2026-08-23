@@ -54,6 +54,13 @@
 - File一覧・詳細へ欠損状態を追加しても要求単位のHDD全走査を行わず、Content Openだけを安全な個別Path確認とする。Open時の初回不存在から直接`MISSING`へ進めない。
 - `MISSING`の一覧削除はDB Transactionと`IFileIndexDeletionParticipant`だけを使用し、`IFileStore`、物理完全削除participant、Client指定Pathを呼び出さない。Folderは全子孫の状態と未完了操作を再確認する。
 - AndroidはProtocol不一致時にFile APIへ進まず、未知enumを`UNKNOWN`へ変換して破壊的操作を無効にする。再確認・索引削除の通信結果不明を成功と推測せず、一覧を再取得する。
+- File認可はApplicationの共通`AuthorizationService`を境界とし、Endpoint、Repository、Androidへ操作別権限表や複数経路の優先規則を重複実装しない。
+- File操作の`ActorUserId`と所有Treeの`OwnerUserId`を明確に分離する。Ownerは対象Entryまたは親FolderからServer側で導出し、Client指定のOwner、Device、物理Pathを信頼しない。
+- 共有権限は`VIEWER < CONTRIBUTOR < EDITOR < MANAGER`の最強経路を採用する。同強度は直接共有、最も近い祖先Folder共有の順で説明元を決定し、File共有を子孫、親、兄弟へ継承しない。
+- ページ内File認可はBatchで解決し、Entry単位のN+1 Queryを禁止する。祖先探索は深度64を上限とし、循環または不正Treeを成功扱いにしない。
+- 認可結果は要求内にだけ保持し、共有変更をまたぐ長期Cacheを使用しない。HDD更新を伴う操作はLock取得後に対象状態、Owner、権限を再読込・再認可してから変更する。
+- Moveは対象Entry、source親Folder、target親Folderのすべてに`EDITOR`以上を要求し、同一Owner Tree内だけを許可する。Fileへの`CONTRIBUTOR`共有とAdmin Roleによる暗黙の他User File権限を禁止する。
+- 共有認可TestはOwner、直接、継承、複数経路の最強、同強度Tie-break、未共有、Trash・未完了操作の隔離、共有解除・権限変更との競合を必須とする。
 
 ---
 

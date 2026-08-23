@@ -47,8 +47,8 @@ public sealed class UploadSessionService(
 
         var normalizedSha = command.Sha256?.ToLowerInvariant();
         var normalizedContentType = NormalizeContentType(command.ContentType);
-        var existing = await sessions.FindByOwnerAndKeyAsync(
-            command.OwnerUserId,
+        var existing = await sessions.FindByActorAndKeyAsync(
+            command.ActorUserId,
             command.IdempotencyKey,
             cancellationToken);
         if (existing is not null)
@@ -70,14 +70,14 @@ public sealed class UploadSessionService(
                 new CreatedUploadSession(await MapAsync(existing, cancellationToken), false));
         }
 
-        if (await files.FindOperationAsync(command.OwnerUserId, command.IdempotencyKey, cancellationToken) is not null)
+        if (await files.FindOperationAsync(command.ActorUserId, command.IdempotencyKey, cancellationToken) is not null)
         {
             return FileResult<CreatedUploadSession>.Fail(
                 FileErrorCodes.IdempotencyConflict,
                 FileFailureKind.Conflict);
         }
 
-        if (!await sessions.IsDeviceActiveAsync(command.OwnerUserId, command.DeviceId, cancellationToken))
+        if (!await sessions.IsDeviceActiveAsync(command.ActorUserId, command.DeviceId, cancellationToken))
         {
             return FileResult<CreatedUploadSession>.Fail(
                 FileErrorCodes.UploadSessionNotFound,
@@ -98,14 +98,14 @@ public sealed class UploadSessionService(
                 FileFailureKind.CapacityInsufficient);
         }
 
-        var parent = await files.FindOwnedAsync(command.OwnerUserId, command.DestinationFolderId, cancellationToken);
+        var parent = await files.FindOwnedAsync(command.ActorUserId, command.DestinationFolderId, cancellationToken);
         if (!IsActiveFolder(parent))
         {
             return FileResult<CreatedUploadSession>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
         if (await files.HasIncompleteOperationAsync(
-                command.OwnerUserId,
+                command.ActorUserId,
                 parent!.Id,
                 parent.RelativePath,
                 cancellationToken))
@@ -116,7 +116,7 @@ public sealed class UploadSessionService(
         }
 
         if (await files.FindActiveChildAsync(
-                command.OwnerUserId,
+                command.ActorUserId,
                 command.DestinationFolderId,
                 fileName!.Value,
                 cancellationToken) is not null)
@@ -126,7 +126,7 @@ public sealed class UploadSessionService(
                 FileFailureKind.Conflict);
         }
 
-        if (await sessions.CountActiveForUserAsync(command.OwnerUserId, cancellationToken) >=
+        if (await sessions.CountActiveForActorAsync(command.ActorUserId, cancellationToken) >=
                 options.MaximumActiveSessionsPerUser ||
             await sessions.CountActiveForDeviceAsync(command.DeviceId, cancellationToken) >=
                 options.MaximumActiveSessionsPerDevice)
@@ -140,7 +140,8 @@ public sealed class UploadSessionService(
         var sessionId = Guid.NewGuid();
         var session = new UploadSession(
             sessionId,
-            command.OwnerUserId,
+            command.ActorUserId,
+            parent.OwnerUserId,
             command.DeviceId,
             command.DestinationFolderId,
             Guid.NewGuid(),
@@ -149,20 +150,20 @@ public sealed class UploadSessionService(
             normalizedContentType,
             command.Size,
             normalizedSha,
-            $"upload-sessions/{command.OwnerUserId:N}/{sessionId:N}.upload",
+            $"upload-sessions/{command.ActorUserId:N}/{sessionId:N}.upload",
             now,
             now.AddHours(options.IdleExpirationHours),
             now.AddHours(options.AbsoluteExpirationHours));
         sessions.Add(session);
-        files.Add(CreateAudit(command.OwnerUserId, command.DeviceId, session.Id, "UPLOAD_SESSION_CREATE", "SUCCESS", command.RequestId, now));
+        files.Add(CreateAudit(command.ActorUserId, command.DeviceId, session.Id, "UPLOAD_SESSION_CREATE", "SUCCESS", command.RequestId, now));
         try
         {
             await sessions.SaveChangesAsync(cancellationToken);
         }
         catch (FilePersistenceConflictException)
         {
-            var raced = await sessions.FindByOwnerAndKeyAsync(
-                command.OwnerUserId,
+            var raced = await sessions.FindByActorAndKeyAsync(
+                command.ActorUserId,
                 command.IdempotencyKey,
                 cancellationToken);
             if (raced is not null && raced.SameMetadata(
@@ -189,13 +190,13 @@ public sealed class UploadSessionService(
     }
 
     public async Task<FileResult<UploadSessionItem>> GetAsync(
-        Guid ownerUserId,
+        Guid actorUserId,
         Guid deviceId,
         Guid sessionId,
         CancellationToken cancellationToken)
     {
         await using var mutationLock = await files.AcquireMutationLocksAsync([sessionId], cancellationToken);
-        var session = await FindAccessibleAsync(ownerUserId, deviceId, sessionId, cancellationToken);
+        var session = await FindAccessibleAsync(actorUserId, deviceId, sessionId, cancellationToken);
         if (session is null)
         {
             return FileResult<UploadSessionItem>.Fail(
@@ -253,7 +254,7 @@ public sealed class UploadSessionService(
 
         await using var mutationLock = await files.AcquireMutationLocksAsync([command.SessionId], cancellationToken);
         var session = await FindAccessibleAsync(
-            command.OwnerUserId,
+            command.ActorUserId,
             command.DeviceId,
             command.SessionId,
             cancellationToken);
@@ -369,14 +370,14 @@ public sealed class UploadSessionService(
     }
 
     public async Task<FileResult<FileItem>> CompleteAsync(
-        Guid ownerUserId,
+        Guid actorUserId,
         Guid deviceId,
         Guid sessionId,
         string requestId,
         CancellationToken cancellationToken)
     {
         await using var mutationLock = await files.AcquireMutationLocksAsync([sessionId], cancellationToken);
-        var session = await FindAccessibleAsync(ownerUserId, deviceId, sessionId, cancellationToken);
+        var session = await FindAccessibleAsync(actorUserId, deviceId, sessionId, cancellationToken);
         if (session is null)
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.UploadSessionNotFound, FileFailureKind.NotFound);
@@ -384,7 +385,7 @@ public sealed class UploadSessionService(
 
         if (session.Status == UploadSessionStatus.Completed)
         {
-            var completed = await files.FindOwnedAsync(ownerUserId, session.FileEntryId, cancellationToken);
+            var completed = await files.FindOwnedAsync(session.TargetOwnerUserId, session.FileEntryId, cancellationToken);
             return completed is null
                 ? FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict)
                 : FileResult<FileItem>.Success(FileService.Map(completed));
@@ -442,16 +443,16 @@ public sealed class UploadSessionService(
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
-        var parent = await files.FindOwnedAsync(ownerUserId, destinationFolderId, cancellationToken);
+        var parent = await files.FindOwnedAsync(session.TargetOwnerUserId, destinationFolderId, cancellationToken);
         if (!IsActiveFolder(parent))
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
         await using var destinationLock = await files.AcquireMutationLocksAsync([parent!.Id], cancellationToken);
-        parent = await files.FindOwnedAsync(ownerUserId, destinationFolderId, cancellationToken);
+        parent = await files.FindOwnedAsync(session.TargetOwnerUserId, destinationFolderId, cancellationToken);
         if (!IsActiveFolder(parent) || await files.HasIncompleteOperationAsync(
-                ownerUserId,
+                session.TargetOwnerUserId,
                 parent!.Id,
                 parent.RelativePath,
                 cancellationToken))
@@ -460,7 +461,7 @@ public sealed class UploadSessionService(
         }
 
         var fileName = FileName.Create(session.FileName);
-        if (await files.FindActiveChildAsync(ownerUserId, parent.Id, fileName.Value, cancellationToken) is not null)
+        if (await files.FindActiveChildAsync(session.TargetOwnerUserId, parent.Id, fileName.Value, cancellationToken) is not null)
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNameConflict, FileFailureKind.Conflict);
         }
@@ -468,7 +469,7 @@ public sealed class UploadSessionService(
         var target = RelativeStoragePath.Create(parent.RelativePath).Append(fileName);
         var operation = new FileOperation(
             Guid.NewGuid(),
-            ownerUserId,
+            session.TargetOwnerUserId,
             FileOperationType.Upload,
             session.FileEntryId,
             session.IdempotencyKey,
@@ -501,7 +502,7 @@ public sealed class UploadSessionService(
         var now = clock.UtcNow;
         var entry = FileEntry.CreateFile(
             session.FileEntryId,
-            ownerUserId,
+            session.TargetOwnerUserId,
             parent.Id,
             fileName,
             target,
@@ -512,7 +513,7 @@ public sealed class UploadSessionService(
         files.Add(entry);
         session.Complete(now);
         operation.Complete(now);
-        files.Add(CreateAudit(ownerUserId, deviceId, session.Id, "UPLOAD_SESSION_COMPLETE", "SUCCESS", requestId, now));
+        files.Add(CreateAudit(actorUserId, deviceId, session.Id, "UPLOAD_SESSION_COMPLETE", "SUCCESS", requestId, now));
         try
         {
             await sessions.SaveChangesAsync(cancellationToken);
@@ -529,14 +530,14 @@ public sealed class UploadSessionService(
     }
 
     public async Task<FileResult<bool>> CancelAsync(
-        Guid ownerUserId,
+        Guid actorUserId,
         Guid deviceId,
         Guid sessionId,
         string requestId,
         CancellationToken cancellationToken)
     {
         await using var mutationLock = await files.AcquireMutationLocksAsync([sessionId], cancellationToken);
-        var session = await FindAccessibleAsync(ownerUserId, deviceId, sessionId, cancellationToken);
+        var session = await FindAccessibleAsync(actorUserId, deviceId, sessionId, cancellationToken);
         if (session is null)
         {
             return FileResult<bool>.Fail(FileErrorCodes.UploadSessionNotFound, FileFailureKind.NotFound);
@@ -559,7 +560,7 @@ public sealed class UploadSessionService(
 
         var now = clock.UtcNow;
         session.Cancel(null, now);
-        files.Add(CreateAudit(ownerUserId, deviceId, session.Id, "UPLOAD_SESSION_CANCEL", "SUCCESS", requestId, now));
+        files.Add(CreateAudit(actorUserId, deviceId, session.Id, "UPLOAD_SESSION_CANCEL", "SUCCESS", requestId, now));
         await sessions.SaveChangesAsync(cancellationToken);
         try
         {
@@ -587,7 +588,7 @@ public sealed class UploadSessionService(
         }
 
         var operation = await files.FindOperationAsync(
-            session.OwnerUserId,
+            session.TargetOwnerUserId,
             session.IdempotencyKey,
             cancellationToken);
         if (session.DestinationFolderId is not Guid destinationFolderId)
@@ -598,7 +599,7 @@ public sealed class UploadSessionService(
         }
 
         var parent = await files.FindOwnedAsync(
-            session.OwnerUserId,
+            session.TargetOwnerUserId,
             destinationFolderId,
             cancellationToken);
         if (operation is null || !IsActiveFolder(parent) || operation.TargetRelativePath is null)
@@ -631,12 +632,12 @@ public sealed class UploadSessionService(
             await sessions.SaveChangesAsync(cancellationToken);
         }
 
-        var existing = await files.FindOwnedAsync(session.OwnerUserId, session.FileEntryId, cancellationToken);
+        var existing = await files.FindOwnedAsync(session.TargetOwnerUserId, session.FileEntryId, cancellationToken);
         if (existing is null)
         {
             existing = FileEntry.CreateFile(
                 session.FileEntryId,
-                session.OwnerUserId,
+                session.TargetOwnerUserId,
                 destinationFolderId,
                 FileName.Create(session.FileName),
                 target,
@@ -649,20 +650,20 @@ public sealed class UploadSessionService(
         var now = clock.UtcNow;
         session.Complete(now);
         operation.Complete(now);
-        files.Add(CreateAudit(session.OwnerUserId, session.DeviceId, session.Id, "UPLOAD_SESSION_RECOVER", "SUCCESS", operation.RequestId ?? session.Id.ToString(), now));
+        files.Add(CreateAudit(session.ActorUserId, session.DeviceId, session.Id, "UPLOAD_SESSION_RECOVER", "SUCCESS", operation.RequestId ?? session.Id.ToString(), now));
         await sessions.SaveChangesAsync(cancellationToken);
         return FileResult<FileItem>.Success(FileService.Map(existing));
     }
 
     private async Task<UploadSession?> FindAccessibleAsync(
-        Guid ownerUserId,
+        Guid actorUserId,
         Guid deviceId,
         Guid sessionId,
         CancellationToken cancellationToken)
     {
         var session = await sessions.FindAsync(sessionId, cancellationToken);
-        return session is not null && session.OwnerUserId == ownerUserId && session.DeviceId == deviceId &&
-               await sessions.IsDeviceActiveAsync(ownerUserId, deviceId, cancellationToken)
+        return session is not null && session.ActorUserId == actorUserId && session.DeviceId == deviceId &&
+               await sessions.IsDeviceActiveAsync(actorUserId, deviceId, cancellationToken)
             ? session
             : null;
     }
@@ -704,7 +705,7 @@ public sealed class UploadSessionService(
         FileItem? file = null;
         if (session.Status == UploadSessionStatus.Completed)
         {
-            var entry = await files.FindOwnedAsync(session.OwnerUserId, session.FileEntryId, cancellationToken);
+            var entry = await files.FindOwnedAsync(session.TargetOwnerUserId, session.FileEntryId, cancellationToken);
             file = entry is null ? null : FileService.Map(entry);
         }
 
@@ -754,7 +755,7 @@ public sealed class UploadSessionService(
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static AuditLog CreateAudit(
-        Guid ownerUserId,
+        Guid actorUserId,
         Guid deviceId,
         Guid sessionId,
         string action,
@@ -763,7 +764,7 @@ public sealed class UploadSessionService(
         DateTimeOffset now) =>
         new(
             Guid.NewGuid(),
-            ownerUserId,
+            actorUserId,
             deviceId,
             null,
             action,

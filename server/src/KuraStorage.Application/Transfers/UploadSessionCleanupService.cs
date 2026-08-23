@@ -66,7 +66,7 @@ public sealed class UploadSessionCleanupService(
         if (session.Status == UploadSessionStatus.Active)
         {
             var deviceActive = await sessions.IsDeviceActiveAsync(
-                session.OwnerUserId,
+                session.ActorUserId,
                 session.DeviceId,
                 cancellationToken);
             if (!deviceActive)

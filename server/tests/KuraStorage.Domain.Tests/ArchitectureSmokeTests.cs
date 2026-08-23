@@ -9,4 +9,22 @@ public sealed class ArchitectureSmokeTests
     {
         Assert.NotNull(typeof(Domain.AssemblyMarker).Assembly);
     }
+
+    [Fact]
+    public void DomainAssembly_DoesNotReferenceFrameworkOrPersistencePackages()
+    {
+        var prohibitedPrefixes = new[]
+        {
+            "Microsoft.AspNetCore",
+            "Microsoft.EntityFrameworkCore",
+            "Npgsql",
+        };
+
+        var references = typeof(Domain.AssemblyMarker).Assembly.GetReferencedAssemblies();
+
+        Assert.DoesNotContain(
+            references,
+            reference => prohibitedPrefixes.Any(prefix =>
+                reference.Name?.StartsWith(prefix, StringComparison.Ordinal) == true));
+    }
 }
