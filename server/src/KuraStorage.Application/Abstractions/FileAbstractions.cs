@@ -19,6 +19,12 @@ public interface IFileRepository
 
     Task<FileEntry?> FindOwnedAsync(Guid ownerUserId, Guid entryId, CancellationToken cancellationToken);
 
+    Task<FileEntry?> FindByIdAsync(Guid entryId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    Task<FileOwnerItem?> FindOwnerAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
+        Task.FromResult<FileOwnerItem?>(null);
+
     Task<bool> ReloadAsync(FileEntry entry, CancellationToken cancellationToken);
 
     Task<FileEntry?> FindRootAsync(Guid ownerUserId, CancellationToken cancellationToken);

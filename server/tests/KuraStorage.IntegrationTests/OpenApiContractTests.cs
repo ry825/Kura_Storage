@@ -26,6 +26,10 @@ public sealed class OpenApiContractTests
             "  /trash/{fileId}:",
             "  /files/{fileId}/restore:",
             "  /admin/storage:",
+            "  /shares/candidates:",
+            "  /shares:",
+            "  /shares/{shareId}:",
+            "  /shares/{shareId}/members/{userId}:",
         })
         {
             Assert.Contains(path, contract, StringComparison.Ordinal);
@@ -50,6 +54,17 @@ public sealed class OpenApiContractTests
         Assert.Contains("purgeEligibleAt:", contract, StringComparison.Ordinal);
         Assert.Contains("AdminStorageStatus:", contract, StringComparison.Ordinal);
         Assert.Contains("TrashPurgeRunSummary:", contract, StringComparison.Ordinal);
+        Assert.Contains("ShareCandidate:", contract, StringComparison.Ordinal);
+        Assert.Contains("ShareMemberItem:", contract, StringComparison.Ordinal);
+        Assert.Contains("ShareItem:", contract, StringComparison.Ordinal);
+        Assert.Contains("SharePage:", contract, StringComparison.Ordinal);
+        Assert.Contains("INVALID_SHARE_PERMISSION", contract, StringComparison.Ordinal);
+        Assert.Contains("SHARE_NOT_FOUND", contract, StringComparison.Ordinal);
+        Assert.Contains("SHARE_MEMBER_NOT_FOUND", contract, StringComparison.Ordinal);
+        Assert.Contains("SHARE_CONFLICT", contract, StringComparison.Ordinal);
+        Assert.Contains("SHARE_OPERATION_NOT_ALLOWED", contract, StringComparison.Ordinal);
+        Assert.Contains("permissionSource:", contract, StringComparison.Ordinal);
+        Assert.Contains("shareTargetId:", contract, StringComparison.Ordinal);
         Assert.Contains(
             "required: [deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, role]",
             contract,

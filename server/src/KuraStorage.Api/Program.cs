@@ -7,8 +7,11 @@ using KuraStorage.Api;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
+using KuraStorage.Application.Sharing;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Application.Identity;
+using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Sharing;
 using KuraStorage.Infrastructure;
 using KuraStorage.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -240,6 +243,184 @@ app.MapPost(
             context.TraceIdentifier,
             cancellationToken);
         return Results.NoContent();
+    });
+
+app.MapGet(
+    "/api/v1/shares/candidates",
+    async (
+        HttpContext context,
+        SharingService sharing,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToSharingHttpResult(
+            await sharing.ListCandidatesAsync(userId, cancellationToken),
+            context);
+    });
+
+app.MapPost(
+    "/api/v1/shares",
+    async (
+        CreateShareRequest request,
+        HttpContext context,
+        SharingService sharing,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (request.Members is null ||
+            request.Members.Any(member => !TrySharePermission(member.Permission, out _)))
+        {
+            return Error(StatusCodes.Status400BadRequest, SharingErrorCodes.ValidationFailed, context);
+        }
+
+        var result = await sharing.CreateAsync(
+            new CreateShareCommand(
+                userId,
+                deviceId,
+                request.TargetEntryId,
+                request.Members.Select(member =>
+                    new ShareMemberInput(
+                        member.UserId,
+                        Enum.Parse<SharePermission>(member.Permission!, true))).ToArray(),
+                context.TraceIdentifier),
+            cancellationToken);
+        return result.IsSuccess
+            ? Results.Created($"/api/v1/shares/{result.Value!.Id}", result.Value)
+            : ToSharingHttpResult(result, context);
+    });
+
+app.MapGet(
+    "/api/v1/shares",
+    async (
+        string? scope,
+        string? targetType,
+        int? page,
+        int? pageSize,
+        HttpContext context,
+        SharingService sharing,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (!Enum.TryParse<ShareScope>(scope, true, out var parsedScope) ||
+            !TryTargetType(targetType, out var parsedTargetType))
+        {
+            return Error(StatusCodes.Status400BadRequest, SharingErrorCodes.ValidationFailed, context);
+        }
+
+        return ToSharingHttpResult(
+            await sharing.ListAsync(
+                userId,
+                parsedScope,
+                parsedTargetType,
+                page ?? 1,
+                pageSize ?? 100,
+                cancellationToken),
+            context);
+    });
+
+app.MapGet(
+    "/api/v1/shares/{shareId:guid}",
+    async (
+        Guid shareId,
+        HttpContext context,
+        SharingService sharing,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToSharingHttpResult(await sharing.GetAsync(userId, shareId, cancellationToken), context);
+    });
+
+app.MapPut(
+    "/api/v1/shares/{shareId:guid}/members/{memberUserId:guid}",
+    async (
+        Guid shareId,
+        Guid memberUserId,
+        SetShareMemberRequest request,
+        HttpContext context,
+        SharingService sharing,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (!TrySharePermission(request.Permission, out var permission))
+        {
+            return Error(StatusCodes.Status400BadRequest, SharingErrorCodes.ValidationFailed, context);
+        }
+
+        return ToSharingHttpResult(
+            await sharing.SetMemberAsync(
+                new SetShareMemberCommand(
+                    userId,
+                    deviceId,
+                    shareId,
+                    memberUserId,
+                    permission,
+                    context.TraceIdentifier),
+                cancellationToken),
+            context);
+    });
+
+app.MapDelete(
+    "/api/v1/shares/{shareId:guid}/members/{memberUserId:guid}",
+    async (
+        Guid shareId,
+        Guid memberUserId,
+        HttpContext context,
+        SharingService sharing,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await sharing.RemoveMemberAsync(
+            new RemoveShareMemberCommand(
+                userId, deviceId, shareId, memberUserId, context.TraceIdentifier),
+            cancellationToken);
+        return result.IsSuccess ? Results.NoContent() : ToSharingHttpResult(result, context);
+    });
+
+app.MapDelete(
+    "/api/v1/shares/{shareId:guid}",
+    async (
+        Guid shareId,
+        HttpContext context,
+        SharingService sharing,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await sharing.DeleteAsync(
+            new DeleteShareCommand(userId, deviceId, shareId, context.TraceIdentifier),
+            cancellationToken);
+        return result.IsSuccess ? Results.NoContent() : ToSharingHttpResult(result, context);
     });
 
 app.MapGet(
@@ -750,6 +931,43 @@ static IResult ToFileHttpResult<T>(FileResult<T> result, HttpContext context)
     return Error(status, result.Failure.Code, context);
 }
 
+static IResult ToSharingHttpResult<T>(SharingResult<T> result, HttpContext context)
+{
+    if (result.IsSuccess)
+    {
+        return Results.Ok(result.Value);
+    }
+
+    var status = result.Failure!.Kind switch
+    {
+        SharingFailureKind.BadRequest => StatusCodes.Status400BadRequest,
+        SharingFailureKind.NotFound => StatusCodes.Status404NotFound,
+        SharingFailureKind.Conflict => StatusCodes.Status409Conflict,
+        _ => StatusCodes.Status500InternalServerError,
+    };
+    return Error(status, result.Failure.Code, context);
+}
+
+static bool TrySharePermission(string? value, out SharePermission permission) =>
+    Enum.TryParse(value, true, out permission) && Enum.IsDefined(permission);
+
+static bool TryTargetType(string? value, out FileEntryType? targetType)
+{
+    targetType = null;
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return true;
+    }
+
+    if (!Enum.TryParse<FileEntryType>(value, true, out var parsed) || !Enum.IsDefined(parsed))
+    {
+        return false;
+    }
+
+    targetType = parsed;
+    return true;
+}
+
 static IResult TransferError(
     FileFailure failure,
     HttpContext context,
@@ -896,6 +1114,12 @@ public sealed record RefreshRequest(Guid DeviceId, string? RefreshToken);
 public sealed record LogoutRequest(Guid DeviceId, string? RefreshToken);
 
 public sealed record CreateFolderRequest(Guid? ParentId, string? Name);
+
+public sealed record CreateShareRequest(Guid TargetEntryId, IReadOnlyList<CreateShareMemberRequest>? Members);
+
+public sealed record CreateShareMemberRequest(Guid UserId, string? Permission);
+
+public sealed record SetShareMemberRequest(string? Permission);
 
 public sealed record CreateUploadSessionRequest(
     Guid DestinationFolderId,

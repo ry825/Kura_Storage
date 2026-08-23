@@ -90,6 +90,7 @@ public static class DependencyInjection
         services.AddScoped<IFileRepository, FileRepository>();
         services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
         services.AddScoped<IAuthorizationRepository, AuthorizationRepository>();
+        services.AddScoped<IShareRepository, ShareRepository>();
         services.AddScoped<IIndexCatalogRepository, IndexCatalogRepository>();
         services.AddScoped<IIndexScanService, IndexScanService>();
         services.AddScoped<IIndexEventService, IndexEventService>();
@@ -115,6 +116,7 @@ public static class DependencyInjection
         services.AddScoped<UploadSessionRecoveryService>();
         services.AddScoped<UploadSessionCleanupService>();
         services.AddScoped<IAuthorizationService, AuthorizationService>();
+        services.AddScoped<SharingService>();
         services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IRefreshTokenService, RefreshTokenService>();

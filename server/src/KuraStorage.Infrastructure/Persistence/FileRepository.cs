@@ -2,6 +2,7 @@ using System.Data;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Files;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Maintenance;
@@ -25,6 +26,16 @@ public sealed class FileRepository(KuraStorageDbContext dbContext) : IFileReposi
         await dbContext.FileEntries.SingleOrDefaultAsync(
             entry => entry.OwnerUserId == ownerUserId && entry.Id == entryId,
             cancellationToken);
+
+    public async Task<FileEntry?> FindByIdAsync(Guid entryId, CancellationToken cancellationToken) =>
+        await dbContext.FileEntries.SingleOrDefaultAsync(entry => entry.Id == entryId, cancellationToken);
+
+    public async Task<FileOwnerItem?> FindOwnerAsync(Guid ownerUserId, CancellationToken cancellationToken) =>
+        await dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Id == ownerUserId)
+            .Select(user => new FileOwnerItem(user.Id, user.DisplayName))
+            .SingleOrDefaultAsync(cancellationToken);
 
     public async Task<bool> ReloadAsync(FileEntry entry, CancellationToken cancellationToken)
     {
