@@ -225,11 +225,11 @@
   - [x] EndpointからDbContext/FileStoreを直接呼ばず、全参照要求でAuthorizationServiceを使用している。
   - [x] Permissionをクライアントだけで判定せず、共有解除を即時反映している。
   - [x] 不要なPackage、生成物、実環境情報、Credentialが差分にない。
-- [ ] PR2を完了する。
-  - [ ] 2.1〜2.6のPR2対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR2を完了する。
+  - [x] 2.1〜2.6のPR2対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -502,14 +502,36 @@
 
 ### PR2: 共有管理APIと共有Fileの閲覧
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未完了
-- 実装中に追加したタスクと理由: 未完了
-- 技術的に不要になったタスク・理由・代替実装: 未完了
-- 後続Pull Requestへの引継ぎ事項: 未完了
+- 完了日: 2026-08-23
+- Pull Request: [#20 Add share management and authorized read access](https://github.com/ry825/Kura_Storage/pull/20)
+- 実施したTest・Build・静的解析:
+  - `./scripts/ci/verify-config.sh`: 成功
+  - `./scripts/ci/verify-server.sh`: 成功（Domain 49件、Application 127件、Integration 85件）
+  - `./scripts/ci/verify-security.sh`: 成功
+  - `./scripts/ci/verify-deployment.sh`: 成功
+  - `./scripts/ci/verify-android.sh`: 成功
+  - `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`: 成功
+  - OpenAPI YAML parse・Contract Test: 成功
+  - `git diff --check`: 成功
+  - Line Coverage: Domain 85.61%、Application 85.05%、認可Service 95.16%（`AuthorizationService`単体は100%）
+  - GitHub Actions: Android、Config、Security、Serverの必須Checkがすべて成功
+- 手動確認・実機確認:
+  - 一時API ClientでOwnerによるFolder/File共有、所有・受信一覧、詳細、RecipientのFolder子孫閲覧、直接File閲覧、Range Downloadを確認した。
+  - ManagerによるPermission更新・Member解除、継承経路の即時失効、別の直接共有経路の維持、Share全体解除後の404を確認した。
+  - Error responseが安定したCodeだけを返し、他UserのOwner詳細、File名、物理Path、SQLを含まないことを確認した。
+  - PR2はServer APIのためAndroid UI操作は対象外とし、既存AndroidのBuild・Test・Lint回帰だけを確認した。
+- 計画と実装の差分:
+  - 承認済みのPR2範囲どおりに共有管理と参照だけを実装し、共有先への作成・Upload・変更・削除・復元はPR3へ維持した。
+  - 一覧では直接共有Rootだけを返し、Member一覧はShare詳細でだけ返すことでRecipient情報の一括開示を避けた。
+- 実装中に追加したタスクと理由:
+  - 入力境界、存在秘匿、永続化競合のSharingService Unit Testを追加し、認可ServiceのLine Coverage 95%以上を確認した。
+  - 一時API Clientを作成して解除後の即時失効と別経路維持を実HTTP要求で確認し、確認後に一時資材を削除した。
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続Pull Requestへの引継ぎ事項:
+  - PR3はPR2のMerge後、最新`main`から開始する。
+  - 共有先MutationではActorとTarget Ownerを分離し、HDD操作直前またはLock内でPermissionとEntry状態を再評価する。
+  - `CONTRIBUTOR`はFolder配下の作成・Uploadだけ、`EDITOR`は既存Entry変更、`MANAGER`は共有管理までという境界を維持する。
+  - 変更・Trash・Restore・Purge後もShareのTarget IDを維持し、直接Shareと継承Shareの整合性を回帰Testする。
 
 ### PR3: 共有先の作成・Upload・変更と整合性
 
