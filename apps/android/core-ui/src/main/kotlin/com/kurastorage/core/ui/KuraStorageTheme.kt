@@ -84,4 +84,6 @@ enum class AppDestination(
     HOME("home"),
     FILES("files"),
     TRASH("trash"),
+    SHARING("sharing"),
+    SHARING_SETTINGS("sharing-settings"),
 }

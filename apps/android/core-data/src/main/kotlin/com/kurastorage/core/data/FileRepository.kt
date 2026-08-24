@@ -7,6 +7,9 @@ import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.FilePage
+import com.kurastorage.core.model.OwnerSummary
+import com.kurastorage.core.model.PermissionSource
+import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.TrashPurgeRunSummary
 import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.network.AdminStorageApi
@@ -186,6 +189,10 @@ internal fun FileEntryDto.toModel() =
         purgeEligibleAt = purgeEligibleAt?.let(Instant::parse),
         missingDetectedAt = missingDetectedAt?.let(Instant::parse),
         missingLastCheckedAt = missingLastCheckedAt?.let(Instant::parse),
+        owner = owner?.let { OwnerSummary(it.id, it.displayName) } ?: OwnerSummary.UNKNOWN,
+        permission = SharePermission.fromWire(permission),
+        permissionSource = PermissionSource.fromWire(permissionSource),
+        shareTargetId = shareTargetId,
     )
 
 @Suppress("MaxLineLength")

@@ -83,6 +83,67 @@ data class FileEntryDto(
     val purgeEligibleAt: String? = null,
     val missingDetectedAt: String? = null,
     val missingLastCheckedAt: String? = null,
+    val owner: OwnerSummaryDto? = null,
+    val permission: String? = null,
+    val permissionSource: String? = null,
+    val shareTargetId: String? = null,
+)
+
+@Serializable
+data class OwnerSummaryDto(
+    val id: String,
+    val displayName: String,
+)
+
+@Serializable
+data class ShareCandidateDto(
+    val userId: String,
+    val displayName: String,
+)
+
+@Serializable
+data class ShareMemberDto(
+    val userId: String,
+    val displayName: String,
+    val permission: String,
+)
+
+@Serializable
+data class CreateShareMemberDto(
+    val userId: String,
+    val permission: String,
+)
+
+@Serializable
+data class CreateShareRequestDto(
+    val targetEntryId: String,
+    val members: List<CreateShareMemberDto>,
+)
+
+@Serializable
+data class SetShareMemberRequestDto(
+    val permission: String,
+)
+
+@Serializable
+data class ShareItemDto(
+    val id: String,
+    val targetEntryId: String,
+    val entryType: String,
+    val name: String,
+    val owner: OwnerSummaryDto,
+    val permission: String? = null,
+    val members: List<ShareMemberDto>,
+    val createdAt: String,
+    val updatedAt: String,
+)
+
+@Serializable
+data class SharePageDto(
+    val items: List<ShareItemDto>,
+    val page: Int,
+    val pageSize: Int,
+    val totalCount: Int,
 )
 
 @Serializable

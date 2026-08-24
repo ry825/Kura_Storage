@@ -21,6 +21,10 @@ data class FileEntry(
     val purgeEligibleAt: Instant? = null,
     val missingDetectedAt: Instant? = null,
     val missingLastCheckedAt: Instant? = null,
+    val owner: OwnerSummary = OwnerSummary.UNKNOWN,
+    val permission: SharePermission = SharePermission.UNKNOWN,
+    val permissionSource: PermissionSource = PermissionSource.UNKNOWN,
+    val shareTargetId: String? = null,
 )
 
 data class TrashPurgeRunSummary(

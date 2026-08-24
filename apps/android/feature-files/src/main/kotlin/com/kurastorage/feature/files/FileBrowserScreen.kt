@@ -43,8 +43,11 @@ import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
+import com.kurastorage.core.model.PermissionSource
+import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadState
+import com.kurastorage.core.model.filePermissionCapabilities
 import com.kurastorage.core.ui.ErrorState
 import com.kurastorage.core.ui.LoadingState
 
@@ -87,6 +90,7 @@ fun FileBrowserScreen(
     adminStorageState: AdminStorageState = AdminStorageState(loading = false),
     onRefreshAdminStorage: () -> Unit = {},
     onOpenTrashFromWarning: () -> Unit = {},
+    onShare: (FileEntry) -> Unit = {},
 ) {
     var showCreate by remember { mutableStateOf(false) }
     var pendingTrash by remember { mutableStateOf<FileEntry?>(null) }
@@ -101,13 +105,34 @@ fun FileBrowserScreen(
             OutlinedButton(onClick = onBack) { Text("Back") }
             Button(onClick = onRefresh) { Text("Refresh") }
         }
-        if (!trashMode) {
+        val currentCapabilities =
+            state.currentFolder?.let {
+                filePermissionCapabilities(it.permission, it.permissionSource)
+            } ?: filePermissionCapabilities(
+                if (state.personalRoot) SharePermission.MANAGER else SharePermission.UNKNOWN,
+                if (state.personalRoot) PermissionSource.OWNER else PermissionSource.UNKNOWN,
+            )
+        if (!trashMode && currentCapabilities.canCreate) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { showCreate = true }) { Text("New folder") }
                 Button(onClick = onChooseUpload) { Text("Upload") }
             }
         }
-        Text(if (trashMode) "Trash" else "My files", style = MaterialTheme.typography.headlineSmall)
+        val folderTitle =
+            when {
+                trashMode -> "Trash"
+                state.currentFolder != null -> state.currentFolder.name
+                state.personalRoot -> "My files"
+                else -> "Shared folder"
+            }
+        Text(folderTitle, style = MaterialTheme.typography.headlineSmall)
+        if (!trashMode && !state.personalRoot) {
+            state.currentFolder?.let { folder ->
+                Text("Owner: ${folder.owner.displayName}")
+                Text("Permission: ${folder.permission} (${folder.permissionSource})")
+                folder.shareTargetId?.let { Text("Shared from folder: $it") }
+            }
+        }
         state.placementResult?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
         state.error?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
         if (state.entries.isEmpty()) {
@@ -126,6 +151,10 @@ fun FileBrowserScreen(
                     ) {
                         Column {
                             Text("${if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File"}: ${entry.name}")
+                            Text("Owner: ${entry.owner.displayName} • Permission: ${entry.permission}")
+                            if (entry.permissionSource == PermissionSource.INHERITED) {
+                                Text("Shared from: ${entry.shareTargetId ?: "unknown"}")
+                            }
                             missingStatusText(entry)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                         }
                         if (!trashMode) {
@@ -158,29 +187,39 @@ fun FileBrowserScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("${entry.entryType} • ${entry.size} bytes\nUpdated ${entry.updatedAt}")
+                    Text("Owner: ${entry.owner.displayName}")
+                    Text("Permission: ${entry.permission} (${entry.permissionSource})")
+                    if (entry.permissionSource == PermissionSource.INHERITED) {
+                        Text("Shared from folder: ${entry.shareTargetId ?: "unknown"}")
+                    }
                     missingStatusText(entry)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     entry.missingLastCheckedAt?.let { Text("最終確認: $it") }
                     if (trashMode) Text(state.retention?.text ?: "Automatic deletion time is unavailable.")
                 }
             },
             confirmButton = {
+                val capabilities = filePermissionCapabilities(entry.permission, entry.permissionSource)
                 if (trashMode) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            pendingRestore = entry
-                            onDismissDetail()
-                        }) { Text("Restore") }
-                        Button(
-                            onClick = { onBeginPermanentDelete(entry) },
-                            colors =
-                                ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.error,
-                                    contentColor = MaterialTheme.colorScheme.onError,
-                                ),
-                            modifier = Modifier.testTag("delete-permanently"),
-                        ) { Text("Delete permanently") }
+                    if (capabilities.canManageTrash) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = {
+                                pendingRestore = entry
+                                onDismissDetail()
+                            }) { Text("Restore") }
+                            Button(
+                                onClick = { onBeginPermanentDelete(entry) },
+                                colors =
+                                    ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.error,
+                                        contentColor = MaterialTheme.colorScheme.onError,
+                                    ),
+                                modifier = Modifier.testTag("delete-permanently"),
+                            ) { Text("Delete permanently") }
+                        }
+                    } else {
+                        Text("Only the owner can manage trash.")
                     }
-                } else if (entry.status == FileEntryStatus.MISSING) {
+                } else if (entry.status == FileEntryStatus.MISSING && capabilities.canManageTrash) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         OutlinedButton(
                             onClick = { onRecheckMissing(entry) },
@@ -193,7 +232,7 @@ fun FileBrowserScreen(
                             modifier = Modifier.testTag("delete-missing-index"),
                         ) { Text("一覧から削除") }
                     }
-                } else if (entry.status == FileEntryStatus.MISSING_CANDIDATE) {
+                } else if (entry.status == FileEntryStatus.MISSING_CANDIDATE && capabilities.canManageTrash) {
                     TextButton(
                         onClick = { onRecheckMissing(entry) },
                         enabled = entry.id !in state.missingActionIds,
@@ -201,20 +240,28 @@ fun FileBrowserScreen(
                 } else if (entry.status == FileEntryStatus.UNKNOWN) {
                     Text("アプリの更新が必要です", color = MaterialTheme.colorScheme.error)
                 } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (entry.entryType == FileEntryType.FILE) {
-                            TextButton(onClick = {
-                                onChooseDownload(entry)
-                                onDismissDetail()
-                            }) { Text("Download") }
+                    Column {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (entry.entryType == FileEntryType.FILE && capabilities.canDownload) {
+                                TextButton(onClick = {
+                                    onChooseDownload(entry)
+                                    onDismissDetail()
+                                }) { Text("Download") }
+                            }
+                            if (capabilities.canRename) TextButton(onClick = { onRename(entry) }) { Text("Rename") }
+                            if (capabilities.canMove) Button(onClick = { onMove(entry) }) { Text("Move") }
                         }
-                        TextButton(onClick = { onRename(entry) }) { Text("Rename") }
-                        Button(onClick = { onMove(entry) }) { Text("Move") }
+                        if (capabilities.canManageShare) {
+                            TextButton(onClick = { onShare(entry) }) { Text("Sharing settings") }
+                        }
                     }
                 }
             },
             dismissButton = {
-                if (!trashMode && entry.status == FileEntryStatus.ACTIVE) {
+                if (!trashMode &&
+                    entry.status == FileEntryStatus.ACTIVE &&
+                    filePermissionCapabilities(entry.permission, entry.permissionSource).canTrash
+                ) {
                     TextButton(onClick = {
                         pendingTrash = entry
                         onDismissDetail()

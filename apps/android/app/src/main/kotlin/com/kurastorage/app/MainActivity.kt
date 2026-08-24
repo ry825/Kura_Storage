@@ -1,7 +1,15 @@
-@file:Suppress("ktlint:standard:function-naming", "FunctionNaming", "LongMethod")
+@file:Suppress(
+    "ktlint:standard:function-naming",
+    "FunctionNaming",
+    "LongMethod",
+    "LongParameterList",
+    "CyclomaticComplexMethod",
+    "MaxLineLength",
+)
 
 package com.kurastorage.app
 
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -30,11 +38,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.kurastorage.core.model.ConnectionStatus
 import com.kurastorage.core.model.FileEntry
+import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.ui.AppDestination
 import com.kurastorage.core.ui.KuraStorageTheme
@@ -47,6 +58,10 @@ import com.kurastorage.feature.files.AdminStorageState
 import com.kurastorage.feature.files.AdminStorageViewModel
 import com.kurastorage.feature.files.FileBrowserScreen
 import com.kurastorage.feature.files.FileBrowserViewModel
+import com.kurastorage.feature.sharing.SharingListViewModel
+import com.kurastorage.feature.sharing.SharingScreen
+import com.kurastorage.feature.sharing.SharingSettingsScreen
+import com.kurastorage.feature.sharing.SharingSettingsViewModel
 
 class MainActivity : ComponentActivity() {
     private lateinit var container: ServiceContainer
@@ -167,6 +182,7 @@ private fun KuraStorageApp(
                 adminStorageState = storageState,
                 onRefreshAdminStorage = { storageViewModel?.refresh() },
                 onFiles = { navController.navigate(AppDestination.FILES.route) },
+                onShared = { navController.navigate(AppDestination.SHARING.route) },
                 onTrash = { navController.navigate(AppDestination.TRASH.route) },
                 onLogout = {
                     logoutViewModel.logout {
@@ -206,6 +222,7 @@ private fun KuraStorageApp(
                 trashMode = false,
                 onOpenTrash = { navController.navigate(AppDestination.TRASH.route) },
                 onExit = { navController.popBackStack() },
+                onShare = { entry -> navController.navigate(settingsRoute("new", entry.id, entry.entryType, entry.name)) },
             )
         }
         composable(AppDestination.TRASH.route) {
@@ -228,6 +245,106 @@ private fun KuraStorageApp(
                 trashMode = true,
                 onOpenTrash = {},
                 onExit = { navController.popBackStack() },
+                onShare = {},
+            )
+        }
+        composable(AppDestination.SHARING.route) {
+            val current = services
+            if (current == null) {
+                navController.navigate(AppDestination.CONNECTION.route)
+                return@composable
+            }
+            val sharingViewModel: SharingListViewModel =
+                viewModel(
+                    key = "sharing-${connected?.route}",
+                    factory = simpleViewModelFactory { SharingListViewModel(current.sharing) },
+                )
+            val state by sharingViewModel.state.collectAsStateWithLifecycle()
+            SharingScreen(
+                state,
+                onBack = { navController.popBackStack() },
+                onScope = sharingViewModel::selectScope,
+                onType = sharingViewModel::selectTargetType,
+                onRefresh = sharingViewModel::refresh,
+                onLoadMore = sharingViewModel::loadMore,
+                onOpenTarget = { share ->
+                    navController.navigate("shared-entry/${share.targetEntryId}/${share.entryType.name}")
+                },
+                onManage = { share ->
+                    navController.navigate(settingsRoute(share.id, share.targetEntryId, share.entryType, share.name))
+                },
+            )
+        }
+        composable(
+            route = "shared-entry/{entryId}/{entryType}",
+            arguments =
+                listOf(
+                    navArgument("entryId") { type = NavType.StringType },
+                    navArgument("entryType") { type = NavType.StringType },
+                ),
+        ) { backStackEntry ->
+            val current = services ?: return@composable
+            val entryId = checkNotNull(backStackEntry.arguments?.getString("entryId"))
+            val type = FileEntryType.valueOf(checkNotNull(backStackEntry.arguments?.getString("entryType")))
+            val filesViewModel: FileBrowserViewModel =
+                viewModel(
+                    key = "shared-entry-$entryId-${connected?.route}",
+                    factory =
+                        simpleViewModelFactory {
+                            FileBrowserViewModel(
+                                current.files,
+                                current.transfers,
+                                initialParentId = entryId.takeIf { type == FileEntryType.FOLDER },
+                                initialSelectionId = entryId.takeIf { type == FileEntryType.FILE },
+                            )
+                        },
+                )
+            FileRoute(
+                viewModel = filesViewModel,
+                adminStorageViewModel = null,
+                trashMode = false,
+                onOpenTrash = {},
+                onExit = { navController.popBackStack() },
+                onShare = { entry -> navController.navigate(settingsRoute("new", entry.id, entry.entryType, entry.name)) },
+            )
+        }
+        composable(
+            route = "${AppDestination.SHARING_SETTINGS.route}/{shareId}/{targetEntryId}/{entryType}/{targetName}",
+            arguments =
+                listOf(
+                    navArgument("shareId") { type = NavType.StringType },
+                    navArgument("targetEntryId") { type = NavType.StringType },
+                    navArgument("entryType") { type = NavType.StringType },
+                    navArgument("targetName") { type = NavType.StringType },
+                ),
+        ) { backStackEntry ->
+            val current = services ?: return@composable
+            val arguments = checkNotNull(backStackEntry.arguments)
+            val shareId = arguments.getString("shareId").takeUnless { it == "new" }
+            val targetId = checkNotNull(arguments.getString("targetEntryId"))
+            val targetType = FileEntryType.valueOf(checkNotNull(arguments.getString("entryType")))
+            val targetName = Uri.decode(checkNotNull(arguments.getString("targetName")))
+            val settingsViewModel: SharingSettingsViewModel =
+                viewModel(
+                    key = "sharing-settings-${shareId ?: targetId}-${connected?.route}",
+                    factory =
+                        simpleViewModelFactory {
+                            SharingSettingsViewModel(current.sharing, targetId, targetType, targetName, shareId)
+                        },
+                )
+            val state by settingsViewModel.state.collectAsStateWithLifecycle()
+            SharingSettingsScreen(
+                state,
+                onBack = { navController.popBackStack() },
+                onRefresh = settingsViewModel::refresh,
+                onCandidate = settingsViewModel::selectCandidate,
+                onPermission = settingsViewModel::selectPermission,
+                onSubmitMember = settingsViewModel::submitSelectedMember,
+                onChangePermission = settingsViewModel::changeMemberPermission,
+                onRemoveMember = settingsViewModel::requestMemberRemoval,
+                onDeleteShare = settingsViewModel::requestShareDeletion,
+                onConfirm = settingsViewModel::confirm,
+                onDismissConfirmation = settingsViewModel::dismissConfirmation,
             )
         }
     }
@@ -240,6 +357,7 @@ private fun FileRoute(
     trashMode: Boolean,
     onOpenTrash: () -> Unit,
     onExit: () -> Unit,
+    onShare: (FileEntry) -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -317,6 +435,7 @@ private fun FileRoute(
         adminStorageState = adminStorageState,
         onRefreshAdminStorage = { adminStorageViewModel?.refresh() },
         onOpenTrashFromWarning = onOpenTrash,
+        onShare = onShare,
     )
 }
 
@@ -334,6 +453,7 @@ fun HomeScreen(
     adminStorageState: AdminStorageState = AdminStorageState(loading = false),
     onRefreshAdminStorage: () -> Unit = {},
     onFiles: () -> Unit,
+    onShared: () -> Unit = {},
     onTrash: () -> Unit,
     onLogout: () -> Unit,
 ) {
@@ -345,7 +465,15 @@ fun HomeScreen(
         Text("Connection: ${connection?.route?.name ?: "UNKNOWN"}")
         AdminStoragePanel(adminStorageState, onRefreshAdminStorage, onTrash)
         Button(onClick = onFiles) { Text("My files") }
+        Button(onClick = onShared) { Text("Shared") }
         Button(onClick = onTrash) { Text("Trash") }
         Button(onClick = onLogout) { Text("Log out") }
     }
 }
+
+private fun settingsRoute(
+    shareId: String,
+    targetId: String,
+    type: FileEntryType,
+    name: String,
+): String = "${AppDestination.SHARING_SETTINGS.route}/$shareId/$targetId/${type.name}/${Uri.encode(name)}"

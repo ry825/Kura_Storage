@@ -12,7 +12,7 @@
 - [x] 同じ作業ディレクトリの`design.md`が作成・承認されている。
 - [x] 承認済みの要求と設計を4つのPull Request単位へ分解している。
 - [x] 実装開始時に承認済み設計と本タスクリストの差分がないことを確認する。
-- [ ] 各PR開始時に依存元PRのMergeと必須CI成功を確認する。（PR1開始時: PR #18 Merge済み、Config/Server/Security/Android CI成功。PR2〜PR4開始時に継続確認）
+- [x] 各PR開始時に依存元PRのMergeと必須CI成功を確認する。（PR1開始時: PR #18 Merge済み、Config/Server/Security/Android CI成功。PR2〜PR4開始時も各依存元PRのMergeと必須CI成功を確認済み）
 
 ## タスク完全完了の原則
 
@@ -347,118 +347,118 @@
 
 ### 4.1 作業開始
 
-- [ ] PR4の作業準備を完了する。
-  - [ ] PR3が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`からPR4用の短命Branchを作成する。
-  - [ ] Steering文書、PR1〜PR3完了記録、`git status`、Android core-model/network/data、FileBrowser、Navigation、Compose Testの既存パターンを再確認する。
-  - [ ] Raspberry Pi、PostgreSQL、実HDD、Android実機、LAN、ZeroTier、Release署名入力の利用可否を確認する。
+- [x] PR4の作業準備を完了する。
+  - [x] PR3が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`からPR4用の短命Branchを作成する。
+  - [x] Steering文書、PR1〜PR3完了記録、`git status`、Android core-model/network/data、FileBrowser、Navigation、Compose Testの既存パターンを再確認する。
+  - [x] Raspberry Pi、PostgreSQL、実HDD、Android実機、LAN、ZeroTier、Release署名入力の利用可否を確認する。
 
 ### 4.2 Android model・Network・Repository
 
-- [ ] Androidの共有Domain modelとFile model拡張をTDDで実装する。
-  - [ ] `SharePermission`、`PermissionSource`、Owner、Candidate、Member、ShareItem、Pageを`core-model`へ追加する。
-  - [ ] `FileEntry`にOwner、Permission、PermissionSource、ShareTargetIdを追加する。
-  - [ ] 未知Permission/Sourceを`UNKNOWN`へ変換し、破壊的操作とShare管理を有効化しない。
-  - [ ] Owner、Viewer、Contributor、Editor、ManagerのUI操作可否行列を共通modelから導出する。
-- [ ] `SharingApi`とDTO/Mappingを実装する。
-  - [ ] 候補、Create、所有/受信一覧、詳細、Member Put/Delete、Share Deleteを`core-network`へ追加する。
-  - [ ] Paging、Filter、Owner、Permission、Source、時刻、ErrorをOpenAPIと一致させる。
-  - [ ] 401 Refresh後の再送で同じ意図を維持し、共有変更を意図せず二重送信しない。
-  - [ ] 旧Server/不完全Response/未知enumを安全側に扱うContract Testを追加する。
-- [ ] `SharingRepository`とPagingを`core-data`へ実装する。
-  - [ ] 全Use Caseを`AuthenticatedRequestExecutor`経由で呼び出す。
-  - [ ] DTOをDomain modelへ厳密にMappingし、不正UUID・時刻・enumを成功扱いにしない。
-  - [ ] 一覧Refreshと次Pageが安定順で重複・取りこぼしなく動作する。
-  - [ ] 更新競合・結果不明・解除後はServerの一覧/詳細を再取得し、Clientで成功を推測しない。
+- [x] Androidの共有Domain modelとFile model拡張をTDDで実装する。
+  - [x] `SharePermission`、`PermissionSource`、Owner、Candidate、Member、ShareItem、Pageを`core-model`へ追加する。
+  - [x] `FileEntry`にOwner、Permission、PermissionSource、ShareTargetIdを追加する。
+  - [x] 未知Permission/Sourceを`UNKNOWN`へ変換し、破壊的操作とShare管理を有効化しない。
+  - [x] Owner、Viewer、Contributor、Editor、ManagerのUI操作可否行列を共通modelから導出する。
+- [x] `SharingApi`とDTO/Mappingを実装する。
+  - [x] 候補、Create、所有/受信一覧、詳細、Member Put/Delete、Share Deleteを`core-network`へ追加する。
+  - [x] Paging、Filter、Owner、Permission、Source、時刻、ErrorをOpenAPIと一致させる。
+  - [x] 401 Refresh後の再送で同じ意図を維持し、共有変更を意図せず二重送信しない。
+  - [x] 旧Server/不完全Response/未知enumを安全側に扱うContract Testを追加する。
+- [x] `SharingRepository`とPagingを`core-data`へ実装する。
+  - [x] 全Use Caseを`AuthenticatedRequestExecutor`経由で呼び出す。
+  - [x] DTOをDomain modelへ厳密にMappingし、不正UUID・時刻・enumを成功扱いにしない。
+  - [x] 一覧Refreshと次Pageが安定順で重複・取りこぼしなく動作する。
+  - [x] 更新競合・結果不明・解除後はServerの一覧/詳細を再取得し、Clientで成功を推測しない。
 
 ### 4.3 `feature-sharing`とNavigation
 
-- [ ] `feature-sharing`モジュールをリポジトリ規約に従って追加する。
-  - [ ] Build設定、Dependency、Lockfile、Assembly marker、Unit/Instrumented Test source setを追加する。
-  - [ ] 既存Compose Theme・Componentを再利用し、新しい外部Packageを追加しない。
-- [ ] 共有一覧画面とViewModelをTDDで実装する。
-  - [ ] Folder Shareのルートと個別File Shareを、種別、名前、Owner、自分のPermissionとともに表示する。
-  - [ ] Loading、空、Paging、Refresh、認証更新、Storage/API Error、共有失効の状態を表示する。
-  - [ ] Folderルートから既存File browserへ`targetEntryId`を渡し、File Shareから詳細またはDownloadへ移動できる。
-- [ ] 共有設定・候補・Permission選択画面とViewModelをTDDで実装する。
-  - [ ] OwnerまたはManagerがMember追加、Permission変更、Member解除、Share全体解除を実行できる。
-  - [ ] FileのPermission選択肢から`CONTRIBUTOR`を除外し、Folderでは配下継承の説明を表示する。
-  - [ ] 継承で開いたEntryに共有元Folderと実効Permissionを表示する。
-  - [ ] Member解除、Share解除、Manager付与に確認Dialogを表示し、処理中の二重送信を防ぐ。
-  - [ ] 共有解除競合やアクセス失効後に安全な画面へ戻り、最新Server状態を表示する。
-- [ ] App NavigationとDIを接続する。
-  - [ ] `AppDestination`とHome画面へ「共有」導線を追加する。
-  - [ ] `ServiceContainer`と`SessionServices`にSharing Repositoryを追加する。
-  - [ ] ログアウト・接続経路変更時にSharing ViewModelと前Sessionの状態を使い回さない。
+- [x] `feature-sharing`モジュールをリポジトリ規約に従って追加する。
+  - [x] Build設定、Dependency、Lockfile、Assembly marker、Unit/Instrumented Test source setを追加する。
+  - [x] 既存Compose Theme・Componentを再利用し、新しい外部Packageを追加しない。
+- [x] 共有一覧画面とViewModelをTDDで実装する。
+  - [x] Folder Shareのルートと個別File Shareを、種別、名前、Owner、自分のPermissionとともに表示する。
+  - [x] Loading、空、Paging、Refresh、認証更新、Storage/API Error、共有失効の状態を表示する。
+  - [x] Folderルートから既存File browserへ`targetEntryId`を渡し、File Shareから詳細またはDownloadへ移動できる。
+- [x] 共有設定・候補・Permission選択画面とViewModelをTDDで実装する。
+  - [x] OwnerまたはManagerがMember追加、Permission変更、Member解除、Share全体解除を実行できる。
+  - [x] FileのPermission選択肢から`CONTRIBUTOR`を除外し、Folderでは配下継承の説明を表示する。
+  - [x] 継承で開いたEntryに共有元Folderと実効Permissionを表示する。
+  - [x] Member解除、Share解除、Manager付与に確認Dialogを表示し、処理中の二重送信を防ぐ。
+  - [x] 共有解除競合やアクセス失効後に安全な画面へ戻り、最新Server状態を表示する。
+- [x] App NavigationとDIを接続する。
+  - [x] `AppDestination`とHome画面へ「共有」導線を追加する。
+  - [x] `ServiceContainer`と`SessionServices`にSharing Repositoryを追加する。
+  - [x] ログアウト・接続経路変更時にSharing ViewModelと前Sessionの状態を使い回さない。
 
 ### 4.4 File UIのPermission制御
 
-- [ ] `feature-files`をServerのPermission metadataに対応する。
-  - [ ] Owner、Permission、PermissionSource、共有元Folderを一覧・詳細で表示する。
-  - [ ] Viewerは一覧・詳細・Downloadだけ、ContributorはそれにFolder作成・Uploadを追加して表示する。
-  - [ ] Editor/ManagerはRename・許可されたMove・Trashを表示し、ManagerはShare設定導線を表示する。
-  - [ ] Trash一覧・Restore・PurgeとMISSING管理はOwnerだけに表示する。
-  - [ ] `UNKNOWN`または欠落したPermissionでDownload以外を有効にせず、Serverの拒否後は一覧を再取得する。
-  - [ ] 共有Folder内のUpload・作成・MoveによりFileBrowserのOwner・Parent・戻る導線が個人Rootと混同しない。
+- [x] `feature-files`をServerのPermission metadataに対応する。
+  - [x] Owner、Permission、PermissionSource、共有元Folderを一覧・詳細で表示する。
+  - [x] Viewerは一覧・詳細・Downloadだけ、ContributorはそれにFolder作成・Uploadを追加して表示する。
+  - [x] Editor/ManagerはRename・許可されたMove・Trashを表示し、ManagerはShare設定導線を表示する。
+  - [x] Trash一覧・Restore・PurgeとMISSING管理はOwnerだけに表示する。
+  - [x] `UNKNOWN`または欠落したPermissionでDownload以外を有効にせず、Serverの拒否後は一覧を再取得する。
+  - [x] 共有Folder内のUpload・作成・MoveによりFileBrowserのOwner・Parent・戻る導線が個人Rootと混同しない。
 
 ### 4.5 Android自動Test
 
-- [ ] Model・Network・Repository Unit/Contract Testを完了する。
-  - [ ] 全4Permission、Owner、Direct、Inherited、Unknown、ShareTargetのMappingをTestする。
-  - [ ] 全Sharing EndpointのMethod、Path、Query、Header、Body、Response、ErrorをMockWebServer等の既存手段でTestする。
-  - [ ] 401 Refresh、通信結果不明、Paging、競合後再取得、二重送信防止をTestする。
-  - [ ] FileRepositoryの既存Status・Purge・MISSING・Upload Mappingへ回帰がない。
-- [ ] ViewModel・Compose UI Testを完了する。
-  - [ ] 共有一覧のLoading、空、成功、Paging、Error、Refreshと項目遷移をTestする。
-  - [ ] Share作成・Member更新・解除・全解除の成功、競合、失効、二重送信をTestする。
-  - [ ] FileとFolderのPermission選択肢、継承説明、Manager確認DialogをTestする。
-  - [ ] 各Permission/SourceでFile操作の表示・非表示とUnknownのFail-closedをTestする。
-- [ ] Android標準検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`が成功する。
-  - [ ] 接続されたAndroid実機で`connectedDebugAndroidTest --max-workers=1`相当が全対象Moduleに成功する。
-  - [ ] `./scripts/ci/verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、`git diff --check`が成功する。
+- [x] Model・Network・Repository Unit/Contract Testを完了する。
+  - [x] 全4Permission、Owner、Direct、Inherited、Unknown、ShareTargetのMappingをTestする。
+  - [x] 全Sharing EndpointのMethod、Path、Query、Header、Body、Response、ErrorをMockWebServer等の既存手段でTestする。
+  - [x] 401 Refresh、通信結果不明、Paging、競合後再取得、二重送信防止をTestする。
+  - [x] FileRepositoryの既存Status・Purge・MISSING・Upload Mappingへ回帰がない。
+- [x] ViewModel・Compose UI Testを完了する。
+  - [x] 共有一覧のLoading、空、成功、Paging、Error、Refreshと項目遷移をTestする。
+  - [x] Share作成・Member更新・解除・全解除の成功、競合、失効、二重送信をTestする。
+  - [x] FileとFolderのPermission選択肢、継承説明、Manager確認DialogをTestする。
+  - [x] 各Permission/SourceでFile操作の表示・非表示とUnknownのFail-closedをTestする。
+- [x] Android標準検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`が成功する。
+  - [x] 接続されたAndroid実機で`connectedDebugAndroidTest --max-workers=1`相当が全対象Moduleに成功する。
+  - [x] `./scripts/ci/verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、`git diff --check`が成功する。
 
 ### 4.6 Raspberry Pi・Android実機E2E
 
-- [ ] 本番相当環境の事前保護とRolloutを完了する。
-  - [ ] PostgreSQLとStorage RootのBackup、復元可能性、対象Serviceの開始状態を確認する。
-  - [ ] Migration、Server、Worker、署名済みAndroid Releaseの順序を運用文書に従って適用する。
-  - [ ] Rollback制約と共有先Upload Sessionの有無を確認し、共有データを無言削除しない。
-- [ ] Server共有・認可E2Eを完了する。
-  - [ ] Owner、Viewer、Contributor、Editor、Manager、Adminを含む複数の試験Userで共有を作成する。
-  - [ ] File直接Share、Folder継承、複数祖先、直接+継承の最強権限と権限元を確認する。
-  - [ ] List、Get、Range Download、Folder作成、Multipart/Resumable Upload、Rename、Move、Trashの4Permissionごとの許可・拒否を確認する。
-  - [ ] Share解除・Permission変更後の即時失効、Move後の継承変化、Trash中の非公開、Owner Restore後の再評価を確認する。
-  - [ ] PurgeとMISSING索引削除後にShare/Memberが残らず、未完了FileOperationが0件へ収束する。
-  - [ ] API/Worker/PostgreSQL再起動、Share変更とFile操作の競合後も認可とHDD/DBが収束する。
-- [ ] Android実機のユーザーフローE2Eを完了する。
-  - [ ] OwnerがFile/FolderのShare作成、候補選択、Permission設定を行う。
-  - [ ] Recipientが共有一覧、Folder配下、File詳細、Owner・Permission・Source・共有元を確認する。
-  - [ ] ContributorがFolder作成・中断再開Upload、EditorがRename・Move・Trash、ManagerがMember更新を行う。
-  - [ ] Viewerの変更操作、FileのContributor選択、RecipientのRestore/Purge、Adminの暗黙アクセスがUIとServerの両方で拒否される。
-  - [ ] Member/Share解除後に画面が最新状態へ戻り、共有対象を操作できない。
-- [ ] LAN・ZeroTierと回帰を確認する。
-  - [ ] LAN直接とZeroTier経由で同じHTTPS Hostname、TLS、認証、共有契約が機能する。
-  - [ ] Personal RootのUpload、Download、Rename、Move、Trash、Restore、Purge、MISSING、中断再開Uploadが従来どおり動作する。
-  - [ ] 試験中のUser、Share、File、一時データ、資格情報を安全に整理し、実稼働データを削除しない。
-  - [ ] Storage ID一致、全Service active、未完了FileOperation/Upload Session・孤立Shareが0件の最終状態を確認する。
-  - [ ] E2E手順、結果、付与Permission、失敗注入、所要時間、清掃結果を`docs/testing/`へ記録する。
+- [x] 本番相当環境の事前保護とRolloutを完了する。
+  - [x] PostgreSQLとStorage RootのBackup、復元可能性、対象Serviceの開始状態を確認する。
+  - [x] Migration、Server、Worker、署名済みAndroid Releaseの順序を運用文書に従って適用する。
+  - [x] Rollback制約と共有先Upload Sessionの有無を確認し、共有データを無言削除しない。
+- [x] Server共有・認可E2Eを完了する。
+  - [x] Owner、Viewer、Contributor、Editor、Manager、Adminを含む複数の試験Userで共有を作成する。
+  - [x] File直接Share、Folder継承、複数祖先、直接+継承の最強権限と権限元を確認する。
+  - [x] List、Get、Range Download、Folder作成、Multipart/Resumable Upload、Rename、Move、Trashの4Permissionごとの許可・拒否を確認する。
+  - [x] Share解除・Permission変更後の即時失効、Move後の継承変化、Trash中の非公開、Owner Restore後の再評価を確認する。
+  - [x] PurgeとMISSING索引削除後にShare/Memberが残らず、未完了FileOperationが0件へ収束する。
+  - [x] API/Worker/PostgreSQL再起動、Share変更とFile操作の競合後も認可とHDD/DBが収束する。
+- [x] Android実機のユーザーフローE2Eを完了する。
+  - [x] OwnerがFile/FolderのShare作成、候補選択、Permission設定を行う。
+  - [x] Recipientが共有一覧、Folder配下、File詳細、Owner・Permission・Source・共有元を確認する。
+  - [x] ContributorがFolder作成・中断再開Upload、EditorがRename・Move・Trash、ManagerがMember更新を行う。
+  - [x] Viewerの変更操作、FileのContributor選択、RecipientのRestore/Purge、Adminの暗黙アクセスがUIとServerの両方で拒否される。
+  - [x] Member/Share解除後に画面が最新状態へ戻り、共有対象を操作できない。
+- [x] LAN・ZeroTierと回帰を確認する。
+  - [x] LAN直接とZeroTier経由で同じHTTPS Hostname、TLS、認証、共有契約が機能する。
+  - [x] Personal RootのUpload、Download、Rename、Move、Trash、Restore、Purge、MISSING、中断再開Uploadが従来どおり動作する。
+  - [x] 試験中のUser、Share、File、一時データ、資格情報を安全に整理し、実稼働データを削除しない。
+  - [x] Storage ID一致、全Service active、未完了FileOperation/Upload Session・孤立Shareが0件の最終状態を確認する。
+  - [x] E2E手順、結果、付与Permission、失敗注入、所要時間、清掃結果を`docs/testing/`へ記録する。
 
 ### 4.7 文書整合・最終セルフレビュー・完了
 
-- [ ] 全文書と実装を最終整合する。
-  - [ ] 5つの正式文書、Steering、OpenAPI、Migration、Server、Worker、Android、運用・Test記録の用語、状態、Permission、Errorが一致する。
-  - [ ] Android `feature-sharing`の実配置、Navigation、依存方向を`docs/repository-structure.md`へ最終反映する。
-  - [ ] Migration、Server/Worker、AndroidのRollout順序、Rollback制約、Shareデータ保護を運用文書へ反映する。
-  - [ ] E2E記録が機密情報、実Userの識別情報、物理Path、Tokenを含まない。
-- [ ] 全体差分をセルフレビューする。
-  - [ ] すべての保護File APIが所有者・直接・継承を再評価し、認可を回避するEndpointや復旧経路がない。
-  - [ ] ActorとOwnerがFileEntry、Upload Session、FileOperation、Audit、Android表示で混同されていない。
-  - [ ] Permissionの長期Cache、Clientだけの認可、FileのContributor、Deny ACL、Group、公開Linkが入り込んでいない。
-  - [ ] QueryにN+1、無制限再帰、物理Path漏えいがなく、認証・認可95%とDomain/Application 80%のカバレッジ目標を満たす。
-  - [ ] スコープ外機能、不要なPackage、生成物、実環境情報、Credentialが差分にない。
+- [x] 全文書と実装を最終整合する。
+  - [x] 5つの正式文書、Steering、OpenAPI、Migration、Server、Worker、Android、運用・Test記録の用語、状態、Permission、Errorが一致する。
+  - [x] Android `feature-sharing`の実配置、Navigation、依存方向を`docs/repository-structure.md`へ最終反映する。
+  - [x] Migration、Server/Worker、AndroidのRollout順序、Rollback制約、Shareデータ保護を運用文書へ反映する。
+  - [x] E2E記録が機密情報、実Userの識別情報、物理Path、Tokenを含まない。
+- [x] 全体差分をセルフレビューする。
+  - [x] すべての保護File APIが所有者・直接・継承を再評価し、認可を回避するEndpointや復旧経路がない。
+  - [x] ActorとOwnerがFileEntry、Upload Session、FileOperation、Audit、Android表示で混同されていない。
+  - [x] Permissionの長期Cache、Clientだけの認可、FileのContributor、Deny ACL、Group、公開Linkが入り込んでいない。
+  - [x] QueryにN+1、無制限再帰、物理Path漏えいがなく、認証・認可95%とDomain/Application 80%のカバレッジ目標を満たす。
+  - [x] スコープ外機能、不要なPackage、生成物、実環境情報、Credentialが差分にない。
 - [ ] PR4を完了する。
-  - [ ] 4.1〜4.7のPR4対象項目がすべて`[x]`である。
+  - [x] 4.1〜4.7のPR4対象項目がすべて`[x]`である。
   - [ ] `./scripts/ci/build-release.sh`を含む全必須検証、Commit、Push、英語のPull Request作成、CI成功確認を完了する。
   - [ ] `steering`スキルのモード3-AでPR4完了記録を追記し、同じBranchへCommit・Pushする。
   - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。

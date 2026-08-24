@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength")
+
 package com.kurastorage.feature.files
 
 import androidx.lifecycle.ViewModel
@@ -13,9 +15,12 @@ import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.FilePage
 import com.kurastorage.core.model.KuraStorageException
+import com.kurastorage.core.model.PermissionSource
+import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadOperation
 import com.kurastorage.core.model.UploadState
+import com.kurastorage.core.model.filePermissionCapabilities
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +47,8 @@ data class FileBrowserState(
     val retention: RetentionDisplayState? = null,
     val placementResult: String? = null,
     val error: BrowserError? = null,
+    val currentFolder: FileEntry? = null,
+    val personalRoot: Boolean = true,
 )
 
 data class MissingIndexDeleteState(
@@ -83,14 +90,16 @@ data class MovePickerState(
     val loading: Boolean = true,
     val submitting: Boolean = false,
     val error: BrowserError? = null,
+    val destinationWritable: Boolean = false,
 ) {
     fun canOpen(folder: FileEntry): Boolean =
         folder.status == FileEntryStatus.ACTIVE &&
             folder.entryType == FileEntryType.FOLDER &&
+            filePermissionCapabilities(folder.permission, folder.permissionSource).canMove &&
             !(target.entryType == FileEntryType.FOLDER && folder.id == target.id)
 
     val canConfirm: Boolean
-        get() = currentFolderId != null && currentFolderId != target.parentId && !loading && !submitting
+        get() = currentFolderId != null && currentFolderId != target.parentId && destinationWritable && !loading && !submitting
 }
 
 data class BrowserError(
@@ -104,9 +113,10 @@ data class BrowserError(
 private data class PickerLocation(
     val id: String?,
     val name: String,
+    val writable: Boolean,
 )
 
-@Suppress("TooManyFunctions", "LargeClass")
+@Suppress("TooManyFunctions", "LargeClass", "LongParameterList")
 class FileBrowserViewModel(
     private val files: FileRepository,
     private val transfers: TransferRepository,
@@ -114,21 +124,27 @@ class FileBrowserViewModel(
     private val clock: Clock = Clock.systemUTC(),
     private val zoneId: ZoneId = ZoneId.systemDefault(),
     private val idempotencyKeyFactory: () -> String = { UUID.randomUUID().toString() },
+    private val initialParentId: String? = null,
+    private val initialSelectionId: String? = null,
 ) : ViewModel() {
-    private val mutableState = MutableStateFlow(FileBrowserState())
+    private val mutableState = MutableStateFlow(FileBrowserState(personalRoot = initialParentId == null))
     val state: StateFlow<FileBrowserState> = mutableState.asStateFlow()
-    private var pager = pager(null)
+    private var pager = pager(initialParentId)
     private var movePager: FilePager? = null
     private var transferJob: Job? = null
     private var lastUpload: UploadOperation? = null
     private var lastDownload: DownloadOperation? = null
     private var lastWasUpload = false
     private var placementDetailId: String? = null
-    private val folderStack = ArrayDeque<String?>().apply { addLast(null) }
+    private val folderStack = ArrayDeque<String?>().apply { addLast(initialParentId) }
     private val moveFolderStack = ArrayDeque<PickerLocation>()
 
     init {
         refresh()
+        initialParentId?.let(::loadCurrentFolder)
+        initialSelectionId?.let { id ->
+            viewModelScope.launch { runCatching { files.detail(id) }.onSuccess(::showDetail).onFailure(::showError) }
+        }
     }
 
     fun refresh() =
@@ -155,6 +171,7 @@ class FileBrowserViewModel(
         if (entry.entryType == FileEntryType.FOLDER && entry.status == FileEntryStatus.ACTIVE && !trashMode) {
             folderStack.addLast(entry.id)
             pager = pager(entry.id)
+            mutableState.update { it.copy(currentFolder = entry) }
             refresh()
         } else {
             showDetail(entry)
@@ -167,20 +184,24 @@ class FileBrowserViewModel(
         if (trashMode || folderStack.size <= 1) return false
         folderStack.removeLast()
         pager = pager(folderStack.last())
+        folderStack.last()?.let(::loadCurrentFolder)
         refresh()
         return true
     }
 
     fun dismissDetail() = mutableState.update { it.copy(selected = null, retention = null) }
 
-    fun createFolder(name: String) = mutate { files.createFolder(folderStack.last(), name) }
+    fun createFolder(name: String) {
+        if (currentCapabilities().canCreate) mutate { files.createFolder(folderStack.last(), name) }
+    }
 
     fun trash(entry: FileEntry) {
-        if (entry.status == FileEntryStatus.ACTIVE) mutate { files.trash(entry.id) }
+        if (entry.status == FileEntryStatus.ACTIVE && capabilities(entry).canTrash) mutate { files.trash(entry.id) }
     }
 
     fun recheckMissing(entry: FileEntry) {
         if (entry.status !in setOf(FileEntryStatus.MISSING, FileEntryStatus.MISSING_CANDIDATE) ||
+            !capabilities(entry).canManageTrash ||
             entry.id in mutableState.value.missingActionIds
         ) {
             return
@@ -214,6 +235,7 @@ class FileBrowserViewModel(
 
     fun beginMissingIndexDelete(entry: FileEntry) {
         if (entry.status != FileEntryStatus.MISSING ||
+            !capabilities(entry).canManageTrash ||
             entry.id in mutableState.value.missingActionIds
         ) {
             return
@@ -284,11 +306,11 @@ class FileBrowserViewModel(
     fun restore(entry: FileEntry) {
         val deletion = mutableState.value.permanentDelete
         if (deletion?.target?.id == entry.id && deletion.submitting) return
-        mutate { files.restore(entry.id) }
+        if (capabilities(entry).canManageTrash) mutate { files.restore(entry.id) }
     }
 
     fun beginPermanentDelete(entry: FileEntry) {
-        if (!trashMode || mutableState.value.permanentDelete?.submitting == true) return
+        if (!trashMode || !capabilities(entry).canManageTrash || mutableState.value.permanentDelete?.submitting == true) return
         mutableState.update {
             it.copy(
                 selected = null,
@@ -356,7 +378,7 @@ class FileBrowserViewModel(
     }
 
     fun beginRename(entry: FileEntry) {
-        if (trashMode || entry.status != FileEntryStatus.ACTIVE) return
+        if (trashMode || entry.status != FileEntryStatus.ACTIVE || !capabilities(entry).canRename) return
         placementDetailId =
             mutableState.value.selected
                 ?.id
@@ -389,6 +411,7 @@ class FileBrowserViewModel(
                 runCatching { files.rename(rename.target.id, rename.input) }
                     .onSuccess { updated -> completePlacement("Renamed to ${updated.name}.") }
                     .onFailure { failure ->
+                        authoritativeRefresh()
                         mutableState.update {
                             it.copy(rename = rename.copy(submitting = false, error = failure.toBrowserError()))
                         }
@@ -398,13 +421,20 @@ class FileBrowserViewModel(
     }
 
     fun beginMove(entry: FileEntry) {
-        if (trashMode || entry.status != FileEntryStatus.ACTIVE) return
+        if (trashMode || entry.status != FileEntryStatus.ACTIVE || !capabilities(entry).canMove) return
         placementDetailId =
             mutableState.value.selected
                 ?.id
                 ?.takeIf { it == entry.id }
         moveFolderStack.clear()
-        moveFolderStack.addLast(PickerLocation(null, "My files"))
+        val rootId = initialParentId
+        moveFolderStack.addLast(
+            PickerLocation(
+                rootId,
+                mutableState.value.currentFolder?.name ?: if (rootId == null) "My files" else "Shared folder",
+                rootId == null || currentCapabilities().canMove,
+            ),
+        )
         mutableState.update {
             it.copy(
                 selected = null,
@@ -413,7 +443,7 @@ class FileBrowserViewModel(
                 error = null,
             )
         }
-        resetMovePager(null)
+        resetMovePager(rootId)
         loadMovePage(refresh = true)
     }
 
@@ -427,7 +457,7 @@ class FileBrowserViewModel(
     fun openMoveFolder(folder: FileEntry) {
         val picker = mutableState.value.movePicker ?: return
         if (!picker.canOpen(folder) || picker.loading || picker.submitting) return
-        moveFolderStack.addLast(PickerLocation(folder.id, folder.name))
+        moveFolderStack.addLast(PickerLocation(folder.id, folder.name, capabilities(folder).canMove))
         resetMovePager(folder.id)
         loadMovePage(refresh = true)
     }
@@ -455,6 +485,7 @@ class FileBrowserViewModel(
                 runCatching { files.move(picker.target.id, destinationId) }
                     .onSuccess { updated -> completePlacement("Moved ${updated.name}.") }
                     .onFailure { failure ->
+                        authoritativeRefresh()
                         mutableState.update {
                             it.copy(movePicker = picker.copy(submitting = false, error = failure.toBrowserError()))
                         }
@@ -475,7 +506,7 @@ class FileBrowserViewModel(
         size: Long,
         contentType: String?,
     ) {
-        if (transferJob?.isActive == true) return
+        if (transferJob?.isActive == true || !currentCapabilities().canCreate) return
         val destination = mutableState.value.parentId ?: error("Root folder has not loaded")
         lastUpload = transfers.newUpload(sourceUri, destination, fileName, size, contentType)
         lastWasUpload = true
@@ -497,7 +528,7 @@ class FileBrowserViewModel(
         file: FileEntry,
         destinationUri: String,
     ) {
-        if (file.status != FileEntryStatus.ACTIVE) return
+        if (file.status != FileEntryStatus.ACTIVE || !capabilities(file).canDownload) return
         lastDownload = DownloadOperation(file, destinationUri)
         lastWasUpload = false
         runTransfer(transfers.download(checkNotNull(lastDownload)), refreshAfter = false)
@@ -549,6 +580,7 @@ class FileBrowserViewModel(
                     if (event is TransferEvent.UploadStatus) lastUpload = event.operation
                     mutableState.update { it.copy(transfer = event, error = event.toBrowserError()) }
                     if (refreshAfter && event is TransferEvent.UploadCompleted) refresh()
+                    if (refreshAfter && event is TransferEvent.Failed) authoritativeRefresh()
                 }
             }
     }
@@ -557,8 +589,15 @@ class FileBrowserViewModel(
         viewModelScope.launch {
             runCatching { action() }
                 .onSuccess { refresh() }
-                .onFailure { showError(it) }
+                .onFailure { failure ->
+                    authoritativeRefresh()
+                    showError(failure)
+                }
         }
+    }
+
+    private suspend fun authoritativeRefresh() {
+        runCatching { pager.refresh() }.onSuccess(::showPage)
     }
 
     private fun load(
@@ -598,9 +637,29 @@ class FileBrowserViewModel(
                 entries = page.items,
                 parentId = page.parentId,
                 canLoadMore = page.hasNextPage,
+                currentFolder = if (page.parentId == null) null else it.currentFolder?.takeIf { folder -> folder.id == page.parentId },
+                personalRoot = initialParentId == null && folderStack.size == 1,
             )
         }
     }
+
+    private fun loadCurrentFolder(parentId: String) {
+        viewModelScope.launch {
+            runCatching { files.detail(parentId) }.onSuccess { folder ->
+                mutableState.update { state -> state.copy(currentFolder = folder) }
+            }
+        }
+    }
+
+    private fun capabilities(entry: FileEntry) = filePermissionCapabilities(entry.permission, entry.permissionSource)
+
+    private fun currentCapabilities() =
+        mutableState.value.currentFolder?.let(::capabilities)
+            ?: if (initialParentId == null && folderStack.size == 1) {
+                filePermissionCapabilities(SharePermission.MANAGER, PermissionSource.OWNER)
+            } else {
+                filePermissionCapabilities(SharePermission.UNKNOWN, PermissionSource.UNKNOWN)
+            }
 
     private fun reconcileUnknownMissingIndexDelete(
         page: FilePage,
@@ -685,6 +744,7 @@ class FileBrowserViewModel(
                                 state.movePicker?.copy(
                                     currentFolderId = page.parentId,
                                     currentFolderName = location.name,
+                                    destinationWritable = location.writable,
                                     folders =
                                         page.items.filter {
                                             it.status == FileEntryStatus.ACTIVE &&

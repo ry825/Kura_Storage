@@ -6,12 +6,15 @@ import com.kurastorage.core.model.DeviceId
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.KuraStorageException
+import com.kurastorage.core.model.PermissionSource
+import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.StoredCredential
 import com.kurastorage.core.network.CreateFolderRequestDto
 import com.kurastorage.core.network.FileApi
 import com.kurastorage.core.network.FileEntryDto
 import com.kurastorage.core.network.FileEntryPageDto
 import com.kurastorage.core.network.NetworkCallResult
+import com.kurastorage.core.network.OwnerSummaryDto
 import com.kurastorage.core.network.UpdateFileRequestDto
 import kotlinx.coroutines.test.runTest
 import okhttp3.MultipartBody
@@ -66,6 +69,35 @@ class FileRepositoryTest {
             assertEquals(listOf("missing"), api.rechecked)
             assertEquals(listOf("missing"), api.deletedMissing)
         }
+
+    @Test
+    fun `repository maps owner direct inherited and unknown permission metadata fail closed`() {
+        val owner = dto("owner").copy(permission = "MANAGER", permissionSource = "OWNER").toModel()
+        assertEquals(SharePermission.MANAGER, owner.permission)
+        assertEquals(PermissionSource.OWNER, owner.permissionSource)
+
+        val direct =
+            dto("direct")
+                .copy(
+                    owner = OwnerSummaryDto("owner", "Family Owner"),
+                    permission = "EDITOR",
+                    permissionSource = "DIRECT",
+                    shareTargetId = "share-target",
+                ).toModel()
+        assertEquals("Family Owner", direct.owner.displayName)
+        assertEquals(SharePermission.EDITOR, direct.permission)
+        assertEquals(PermissionSource.DIRECT, direct.permissionSource)
+        assertEquals("share-target", direct.shareTargetId)
+
+        val inherited = dto("inherited").copy(permission = "VIEWER", permissionSource = "INHERITED").toModel()
+        assertEquals(SharePermission.VIEWER, inherited.permission)
+        assertEquals(PermissionSource.INHERITED, inherited.permissionSource)
+        val contributor = dto("contributor").copy(permission = "CONTRIBUTOR", permissionSource = "INHERITED").toModel()
+        assertEquals(SharePermission.CONTRIBUTOR, contributor.permission)
+        val unknown = dto("unknown").copy(permission = "FUTURE", permissionSource = "FUTURE").toModel()
+        assertEquals(SharePermission.UNKNOWN, unknown.permission)
+        assertEquals(PermissionSource.UNKNOWN, unknown.permissionSource)
+    }
 
     @Test
     fun `repository sends only name for rename and only parent ID for move`() =

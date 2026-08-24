@@ -12,6 +12,9 @@ import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.FilePage
 import com.kurastorage.core.model.KuraStorageException
+import com.kurastorage.core.model.OwnerSummary
+import com.kurastorage.core.model.PermissionSource
+import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadOperation
 import com.kurastorage.core.model.UploadState
@@ -898,6 +901,9 @@ class FileBrowserViewModelTest {
                 null,
                 Instant.EPOCH,
                 Instant.EPOCH,
+                owner = OwnerSummary("owner", "Owner"),
+                permission = SharePermission.MANAGER,
+                permissionSource = PermissionSource.OWNER,
             )
 
         fun folder(
@@ -916,6 +922,9 @@ class FileBrowserViewModelTest {
             null,
             Instant.EPOCH,
             Instant.EPOCH,
+            owner = OwnerSummary("owner", "Owner"),
+            permission = SharePermission.MANAGER,
+            permissionSource = PermissionSource.OWNER,
         )
 
         fun apiFailure(
