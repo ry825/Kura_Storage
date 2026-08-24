@@ -457,11 +457,11 @@
   - [x] Permissionの長期Cache、Clientだけの認可、FileのContributor、Deny ACL、Group、公開Linkが入り込んでいない。
   - [x] QueryにN+1、無制限再帰、物理Path漏えいがなく、認証・認可95%とDomain/Application 80%のカバレッジ目標を満たす。
   - [x] スコープ外機能、不要なPackage、生成物、実環境情報、Credentialが差分にない。
-- [ ] PR4を完了する。
+- [x] PR4を完了する。
   - [x] 4.1〜4.7のPR4対象項目がすべて`[x]`である。
-  - [ ] `./scripts/ci/build-release.sh`を含む全必須検証、Commit、Push、英語のPull Request作成、CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR4完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+  - [x] `./scripts/ci/build-release.sh`を含む全必須検証、Commit、Push、英語のPull Request作成、CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR4完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -573,14 +573,36 @@
 
 ### PR4: Android共有UI・権限表示・実機E2E
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・実機確認: 未実施
-- 計画と実装の差分: 未完了
-- 実装中に追加したタスクと理由: 未完了
-- 技術的に不要になったタスク・理由・代替実装: 未完了
-- 後続作業への引継ぎ事項: 未完了
+- 完了日: 2026-08-24
+- Pull Request: [#22 Add Android sharing UI and permission-aware file actions](https://github.com/ry825/Kura_Storage/pull/22)
+- 実施したTest・Build・静的解析:
+  - `./scripts/ci/verify-config.sh`: 成功
+  - `./scripts/ci/verify-server.sh`: 成功（Domain 49件、Application 133件、Integration 89件）
+  - `./scripts/ci/verify-security.sh`: 成功
+  - `./scripts/ci/verify-deployment.sh`: 成功
+  - `./scripts/ci/verify-android.sh`: 成功（Unit Test、ktlint、Detekt、Lint、Debug/Test APK生成）
+  - 全Android Moduleの`connectedDebugAndroidTest --max-workers=1`: 成功（`feature-files` 17件、`feature-sharing` 5件を含み失敗0件）
+  - `./scripts/ci/build-release.sh 0.6.0-pr4 ...`: 成功（署名済み・非debuggable Android APK、linux-arm64 Server成果物、Checksumを生成・検証）
+  - `git diff --check`: 成功
+  - GitHub Actions: Android、Config、Security、Serverの必須Checkがすべて成功。Server初回実行では既存並行Move/Trash/Restore/Rename Testが一度だけ`NotFound`となったが、Server差分がないこととローカル成功を確認して失敗Jobを再実行し、全89件成功した。
+- 手動確認・実機確認:
+  - Raspberry Pi本番相当環境へMigration、API、Worker、署名済みAndroid Releaseの順で配置し、LAN直接・ZeroTierの同一HTTPS Hostname/TLS/認証/共有契約を確認した。
+  - Owner、Viewer、Contributor、Editor、Manager、Adminで、File直接Share、Folder継承、直接+継承、権限変更・解除、Rename、Move、Trash、Restore、Purge、MISSING、再起動・競合を確認した。
+  - Android実機でOwnerのShare作成、Viewerの参照専用、ContributorのFolder作成と268 MiB中断再開Upload、EditorのRename/Move/Trash、ManagerのMember更新・解除・Share解除を確認した。
+  - FileのContributor非表示、RecipientのRestore/Purge非表示、Adminの暗黙アクセス拒否、Member/Share解除後の即時失効をUIとServerの両方で確認した。
+  - 試験User・Share・File・Session・資格情報を整理し、Share/Member、未完了FileOperation、active Upload Sessionが0件、Storage ID一致、全Service activeであることを確認した。
+- 計画と実装の差分:
+  - 承認済みPR4範囲どおり、Server契約やMigrationを変更せず、Android model/network/data、`feature-sharing`、Navigation、権限別File UI、運用・E2E文書を実装した。
+  - 最終署名Releaseの再生成後は端末がADBから切断されていたため再インストールできなかった。同一機能Sourceの署名Releaseで実機E2Eを完了済みで、その後の変更は表示Titleの静的解析対応整形だけであり、最終SourceではAndroid全自動検証とRelease Buildを再実行して成功した。
+- 実装中に追加したタスクと理由:
+  - 物理端末で詳細操作行と共有設定画面の表示切れを検出し、操作配置の縦分割、画面Scroll、Permission選択の折返しとCompose回帰Testを追加した。
+  - 共有Folder Rootが`My files`と表示される誤認を検出し、Folder名、Owner、Permission/Source、共有元を表示する修正とTestを追加した。
+  - Wi-Fi切断時にSocketFactoryの`requireNotNull`例外がOkHttp Dispatcherを停止させることを検出し、回復可能な`SocketException`へ変更してUnit Testを追加した。
+  - Instrumented TestのDex互換名と重複Permission assertionを実機実行で修正した。
+- 技術的に不要になったタスク・理由・代替実装: なし
+- 後続作業への引継ぎ事項:
+  - PR #22はMergeせず、必須CI成功状態でレビュー待ちとする。
+  - PR #22のMerge後に最新`main`でPR1〜PR4の完了状態と各記録を確認し、`steering`スキルのモード3-Bによる全体振り返りを記録する。
 
 ---
 
