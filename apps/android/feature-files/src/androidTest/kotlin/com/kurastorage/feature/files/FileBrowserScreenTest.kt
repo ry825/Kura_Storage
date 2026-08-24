@@ -28,6 +28,9 @@ import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
+import com.kurastorage.core.model.OwnerSummary
+import com.kurastorage.core.model.PermissionSource
+import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadOperation
 import com.kurastorage.core.model.UploadState
@@ -372,6 +375,7 @@ class FileBrowserScreenTest {
                                     currentFolderId = "destination",
                                     currentFolderName = "Destination",
                                     loading = false,
+                                    destinationWritable = true,
                                 ),
                         )
                 },
@@ -760,6 +764,101 @@ class FileBrowserScreenTest {
         compose.onAllNodesWithTag("delete-missing-index").assertCountEquals(0)
     }
 
+    @Test
+    fun sharedPermissionControlsAreFailClosedAcrossViewerContributorEditorManagerAndUnknown() {
+        val permission = mutableStateOf(SharePermission.VIEWER)
+        val source = mutableStateOf(PermissionSource.DIRECT)
+        compose.setContent {
+            FileBrowserScreen(
+                state = sharedControlState(permission.value, source.value),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+        compose.onNodeWithText("Download").assertIsDisplayed()
+        compose.onNodeWithText("Photos").assertIsDisplayed()
+        compose.onAllNodesWithText("Owner: Owner").assertCountEquals(2)
+        compose.onAllNodesWithText("Permission: VIEWER (DIRECT)").assertCountEquals(2)
+        compose.onNodeWithText("Shared from folder: shared-root").assertIsDisplayed()
+        assertSharedControlCounts(create = 0, rename = 0, move = 0, trash = 0, sharing = 0)
+
+        compose.runOnIdle {
+            permission.value = SharePermission.CONTRIBUTOR
+            source.value = PermissionSource.INHERITED
+        }
+        compose.onNodeWithText("Download").assertIsDisplayed()
+        assertSharedControlCounts(create = 1, rename = 0, move = 0, trash = 0, sharing = 0)
+
+        compose.runOnIdle {
+            permission.value = SharePermission.EDITOR
+            source.value = PermissionSource.DIRECT
+        }
+        assertSharedControlCounts(create = 1, rename = 1, move = 1, trash = 1, sharing = 0)
+
+        compose.runOnIdle {
+            permission.value = SharePermission.MANAGER
+            source.value = PermissionSource.INHERITED
+        }
+        assertSharedControlCounts(create = 1, rename = 1, move = 1, trash = 1, sharing = 1)
+        compose.onNodeWithText("Sharing settings").assertIsDisplayed()
+
+        compose.runOnIdle {
+            source.value = PermissionSource.UNKNOWN
+        }
+        compose.onNodeWithText("Download").assertIsDisplayed()
+        assertSharedControlCounts(create = 0, rename = 0, move = 0, trash = 0, sharing = 0)
+
+        compose.runOnIdle {
+            permission.value = SharePermission.UNKNOWN
+            source.value = PermissionSource.OWNER
+        }
+        compose.onNodeWithText("Download").assertIsDisplayed()
+        assertSharedControlCounts(create = 0, rename = 0, move = 0, trash = 0, sharing = 0)
+    }
+
+    private fun sharedControlState(
+        permission: SharePermission,
+        source: PermissionSource,
+    ): FileBrowserState {
+        val entry = file().copy(permission = permission, permissionSource = source, shareTargetId = "shared-root")
+        val currentFolder = folder().copy(permission = permission, permissionSource = source, shareTargetId = "shared-root")
+        return FileBrowserState(
+            loading = false,
+            entries = listOf(entry),
+            selected = entry,
+            currentFolder = currentFolder,
+            personalRoot = false,
+        )
+    }
+
+    private fun assertSharedControlCounts(
+        create: Int,
+        rename: Int,
+        move: Int,
+        trash: Int,
+        sharing: Int,
+    ) {
+        compose.onAllNodesWithText("New folder").assertCountEquals(create)
+        compose.onAllNodesWithText("Upload").assertCountEquals(create)
+        compose.onAllNodesWithText("Rename").assertCountEquals(rename)
+        compose.onAllNodesWithText("Move").assertCountEquals(move)
+        compose.onAllNodesWithText("Move to trash").assertCountEquals(trash)
+        compose.onAllNodesWithText("Sharing settings").assertCountEquals(sharing)
+    }
+
     private fun file() =
         FileEntry(
             "file",
@@ -773,6 +872,9 @@ class FileBrowserScreenTest {
             null,
             Instant.EPOCH,
             Instant.EPOCH,
+            owner = OwnerSummary("owner", "Owner"),
+            permission = SharePermission.MANAGER,
+            permissionSource = PermissionSource.OWNER,
         )
 
     private fun folder(
@@ -791,6 +893,9 @@ class FileBrowserScreenTest {
         null,
         Instant.EPOCH,
         Instant.EPOCH,
+        owner = OwnerSummary("owner", "Owner"),
+        permission = SharePermission.MANAGER,
+        permissionSource = PermissionSource.OWNER,
     )
 
     private fun error(

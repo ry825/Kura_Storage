@@ -27,4 +27,5 @@ include(
     ":feature-connection",
     ":feature-auth",
     ":feature-files",
+    ":feature-sharing",
 )

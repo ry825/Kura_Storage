@@ -8,6 +8,7 @@ import com.kurastorage.core.model.StorageAvailability
 import okhttp3.OkHttpClient
 import java.net.InetAddress
 import java.net.Socket
+import java.net.SocketException
 import javax.net.SocketFactory
 
 class AndroidLocalNetworkSource(
@@ -56,7 +57,7 @@ class AndroidLocalNetworkSource(
 internal class RefreshingSocketFactory(
     private val delegateProvider: () -> SocketFactory?,
 ) : SocketFactory() {
-    private fun delegate(): SocketFactory = requireNotNull(delegateProvider()) { "Local network is unavailable" }
+    private fun delegate(): SocketFactory = delegateProvider() ?: throw SocketException("Local network is unavailable")
 
     override fun createSocket(): Socket = delegate().createSocket()
 

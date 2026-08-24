@@ -161,10 +161,97 @@ interface UploadSessionApi {
     ): NetworkCallResult<Unit>
 }
 
+interface SharingApi {
+    suspend fun listCandidates(accessToken: String): NetworkCallResult<List<ShareCandidateDto>>
+
+    suspend fun createShare(
+        accessToken: String,
+        request: CreateShareRequestDto,
+    ): NetworkCallResult<ShareItemDto>
+
+    suspend fun listShares(
+        accessToken: String,
+        scope: String,
+        targetType: String?,
+        page: Int,
+        pageSize: Int,
+    ): NetworkCallResult<SharePageDto>
+
+    suspend fun getShare(
+        accessToken: String,
+        shareId: String,
+    ): NetworkCallResult<ShareItemDto>
+
+    suspend fun setMember(
+        accessToken: String,
+        shareId: String,
+        userId: String,
+        request: SetShareMemberRequestDto,
+    ): NetworkCallResult<ShareItemDto>
+
+    suspend fun removeMember(
+        accessToken: String,
+        shareId: String,
+        userId: String,
+    ): NetworkCallResult<Unit>
+
+    suspend fun deleteShare(
+        accessToken: String,
+        shareId: String,
+    ): NetworkCallResult<Unit>
+}
+
 @Suppress("TooManyFunctions")
 private interface KuraStorageService {
     @GET("system/health")
     suspend fun health(): Response<SystemHealthDto>
+
+    @GET("shares/candidates")
+    suspend fun listShareCandidates(
+        @Header("Authorization") authorization: String,
+    ): Response<List<ShareCandidateDto>>
+
+    @POST("shares")
+    suspend fun createShare(
+        @Header("Authorization") authorization: String,
+        @Body request: CreateShareRequestDto,
+    ): Response<ShareItemDto>
+
+    @GET("shares")
+    suspend fun listShares(
+        @Header("Authorization") authorization: String,
+        @Query("scope") scope: String,
+        @Query("targetType") targetType: String?,
+        @Query("page") page: Int,
+        @Query("pageSize") pageSize: Int,
+    ): Response<SharePageDto>
+
+    @GET("shares/{shareId}")
+    suspend fun getShare(
+        @Header("Authorization") authorization: String,
+        @Path("shareId") shareId: String,
+    ): Response<ShareItemDto>
+
+    @PUT("shares/{shareId}/members/{userId}")
+    suspend fun setShareMember(
+        @Header("Authorization") authorization: String,
+        @Path("shareId") shareId: String,
+        @Path("userId") userId: String,
+        @Body request: SetShareMemberRequestDto,
+    ): Response<ShareItemDto>
+
+    @DELETE("shares/{shareId}/members/{userId}")
+    suspend fun removeShareMember(
+        @Header("Authorization") authorization: String,
+        @Path("shareId") shareId: String,
+        @Path("userId") userId: String,
+    ): Response<Unit>
+
+    @DELETE("shares/{shareId}")
+    suspend fun deleteShare(
+        @Header("Authorization") authorization: String,
+        @Path("shareId") shareId: String,
+    ): Response<Unit>
 
     @POST("auth/register-device")
     suspend fun registerDevice(
@@ -321,7 +408,8 @@ class KuraStorageApi(
 ) : AuthenticationApi,
     FileApi,
     AdminStorageApi,
-    UploadSessionApi {
+    UploadSessionApi,
+    SharingApi {
     private val service =
         Retrofit
             .Builder()
@@ -332,6 +420,46 @@ class KuraStorageApi(
             .create(KuraStorageService::class.java)
 
     suspend fun health(): SystemHealthDto = execute { service.health() }
+
+    override suspend fun listCandidates(accessToken: String) = executeAuthenticated { shareCandidates(accessToken) }
+
+    override suspend fun createShare(
+        accessToken: String,
+        request: CreateShareRequestDto,
+    ) = executeAuthenticated { service.createShare(bearer(accessToken), request) }
+
+    private suspend fun shareCandidates(accessToken: String) = service.listShareCandidates(bearer(accessToken))
+
+    override suspend fun listShares(
+        accessToken: String,
+        scope: String,
+        targetType: String?,
+        page: Int,
+        pageSize: Int,
+    ) = executeAuthenticated { service.listShares(bearer(accessToken), scope, targetType, page, pageSize) }
+
+    override suspend fun getShare(
+        accessToken: String,
+        shareId: String,
+    ) = executeAuthenticated { service.getShare(bearer(accessToken), shareId) }
+
+    override suspend fun setMember(
+        accessToken: String,
+        shareId: String,
+        userId: String,
+        request: SetShareMemberRequestDto,
+    ) = executeAuthenticated { service.setShareMember(bearer(accessToken), shareId, userId, request) }
+
+    override suspend fun removeMember(
+        accessToken: String,
+        shareId: String,
+        userId: String,
+    ) = executeAuthenticatedNoContent { service.removeShareMember(bearer(accessToken), shareId, userId) }
+
+    override suspend fun deleteShare(
+        accessToken: String,
+        shareId: String,
+    ) = executeAuthenticatedNoContent { service.deleteShare(bearer(accessToken), shareId) }
 
     @Suppress("MaxLineLength")
     override suspend fun registerDevice(request: RegisterDeviceRequestDto): TokenResponseDto = execute { service.registerDevice(request) }
@@ -494,6 +622,8 @@ class KuraStorageApi(
                 throw error
             } catch (error: IOException) {
                 throw KuraStorageException.Network(error)
+            } catch (error: SerializationException) {
+                throw KuraStorageException.Network(error)
             }
         }
 
@@ -513,6 +643,8 @@ class KuraStorageApi(
             } catch (error: KuraStorageException) {
                 throw error
             } catch (error: IOException) {
+                throw KuraStorageException.Network(error)
+            } catch (error: SerializationException) {
                 throw KuraStorageException.Network(error)
             }
         }

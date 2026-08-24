@@ -8,6 +8,7 @@ import com.kurastorage.core.data.DataStoreCredentialMetadataStore
 import com.kurastorage.core.data.DefaultAdminStorageRepository
 import com.kurastorage.core.data.DefaultAuthenticationRepository
 import com.kurastorage.core.data.DefaultFileRepository
+import com.kurastorage.core.data.DefaultSharingRepository
 import com.kurastorage.core.data.DefaultTransferRepository
 import com.kurastorage.core.model.ConnectionRoute
 import com.kurastorage.core.network.AndroidHealthProbe
@@ -81,6 +82,7 @@ class ServiceContainer(
         return SessionServices(
             authentication = auth,
             files = DefaultFileRepository(api, executor),
+            sharing = DefaultSharingRepository(api, executor),
             adminStorage = DefaultAdminStorageRepository(api, executor, auth),
             transfers =
                 DefaultTransferRepository(
@@ -102,6 +104,7 @@ class ServiceContainer(
 data class SessionServices(
     val authentication: DefaultAuthenticationRepository,
     val files: DefaultFileRepository,
+    val sharing: DefaultSharingRepository,
     val adminStorage: DefaultAdminStorageRepository,
     val transfers: DefaultTransferRepository,
 )

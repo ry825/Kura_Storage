@@ -648,7 +648,8 @@ KuraStorage.AdminCli/
 app
 ├── feature-connection
 ├── feature-auth
-└── feature-files
+├── feature-files
+└── feature-sharing
 
 feature-* ──> core-model / core-ui / 必要なcore-*
 core-network ──> core-model / core-security
@@ -859,8 +860,9 @@ feature-files/
 | `feature-connection` | LOCAL_DIRECT/REMOTE_SECURE/DISCONNECTED、Health、RemoteAccessGuidanceController |
 | `feature-auth` | 初回Device登録、Login、Refresh、Logout、Device失効対応 |
 | `feature-files` | Home、一覧、詳細、Folder作成、Streaming Upload、Range Download、Trash、Restore、Rename、Move、MISSING表示・再確認・索引削除確認 |
+| `feature-sharing` | 所有・受信共有一覧、共有候補・Permission選択、Member追加・更新・解除、Share全体解除 |
 
-`feature-sharing`はMVP後のファイル・フォルダ共有拡張で追加し、共有一覧、候補・権限選択、Member管理を担当する。`feature-media`、`feature-backup`、`feature-settings`はMVP後に必要となった時点で追加する。
+`feature-sharing`は`SharingScreens.kt`と`SharingViewModels.kt`を持ち、`core-model`の共有・権限Model、`core-network`の`SharingApi`、`core-data`の`SharingRepository`を利用する。共有Folderの閲覧と権限別File操作は`app`のNavigationから既存`feature-files`へ遷移して再利用し、Feature間を直接依存させない。`feature-media`、`feature-backup`、`feature-settings`はMVP後に必要となった時点で追加する。
 
 ### 8.6 Gradle Build Logic
 

@@ -328,6 +328,25 @@ queries. If those conditions cannot be met safely, restore the pre-upgrade
 PostgreSQL and Storage Root backups as a matched pair instead of forcing the
 migration or deleting rows directly.
 
+For the Android sharing rollout, keep the order `PostgreSQL backup and Storage
+Root backup -> migration -> API -> Worker -> signed Android release`. Confirm
+the API and Worker use the same immutable release and that health checks pass
+before installing the client. The Android release must use the configured
+HTTPS hostname and the same public Root CA for LAN and ZeroTier; do not build a
+route-specific APK. After installation, verify owned and received share lists,
+all four permissions, direct and inherited sources, and member/share removal.
+An older client may continue personal file operations, but it must not be used
+to infer or cache sharing authorization.
+
+Before rollback, stop new mutations and inspect aggregate Share, member,
+non-completed Upload Session, and File Operation counts without selecting user
+names or physical paths. Finish or cancel shared-target sessions with the
+matching actor/device. Because Migration Down refuses active Shares and
+actor/target-owner sessions, prefer application rollback only while the schema
+remains compatible. If schema restoration is required, restore the PostgreSQL
+and Storage Root backups as the matched pair captured before rollout; never
+delete Share rows or session rows directly to force rollback.
+
 Before an upgrade or rollback that includes the permanent-delete migration,
 take PostgreSQL and Storage Root backups, stop the Worker, and inspect unresolved purge journals without selecting file names
 or paths:

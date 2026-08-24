@@ -16,6 +16,11 @@ enum class ErrorCode {
     FILE_NAME_CONFLICT,
     FILE_MOVE_CYCLE,
     FILE_OPERATION_NOT_ALLOWED,
+    INVALID_SHARE_PERMISSION,
+    SHARE_NOT_FOUND,
+    SHARE_MEMBER_NOT_FOUND,
+    SHARE_CONFLICT,
+    SHARE_OPERATION_NOT_ALLOWED,
     FILE_RESTORE_CONFLICT,
     RECOVERY_REQUIRED,
     IDEMPOTENCY_CONFLICT,
@@ -68,6 +73,8 @@ data class ApiError(
                 ErrorCode.FILE_OPERATION_NOT_ALLOWED,
                 ErrorCode.FILE_RESTORE_CONFLICT,
                 ErrorCode.IDEMPOTENCY_CONFLICT,
+                ErrorCode.SHARE_CONFLICT,
+                ErrorCode.SHARE_OPERATION_NOT_ALLOWED,
                 ErrorCode.UPLOAD_OFFSET_MISMATCH,
                 ErrorCode.UPLOAD_INCOMPLETE,
                 ErrorCode.UPLOAD_SESSION_EXPIRED,
@@ -75,6 +82,8 @@ data class ApiError(
                 ErrorCode.UPLOAD_SESSION_COMPLETED,
                 -> ErrorCategory.CONFLICT
                 ErrorCode.FILE_NOT_FOUND,
+                ErrorCode.SHARE_NOT_FOUND,
+                ErrorCode.SHARE_MEMBER_NOT_FOUND,
                 ErrorCode.UPLOAD_SESSION_NOT_FOUND,
                 -> ErrorCategory.AUTHORIZATION
                 ErrorCode.AUTHENTICATION_REQUIRED,
@@ -82,6 +91,7 @@ data class ApiError(
                 ErrorCode.REFRESH_TOKEN_REUSED,
                 -> ErrorCategory.AUTHENTICATION
                 ErrorCode.VALIDATION_FAILED,
+                ErrorCode.INVALID_SHARE_PERMISSION,
                 ErrorCode.UPLOAD_SIZE_MISMATCH,
                 ErrorCode.UPLOAD_CHECKSUM_MISMATCH,
                 ErrorCode.CHUNK_SIZE_LIMIT_EXCEEDED,
