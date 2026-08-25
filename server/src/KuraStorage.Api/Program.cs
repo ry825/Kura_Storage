@@ -8,6 +8,7 @@ using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
 using KuraStorage.Application.Sharing;
+using KuraStorage.Application.Search;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Application.Identity;
 using KuraStorage.Domain.Files;
@@ -421,6 +422,29 @@ app.MapDelete(
             new DeleteShareCommand(userId, deviceId, shareId, context.TraceIdentifier),
             cancellationToken);
         return result.IsSuccess ? Results.NoContent() : ToSharingHttpResult(result, context);
+    });
+
+app.MapGet(
+    "/api/v1/search",
+    async (
+        [AsParameters] SearchHttpQuery query,
+        HttpContext context,
+        SearchService search,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (!TryCreateSearchQuery(query, out var applicationQuery))
+        {
+            return Error(StatusCodes.Status400BadRequest, SearchErrorCodes.InvalidFilter, context);
+        }
+
+        return ToSearchHttpResult(
+            await search.SearchAsync(userId, applicationQuery!, cancellationToken),
+            context);
     });
 
 app.MapGet(
@@ -962,6 +986,105 @@ static IResult ToSharingHttpResult<T>(SharingResult<T> result, HttpContext conte
     return Error(status, result.Failure.Code, context);
 }
 
+static IResult ToSearchHttpResult<T>(SearchResult<T> result, HttpContext context) =>
+    result.IsSuccess
+        ? Results.Ok(result.Value)
+        : Error(StatusCodes.Status400BadRequest, result.Failure!.Code, context);
+
+static bool TryCreateSearchQuery(SearchHttpQuery query, out SearchQuery? result)
+{
+    result = null;
+    if (!TryOptionalDateTime(query.UpdatedFrom, out var updatedFrom) ||
+        !TryOptionalDateTime(query.UpdatedTo, out var updatedTo) ||
+        !TryOptionalLong(query.MinSize, out var minSize) ||
+        !TryOptionalLong(query.MaxSize, out var maxSize) ||
+        !TryOptionalGuid(query.OwnerUserId, out var ownerUserId) ||
+        !TryOptionalGuid(query.ShareTargetId, out var shareTargetId) ||
+        !TryOptionalInt(query.Page, 1, out var page) ||
+        !TryOptionalInt(query.PageSize, 50, out var pageSize))
+    {
+        return false;
+    }
+
+    result = new SearchQuery(
+        query.Q,
+        query.EntryType,
+        query.FileCategory,
+        query.Status,
+        updatedFrom,
+        updatedTo,
+        minSize,
+        maxSize,
+        ownerUserId,
+        shareTargetId,
+        page,
+        pageSize);
+    return true;
+}
+
+static bool TryOptionalDateTime(string? value, out DateTimeOffset? parsed)
+{
+    parsed = null;
+    if (value is null)
+    {
+        return true;
+    }
+
+    if (!DateTimeOffset.TryParseExact(
+            value,
+            ["O", "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'"],
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out var dateTime) ||
+        dateTime.Offset != TimeSpan.Zero)
+    {
+        return false;
+    }
+
+    parsed = dateTime;
+    return true;
+}
+
+static bool TryOptionalLong(string? value, out long? parsed)
+{
+    parsed = null;
+    if (value is null)
+    {
+        return true;
+    }
+
+    if (!long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number))
+    {
+        return false;
+    }
+
+    parsed = number;
+    return true;
+}
+
+static bool TryOptionalGuid(string? value, out Guid? parsed)
+{
+    parsed = null;
+    if (value is null)
+    {
+        return true;
+    }
+
+    if (!Guid.TryParseExact(value, "D", out var identifier))
+    {
+        return false;
+    }
+
+    parsed = identifier;
+    return true;
+}
+
+static bool TryOptionalInt(string? value, int defaultValue, out int parsed)
+{
+    parsed = defaultValue;
+    return value is null || int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out parsed);
+}
+
 static bool TrySharePermission(string? value, out SharePermission permission) =>
     Enum.TryParse(value, true, out permission) && Enum.IsDefined(permission);
 
@@ -1137,6 +1260,22 @@ public sealed record CreateShareRequest(Guid TargetEntryId, IReadOnlyList<Create
 public sealed record CreateShareMemberRequest(Guid UserId, string? Permission);
 
 public sealed record SetShareMemberRequest(string? Permission);
+
+public sealed class SearchHttpQuery
+{
+    public string? Q { get; init; }
+    public string? EntryType { get; init; }
+    public string? FileCategory { get; init; }
+    public string? Status { get; init; }
+    public string? UpdatedFrom { get; init; }
+    public string? UpdatedTo { get; init; }
+    public string? MinSize { get; init; }
+    public string? MaxSize { get; init; }
+    public string? OwnerUserId { get; init; }
+    public string? ShareTargetId { get; init; }
+    public string? Page { get; init; }
+    public string? PageSize { get; init; }
+}
 
 public sealed record CreateUploadSessionRequest(
     Guid DestinationFolderId,

@@ -564,6 +564,13 @@ sealed interface FileListUiState {
 - `%keyword%`検索等は`pg_trgm`等のIndex利用を確認する。
 - `SELECT *`を本番Queryで使用しない。
 - Query追加時は必要なIndexと最悪件数を検討する。
+- 検索語はtrimとNFC正規化を行い、長さ、空入力時のFilter必須条件、Page size上限をApplication境界で検証する。
+- LIKE検索の`%`、`_`、`\\`はliteral escapeし、Client入力をSQL patternやSQL断片として連結しない。値はparameterized queryだけで渡す。
+- 1〜2文字のcontains検索は禁止し、Index可能な前方一致へ限定する。3文字以上のcontains検索はGIN trigram Indexの実行計画を確認する。
+- 権限対応検索とRecent一覧は認可、Filter、count、PageをSQL段階で処理し、取得後にApplicationやClientで非認可項目を隠さない。
+- Query plan Testは代表的な所有、直接共有、継承共有、短語、trigram、Filterのみを含み、意図したIndex、固定SQL回数、有界再帰、temp spillの有無を確認する。
+- Recent履歴はFile詳細をユーザーへ表示できた後の明示操作だけでServer時刻をupsertする。GET、一覧、検索結果、Background処理から暗黙更新しない。
+- Search／Recent EndpointのAccess Logはquery stringを含めない。Nginxでは`$uri`を使用し、`$request`、`$request_uri`、`$args`を使用しない。検索語、File名、User名、物理PathをLog、Metric label、例外へ含めない。
 
 ---
 

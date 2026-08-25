@@ -11,6 +11,7 @@ tags:
   - name: Authentication
   - name: Files
   - name: Sharing
+  - name: Search
   - name: Transfers
   - name: Trash
   - name: Administration
@@ -373,6 +374,142 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /search:
+    get:
+      tags: [Search]
+      operationId: searchFiles
+      summary: Search the authenticated user's currently readable files and folders
+      description: >-
+        At least q or one filter is required. One- and two-code-point q values use prefix
+        matching; longer values use case-insensitive contains matching. Authorization,
+        filtering, counting, and paging are evaluated in PostgreSQL before results are returned.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - name: entryType
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/FileEntryType"
+        - name: fileCategory
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/SearchFileCategory"
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/SearchFileStatus"
+        - name: updatedFrom
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: updatedTo
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: minSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: maxSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: ownerUserId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: shareTargetId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: A deterministic page containing readable matches only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchPage"
+              examples:
+                missingCandidate:
+                  value:
+                    items:
+                      - id: 00000000-0000-4000-8000-000000000001
+                        entryType: FILE
+                        name: example.pdf
+                        mimeType: application/pdf
+                        fileCategory: DOCUMENT
+                        size: 12345
+                        status: MISSING_CANDIDATE
+                        updatedAt: 2026-08-24T00:00:00Z
+                        owner:
+                          id: 00000000-0000-4000-8000-000000000002
+                          displayName: Family member
+                        permission: VIEWER
+                        permissionSource: INHERITED
+                        shareTargetId: 00000000-0000-4000-8000-000000000003
+                    page: 1
+                    pageSize: 50
+                    totalCount: 1
+        "400":
+          description: Search query or filter validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalidQuery:
+                  value:
+                    code: INVALID_SEARCH_QUERY
+                    message: The request could not be completed.
+                    requestId: request-id
+                    details: {}
+                invalidFilter:
+                  value:
+                    code: INVALID_SEARCH_FILTER
+                    message: The request could not be completed.
+                    requestId: request-id
+                    details: {}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /files/upload:
     post:
       tags: [Files]
@@ -1491,6 +1628,73 @@ components:
           type: integer
           format: int64
           minimum: 0
+    SearchResultItem:
+      type: object
+      additionalProperties: false
+      required: [id, entryType, name, mimeType, fileCategory, size, status, updatedAt, owner, permission, permissionSource, shareTargetId]
+      properties:
+        id:
+          type: string
+          format: uuid
+        entryType:
+          $ref: "#/components/schemas/FileEntryType"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        mimeType:
+          type: [string, "null"]
+          maxLength: 255
+        fileCategory:
+          oneOf:
+            - $ref: "#/components/schemas/SearchFileCategory"
+            - type: "null"
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+        status:
+          $ref: "#/components/schemas/SearchFileStatus"
+        updatedAt:
+          type: string
+          format: date-time
+        owner:
+          $ref: "#/components/schemas/OwnerSummary"
+        permission:
+          $ref: "#/components/schemas/EffectivePermission"
+        permissionSource:
+          $ref: "#/components/schemas/PermissionSource"
+        shareTargetId:
+          type: [string, "null"]
+          format: uuid
+    SearchPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, totalCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResultItem"
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        totalCount:
+          type: integer
+          minimum: 0
+    SearchFileCategory:
+      type: string
+      enum: [IMAGE, VIDEO, AUDIO, DOCUMENT, ARCHIVE, OTHER]
+    SearchFileStatus:
+      type: string
+      enum: [ACTIVE, MISSING_CANDIDATE, MISSING]
+    EffectivePermission:
+      type: string
+      enum: [VIEWER, CONTRIBUTOR, EDITOR, MANAGER, OWNER]
     FileEntryType:
       type: string
       enum: [FILE, FOLDER]
@@ -1552,6 +1756,8 @@ components:
         - SHARE_MEMBER_NOT_FOUND
         - SHARE_CONFLICT
         - SHARE_OPERATION_NOT_ALLOWED
+        - INVALID_SEARCH_QUERY
+        - INVALID_SEARCH_FILTER
         - INTERNAL_ERROR
 security:
   - bearerAuth: []

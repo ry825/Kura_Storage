@@ -30,6 +30,7 @@ public sealed class OpenApiContractTests
             "  /shares:",
             "  /shares/{shareId}:",
             "  /shares/{shareId}/members/{userId}:",
+            "  /search:",
         })
         {
             Assert.Contains(path, contract, StringComparison.Ordinal);
@@ -65,6 +66,13 @@ public sealed class OpenApiContractTests
         Assert.Contains("SHARE_OPERATION_NOT_ALLOWED", contract, StringComparison.Ordinal);
         Assert.Contains("permissionSource:", contract, StringComparison.Ordinal);
         Assert.Contains("shareTargetId:", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: searchFiles", contract, StringComparison.Ordinal);
+        Assert.Contains("SearchResultItem:", contract, StringComparison.Ordinal);
+        Assert.Contains("SearchPage:", contract, StringComparison.Ordinal);
+        Assert.Contains("enum: [IMAGE, VIDEO, AUDIO, DOCUMENT, ARCHIVE, OTHER]", contract, StringComparison.Ordinal);
+        Assert.Contains("enum: [ACTIVE, MISSING_CANDIDATE, MISSING]", contract, StringComparison.Ordinal);
+        Assert.Contains("INVALID_SEARCH_QUERY", contract, StringComparison.Ordinal);
+        Assert.Contains("INVALID_SEARCH_FILTER", contract, StringComparison.Ordinal);
         Assert.Contains(
             "required: [deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, role]",
             contract,

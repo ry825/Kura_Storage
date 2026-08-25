@@ -573,6 +573,7 @@ SSIDとBSSIDは外部Wi-Fiで自動バックアップを許可するポリシー
 | --- | --- |
 | `file_entries` | `(parent_id, status, name)`、`(owner_user_id, status)`、`relative_path`一意、`updated_at` |
 | 名前検索 | `pg_trgm`を有効化し、正規化した`lower(name)`へGIN trigram Index |
+| 短い名前検索 | `lower(name) text_pattern_ops`のB-tree Index。1〜2文字は前方一致に限定する |
 | `shares` | `target_entry_id`一意、`(owner_user_id, updated_at, id)` |
 | `share_members` | `(user_id, share_id)`、`(share_id, user_id)`一意 |
 | `file_derivatives` | `(source_file_id, source_version, derivative_type, profile_version)`一意、`status`、`expires_at`、`last_accessed_at` |
@@ -1043,6 +1044,17 @@ DevelopmentとTestingでPathを省略した場合だけ、Process内に一時的
 - 複数経路の最強権限が同値な場合、説明用の権限元は直接Share、最も近い祖先Folder Shareの順に優先する。
 - 認可結果は要求を超えてCacheせず、Share解除やPermission変更の次要求で再評価する。
 - File mutationは対象と必要な親FolderのMutation Lockを安定順で取得し、Reload後かつHDD変更前に権限を再評価する。
+
+#### Search／Recent Query
+
+- SearchはPostgreSQL固有の読み取りQueryとしてInfrastructureへ配置し、所有、直接共有、祖先Folder共有を最大深度64で解決してからFilter、順位、count、offset、limitまでSQL内で処理する。
+- 1〜2文字の名前検索は`lower(name) LIKE query || '%'`とB-tree `text_pattern_ops`、3文字以上は`lower(name) LIKE '%' || query || '%'`とGIN `gin_trgm_ops`を使用する。LIKE wildcardはApplicationでliteral escapeし、すべてparameterized SQLで渡す。
+- qありは完全一致、前方一致、trigram similarity、`updated_at DESC`、`id ASC`、Filterのみは`updated_at DESC`、`id ASC`で決定的に並べる。
+- Search／Recentは必要列だけをprojectionし、HDD走査、`SELECT *`、Page内N+1、無制限再帰、認可後のClient非表示を使用しない。
+- `recent_files`は`(user_id, file_id)`複合Primary Key、User／FileEntryへのCascade、`(user_id, opened_at DESC, file_id)`Indexを持つ。記録はServer時刻の単一Statement upsert、一覧は現在権限を毎要求で再評価する。
+- `pg_trgm`と名前Indexは明示Migrationで適用する。大TableへのIndex作成前にBackup、空き容量、Lock時間を確認し、Downでは本機能のIndexだけを削除して共有Extensionを無条件削除しない。
+- Search query、File名、User名、共有元名、物理PathをAccess Log、Metric label、例外へ含めない。Nginxは`$uri`を使用し、`$request`、`$request_uri`、`$args`を記録しない。
+- 30万FileEntry、家族User 10名、代表20検索でwarm-up後のp50／p95、最大値、Error率、CPU、Memory、Index size、`EXPLAIN (ANALYZE, BUFFERS)`を記録し、通常2秒以内を確認する。
 
 ### 13.8 ファイルとメディア
 

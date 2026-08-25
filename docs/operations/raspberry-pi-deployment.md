@@ -347,6 +347,41 @@ remains compatible. If schema restoration is required, restore the PostgreSQL
 and Storage Root backups as the matched pair captured before rollout; never
 delete Share rows or session rows directly to force rollback.
 
+### Search index rollout and rollback
+
+`AddSearchIndexes` enables `pg_trgm` and builds two partial expression indexes
+on managed `file_entries`. Before applying it, take the normal PostgreSQL backup,
+confirm free database volume is at least the current `file_entries` table plus
+50 percent headroom, record the active session count, and stop neither API nor
+Worker unless the measured I/O pressure requires a maintenance window. The
+indexes use `CREATE INDEX CONCURRENTLY`, so the migration must be run by a role
+allowed to create extensions and indexes and must not be wrapped in an external
+transaction. Production API startup never applies it automatically.
+
+Apply the Migration before deploying the Search API. Monitor `pg_stat_progress_create_index`,
+database volume, CPU, and I/O until both indexes are valid. If creation is
+interrupted, retain the backup, remove only an invalid index with the reviewed
+Migration Down or an explicit `DROP INDEX CONCURRENTLY`, and rerun the same
+Migration; do not drop `file_entries` or rewrite names. Verify definitions without
+selecting names or paths:
+
+```sql
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE tablename = 'file_entries'
+  AND indexname IN (
+    'ix_file_entries_lower_name_trgm',
+    'ix_file_entries_lower_name_prefix_id')
+ORDER BY indexname;
+```
+
+Rollback removes only these two indexes concurrently. It deliberately retains
+`pg_trgm` because another feature may share the extension. Index rollback loses
+no FileEntry or Share data, but it removes the Search performance guarantee;
+disable the Search endpoint or restore the matching application release before
+running Down. Record elapsed build time and index sizes using aggregate output
+only.
+
 Before an upgrade or rollback that includes the permanent-delete migration,
 take PostgreSQL and Storage Root backups, stop the Worker, and inspect unresolved purge journals without selecting file names
 or paths:

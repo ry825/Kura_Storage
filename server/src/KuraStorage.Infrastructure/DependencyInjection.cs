@@ -3,12 +3,14 @@ using KuraStorage.Application.Identity;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
 using KuraStorage.Application.Sharing;
+using KuraStorage.Application.Search;
 using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Infrastructure.Configuration;
 using KuraStorage.Infrastructure.Identity;
 using KuraStorage.Infrastructure.Indexing;
 using KuraStorage.Infrastructure.Persistence;
+using KuraStorage.Infrastructure.Persistence.Queries;
 using KuraStorage.Infrastructure.Storage;
 using KuraStorage.Infrastructure.System;
 using Microsoft.EntityFrameworkCore;
@@ -90,6 +92,7 @@ public static class DependencyInjection
         services.AddScoped<IFileRepository, FileRepository>();
         services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
         services.AddScoped<IAuthorizationRepository, AuthorizationRepository>();
+        services.AddScoped<ISearchRepository, PostgreSqlSearchRepository>();
         services.AddScoped<IShareRepository, ShareRepository>();
         services.AddScoped<SharingDeletionParticipant>();
         services.AddScoped<IPermanentDeleteParticipant>(
@@ -122,6 +125,7 @@ public static class DependencyInjection
         services.AddScoped<UploadSessionCleanupService>();
         services.AddScoped<IAuthorizationService, AuthorizationService>();
         services.AddScoped<SharingService>();
+        services.AddScoped<SearchService>();
         services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IRefreshTokenService, RefreshTokenService>();

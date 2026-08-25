@@ -630,6 +630,13 @@ interface RecentFile {
 }
 ```
 
+`RecentFile`は`(userId, fileId)`を一意とし、File詳細をユーザーへ表示できた後の
+`PUT /api/v1/recent-files/{fileId}`だけがServer時刻でupsertする。Folder閲覧、一覧・検索結果の表示、
+Background refreshでは更新しない。`GET /api/v1/recent-files`は本人の履歴を
+`openedAt DESC, fileId ASC`で1〜100件ずつ返し、現在の所有・直接共有・祖先Folder共有をSQL段階で再評価する。
+権限失効中の行は保持するが結果と件数から除外し、権限再取得時は過去の`openedAt`で再表示する。
+`MISSING_CANDIDATE`と`MISSING`は状態付きで返し、`TRASHED`、未完了FileOperation、完全削除済み項目は返さない。
+
 ## 5.8 データ関係図
 
 データ同士の関係を理解しやすくするため、1枚の大きなER図にはまとめず、用途ごとに小さな図へ分ける。
@@ -1939,9 +1946,34 @@ Rename・Move・Trash・Restoreは、対象、source親、target親のGUIDから
 
 ### 8.11 MVP後: 検索
 
-#### `GET /api/v1/search?q={text}&type=image&status=active&page=1&pageSize=50`
+#### `GET /api/v1/search`
 
-権限範囲をSQL条件へ含め、検索後にクライアント側で隠す方式にしない。
+`q`、`entryType`、`fileCategory`、`status`、`updatedFrom`、`updatedTo`、`minSize`、`maxSize`、
+`ownerUserId`、`shareTargetId`、`page`、`pageSize`を組み合わせて検索する。`q`はtrim・NFC正規化後
+1〜200 Unicode code pointとし、省略時は少なくとも1つのFilterを必須とする。1〜2文字は前方一致、
+3文字以上は`%`、`_`、`\\`をliteral escapeした部分一致とする。`pageSize`は1〜100とする。
+
+検索対象は`FILE`と`FOLDER`の`ACTIVE`、`MISSING_CANDIDATE`、`MISSING`であり、`TRASHED`、
+未完了FileOperation、完全削除済み項目を除外する。File categoryは保存済みMIMEから
+`IMAGE`、`VIDEO`、`AUDIO`、`DOCUMENT`、`ARCHIVE`、`OTHER`へ分類する。
+
+所有、直接共有、祖先Folder共有、複数経路の最強権限と同値時の直接・最短祖先優先をSQL内で解決し、
+検索後にApplicationまたはClientで非認可項目を隠さない。結果はOwner、Permission、Permission Source、
+Share Target、状態、MIME、サイズ、更新日時を含み、閲覧可能かつFilter一致した件数だけを返す。
+`q`ありは完全一致、前方一致、trigram similarity、`updatedAt DESC`、`id ASC`、Filterのみは
+`updatedAt DESC`、`id ASC`の順とする。同一データ状態で決定的なoffset pageを提供する。
+
+不正Queryは`INVALID_SEARCH_QUERY`、不正enum・UUID・日時・範囲・Paginationは
+`INVALID_SEARCH_FILTER`の`400`とする。
+
+#### `GET /api/v1/recent-files?page=1&pageSize=50`
+
+本人の履歴だけを現時点の権限と状態で再評価し、Search結果と同じmetadataに`openedAt`を加えて返す。
+
+#### `PUT /api/v1/recent-files/{fileId}`
+
+Request bodyは持たず、JWTのUserとServer時刻だけで`ACTIVE`な閲覧可能Fileを冪等upsertし、成功は`204`とする。
+Folder、非ACTIVE、未完了操作、権限なしは存在秘匿した`FILE_NOT_FOUND`へ正規化する。
 
 ### 8.12 MVP後: 自動バックアップ
 
