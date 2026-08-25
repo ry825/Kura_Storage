@@ -85,6 +85,8 @@ Rename・Moveは現行のServer File機能を拡張し、Domainは`KuraStorage.D
 
 ファイル・フォルダ共有は、Domainを`KuraStorage.Domain/Sharing/`、有効権限解決と共有Use Caseを`KuraStorage.Application/Sharing/`、永続化とBatch認可Queryを`KuraStorage.Infrastructure/Persistence/`、Endpointを現行`KuraStorage.Api/Program.cs`へ配置する。共有固有のAndroid UIは必要になった本拡張で`feature-sharing`として追加し、Domain model、API契約、Repositoryはそれぞれ既存`core-model`、`core-network`、`core-data`へ配置する。共有Folder配下の閲覧・File操作は`feature-files`を再利用する。
 
+検索と最近使用は、Application契約・検証・Use Caseを`KuraStorage.Application/Search/`、Repository interfaceを`KuraStorage.Application/Abstractions/`、PostgreSQL固有の認可・Filter・Page Queryを`KuraStorage.Infrastructure/Persistence/Queries/`へ配置し、Endpointは現行`KuraStorage.Api/Program.cs`へ追加する。Recent entityとEF ConfigurationはDomain／Infrastructureの対応するDirectoryへ置く。Androidは`core-model`、`core-network`、`core-data`へ契約とRepositoryを追加し、画面だけを`feature-search`へ置く。検索・最近使用結果からFile／Folderを開く処理はIDだけをApp Navigationへ返し、`feature-files`や`feature-sharing`へ直接依存しない。
+
 外部欠損の再確認と索引削除は`KuraStorage.Application/Files/MissingEntryService.cs`へ配置する。DB関連情報だけを消すConsumerは`IFileIndexDeletionParticipant`を実装し、物理完全削除用`IPermanentDeleteParticipant`へ混在させない。AndroidのProtocol 2 DTO・未知Status変換・Repository操作は既存`core-network`、`core-model`、`core-data`、表示と二重送信防止は`feature-files`へ配置する。
 
 ```text
@@ -485,7 +487,8 @@ KuraStorage.Infrastructure/
 │   │   └── JobQueue.cs
 │   ├── Queries/
 │   │   ├── FileAuthorizationQuery.cs
-│   │   └── FileSearchQuery.cs
+│   │   ├── FileSearchQuery.cs
+│   │   └── RecentFileQuery.cs
 │   ├── Migrations/
 │   ├── Interceptors/
 │   └── Seed/
@@ -649,7 +652,8 @@ app
 ├── feature-connection
 ├── feature-auth
 ├── feature-files
-└── feature-sharing
+├── feature-sharing
+└── feature-search
 
 feature-* ──> core-model / core-ui / 必要なcore-*
 core-network ──> core-model / core-security
@@ -861,8 +865,9 @@ feature-files/
 | `feature-auth` | 初回Device登録、Login、Refresh、Logout、Device失効対応 |
 | `feature-files` | Home、一覧、詳細、Folder作成、Streaming Upload、Range Download、Trash、Restore、Rename、Move、MISSING表示・再確認・索引削除確認 |
 | `feature-sharing` | 所有・受信共有一覧、共有候補・Permission選択、Member追加・更新・解除、Share全体解除 |
+| `feature-search` | 権限対応検索、Filter、ページング、最近使用一覧。結果選択はApp callbackで既存File画面へ接続 |
 
-`feature-sharing`は`SharingScreens.kt`と`SharingViewModels.kt`を持ち、`core-model`の共有・権限Model、`core-network`の`SharingApi`、`core-data`の`SharingRepository`を利用する。共有Folderの閲覧と権限別File操作は`app`のNavigationから既存`feature-files`へ遷移して再利用し、Feature間を直接依存させない。`feature-media`、`feature-backup`、`feature-settings`はMVP後に必要となった時点で追加する。
+`feature-sharing`は`SharingScreens.kt`と`SharingViewModels.kt`を持ち、`core-model`の共有・権限Model、`core-network`の`SharingApi`、`core-data`の`SharingRepository`を利用する。共有Folderの閲覧と権限別File操作は`app`のNavigationから既存`feature-files`へ遷移して再利用し、Feature間を直接依存させない。`feature-search`も同じ境界を守り、Search／Recentの画面・状態管理だけを保持する。`feature-media`、`feature-backup`、`feature-settings`はMVP後に必要となった時点で追加する。
 
 ### 8.6 Gradle Build Logic
 

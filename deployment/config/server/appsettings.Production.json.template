@@ -56,6 +56,7 @@
       "Microsoft.AspNetCore.DataProtection": "Warning",
       "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
       "Microsoft.AspNetCore.Http.Result.FileStreamResult": "Warning",
+      "Microsoft.AspNetCore.Hosting.Diagnostics": "Warning",
       "Microsoft.Hosting.Lifetime": "Warning"
     }
   }

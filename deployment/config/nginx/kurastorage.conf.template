@@ -1,5 +1,10 @@
 limit_req_zone $binary_remote_addr zone=kurastorage_auth:10m rate=5r/m;
 
+# Deliberately log $uri rather than $request, $request_uri, or $args so search
+# text, identifiers, tokens, and other query values never enter access logs.
+log_format kurastorage_safe '$remote_addr [$time_local] "$request_method $uri $server_protocol" '
+                            '$status $body_bytes_sent $request_time';
+
 upstream kurastorage_api {
     server unix:/run/kurastorage/api.sock;
 }
@@ -7,6 +12,7 @@ upstream kurastorage_api {
 server {
     listen ${KURASTORAGE_LAN_API_IP}:443 ssl;
     server_name ${KURASTORAGE_API_HOSTNAME};
+    access_log /var/log/nginx/kurastorage-access.log kurastorage_safe;
 
     ssl_certificate /etc/kurastorage/tls/server.crt;
     ssl_certificate_key /etc/kurastorage/tls/server.key;
@@ -55,6 +61,7 @@ server {
 server {
     listen ${KURASTORAGE_ZEROTIER_API_IP}:443 ssl;
     server_name ${KURASTORAGE_API_HOSTNAME};
+    access_log /var/log/nginx/kurastorage-access.log kurastorage_safe;
 
     ssl_certificate /etc/kurastorage/tls/server.crt;
     ssl_certificate_key /etc/kurastorage/tls/server.key;

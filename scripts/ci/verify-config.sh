@@ -63,6 +63,24 @@ if ! rg -q '^openapi: 3\.[01]\.' contracts/openapi/kurastorage-api.yaml; then
   exit 1
 fi
 
+nginx_template="deployment/config/nginx/kurastorage.conf.template"
+if ! rg -q '^log_format kurastorage_safe ' "$nginx_template" ||
+  [[ "$(rg -c '^    access_log .+ kurastorage_safe;$' "$nginx_template")" -ne 2 ]] ||
+  rg -n '^log_format .*\$(request|request_uri|args)([^A-Za-z_]|$)' "$nginx_template"; then
+  echo "LAN and ZeroTier must use the query-free kurastorage_safe access log format." >&2
+  exit 1
+fi
+
+for logging_config in \
+  server/src/KuraStorage.Api/appsettings.json \
+  server/src/KuraStorage.Api/appsettings.example.json \
+  deployment/config/server/appsettings.Production.json.template; do
+  if ! rg -q '"Microsoft\.AspNetCore\.Hosting\.Diagnostics": "Warning"' "$logging_config"; then
+    echo "API request-start logging must be suppressed to keep query strings out of logs: $logging_config" >&2
+    exit 1
+  fi
+done
+
 if rg -n --glob '!**/build/**' --glob '!**/.gradle/**' \
   '(androidx\.room|androidx\.work|androidx\.media3|io\.coil-kt|pdfbox|barteksc)' apps/android; then
   echo "MVP-excluded Android dependency found." >&2
