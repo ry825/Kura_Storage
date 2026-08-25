@@ -31,6 +31,8 @@ public sealed class OpenApiContractTests
             "  /shares/{shareId}:",
             "  /shares/{shareId}/members/{userId}:",
             "  /search:",
+            "  /recent-files:",
+            "  /recent-files/{fileId}:",
         })
         {
             Assert.Contains(path, contract, StringComparison.Ordinal);
@@ -73,6 +75,11 @@ public sealed class OpenApiContractTests
         Assert.Contains("enum: [ACTIVE, MISSING_CANDIDATE, MISSING]", contract, StringComparison.Ordinal);
         Assert.Contains("INVALID_SEARCH_QUERY", contract, StringComparison.Ordinal);
         Assert.Contains("INVALID_SEARCH_FILTER", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: listRecentFiles", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: recordRecentFile", contract, StringComparison.Ordinal);
+        Assert.Contains("RecentFileItem:", contract, StringComparison.Ordinal);
+        Assert.Contains("RecentFilePage:", contract, StringComparison.Ordinal);
+        Assert.Contains("INVALID_RECENT_FILES_REQUEST", contract, StringComparison.Ordinal);
         Assert.Contains(
             "required: [deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, role]",
             contract,

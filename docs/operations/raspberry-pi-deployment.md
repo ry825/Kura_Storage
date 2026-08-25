@@ -382,6 +382,30 @@ disable the Search endpoint or restore the matching application release before
 running Down. Record elapsed build time and index sizes using aggregate output
 only.
 
+### Recent file history rollout and rollback
+
+`AddRecentFiles` creates `recent_files` with cascading User and FileEntry foreign
+keys, a `(user_id, file_id)` primary key, a User paging index, and a FileEntry
+index required for bounded cascade checks. Apply this Migration before deploying
+an API release that exposes `/api/v1/recent-files`. The Migration does not scan
+the Storage Root and does not modify existing User, FileEntry, Share, or Search
+index rows.
+
+Before schema rollback, deploy or restore an application release that no longer
+calls the Recent endpoints, take a PostgreSQL backup, and record only the
+aggregate history count:
+
+```sql
+SELECT count(*) AS recent_file_count FROM recent_files;
+```
+
+Prefer application rollback while retaining the compatible table. Migration
+Down drops `recent_files` and therefore permanently deletes all recent-file
+history; it does not delete FileEntry or User rows. If schema rollback is
+required, explicitly approve that aggregate loss or retain the backup for later
+restoration. Never export names, paths, User display names, or individual
+history rows into rollout logs.
+
 Before an upgrade or rollback that includes the permanent-delete migration,
 take PostgreSQL and Storage Root backups, stop the Worker, and inspect unresolved purge journals without selecting file names
 or paths:

@@ -174,102 +174,102 @@
 
 ### 2.1 作業開始
 
-- [ ] PR2の作業準備を完了する。
-  - [ ] PR1が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`からPR2用の短命Branchを作成する。
-  - [ ] Steering、PR1完了記録、Search contract／Query／Migration、File詳細API、認可、Purgeの既存実装を確認する。
-  - [ ] `git status`と既存差分を確認する。
+- [x] PR2の作業準備を完了する。
+  - [x] PR1が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`からPR2用の短命Branchを作成する。
+  - [x] Steering、PR1完了記録、Search contract／Query／Migration、File詳細API、認可、Purgeの既存実装を確認する。
+  - [x] `git status`と既存差分を確認する。
 
 ### 2.2 RecentFile Domain・Persistence・Migration
 
-- [ ] `RecentFile` domain modelをTDDで実装する。
-  - [ ] User ID、File ID、OpenedAtを表現し、空IDと非UTC時刻を拒否する。
-  - [ ] Server clockによる再Open更新を実装し、Client時刻を受け取らない。
-  - [ ] DomainがEF Core、Npgsql、ASP.NET Coreに依存しないことを保護する。
-- [ ] EF Core永続化を実装する。
-  - [ ] `recent_files`と`DbSet`を追加する。
-  - [ ] `(user_id, file_id)`複合Primary Key、User／FileEntry Foreign Key、両方のDelete Cascadeを定義する。
-  - [ ] `(user_id, opened_at DESC, file_id)`Indexを追加する。
-  - [ ] File単独Indexの必要性をCascade／Query planで測定し、必要な場合だけ追加する。
-  - [ ] PostgreSQL単一Statementのupsertで同時要求を1行へ収束させる。
-- [ ] `AddRecentFiles`相当のMigrationを作成する。
-  - [ ] Upが既存User、File、Share、Search Indexを保持する。
-  - [ ] DownがRecent履歴だけを対象とし、FileEntryやSearch Indexを変更しない。
-  - [ ] Rollback時に履歴が失われることを事前集計・明示し、無言削除しない運用手順を追加する。
-  - [ ] Migration Testと未反映model確認を成功させる。
+- [x] `RecentFile` domain modelをTDDで実装する。
+  - [x] User ID、File ID、OpenedAtを表現し、空IDと非UTC時刻を拒否する。
+  - [x] Server clockによる再Open更新を実装し、Client時刻を受け取らない。
+  - [x] DomainがEF Core、Npgsql、ASP.NET Coreに依存しないことを保護する。
+- [x] EF Core永続化を実装する。
+  - [x] `recent_files`と`DbSet`を追加する。
+  - [x] `(user_id, file_id)`複合Primary Key、User／FileEntry Foreign Key、両方のDelete Cascadeを定義する。
+  - [x] `(user_id, opened_at DESC, file_id)`Indexを追加する。
+  - [x] File単独Indexの必要性をCascade／Query planで測定し、必要な場合だけ追加する。（複合PKは`user_id`始まりのためFileEntry Cascade探索を支えず、`file_id` Indexを追加）
+  - [x] PostgreSQL単一Statementのupsertで同時要求を1行へ収束させる。
+- [x] `AddRecentFiles`相当のMigrationを作成する。
+  - [x] Upが既存User、File、Share、Search Indexを保持する。
+  - [x] DownがRecent履歴だけを対象とし、FileEntryやSearch Indexを変更しない。
+  - [x] Rollback時に履歴が失われることを事前集計・明示し、無言削除しない運用手順を追加する。
+  - [x] Migration Testと未反映model確認を成功させる。
 
 ### 2.3 Recent記録Service
 
-- [ ] Recent記録Use CaseをTDDで実装する。
-  - [ ] Actor UserをSecurity Context、OpenedAtをServer clockから取得する。
-  - [ ] 対象が`FILE`、`ACTIVE`、閲覧可能であることをupsert直前に再評価する。
-  - [ ] Folder、`MISSING*`、`TRASHED`、未完了操作、権限なし、削除済みを存在秘匿404で拒否する。
-  - [ ] Viewer以上を許可し、ADMINへ暗黙権限を付与しない。
-  - [ ] 同一User／Fileの再送・同時送信で重複せず、openedAtがServer上の最新成功時刻へ進む。
-  - [ ] 認可とupsertの競合で失効後の履歴更新が成功しないようTransaction／Lock境界を確定する。
+- [x] Recent記録Use CaseをTDDで実装する。
+  - [x] Actor UserをSecurity Context、OpenedAtをServer clockから取得する。
+  - [x] 対象が`FILE`、`ACTIVE`、閲覧可能であることをupsert直前に再評価する。
+  - [x] Folder、`MISSING*`、`TRASHED`、未完了操作、権限なし、削除済みを存在秘匿404で拒否する。
+  - [x] Viewer以上を許可し、ADMINへ暗黙権限を付与しない。
+  - [x] 同一User／Fileの再送・同時送信で重複せず、openedAtがServer上の最新成功時刻へ進む。
+  - [x] 認可とupsertの競合で失効後の履歴更新が成功しないようTransaction／Lock境界を確定する。
 
 ### 2.4 Recent一覧Query・Service
 
-- [ ] Recent一覧RepositoryをTDDで実装する。
-  - [ ] Actor User本人の行だけを起点にQueryする。
-  - [ ] 現在のOwner、Direct、Inherited、複数経路の実効権限をSQL段階で再評価する。
-  - [ ] 権限失効中の履歴行を保持したまま結果と`totalCount`から除外する。
-  - [ ] `ACTIVE`、`MISSING_CANDIDATE`、`MISSING`を返し、`TRASHED`、未完了操作、削除済みを返さない。
-  - [ ] `opened_at DESC, file_id ASC`の安定順とpageSize 1〜100を実装する。
-  - [ ] Search resultと同じOwner、Permission、Source、Share Target、Status metadataへMappingする。
-  - [ ] N+1、HDD走査、全User履歴materializeを行わない。
-- [ ] 権限・状態遷移をTestする。
-  - [ ] Share解除／Permission変更後の次要求で非表示になる。
-  - [ ] 別経路が残る場合は最強Permissionと新しいSourceで表示を維持する。
-  - [ ] Moveによる継承失効／取得、Trash／Restore、MISSING二段階、Purge／索引削除を反映する。
-  - [ ] 権限再取得時は保持された過去openedAtで再表示し、先頭へ不正更新しない。
+- [x] Recent一覧RepositoryをTDDで実装する。
+  - [x] Actor User本人の行だけを起点にQueryする。
+  - [x] 現在のOwner、Direct、Inherited、複数経路の実効権限をSQL段階で再評価する。
+  - [x] 権限失効中の履歴行を保持したまま結果と`totalCount`から除外する。
+  - [x] `ACTIVE`、`MISSING_CANDIDATE`、`MISSING`を返し、`TRASHED`、未完了操作、削除済みを返さない。
+  - [x] `opened_at DESC, file_id ASC`の安定順とpageSize 1〜100を実装する。
+  - [x] Search resultと同じOwner、Permission、Source、Share Target、Status metadataへMappingする。
+  - [x] N+1、HDD走査、全User履歴materializeを行わない。
+- [x] 権限・状態遷移をTestする。
+  - [x] Share解除／Permission変更後の次要求で非表示になる。
+  - [x] 別経路が残る場合は最強Permissionと新しいSourceで表示を維持する。
+  - [x] Moveによる継承失効／取得、Trash／Restore、MISSING二段階、Purge／索引削除を反映する。
+  - [x] 権限再取得時は保持された過去openedAtで再表示し、先頭へ不正更新しない。
 
 ### 2.5 Recent API・OpenAPI
 
-- [ ] `PUT /api/v1/recent-files/{fileId}`を実装する。
-  - [ ] Request bodyなし、成功204、冪等再送、UUID検証を実装する。
-  - [ ] ClientのUser、Device、OpenedAt、Owner入力を受け付けない。
-  - [ ] 401 Refresh後の再送と結果不明後の再送で1行へ収束する。
-- [ ] `GET /api/v1/recent-files`を実装する。
-  - [ ] page／pageSizeを検証し、本人の認可済みPageだけを返す。
-  - [ ] MISSING状態、Owner、Permission／Source、Share Target、OpenedAtを返す。
-  - [ ] 別Userの行・件数・File名を返さない。
-- [ ] OpenAPIとContract Testを更新する。
-  - [ ] PUT／GET、Path／Query、204、Page schema、全Errorを追加する。
-  - [ ] Search item共通schemaを重複・不整合なく再利用する。
-  - [ ] 旧Clientへ不要なServer stateを要求せず、既存Endpointに回帰を起こさない。
+- [x] `PUT /api/v1/recent-files/{fileId}`を実装する。
+  - [x] Request bodyなし、成功204、冪等再送、UUID検証を実装する。
+  - [x] ClientのUser、Device、OpenedAt、Owner入力を受け付けない。
+  - [x] 401 Refresh後の再送と結果不明後の再送で1行へ収束する。
+- [x] `GET /api/v1/recent-files`を実装する。
+  - [x] page／pageSizeを検証し、本人の認可済みPageだけを返す。
+  - [x] MISSING状態、Owner、Permission／Source、Share Target、OpenedAtを返す。
+  - [x] 別Userの行・件数・File名を返さない。
+- [x] OpenAPIとContract Testを更新する。
+  - [x] PUT／GET、Path／Query、204、Page schema、全Errorを追加する。
+  - [x] Search item共通schemaを重複・不整合なく再利用する。
+  - [x] 旧Clientへ不要なServer stateを要求せず、既存Endpointに回帰を起こさない。
 
 ### 2.6 Recent自動Test・手動確認
 
-- [ ] Domain／Application Unit Testを完了する。
-  - [ ] Server clock、再Open、User分離、非FILE／非ACTIVE／権限境界をTestする。
-  - [ ] 同時upsert、認可失効競合、Cancellation、DB errorをTestする。
-  - [ ] Search／Recent／認可境界95%以上、Domain/Application全体80%以上のLine Coverageを確認する。
-- [ ] PostgreSQL Integration Testを完了する。
-  - [ ] PK、FK、Index、Cascade、Migration Up／Downを実DBでTestする。
-  - [ ] User A/Bの同一File履歴分離、別User取得拒否、同時PUTをTestする。
-  - [ ] Owner／Direct／Inherited／複数経路／失効／再取得／Move／Trash／Restore／Purge／MISSINGをTestする。
-  - [ ] Page 100件で固定SQL回数、Index利用、物理Path・検索語・履歴内容のLog非出力を確認する。
-- [ ] API ClientでRecent主要フローを確認する。
-  - [ ] File表示後PUT、再Open順序更新、別User分離、Folder／MISSING記録拒否を確認する。
-  - [ ] Share解除後非表示、別経路維持、MISSING状態表示、Purge後Cascadeを確認する。
-  - [ ] API／Nginx／DB LogがFile名、User名、物理Path、Tokenを含まない。
+- [x] Domain／Application Unit Testを完了する。
+  - [x] Server clock、再Open、User分離、非FILE／非ACTIVE／権限境界をTestする。
+  - [x] 同時upsert、認可失効競合、Cancellation、DB errorをTestする。
+  - [x] Search／Recent／認可境界95%以上、Domain/Application全体80%以上のLine Coverageを確認する。（Recent境界99.23%、Domain/Application全体86.86%）
+- [x] PostgreSQL Integration Testを完了する。
+  - [x] PK、FK、Index、Cascade、Migration Up／Downを実DBでTestする。
+  - [x] User A/Bの同一File履歴分離、別User取得拒否、同時PUTをTestする。
+  - [x] Owner／Direct／Inherited／複数経路／失効／再取得／Move／Trash／Restore／Purge／MISSINGをTestする。
+  - [x] Page 100件で固定SQL回数、Index利用、物理Path・検索語・履歴内容のLog非出力を確認する。
+- [x] API ClientでRecent主要フローを確認する。
+  - [x] File表示後PUT、再Open順序更新、別User分離、Folder／MISSING記録拒否を確認する。
+  - [x] Share解除後非表示、別経路維持、MISSING状態表示、Purge後Cascadeを確認する。
+  - [x] API／Nginx／DB LogがFile名、User名、物理Path、Tokenを含まない。
 
 ### 2.7 PR2標準検証・完了
 
-- [ ] PR2の標準検証を完了する。
-  - [ ] `./scripts/ci/verify-config.sh`が成功する。
-  - [ ] `./scripts/ci/verify-server.sh`が成功する。
-  - [ ] `./scripts/ci/verify-security.sh`が成功する。
-  - [ ] `./scripts/ci/verify-deployment.sh`が成功する。
-  - [ ] `./scripts/ci/verify-android.sh`が既存Androidに対して成功する。
-  - [ ] `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`が成功する。
-  - [ ] Migration未反映model確認と`git diff --check`が成功する。
-- [ ] PR2差分をセルフレビューする。
-  - [ ] Recent履歴がUser単位で、現在権限をSQL段階で評価している。
-  - [ ] GET／検索／Background処理が履歴を暗黙更新せず、Server clockだけを使用する。
-  - [ ] Android UI、履歴手動削除、閲覧回数、推薦、将来Columnを追加していない。
-  - [ ] Credential、実環境値、物理Path、実User識別情報、生成物が差分にない。
+- [x] PR2の標準検証を完了する。
+  - [x] `./scripts/ci/verify-config.sh`が成功する。
+  - [x] `./scripts/ci/verify-server.sh`が成功する。
+  - [x] `./scripts/ci/verify-security.sh`が成功する。
+  - [x] `./scripts/ci/verify-deployment.sh`が成功する。
+  - [x] `./scripts/ci/verify-android.sh`が既存Androidに対して成功する。
+  - [x] `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`が成功する。
+  - [x] Migration未反映model確認と`git diff --check`が成功する。
+- [x] PR2差分をセルフレビューする。
+  - [x] Recent履歴がUser単位で、現在権限をSQL段階で評価している。
+  - [x] GET／検索／Background処理が履歴を暗黙更新せず、Server clockだけを使用する。
+  - [x] Android UI、履歴手動削除、閲覧回数、推薦、将来Columnを追加していない。
+  - [x] Credential、実環境値、物理Path、実User識別情報、生成物が差分にない。
 - [ ] PR2を完了する。
   - [ ] 2.1〜2.7のPR2対象項目がすべて`[x]`である。
   - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。

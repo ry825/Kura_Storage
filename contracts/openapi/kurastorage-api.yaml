@@ -510,6 +510,91 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalServerError"
+  /recent-files:
+    get:
+      tags: [Recent Files]
+      operationId: listRecentFiles
+      summary: List the authenticated user's recently opened readable files
+      description: >-
+        Re-evaluates current ownership and sharing in PostgreSQL. Revoked, trashed,
+        operation-blocked, and deleted files are excluded without deleting retained history.
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: A deterministic page of currently readable recent files.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecentFilePage"
+        "400":
+          description: Pagination is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: INVALID_RECENT_FILES_REQUEST
+                message: The request could not be completed.
+                requestId: request-id
+                details: {}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /recent-files/{fileId}:
+    put:
+      tags: [Recent Files]
+      operationId: recordRecentFile
+      summary: Record that the authenticated user successfully opened a file
+      description: >-
+        Has no request body. Uses server time and atomically re-evaluates that the target is
+        an active readable file before the idempotent upsert.
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: The user-file history row was inserted or advanced using server time.
+        "400":
+          description: A request body or client-supplied history state is not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: The file is absent, unreadable, not active, not a file, or operation-blocked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: FILE_NOT_FOUND
+                message: The request could not be completed.
+                requestId: request-id
+                details: {}
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /files/upload:
     post:
       tags: [Files]
@@ -1629,8 +1714,9 @@ components:
           format: int64
           minimum: 0
     SearchResultItem:
+      $ref: "#/components/schemas/AccessibleEntryMetadata"
+    AccessibleEntryMetadata:
       type: object
-      additionalProperties: false
       required: [id, entryType, name, mimeType, fileCategory, size, status, updatedAt, owner, permission, permissionSource, shareTargetId]
       properties:
         id:
@@ -1676,6 +1762,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SearchResultItem"
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        totalCount:
+          type: integer
+          minimum: 0
+    RecentFileItem:
+      allOf:
+        - $ref: "#/components/schemas/AccessibleEntryMetadata"
+        - type: object
+          required: [openedAt]
+          properties:
+            openedAt:
+              type: string
+              format: date-time
+    RecentFilePage:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, totalCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecentFileItem"
         page:
           type: integer
           minimum: 1
@@ -1758,6 +1872,7 @@ components:
         - SHARE_OPERATION_NOT_ALLOWED
         - INVALID_SEARCH_QUERY
         - INVALID_SEARCH_FILTER
+        - INVALID_RECENT_FILES_REQUEST
         - INTERNAL_ERROR
 security:
   - bearerAuth: []

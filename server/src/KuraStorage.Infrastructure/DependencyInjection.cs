@@ -4,6 +4,7 @@ using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
 using KuraStorage.Application.Sharing;
 using KuraStorage.Application.Search;
+using KuraStorage.Application.Recent;
 using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Infrastructure.Configuration;
@@ -93,6 +94,7 @@ public static class DependencyInjection
         services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
         services.AddScoped<IAuthorizationRepository, AuthorizationRepository>();
         services.AddScoped<ISearchRepository, PostgreSqlSearchRepository>();
+        services.AddScoped<IRecentFileRepository, PostgreSqlRecentFileRepository>();
         services.AddScoped<IShareRepository, ShareRepository>();
         services.AddScoped<SharingDeletionParticipant>();
         services.AddScoped<IPermanentDeleteParticipant>(
@@ -126,6 +128,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthorizationService, AuthorizationService>();
         services.AddScoped<SharingService>();
         services.AddScoped<SearchService>();
+        services.AddScoped<RecentFileService>();
         services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IRefreshTokenService, RefreshTokenService>();
