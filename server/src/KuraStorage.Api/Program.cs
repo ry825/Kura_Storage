@@ -9,6 +9,7 @@ using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
 using KuraStorage.Application.Sharing;
 using KuraStorage.Application.Search;
+using KuraStorage.Application.Recent;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Application.Identity;
 using KuraStorage.Domain.Files;
@@ -17,6 +18,7 @@ using KuraStorage.Infrastructure;
 using KuraStorage.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -445,6 +447,54 @@ app.MapGet(
         return ToSearchHttpResult(
             await search.SearchAsync(userId, applicationQuery!, cancellationToken),
             context);
+    });
+
+app.MapGet(
+    "/api/v1/recent-files",
+    async (
+        [AsParameters] RecentFilesHttpQuery query,
+        HttpContext context,
+        RecentFileService recentFiles,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (!TryOptionalInt(query.Page, 1, out var page) ||
+            !TryOptionalInt(query.PageSize, 50, out var pageSize))
+        {
+            return Error(StatusCodes.Status400BadRequest, RecentFileErrorCodes.InvalidRequest, context);
+        }
+
+        return ToRecentFileHttpResult(
+            await recentFiles.ListAsync(userId, page, pageSize, cancellationToken),
+            context);
+    });
+
+app.MapPut(
+    "/api/v1/recent-files/{fileId:guid}",
+    async (
+        Guid fileId,
+        HttpContext context,
+        RecentFileService recentFiles,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (context.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody == true)
+        {
+            return Error(StatusCodes.Status400BadRequest, RecentFileErrorCodes.InvalidRequest, context);
+        }
+
+        var result = await recentFiles.RecordAsync(userId, fileId, cancellationToken);
+        return result.IsSuccess
+            ? Results.NoContent()
+            : Error(StatusCodes.Status404NotFound, result.Failure!.Code, context);
     });
 
 app.MapGet(
@@ -991,6 +1041,16 @@ static IResult ToSearchHttpResult<T>(SearchResult<T> result, HttpContext context
         ? Results.Ok(result.Value)
         : Error(StatusCodes.Status400BadRequest, result.Failure!.Code, context);
 
+static IResult ToRecentFileHttpResult<T>(RecentFileResult<T> result, HttpContext context) =>
+    result.IsSuccess
+        ? Results.Ok(result.Value)
+        : Error(
+            result.Failure!.Kind == RecentFileFailureKind.NotFound
+                ? StatusCodes.Status404NotFound
+                : StatusCodes.Status400BadRequest,
+            result.Failure.Code,
+            context);
+
 static bool TryCreateSearchQuery(SearchHttpQuery query, out SearchQuery? result)
 {
     result = null;
@@ -1273,6 +1333,12 @@ public sealed class SearchHttpQuery
     public string? MaxSize { get; init; }
     public string? OwnerUserId { get; init; }
     public string? ShareTargetId { get; init; }
+    public string? Page { get; init; }
+    public string? PageSize { get; init; }
+}
+
+public sealed class RecentFilesHttpQuery
+{
     public string? Page { get; init; }
     public string? PageSize { get; init; }
 }

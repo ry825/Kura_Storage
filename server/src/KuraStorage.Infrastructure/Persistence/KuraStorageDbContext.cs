@@ -23,6 +23,8 @@ public sealed class KuraStorageDbContext(DbContextOptions<KuraStorageDbContext> 
 
     public DbSet<FileEntry> FileEntries => Set<FileEntry>();
 
+    public DbSet<RecentFile> RecentFiles => Set<RecentFile>();
+
     public DbSet<FileOperation> FileOperations => Set<FileOperation>();
 
     public DbSet<TrashPurgeRun> TrashPurgeRuns => Set<TrashPurgeRun>();
