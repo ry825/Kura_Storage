@@ -260,6 +260,7 @@ envsubst "${template_variables}" \
     sed \
         -e "s#/etc/kurastorage/tls/server.crt#${validation_root}/server.crt#g" \
         -e "s#/etc/kurastorage/tls/server.key#${validation_root}/server.key#g" \
+        -e "s#/var/log/nginx/kurastorage-access.log#${validation_root}/kurastorage-access.log#g" \
         >"${validation_root}/kurastorage-site.conf"
 cat >"${validation_root}/nginx.conf" <<EOF
 pid ${validation_root}/nginx.pid;

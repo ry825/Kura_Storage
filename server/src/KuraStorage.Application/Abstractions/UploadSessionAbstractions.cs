@@ -13,6 +13,8 @@ public interface IUploadSessionRepository
 
     Task<UploadSession?> FindAsync(Guid sessionId, CancellationToken cancellationToken);
 
+    Task ReloadAsync(UploadSession session, CancellationToken cancellationToken);
+
     Task<bool> IsDeviceActiveAsync(Guid actorUserId, Guid deviceId, CancellationToken cancellationToken);
 
     Task<int> CountActiveForActorAsync(Guid actorUserId, CancellationToken cancellationToken);

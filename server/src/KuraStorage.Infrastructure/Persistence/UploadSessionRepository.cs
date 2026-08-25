@@ -19,6 +19,9 @@ public sealed class UploadSessionRepository(KuraStorageDbContext dbContext) : IU
     public async Task<UploadSession?> FindAsync(Guid sessionId, CancellationToken cancellationToken) =>
         await dbContext.UploadSessions.SingleOrDefaultAsync(session => session.Id == sessionId, cancellationToken);
 
+    public async Task ReloadAsync(UploadSession session, CancellationToken cancellationToken) =>
+        await dbContext.Entry(session).ReloadAsync(cancellationToken);
+
     public async Task<bool> IsDeviceActiveAsync(
         Guid actorUserId,
         Guid deviceId,

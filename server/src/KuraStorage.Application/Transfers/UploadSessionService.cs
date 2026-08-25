@@ -429,6 +429,7 @@ public sealed class UploadSessionService(
 
         lockIds.AddRange(OptionalId(initialPermission?.ShareTargetId));
         await using var mutationLock = await files.AcquireMutationLocksAsync(lockIds, cancellationToken);
+        await sessions.ReloadAsync(initialSession, cancellationToken);
         var session = await FindAccessibleAsync(actorUserId, deviceId, sessionId, cancellationToken);
         if (session is null)
         {

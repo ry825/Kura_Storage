@@ -402,7 +402,8 @@ public sealed class UploadSessionApiTests(PostgreSqlAuthFlowFixture fixture)
 
         Assert.True(
             (complete.StatusCode == HttpStatusCode.OK && cancel.StatusCode == HttpStatusCode.Conflict) ||
-            (complete.StatusCode == HttpStatusCode.Conflict && cancel.StatusCode == HttpStatusCode.NoContent));
+            (complete.StatusCode == HttpStatusCode.Conflict && cancel.StatusCode == HttpStatusCode.NoContent),
+            $"Unexpected terminal responses: complete={(int)complete.StatusCode}, cancel={(int)cancel.StatusCode}.");
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
         var session = await database.UploadSessions.SingleAsync(item => item.Id == sessionId);
