@@ -270,11 +270,11 @@
   - [x] GET／検索／Background処理が履歴を暗黙更新せず、Server clockだけを使用する。
   - [x] Android UI、履歴手動削除、閲覧回数、推薦、将来Columnを追加していない。
   - [x] Credential、実環境値、物理Path、実User識別情報、生成物が差分にない。
-- [ ] PR2を完了する。
-  - [ ] 2.1〜2.7のPR2対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR2を完了する。
+  - [x] 2.1〜2.7のPR2対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -453,14 +453,14 @@
 
 ### PR2: 最近使用履歴・権限再評価API
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・性能確認: 未実施
-- 計画と実装の差分: 未完了
-- 実装中に追加したタスクと理由: 未完了
-- 技術的に不要になったタスク・理由・代替実装: 未完了
-- 後続Pull Requestへの引継ぎ事項: 未完了
+- 完了日: 2026-08-25
+- Pull Request: [#24 Add permission-aware recent files API](https://github.com/ry825/Kura_Storage/pull/24)
+- 実施したTest・Build・静的解析: Domain Test 52件、Application Test 162件、PostgreSQL Integration Test 109件、Recent境界Line Coverage 99.23%、Domain/Application全体Line Coverage 86.86%、Migration Up／Down／再Up・未反映model確認、OpenAPI Contract Test、`verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、`verify-android.sh`（720 tasks）、`dotnet format`、`git diff --check`を成功させた。実装Commit `b351bc4`でGitHub ActionsのAndroid、Config、Security、Serverがすべて成功した。
+- 手動確認・性能確認: API Client相当のHTTP統合フローでOwner／Direct／Inherited／複数経路、User分離、同時PUT、Share失効競合、Move、未完了操作、MISSING二段階、Trash／Restore、Purge相当Cascade、100件Page、Client state付きbody拒否、Log非漏えいを確認した。Recent paging IndexのQuery plan利用と、Page取得がN+1やHDD走査を行わないことを確認した。
+- 計画と実装の差分: 記録時認可は対象Fileと現在の祖先Folderを最大64段で取得し、既存mutation lockと同じkeyを安定順にTransaction内で取得した後、階層を再確認して新しいDB snapshotで認可と単一Statement upsertを行う構成とした。これによりShare解除・Moveとの競合を失効後成功へ誤収束させず、Userの全共有配下走査も避けた。API契約の機能範囲は計画どおりである。
+- 実装中に追加したタスクと理由: PUTへbodyを送るClient入力を明示的に400で拒否するContract／Integration Testと、advisory lock待機中にShareを失効させる競合Testを追加した。Client時刻・User入力拒否と、lock後認可再評価を実際のHTTP／PostgreSQL境界で保証するためである。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: PR3開始前にPR #24の`main`へのMergeと必須CI成功を確認する。AndroidはOpenAPIのGET／bodyなしPUTを実装し、File詳細表示成功後だけ冪等PUTを呼び、検索・一覧・Background処理から履歴を更新しない。MISSINGと権限失効時は既存Fail-closed capabilityを再利用する。
 
 ### PR3: Android検索・最近使用UI・実機E2E
 
