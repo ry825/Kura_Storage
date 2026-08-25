@@ -162,11 +162,11 @@
   - [x] 認可をSQL後に隠しておらず、HDD走査、N+1、無制限再帰がない。
   - [x] Search query、File名、実User識別情報、物理Path、Credentialが差分・Log・Test記録にない。
   - [x] Recent persistence／API、Android UI、OCR／全文検索を先行実装していない。
-- [ ] PR1を完了する。
-  - [ ] 1.1〜1.7のPR1対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR1を完了する。
+  - [x] 1.1〜1.7のPR1対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -442,14 +442,14 @@
 
 ### PR1: 権限対応Search API・PostgreSQL Index・性能基盤
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・性能確認: 未実施
-- 計画と実装の差分: 未完了
-- 実装中に追加したタスクと理由: 未完了
-- 技術的に不要になったタスク・理由・代替実装: 未完了
-- 後続Pull Requestへの引継ぎ事項: 未完了
+- 完了日: 2026-08-25
+- Pull Request: [#23 Add permission-aware search API and PostgreSQL indexes](https://github.com/ry825/Kura_Storage/pull/23)
+- 実施したTest・Build・静的解析: Domain Test 49件、Application Test 157件、PostgreSQL Integration Test 101件、Search認可境界Line Coverage 98.92%、Branch Coverage 97.45%、Domain/Application全体Line Coverage 86.64%、Migration Up／Down／再Up・未反映model確認、OpenAPI Contract Test、`verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、`verify-android.sh`、`dotnet format`、`git diff --check`を成功させた。実装Commit `fa7fbd9`でGitHub ActionsのAndroid、Config、Security、Serverがすべて成功した。
+- 手動確認・性能確認: API ClientでOwner／直接共有／Folder継承／未共有／ADMIN、全Filter、共有解除後の存在秘匿、Log非漏えいを確認した。Raspberry Pi 4、30万件、固定20ケース・60 sampleでp50 480ms、p95 1475ms、最大3752ms、Error率0%を記録し、prefix B-tree、contains GIN、認可Indexの利用とtemp spillなしを確認した。Pi上のIndex作成時間はprefix 2秒、trigram 9秒だった。
+- 計画と実装の差分: 検索CTEを`NOT MATERIALIZED`として認可・Filter条件を内部へpush downし、30万件性能条件を満たした。CIの非root Nginx構文検査では検証用log pathへ置換するよう補強した。検索機能の契約・範囲に変更はない。
+- 実装中に追加したタスクと理由: 必須CIで再現した既存Upload Sessionの完了／取消競合を調査し、mutation lock取得後に追跡Entityを再読込する修正と診断情報を追加した。EF Core identity resolutionがlock待機前の状態を返す競合を解消し、Server必須CIを安定させるためである。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: PR2開始前にPR #23の`main`へのMergeと必須CI成功を確認する。Recent一覧ではPR1の認可SQL、Search result metadata、深度64、複数共有経路のtie-break、Log保護方針を再利用し、履歴upsert前と一覧取得時の現在権限再評価を維持する。
 
 ### PR2: 最近使用履歴・権限再評価API
 
