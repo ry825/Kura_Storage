@@ -28,4 +28,5 @@ include(
     ":feature-auth",
     ":feature-files",
     ":feature-sharing",
+    ":feature-search",
 )

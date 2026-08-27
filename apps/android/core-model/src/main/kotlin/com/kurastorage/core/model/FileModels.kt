@@ -2,9 +2,29 @@ package com.kurastorage.core.model
 
 import java.time.Instant
 
-enum class FileEntryType { FILE, FOLDER }
+enum class FileEntryType {
+    FILE,
+    FOLDER,
+    UNKNOWN,
+    ;
 
-enum class FileEntryStatus { ACTIVE, MISSING_CANDIDATE, MISSING, TRASHED, UNKNOWN }
+    companion object {
+        fun fromWire(value: String?): FileEntryType = entries.firstOrNull { it.name == value } ?: UNKNOWN
+    }
+}
+
+enum class FileEntryStatus {
+    ACTIVE,
+    MISSING_CANDIDATE,
+    MISSING,
+    TRASHED,
+    UNKNOWN,
+    ;
+
+    companion object {
+        fun fromWire(value: String?): FileEntryStatus = entries.firstOrNull { it.name == value } ?: UNKNOWN
+    }
+}
 
 data class FileEntry(
     val id: String,

@@ -89,6 +89,7 @@ dependencies {
     implementation(project(":feature-auth"))
     implementation(project(":feature-files"))
     implementation(project(":feature-sharing"))
+    implementation(project(":feature-search"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))

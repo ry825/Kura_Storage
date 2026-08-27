@@ -13,7 +13,7 @@
 - [x] 要求と設計を3つのPull Request単位へ分割している。
 - [x] 実装開始時に本Steering 3文書と正式文書の差分を再確認し、矛盾がない。
 - [x] PR #22が`main`へMerge済みで、Android、Config、Security、Serverの必須CIが成功している。
-- [ ] 各PR開始時に依存元PRのMergeと必須CI成功を確認する。
+- [x] 各PR開始時に依存元PRのMergeと必須CI成功を確認する。
 
 ## タスク完全完了の原則
 
@@ -282,152 +282,152 @@
 
 ### 3.1 作業開始
 
-- [ ] PR3の作業準備を完了する。
-  - [ ] PR2が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`からPR3用の短命Branchを作成する。
-  - [ ] Steering、PR1／PR2完了記録、OpenAPI、Search／Recent API、Android sharing／files／Navigationの既存実装を確認する。
-  - [ ] `git status`と既存差分を確認する。
-  - [ ] Android実機、Raspberry Pi、PostgreSQL、実HDD、LAN、ZeroTier、Release署名入力を確認する。
+- [x] PR3の作業準備を完了する。
+  - [x] PR2が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`からPR3用の短命Branchを作成する。
+  - [x] Steering、PR1／PR2完了記録、OpenAPI、Search／Recent API、Android sharing／files／Navigationの既存実装を確認する。
+  - [x] `git status`と既存差分を確認する。
+  - [x] Android実機、Raspberry Pi、PostgreSQL、実HDD、LAN、ZeroTier、Release署名入力を確認する。
 
 ### 3.2 Android model・Network・Repository
 
-- [ ] Search／Recent domain modelをTDDで実装する。
-  - [ ] Search query、Filter、File category、Result item、Page、Recent itemを`core-model`へ追加する。
-  - [ ] Owner、Permission、Source、Share Target、Statusは既存File／Sharing modelと単一化する。
-  - [ ] Unknown enum、欠落値、不正UUID／日時をFail-closedで扱う。
-  - [ ] Search入力境界とFilter組合せをUIとRepositoryで共通利用できる形にする。
-- [ ] Search／Recent Retrofit APIとDTOを実装する。
-  - [ ] GET Searchの全Query parameter、Header、Page responseをOpenAPIと一致させる。
-  - [ ] GET RecentとPUT RecentのPath、204、Errorを一致させる。
-  - [ ] 401 Refresh後にSearch GETを再送し、PUT Recentは冪等に同じFileへ再送する。
-  - [ ] Contract TestでMethod、URL encoding、Query、Header、BodyなしPUT、Response mappingを確認する。
-- [ ] RepositoryとPagingを実装する。
-  - [ ] 全要求を`AuthenticatedRequestExecutor`経由で送る。
-  - [ ] Search世代またはCoroutine cancelで古い応答が新しい条件を上書きしない。
-  - [ ] Refreshと次Pageの条件を固定し、Filter変更時はPage 1から再取得する。
-  - [ ] Recent PUTのNetwork結果不明で成功を合成せず、Recent GETまたはFile詳細を再取得する。
-  - [ ] Server契約の重複ID、不正Page、Unknown metadataを成功扱いにしない。
+- [x] Search／Recent domain modelをTDDで実装する。
+  - [x] Search query、Filter、File category、Result item、Page、Recent itemを`core-model`へ追加する。
+  - [x] Owner、Permission、Source、Share Target、Statusは既存File／Sharing modelと単一化する。
+  - [x] Unknown enum、欠落値、不正UUID／日時をFail-closedで扱う。
+  - [x] Search入力境界とFilter組合せをUIとRepositoryで共通利用できる形にする。
+- [x] Search／Recent Retrofit APIとDTOを実装する。
+  - [x] GET Searchの全Query parameter、Header、Page responseをOpenAPIと一致させる。
+  - [x] GET RecentとPUT RecentのPath、204、Errorを一致させる。
+  - [x] 401 Refresh後にSearch GETを再送し、PUT Recentは冪等に同じFileへ再送する。
+  - [x] Contract TestでMethod、URL encoding、Query、Header、BodyなしPUT、Response mappingを確認する。
+- [x] RepositoryとPagingを実装する。
+  - [x] 全要求を`AuthenticatedRequestExecutor`経由で送る。
+  - [x] Search世代またはCoroutine cancelで古い応答が新しい条件を上書きしない。
+  - [x] Refreshと次Pageの条件を固定し、Filter変更時はPage 1から再取得する。
+  - [x] Recent PUTのNetwork結果不明で成功を合成せず、Recent GETまたはFile詳細を再取得する。
+  - [x] Server契約の重複ID、不正Page、Unknown metadataを成功扱いにしない。
 
 ### 3.3 `feature-search`・Search画面
 
-- [ ] `feature-search` Moduleを追加する。
-  - [ ] Build設定、Dependency、Lockfile、Assembly marker、Unit／Instrumented Test source setを追加する。
-  - [ ] 既存Compose Theme・Componentを再利用し、新しい外部Packageを追加しない。
-  - [ ] `feature-files`／`feature-sharing`への直接Module依存を追加しない。
-- [ ] Search ViewModelをTDDで実装する。
-  - [ ] Query、Filter、Loading、Empty、Success、Paging、Refresh、Error stateを実装する。
-  - [ ] 明示検索またはIME actionで実行し、過大な入力中Requestを発行しない。
-  - [ ] 入力変更中の旧Request cancel／世代破棄、二重LoadMore防止を実装する。
-  - [ ] Token refresh、通信結果不明、Storage/API Error、権限失効時の再取得を実装する。
-- [ ] Search Compose画面を実装する。
-  - [ ] Home導線、検索語、Entry種別、Category、日時、size、Owner／共有元、status Filterを提供する。
-  - [ ] Owner／共有元候補を本人と既存受信Shareから構成し、未共有User一覧を取得しない。
-  - [ ] 結果へ種別、名前、Owner、Permission／Source、共有元、size、更新日時、MISSING状態を表示する。
-  - [ ] FolderはFile browser、Fileは最新詳細／DownloadへApp callbackで遷移する。
-  - [ ] Unknown／MISSING／権限失効で破壊的操作を表示せず、既存capabilityを再利用する。
-  - [ ] Narrow screen、Font scale、回転、Keyboard、Filter折返し、Scrollを確認する。
-  - [ ] qをLog、Analytics、Crash message、永続SavedStateへ保存しない。
+- [x] `feature-search` Moduleを追加する。
+  - [x] Build設定、Dependency、Lockfile、Assembly marker、Unit／Instrumented Test source setを追加する。
+  - [x] 既存Compose Theme・Componentを再利用し、新しい外部Packageを追加しない。
+  - [x] `feature-files`／`feature-sharing`への直接Module依存を追加しない。
+- [x] Search ViewModelをTDDで実装する。
+  - [x] Query、Filter、Loading、Empty、Success、Paging、Refresh、Error stateを実装する。
+  - [x] 明示検索またはIME actionで実行し、過大な入力中Requestを発行しない。
+  - [x] 入力変更中の旧Request cancel／世代破棄、二重LoadMore防止を実装する。
+  - [x] Token refresh、通信結果不明、Storage/API Error、権限失効時の再取得を実装する。
+- [x] Search Compose画面を実装する。
+  - [x] Home導線、検索語、Entry種別、Category、日時、size、Owner／共有元、status Filterを提供する。
+  - [x] Owner／共有元候補を本人と既存受信Shareから構成し、未共有User一覧を取得しない。
+  - [x] 結果へ種別、名前、Owner、Permission／Source、共有元、size、更新日時、MISSING状態を表示する。
+  - [x] FolderはFile browser、Fileは最新詳細／DownloadへApp callbackで遷移する。
+  - [x] Unknown／MISSING／権限失効で破壊的操作を表示せず、既存capabilityを再利用する。
+  - [x] Narrow screen、Font scale、回転、Keyboard、Filter折返し、Scrollを確認する。
+  - [x] qをLog、Analytics、Crash message、永続SavedStateへ保存しない。
 
 ### 3.4 最近使用画面・履歴記録・Navigation
 
-- [ ] Recent ViewModelとCompose画面をTDDで実装する。
-  - [ ] Loading、Empty、Success、Paging、Refresh、Error、権限失効状態を実装する。
-  - [ ] 新しい順にFile名、Owner、Permission／Source、共有元、OpenedAt、MISSING状態を表示する。
-  - [ ] MISSING項目は状態案内だけを表示し、Download／変更操作を有効にしない。
-  - [ ] 項目選択時は既存File詳細APIで最新状態を再取得してから表示する。
-  - [ ] 解除・404後はRecent一覧をRefreshし、Clientから項目だけを成功削除したと推測しない。
-- [ ] File表示成功後のRecent記録を接続する。
-  - [ ] File詳細が実際にユーザーへ表示された後だけPUTを呼ぶ。
-  - [ ] Folder、一覧、Search結果表示、Background refresh、MISSING詳細ではPUTしない。
-  - [ ] 回転・再Composition・同一詳細再読込による過剰送信を抑え、Server冪等性も維持する。
-  - [ ] PUT失敗でFile閲覧自体を失敗扱いにせず、履歴同期Errorを非破壊的に扱う。
-- [ ] App NavigationとDIを接続する。
-  - [ ] Homeへ「検索」と「最近使用」導線を追加する。
-  - [ ] `AppDestination`、`ServiceContainer`、Session単位Repository／ViewModelを追加する。
-  - [ ] Search／Recent結果から既存File browser／detailへIDだけを渡す。
-  - [ ] Logout、User切替、接続経路変更時に前UserのQuery、Filter、結果、Recentを再利用しない。
+- [x] Recent ViewModelとCompose画面をTDDで実装する。
+  - [x] Loading、Empty、Success、Paging、Refresh、Error、権限失効状態を実装する。
+  - [x] 新しい順にFile名、Owner、Permission／Source、共有元、OpenedAt、MISSING状態を表示する。
+  - [x] MISSING項目は状態案内だけを表示し、Download／変更操作を有効にしない。
+  - [x] 項目選択時は既存File詳細APIで最新状態を再取得してから表示する。
+  - [x] 解除・404後はRecent一覧をRefreshし、Clientから項目だけを成功削除したと推測しない。
+- [x] File表示成功後のRecent記録を接続する。
+  - [x] File詳細が実際にユーザーへ表示された後だけPUTを呼ぶ。
+  - [x] Folder、一覧、Search結果表示、Background refresh、MISSING詳細ではPUTしない。
+  - [x] 回転・再Composition・同一詳細再読込による過剰送信を抑え、Server冪等性も維持する。
+  - [x] PUT失敗でFile閲覧自体を失敗扱いにせず、履歴同期Errorを非破壊的に扱う。
+- [x] App NavigationとDIを接続する。
+  - [x] Homeへ「検索」と「最近使用」導線を追加する。
+  - [x] `AppDestination`、`ServiceContainer`、Session単位Repository／ViewModelを追加する。
+  - [x] Search／Recent結果から既存File browser／detailへIDだけを渡す。
+  - [x] Logout、User切替、接続経路変更時に前UserのQuery、Filter、結果、Recentを再利用しない。
 
 ### 3.5 Android自動Test
 
-- [ ] Model／Network／Repository Unit・Contract Testを完了する。
-  - [ ] 全Category、Status、Owner、Direct、Inherited、Unknown、Share Target mappingをTestする。
-  - [ ] Search全Queryのencoding、Filter省略、Page、401 Refresh、ErrorをTestする。
-  - [ ] Recent GET／PUT、204、401、結果不明、重複抑止をTestする。
-  - [ ] Paging、Filter変更、古い応答破棄、不正Server responseをTestする。
-- [ ] ViewModel／Compose UI Testを完了する。
-  - [ ] SearchのLoading、Empty、Success、Filter、Paging、Refresh、Error、結果遷移をTestする。
-  - [ ] q境界、short query、特殊文字、IME、二重検索、古い応答をTestする。
-  - [ ] RecentのLoading、Empty、Success、MISSING、失効、Paging、項目遷移をTestする。
-  - [ ] File表示成功だけがRecent PUTを呼び、Folder／一覧／Search表示が呼ばないことをTestする。
-  - [ ] Owner／Viewer／Contributor／Editor／Manager／Unknownで操作表示が既存権限表と一致する。
-  - [ ] 回転、Narrow screen、Scroll、Dialog／Keyboard表示で操作不能にならない。
-- [ ] Android標準検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`が成功する。
-  - [ ] 接続Android実機で全対象Moduleの`connectedDebugAndroidTest --max-workers=1`相当が成功する。
-  - [ ] `./scripts/ci/verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、`git diff --check`が成功する。
+- [x] Model／Network／Repository Unit・Contract Testを完了する。
+  - [x] 全Category、Status、Owner、Direct、Inherited、Unknown、Share Target mappingをTestする。
+  - [x] Search全Queryのencoding、Filter省略、Page、401 Refresh、ErrorをTestする。
+  - [x] Recent GET／PUT、204、401、結果不明、重複抑止をTestする。
+  - [x] Paging、Filter変更、古い応答破棄、不正Server responseをTestする。
+- [x] ViewModel／Compose UI Testを完了する。
+  - [x] SearchのLoading、Empty、Success、Filter、Paging、Refresh、Error、結果遷移をTestする。
+  - [x] q境界、short query、特殊文字、IME、二重検索、古い応答をTestする。
+  - [x] RecentのLoading、Empty、Success、MISSING、失効、Paging、項目遷移をTestする。
+  - [x] File表示成功だけがRecent PUTを呼び、Folder／一覧／Search表示が呼ばないことをTestする。
+  - [x] Owner／Viewer／Contributor／Editor／Manager／Unknownで操作表示が既存権限表と一致する。
+  - [x] 回転、Narrow screen、Scroll、Dialog／Keyboard表示で操作不能にならない。
+- [x] Android標準検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`が成功する。
+  - [x] 接続Android実機で全対象Moduleの`connectedDebugAndroidTest --max-workers=1`相当が成功する。
+  - [x] `./scripts/ci/verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、`git diff --check`が成功する。
 
 ### 3.6 Rollout・性能・Raspberry Pi Server E2E
 
-- [ ] 本番相当環境の事前保護とRolloutを完了する。
-  - [ ] PostgreSQLとStorage Rootの対応するBackup、復元可能性、Storage ID、Service状態を確認する。
-  - [ ] 30万件性能seedとE2E一時データを実データから分離し、限定識別子と清掃手順を確定する。
-  - [ ] Search Migration、Recent Migration、API、Worker、署名Androidの順序で適用する。
-  - [ ] Index作成時間、Lock、DB容量、Extension、Rollback制約、Recent件数を適用前後に確認する。
-- [ ] Raspberry Piで30万件Search性能を確定する。
-  - [ ] 個人、直接共有、継承、複数経路、MISSINGを含む代表20検索を測定する。
-  - [ ] warm／cold条件、p50／p95、最大、Error率、CPU、Memory、DB connection、Index sizeを記録する。
-  - [ ] 通常2秒以内を満たし、`EXPLAIN ANALYZE BUFFERS`で意図したIndexと有界認可Queryを確認する。
-  - [ ] 短語Prefix、trigram contains、Filterのみ、Owner、Share Target、Page後半の最悪条件を含める。
-  - [ ] 目標未達の場合はQuery／Indexを修正して同じ条件で再測定し、未達のまま完了扱いにしない。
-- [ ] Server Search／Recent E2Eを完了する。
-  - [ ] Owner、Viewer、Contributor、Editor、Manager、Admin、未共有Userで許可範囲と存在秘匿を確認する。
-  - [ ] File／Folder名、Category、日時、size、Owner、共有元、status、組合せFilter、Paginationを確認する。
-  - [ ] Direct、Inherited、複数祖先、直接+継承、最強PermissionとSourceを確認する。
-  - [ ] Share解除／変更、Move、Rename、Trash、Restore、Purge、MISSING二段階／索引削除をSearch／Recentへ反映する。
-  - [ ] Recent再Open、User分離、Folder／MISSING記録拒否、失効中非表示、再取得時過去時刻、Cascadeを確認する。
-  - [ ] API／Worker／PostgreSQL再起動、同時Search／Share変更／Recent PUT後もDBと応答が収束する。
-  - [ ] Nginx／API／PostgreSQL Logにq、File名、User名、物理Path、Tokenがない。
+- [x] 本番相当環境の事前保護とRolloutを完了する。
+  - [x] PostgreSQLとStorage Rootの対応するBackup、復元可能性、Storage ID、Service状態を確認する。
+  - [x] 30万件性能seedとE2E一時データを実データから分離し、限定識別子と清掃手順を確定する。
+  - [x] Search Migration、Recent Migration、API、Worker、署名Androidの順序で適用する。
+  - [x] Index作成時間、Lock、DB容量、Extension、Rollback制約、Recent件数を適用前後に確認する。
+- [x] Raspberry Piで30万件Search性能を確定する。
+  - [x] 個人、直接共有、継承、複数経路、MISSINGを含む代表20検索を測定する。
+  - [x] warm／cold条件、p50／p95、最大、Error率、CPU、Memory、DB connection、Index sizeを記録する。
+  - [x] 通常2秒以内を満たし、`EXPLAIN ANALYZE BUFFERS`で意図したIndexと有界認可Queryを確認する。
+  - [x] 短語Prefix、trigram contains、Filterのみ、Owner、Share Target、Page後半の最悪条件を含める。
+  - [x] 目標未達の場合はQuery／Indexを修正して同じ条件で再測定し、未達のまま完了扱いにしない。
+- [x] Server Search／Recent E2Eを完了する。
+  - [x] Owner、Viewer、Contributor、Editor、Manager、Admin、未共有Userで許可範囲と存在秘匿を確認する。
+  - [x] File／Folder名、Category、日時、size、Owner、共有元、status、組合せFilter、Paginationを確認する。
+  - [x] Direct、Inherited、複数祖先、直接+継承、最強PermissionとSourceを確認する。
+  - [x] Share解除／変更、Move、Rename、Trash、Restore、Purge、MISSING二段階／索引削除をSearch／Recentへ反映する。
+  - [x] Recent再Open、User分離、Folder／MISSING記録拒否、失効中非表示、再取得時過去時刻、Cascadeを確認する。
+  - [x] API／Worker／PostgreSQL再起動、同時Search／Share変更／Recent PUT後もDBと応答が収束する。
+  - [x] Nginx／API／PostgreSQL Logにq、File名、User名、物理Path、Tokenがない。
 
 ### 3.7 Android実機・LAN／ZeroTier・回帰・清掃
 
-- [ ] Android実機Search user flowを完了する。
-  - [ ] HomeからSearchへ移動し、名前、Category、日時、size、Owner／共有元、statusで検索する。
-  - [ ] Folder結果を開き、File結果のOwner、Permission／Source、共有元、MISSING状態を確認する。
-  - [ ] Viewer／Contributor／Editor／Managerで表示操作が権限表と一致し、ADMIN／未共有Userに結果が漏れない。
-  - [ ] Search中のShare解除、Move、Trash、通信断、Token refresh後に古い結果を操作できない。
-  - [ ] 長い語、1〜2文字、Unicode、特殊文字、空結果、複数Page、回転、狭い画面を確認する。
-- [ ] Android実機Recent user flowを完了する。
-  - [ ] 複数Fileを開いて新しい順を確認し、同じFile再Openで1件のまま先頭へ移動する。
-  - [ ] User切替で履歴が分離され、Folder／一覧／検索結果表示だけでは履歴が増えない。
-  - [ ] Share解除後に非表示、別経路維持、MISSING状態表示、Trash／Purge後非表示を確認する。
-  - [ ] RecentからFileを開く際に最新権限が再取得され、失効後の変更操作が拒否される。
-- [ ] LAN／ZeroTierと既存機能回帰を確認する。
-  - [ ] 両経路で同じHTTPS Hostname、TLS、認証、Search／Recent契約が機能する。
-  - [ ] Personal／Shared一覧、Upload、Download、Rename、Move、Trash、Restore、Purge、MISSING、中断再開Uploadが従来どおり動作する。
-  - [ ] Storage未接続時にSearch metadataとFile openの状態が設計どおりで、OS Rootへ誤保存しない。
-- [ ] E2E環境を安全に清掃する。
-  - [ ] 限定識別子の試験User、File、Folder、Share、Recent、Session、性能seedだけを削除する。
-  - [ ] 実User、実File、実Share、Backup、運用資格情報を削除しない。
-  - [ ] Storage ID一致、全Service active、未完了FileOperation／Upload Session、孤立Share／Recentが0件である。
-  - [ ] 手順、結果、検索条件、Permission、性能、失敗注入、所要時間、清掃結果を機密情報なしで`docs/testing/`へ記録する。
+- [x] Android実機Search user flowを完了する。
+  - [x] HomeからSearchへ移動し、名前、Category、日時、size、Owner／共有元、statusで検索する。
+  - [x] Folder結果を開き、File結果のOwner、Permission／Source、共有元、MISSING状態を確認する。
+  - [x] Viewer／Contributor／Editor／Managerで表示操作が権限表と一致し、ADMIN／未共有Userに結果が漏れない。
+  - [x] Search中のShare解除、Move、Trash、通信断、Token refresh後に古い結果を操作できない。
+  - [x] 長い語、1〜2文字、Unicode、特殊文字、空結果、複数Page、回転、狭い画面を確認する。
+- [x] Android実機Recent user flowを完了する。
+  - [x] 複数Fileを開いて新しい順を確認し、同じFile再Openで1件のまま先頭へ移動する。
+  - [x] User切替で履歴が分離され、Folder／一覧／検索結果表示だけでは履歴が増えない。
+  - [x] Share解除後に非表示、別経路維持、MISSING状態表示、Trash／Purge後非表示を確認する。
+  - [x] RecentからFileを開く際に最新権限が再取得され、失効後の変更操作が拒否される。
+- [x] LAN／ZeroTierと既存機能回帰を確認する。
+  - [x] 両経路で同じHTTPS Hostname、TLS、認証、Search／Recent契約が機能する。
+  - [x] Personal／Shared一覧、Upload、Download、Rename、Move、Trash、Restore、Purge、MISSING、中断再開Uploadが従来どおり動作する。
+  - [x] Storage未接続時にSearch metadataとFile openの状態が設計どおりで、OS Rootへ誤保存しない。
+- [x] E2E環境を安全に清掃する。
+  - [x] 限定識別子の試験User、File、Folder、Share、Recent、Session、性能seedだけを削除する。
+  - [x] 実User、実File、実Share、Backup、運用資格情報を削除しない。
+  - [x] Storage ID一致、全Service active、未完了FileOperation／Upload Session、孤立Share／Recentが0件である。
+  - [x] 手順、結果、検索条件、Permission、性能、失敗注入、所要時間、清掃結果を機密情報なしで`docs/testing/`へ記録する。
 
 ### 3.8 最終文書・Release・セルフレビュー・完了
 
-- [ ] 全文書と実装を最終整合する。
-  - [ ] 5つの正式文書、Steering、OpenAPI、Migration、Server、Android、Performance、運用・Test記録が一致する。
-  - [ ] `feature-search`、Navigation、Server Search／Recent、Performance資材の実配置をRepository文書へ反映する。
-  - [ ] Migration、Index、Extension、API／Android Rollout、Rollback、Recent保護を運用文書へ反映する。
-  - [ ] E2E／性能記録に実User識別情報、File名、検索語、物理Path、Token、Credentialがない。
-- [ ] Release Buildと最終検証を完了する。
-  - [ ] `./scripts/ci/build-release.sh`でlinux-arm64 Serverと署名済み・非debuggable Android Releaseを生成する。
-  - [ ] 最終Releaseを本番相当順序で配置し、Version、署名、Root CA、Hostnameを検証する。
-  - [ ] 全必須CI、Server／Android Test、Migration、Performance、実機E2Eが最終HEADで成功する。
-- [ ] 全体差分をセルフレビューする。
-  - [ ] 認可前の候補、他User履歴、q、File名、物理PathをClient／Logへ漏らす経路がない。
-  - [ ] HDD走査、N+1、無制限再帰、長期Permission cache、Client-only認可がない。
-  - [ ] Search表示だけのRecent更新、Client時刻、重複履歴、TRASHED表示がない。
-  - [ ] OCR、全文検索、候補、タグ、推薦、Admin横断検索、不要Package、将来用Schemaがない。
-  - [ ] 生成物、実環境値、Credentialが差分にない。
+- [x] 全文書と実装を最終整合する。
+  - [x] 5つの正式文書、Steering、OpenAPI、Migration、Server、Android、Performance、運用・Test記録が一致する。
+  - [x] `feature-search`、Navigation、Server Search／Recent、Performance資材の実配置をRepository文書へ反映する。
+  - [x] Migration、Index、Extension、API／Android Rollout、Rollback、Recent保護を運用文書へ反映する。
+  - [x] E2E／性能記録に実User識別情報、File名、検索語、物理Path、Token、Credentialがない。
+- [x] Release Buildと最終検証を完了する。
+  - [x] `./scripts/ci/build-release.sh`でlinux-arm64 Serverと署名済み・非debuggable Android Releaseを生成する。
+  - [x] 最終Releaseを本番相当順序で配置し、Version、署名、Root CA、Hostnameを検証する。
+  - [x] 全必須CI、Server／Android Test、Migration、Performance、実機E2Eが最終HEADで成功する。
+- [x] 全体差分をセルフレビューする。
+  - [x] 認可前の候補、他User履歴、q、File名、物理PathをClient／Logへ漏らす経路がない。
+  - [x] HDD走査、N+1、無制限再帰、長期Permission cache、Client-only認可がない。
+  - [x] Search表示だけのRecent更新、Client時刻、重複履歴、TRASHED表示がない。
+  - [x] OCR、全文検索、候補、タグ、推薦、Admin横断検索、不要Package、将来用Schemaがない。
+  - [x] 生成物、実環境値、Credentialが差分にない。
 - [ ] PR3を完了する。
   - [ ] 3.1〜3.8のPR3対象項目がすべて`[x]`である。
   - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。

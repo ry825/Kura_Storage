@@ -34,6 +34,8 @@ class HomeScreenTest {
 
         compose.onNodeWithText("My files").assertIsDisplayed()
         compose.onNodeWithText("Trash").assertIsDisplayed()
+        compose.onNodeWithText("Search").assertIsDisplayed()
+        compose.onNodeWithText("Recent files").assertIsDisplayed()
         compose.onNodeWithText("Connection: REMOTE_SECURE").assertIsDisplayed()
         compose.onNodeWithText("Log out").assertIsDisplayed()
     }

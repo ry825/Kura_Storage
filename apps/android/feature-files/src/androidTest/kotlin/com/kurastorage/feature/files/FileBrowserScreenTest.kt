@@ -792,7 +792,7 @@ class FileBrowserScreenTest {
         compose.onNodeWithText("Photos").assertIsDisplayed()
         compose.onAllNodesWithText("Owner: Owner").assertCountEquals(2)
         compose.onAllNodesWithText("Permission: VIEWER (DIRECT)").assertCountEquals(2)
-        compose.onNodeWithText("Shared from folder: shared-root").assertIsDisplayed()
+        compose.onNodeWithText("Shared from folder: Photos").assertIsDisplayed()
         assertSharedControlCounts(create = 0, rename = 0, move = 0, trash = 0, sharing = 0)
 
         compose.runOnIdle {
@@ -827,6 +827,41 @@ class FileBrowserScreenTest {
         }
         compose.onNodeWithText("Download").assertIsDisplayed()
         assertSharedControlCounts(create = 0, rename = 0, move = 0, trash = 0, sharing = 0)
+    }
+
+    @Test
+    fun activeFileDetailNotifiesDisplayOnceUntilItIsClosedAndReopened() {
+        val state = mutableStateOf(FileBrowserState(loading = false, selected = file()))
+        var displayed = 0
+        compose.setContent {
+            FileBrowserScreen(
+                state = state.value,
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDetailDisplayed = { displayed++ },
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+        compose.runOnIdle {
+            assertEquals(1, displayed)
+            state.value = state.value.copy(historySyncError = "retry")
+        }
+        compose.runOnIdle { assertEquals(1, displayed) }
+        compose.runOnIdle { state.value = state.value.copy(selected = null) }
+        compose.runOnIdle { state.value = state.value.copy(selected = file()) }
+        compose.runOnIdle { assertEquals(2, displayed) }
     }
 
     private fun sharedControlState(
