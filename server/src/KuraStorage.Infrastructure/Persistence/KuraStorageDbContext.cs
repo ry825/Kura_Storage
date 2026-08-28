@@ -3,6 +3,7 @@ using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Indexing;
 using KuraStorage.Domain.Maintenance;
+using KuraStorage.Domain.Organization;
 using KuraStorage.Domain.Sharing;
 using KuraStorage.Domain.Transfers;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,12 @@ public sealed class KuraStorageDbContext(DbContextOptions<KuraStorageDbContext> 
     public DbSet<FileEntry> FileEntries => Set<FileEntry>();
 
     public DbSet<RecentFile> RecentFiles => Set<RecentFile>();
+
+    public DbSet<FavoriteEntry> FavoriteEntries => Set<FavoriteEntry>();
+
+    public DbSet<Tag> Tags => Set<Tag>();
+
+    public DbSet<EntryTag> EntryTags => Set<EntryTag>();
 
     public DbSet<FileOperation> FileOperations => Set<FileOperation>();
 

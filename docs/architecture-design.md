@@ -566,6 +566,8 @@ SSIDとBSSIDは外部Wi-Fiで自動バックアップを許可するポリシー
 - `shares`は`target_entry_id`を一意とし、`file_entries(id)`の削除からCascadeする。`share_members`は`(share_id, user_id)`をPrimary Keyとし、Permissionを`VIEWER`、`CONTRIBUTOR`、`EDITOR`、`MANAGER`の4値に制限する。
 - `shares.owner_user_id`は対象FileEntryの所有者を重複保持し、Applicationが作成時にFileEntryから導出して一致を保証する。Client指定のOwnerは使用しない。
 - Upload Sessionは操作者の`actor_user_id`と対象Treeの`target_owner_user_id`を分離する。既存行は前方MigrationでActorをTarget OwnerへBackfillし、個人Uploadの意味を維持する。
+- 個人整理情報は`favorite_entries(user_id, entry_id)`、`tags(id, user_id, name_key)`、`entry_tags(tag_id, entry_id)`へFileEntryと分離して保存する。User／FileEntry／Tag外部キーはCascadeとし、Rename・MoveではEntry ID関連を維持し、Purge・索引削除・User／Tag削除では孤立行を残さない。
+- Tag表示名はApplicationでtrim・NFC・Unicode code point・control categoryを検証し、NFC後の`ToUpperInvariant` NameKeyとDB一意制約を併用する。
 
 ### 8.3 主要Index
 
@@ -582,6 +584,9 @@ SSIDとBSSIDは外部Wi-Fiで自動バックアップを許可するポリシー
 | `upload_sessions` | `(status, expires_at)`、`device_id` |
 | `backup_receipts` | `(device_id, local_document_key)`一意 |
 | `audit_logs` | `occurred_at`、`event_type`、`user_id`、`device_id` |
+| `favorite_entries` | `(user_id, favorited_at DESC, entry_id)`、`entry_id` |
+| `tags` | `(user_id, name_key)`一意、`(user_id, name_key, id)` |
+| `entry_tags` | `(tag_id, entry_id)`複合Primary Key、`(entry_id, tag_id)` |
 
 ### 8.4 Refresh Sessionモデル
 
@@ -1052,6 +1057,9 @@ DevelopmentとTestingでPathを省略した場合だけ、Process内に一時的
 - qありは完全一致、前方一致、trigram similarity、`updated_at DESC`、`id ASC`、Filterのみは`updated_at DESC`、`id ASC`で決定的に並べる。
 - Search／Recentは必要列だけをprojectionし、HDD走査、`SELECT *`、Page内N+1、無制限再帰、認可後のClient非表示を使用しない。
 - `recent_files`は`(user_id, file_id)`複合Primary Key、User／FileEntryへのCascade、`(user_id, opened_at DESC, file_id)`Indexを持つ。記録はServer時刻の単一Statement upsert、一覧は現在権限を毎要求で再評価する。
+- お気に入り登録とTag付与はEntry／祖先とUser organization keyを同じ64-bit key空間で昇順lockし、lock後に階層、`ACTIVE`、未完了操作、現在権限、Tag ownership、件数上限を再評価する。解除はActor行だけの条件付きDELETEとし、権限失効や`MISSING`後もcleanupできる。
+- Favorites一覧はActor関連を起点に最大深度64の所有・直接・継承共有をSQL内でrankし、状態、count、offset、limitまでDBで確定する。Tag検索は指定時だけRepeatable Read snapshotを使い、本人Tag確認と`entry_tags GROUP BY/HAVING count(DISTINCT tag_id)`によるAND条件を同じsnapshotで適用する。
+- お気に入り、Tag一覧、Entry organization、Tag検索はPage内N+1、HDD走査、Client後Filter、長期Permission cacheを使用しない。Tag名、検索語、File名、User名、物理PathをAccess Log、Metric label、例外へ含めない。
 - `pg_trgm`と名前Indexは明示Migrationで適用する。大TableへのIndex作成前にBackup、空き容量、Lock時間を確認し、Downでは本機能のIndexだけを削除して共有Extensionを無条件削除しない。
 - Search query、File名、User名、共有元名、物理PathをAccess Log、Metric label、例外へ含めない。Nginxは`$uri`を使用し、`$request`、`$request_uri`、`$args`を記録しない。
 - 30万FileEntry、家族User 10名、代表20検索でwarm-up後のp50／p95、最大値、Error率、CPU、Memory、Index size、`EXPLAIN (ANALYZE, BUFFERS)`を記録し、通常2秒以内を確認する。

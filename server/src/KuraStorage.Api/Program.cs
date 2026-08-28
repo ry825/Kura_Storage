@@ -10,6 +10,7 @@ using KuraStorage.Application.Maintenance;
 using KuraStorage.Application.Sharing;
 using KuraStorage.Application.Search;
 using KuraStorage.Application.Recent;
+using KuraStorage.Application.Organization;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Application.Identity;
 using KuraStorage.Domain.Files;
@@ -495,6 +496,178 @@ app.MapPut(
         return result.IsSuccess
             ? Results.NoContent()
             : Error(StatusCodes.Status404NotFound, result.Failure!.Code, context);
+    });
+
+app.MapGet(
+    "/api/v1/favorites",
+    async (
+        [AsParameters] RecentFilesHttpQuery query,
+        HttpContext context,
+        OrganizationService organization,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (!TryOptionalInt(query.Page, 1, out var page) ||
+            !TryOptionalInt(query.PageSize, 50, out var pageSize))
+        {
+            return Error(StatusCodes.Status400BadRequest, OrganizationErrorCodes.InvalidFavoritesRequest, context);
+        }
+
+        return ToOrganizationHttpResult(
+            await organization.ListFavoritesAsync(userId, page, pageSize, cancellationToken),
+            context);
+    });
+
+app.MapPut(
+    "/api/v1/favorites/{entryId:guid}",
+    async (Guid entryId, HttpContext context, OrganizationService organization, CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (context.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody == true)
+        {
+            return Error(StatusCodes.Status400BadRequest, OrganizationErrorCodes.InvalidOrganizationRequest, context);
+        }
+
+        var result = await organization.AddFavoriteAsync(userId, entryId, cancellationToken);
+        return result.IsSuccess ? Results.NoContent() : ToOrganizationHttpResult(result, context);
+    });
+
+app.MapDelete(
+    "/api/v1/favorites/{entryId:guid}",
+    async (Guid entryId, HttpContext context, OrganizationService organization, CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (context.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody == true)
+        {
+            return Error(StatusCodes.Status400BadRequest, OrganizationErrorCodes.InvalidOrganizationRequest, context);
+        }
+
+        var result = await organization.RemoveFavoriteAsync(userId, entryId, cancellationToken);
+        return result.IsSuccess ? Results.NoContent() : ToOrganizationHttpResult(result, context);
+    });
+
+app.MapGet(
+    "/api/v1/tags",
+    async (HttpContext context, OrganizationService organization, CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToOrganizationHttpResult(await organization.ListTagsAsync(userId, cancellationToken), context);
+    });
+
+app.MapPost(
+    "/api/v1/tags",
+    async (CreateTagRequest request, HttpContext context, OrganizationService organization, CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await organization.CreateTagAsync(userId, new CreateTagCommand(request.Name ?? string.Empty), cancellationToken);
+        return result.IsSuccess
+            ? Results.Created($"/api/v1/tags/{result.Value!.Id}", result.Value)
+            : ToOrganizationHttpResult(result, context);
+    });
+
+app.MapPatch(
+    "/api/v1/tags/{tagId:guid}",
+    async (Guid tagId, RenameTagRequest request, HttpContext context, OrganizationService organization, CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToOrganizationHttpResult(
+            await organization.RenameTagAsync(
+                userId,
+                new RenameTagCommand(tagId, request.Name ?? string.Empty),
+                cancellationToken),
+            context);
+    });
+
+app.MapDelete(
+    "/api/v1/tags/{tagId:guid}",
+    async (Guid tagId, HttpContext context, OrganizationService organization, CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (context.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody == true)
+        {
+            return Error(StatusCodes.Status400BadRequest, OrganizationErrorCodes.InvalidOrganizationRequest, context);
+        }
+
+        var result = await organization.DeleteTagAsync(userId, tagId, cancellationToken);
+        return result.IsSuccess ? Results.NoContent() : ToOrganizationHttpResult(result, context);
+    });
+
+app.MapGet(
+    "/api/v1/files/{entryId:guid}/organization",
+    async (Guid entryId, HttpContext context, OrganizationService organization, CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToOrganizationHttpResult(
+            await organization.GetEntryOrganizationAsync(userId, entryId, cancellationToken),
+            context);
+    });
+
+app.MapPut(
+    "/api/v1/files/{entryId:guid}/tags/{tagId:guid}",
+    async (Guid entryId, Guid tagId, HttpContext context, OrganizationService organization, CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (context.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody == true)
+        {
+            return Error(StatusCodes.Status400BadRequest, OrganizationErrorCodes.InvalidOrganizationRequest, context);
+        }
+
+        var result = await organization.AttachTagAsync(userId, entryId, tagId, cancellationToken);
+        return result.IsSuccess ? Results.NoContent() : ToOrganizationHttpResult(result, context);
+    });
+
+app.MapDelete(
+    "/api/v1/files/{entryId:guid}/tags/{tagId:guid}",
+    async (Guid entryId, Guid tagId, HttpContext context, OrganizationService organization, CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (context.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody == true)
+        {
+            return Error(StatusCodes.Status400BadRequest, OrganizationErrorCodes.InvalidOrganizationRequest, context);
+        }
+
+        var result = await organization.DetachTagAsync(userId, entryId, tagId, cancellationToken);
+        return result.IsSuccess ? Results.NoContent() : ToOrganizationHttpResult(result, context);
     });
 
 app.MapGet(
@@ -1051,6 +1224,22 @@ static IResult ToRecentFileHttpResult<T>(RecentFileResult<T> result, HttpContext
             result.Failure.Code,
             context);
 
+static IResult ToOrganizationHttpResult<T>(OrganizationResult<T> result, HttpContext context)
+{
+    if (result.IsSuccess)
+    {
+        return Results.Ok(result.Value);
+    }
+
+    var status = result.Failure!.Kind switch
+    {
+        OrganizationFailureKind.NotFound => StatusCodes.Status404NotFound,
+        OrganizationFailureKind.Conflict => StatusCodes.Status409Conflict,
+        _ => StatusCodes.Status400BadRequest,
+    };
+    return Error(status, result.Failure.Code, context);
+}
+
 static bool TryCreateSearchQuery(SearchHttpQuery query, out SearchQuery? result)
 {
     result = null;
@@ -1060,6 +1249,7 @@ static bool TryCreateSearchQuery(SearchHttpQuery query, out SearchQuery? result)
         !TryOptionalLong(query.MaxSize, out var maxSize) ||
         !TryOptionalGuid(query.OwnerUserId, out var ownerUserId) ||
         !TryOptionalGuid(query.ShareTargetId, out var shareTargetId) ||
+        !TryTagIds(query.TagId, out var tagIds) ||
         !TryOptionalInt(query.Page, 1, out var page) ||
         !TryOptionalInt(query.PageSize, 50, out var pageSize))
     {
@@ -1078,7 +1268,31 @@ static bool TryCreateSearchQuery(SearchHttpQuery query, out SearchQuery? result)
         ownerUserId,
         shareTargetId,
         page,
-        pageSize);
+        pageSize,
+        tagIds);
+    return true;
+}
+
+static bool TryTagIds(string[]? values, out IReadOnlyList<Guid> tagIds)
+{
+    tagIds = [];
+    if (values is null || values.Length == 0)
+    {
+        return true;
+    }
+
+    var parsed = new List<Guid>(values.Length);
+    foreach (var value in values)
+    {
+        if (!Guid.TryParse(value, out var tagId) || tagId == Guid.Empty)
+        {
+            return false;
+        }
+
+        parsed.Add(tagId);
+    }
+
+    tagIds = parsed;
     return true;
 }
 
@@ -1321,6 +1535,10 @@ public sealed record CreateShareMemberRequest(Guid UserId, string? Permission);
 
 public sealed record SetShareMemberRequest(string? Permission);
 
+public sealed record CreateTagRequest(string? Name);
+
+public sealed record RenameTagRequest(string? Name);
+
 public sealed class SearchHttpQuery
 {
     public string? Q { get; init; }
@@ -1333,6 +1551,7 @@ public sealed class SearchHttpQuery
     public string? MaxSize { get; init; }
     public string? OwnerUserId { get; init; }
     public string? ShareTargetId { get; init; }
+    public string[]? TagId { get; init; }
     public string? Page { get; init; }
     public string? PageSize { get; init; }
 }

@@ -87,6 +87,8 @@ Rename・Moveは現行のServer File機能を拡張し、Domainは`KuraStorage.D
 
 検索と最近使用は、Application契約・検証・Use Caseを`KuraStorage.Application/Search/`、Repository interfaceを`KuraStorage.Application/Abstractions/`、PostgreSQL固有の認可・Filter・Page Queryを`KuraStorage.Infrastructure/Persistence/Queries/`へ配置し、Endpointは現行`KuraStorage.Api/Program.cs`へ追加する。Recent entityとEF ConfigurationはDomain／Infrastructureの対応するDirectoryへ置く。Androidは`core-model`、`core-network`、`core-data`へ契約とRepositoryを追加し、画面だけを`feature-search`へ置く。検索・最近使用結果からFile／Folderを開く処理はIDだけをApp Navigationへ返し、`feature-files`や`feature-sharing`へ直接依存しない。
 
+お気に入りとTagのServer Domainは`KuraStorage.Domain/Organization/`、正規化・契約・Use Caseは`KuraStorage.Application/Organization/`、Repository interfaceは`Application/Abstractions/OrganizationAbstractions.cs`、EF ConfigurationとPostgreSQL固有Queryは`Infrastructure/Persistence/Configurations/`と`Queries/`へ配置する。既存`KuraStorage.Api/Program.cs`とSearch Queryを拡張し、新しいProject、Worker、外部Search engineを追加しない。Android契約・Repository・画面はPR2で既存`core-model`、`core-network`、`core-data`、`feature-search`へ配置し、File／Folder actionは既存`feature-files`からApp callbackへEntry IDだけを返す。
+
 外部欠損の再確認と索引削除は`KuraStorage.Application/Files/MissingEntryService.cs`へ配置する。DB関連情報だけを消すConsumerは`IFileIndexDeletionParticipant`を実装し、物理完全削除用`IPermanentDeleteParticipant`へ混在させない。AndroidのProtocol 2 DTO・未知Status変換・Repository操作は既存`core-network`、`core-model`、`core-data`、表示と二重送信防止は`feature-files`へ配置する。
 
 ```text

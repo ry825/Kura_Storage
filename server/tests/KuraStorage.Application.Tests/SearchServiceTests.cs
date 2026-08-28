@@ -112,6 +112,21 @@ public sealed class SearchServiceTests
             SearchService.Validate(new SearchQuery(Text: string.Concat(Enumerable.Repeat("😀", 201)))).Failure!.Code);
     }
 
+    [Fact]
+    public void Validate_AcceptsOneToTenUniqueTagsAsAStandaloneFilter()
+    {
+        var ten = Enumerable.Range(0, 10).Select(_ => Guid.NewGuid()).ToArray();
+
+        var valid = SearchService.Validate(new SearchQuery(TagIds: ten));
+        var duplicate = SearchService.Validate(new SearchQuery(TagIds: [ten[0], ten[0]]));
+        var eleven = SearchService.Validate(new SearchQuery(TagIds: ten.Append(Guid.NewGuid()).ToArray()));
+
+        Assert.True(valid.IsSuccess);
+        Assert.Equal(ten, valid.Value!.TagIds);
+        Assert.Equal(SearchErrorCodes.InvalidFilter, duplicate.Failure!.Code);
+        Assert.Equal(SearchErrorCodes.InvalidFilter, eleven.Failure!.Code);
+    }
+
     [Theory]
     [InlineData("image/jpeg", FileCategory.Image)]
     [InlineData("video/mp4", FileCategory.Video)]
@@ -161,7 +176,7 @@ public sealed class SearchServiceTests
         public Guid ActorUserId { get; private set; }
         public SearchFilter? Filter { get; private set; }
 
-        public Task<SearchPage> SearchAsync(
+        public Task<SearchPage?> SearchAsync(
             Guid actorUserId,
             SearchFilter filter,
             CancellationToken cancellationToken)
@@ -169,7 +184,7 @@ public sealed class SearchServiceTests
             CallCount++;
             ActorUserId = actorUserId;
             Filter = filter;
-            return Task.FromResult(new SearchPage([], filter.Page, filter.PageSize, 0));
+            return Task.FromResult<SearchPage?>(new SearchPage([], filter.Page, filter.PageSize, 0));
         }
     }
 }

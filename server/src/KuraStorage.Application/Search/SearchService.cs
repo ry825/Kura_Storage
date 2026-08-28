@@ -38,8 +38,10 @@ public sealed class SearchService(ISearchRepository repository)
             return SearchResult<SearchPage>.Fail(validation.Failure!.Code, validation.Failure.Kind);
         }
 
-        return SearchResult<SearchPage>.Success(
-            await repository.SearchAsync(actorUserId, validation.Value!, cancellationToken));
+        var page = await repository.SearchAsync(actorUserId, validation.Value!, cancellationToken);
+        return page is null
+            ? InvalidFilterPage()
+            : SearchResult<SearchPage>.Success(page);
     }
 
     public static SearchResult<SearchFilter> Validate(SearchQuery query)
@@ -81,6 +83,7 @@ public sealed class SearchService(ISearchRepository repository)
             return InvalidFilter();
         }
 
+        var tagIds = query.TagIds?.ToArray() ?? [];
         if ((entryType == "FOLDER" && (fileCategory is not null || query.MinSize is not null || query.MaxSize is not null)) ||
             query.UpdatedFrom > query.UpdatedTo ||
             query.MinSize < 0 ||
@@ -88,6 +91,9 @@ public sealed class SearchService(ISearchRepository repository)
             query.MinSize > query.MaxSize ||
             query.OwnerUserId == Guid.Empty ||
             query.ShareTargetId == Guid.Empty ||
+            tagIds.Length > 10 ||
+            tagIds.Any(id => id == Guid.Empty) ||
+            tagIds.Distinct().Count() != tagIds.Length ||
             query.Page < 1 ||
             query.PageSize is < 1 or > MaximumPageSize ||
             (long)(query.Page - 1) * query.PageSize > int.MaxValue)
@@ -103,7 +109,8 @@ public sealed class SearchService(ISearchRepository repository)
             query.MinSize is not null ||
             query.MaxSize is not null ||
             query.OwnerUserId is not null ||
-            query.ShareTargetId is not null;
+            query.ShareTargetId is not null ||
+            tagIds.Length > 0;
         if (text is null && !hasFilter)
         {
             return InvalidQuery();
@@ -138,7 +145,8 @@ public sealed class SearchService(ISearchRepository repository)
                 query.OwnerUserId,
                 query.ShareTargetId,
                 query.Page,
-                query.PageSize));
+                query.PageSize,
+                tagIds));
     }
 
     public static FileCategory ClassifyMimeType(string? mimeType)
@@ -196,4 +204,7 @@ public sealed class SearchService(ISearchRepository repository)
 
     private static SearchResult<SearchFilter> InvalidFilter() =>
         SearchResult<SearchFilter>.Fail(SearchErrorCodes.InvalidFilter, SearchFailureKind.InvalidFilter);
+
+    private static SearchResult<SearchPage> InvalidFilterPage() =>
+        SearchResult<SearchPage>.Fail(SearchErrorCodes.InvalidFilter, SearchFailureKind.InvalidFilter);
 }

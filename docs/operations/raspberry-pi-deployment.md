@@ -406,6 +406,31 @@ required, explicitly approve that aggregate loss or retain the backup for later
 restoration. Never export names, paths, User display names, or individual
 history rows into rollout logs.
 
+### Favorites and tags rollout and rollback
+
+`AddFavoritesAndTags` creates `favorite_entries`, `tags`, and `entry_tags` with
+User, FileEntry, and Tag cascade foreign keys, bounded-list and tag-search
+indexes, a normalized-name uniqueness constraint, and no existing-row backfill.
+Before applying it, stop API mutation traffic, take matching PostgreSQL and
+Storage Root backups, verify free DB space, and record only aggregate table and
+index sizes. Apply the Migration explicitly before deploying an API that exposes
+Favorites, Tags, or repeated `search?tagId=` parameters; API startup must not
+run migrations automatically.
+
+Monitor `pg_stat_activity`, lock waits, Migration elapsed time, and aggregate
+index size. The three new tables are initially empty, so index creation should
+not scan `file_entries`; investigate unexpected long locks instead of restarting
+the API against a partially reviewed schema. After deployment, verify aggregate
+counts, one authorized favorite flow, one private Tag AND search, and existing
+Search／Recent without logging names, query text, paths, or User identifiers.
+
+Prefer application rollback while retaining these backward-compatible tables.
+Migration Down drops all three tables and permanently deletes private favorites
+and tags, but does not delete User or FileEntry rows. If schema rollback is
+required, stop applications that call the endpoints, take another PostgreSQL
+backup, record aggregate counts only, obtain explicit approval for the metadata
+loss, run Down, and verify existing Search／Recent indexes and data remain intact.
+
 Before an upgrade or rollback that includes the permanent-delete migration,
 take PostgreSQL and Storage Root backups, stop the Worker, and inspect unresolved purge journals without selecting file names
 or paths:

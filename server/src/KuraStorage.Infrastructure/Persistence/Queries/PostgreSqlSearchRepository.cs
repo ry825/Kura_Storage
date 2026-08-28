@@ -101,6 +101,13 @@ public sealed class PostgreSqlSearchRepository(KuraStorageDbContext dbContext) :
               AND (@min_size IS NULL OR (entry_type = 'FILE' AND size >= @min_size))
               AND (@max_size IS NULL OR (entry_type = 'FILE' AND size <= @max_size))
               AND (@owner_user_id IS NULL OR owner_user_id = @owner_user_id)
+              AND (cardinality(@tag_ids) = 0 OR id IN (
+                    SELECT relation.entry_id
+                    FROM entry_tags AS relation
+                    JOIN tags AS tag ON tag.id = relation.tag_id
+                    WHERE tag.user_id = @actor_user_id AND relation.tag_id = ANY(@tag_ids)
+                    GROUP BY relation.entry_id
+                    HAVING count(DISTINCT relation.tag_id) = cardinality(@tag_ids)))
         ),
         owned_candidates AS (
             SELECT
@@ -313,7 +320,7 @@ public sealed class PostgreSqlSearchRepository(KuraStorageDbContext dbContext) :
         LIMIT @page_size;
         """;
 
-    public async Task<SearchPage> SearchAsync(
+    public async Task<SearchPage?> SearchAsync(
         Guid actorUserId,
         SearchFilter filter,
         CancellationToken cancellationToken)
@@ -326,8 +333,22 @@ public sealed class PostgreSqlSearchRepository(KuraStorageDbContext dbContext) :
             await connection.OpenAsync(cancellationToken);
         }
 
+        await using var transaction = filter.TagIds.Count > 0
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken)
+            : null;
         try
         {
+            if (filter.TagIds.Count > 0)
+            {
+                var ownedCount = await dbContext.Tags.AsNoTracking()
+                    .CountAsync(tag => tag.UserId == actorUserId && filter.TagIds.Contains(tag.Id), cancellationToken);
+                if (ownedCount != filter.TagIds.Count)
+                {
+                    await transaction!.RollbackAsync(cancellationToken);
+                    return null;
+                }
+            }
+
             var page = await PageAsync(connection, actorUserId, filter, cancellationToken);
             var totalCount = page.TotalCount;
             if (page.Items.Count == 0 && filter.Page > 1)
@@ -335,6 +356,7 @@ public sealed class PostgreSqlSearchRepository(KuraStorageDbContext dbContext) :
                 totalCount = await CountAsync(connection, actorUserId, filter, cancellationToken);
             }
 
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
             return new SearchPage(page.Items, filter.Page, filter.PageSize, totalCount);
         }
         finally
@@ -415,6 +437,7 @@ public sealed class PostgreSqlSearchRepository(KuraStorageDbContext dbContext) :
         AddNullable(command, "max_size", NpgsqlDbType.Bigint, filter.MaxSize);
         AddNullable(command, "owner_user_id", NpgsqlDbType.Uuid, filter.OwnerUserId);
         AddNullable(command, "share_target_id", NpgsqlDbType.Uuid, filter.ShareTargetId);
+        command.Parameters.AddWithValue("tag_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid, filter.TagIds.ToArray());
         return command;
     }
 

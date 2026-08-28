@@ -444,6 +444,19 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: tagId
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 10
+            uniqueItems: true
+            items:
+              type: string
+              format: uuid
         - name: page
           in: query
           required: false
@@ -595,6 +608,161 @@ paths:
                 details: {}
         "500":
           $ref: "#/components/responses/InternalServerError"
+  /favorites:
+    get:
+      tags: [Organization]
+      operationId: listFavorites
+      summary: List the authenticated user's currently readable favorite entries
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: A deterministic page ordered by favorite time descending and entry ID ascending.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FavoritePage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+  /favorites/{entryId}:
+    parameters:
+      - $ref: "#/components/parameters/EntryId"
+    put:
+      tags: [Organization]
+      operationId: addFavorite
+      summary: Idempotently favorite one currently readable active entry
+      description: Has no request body. Actor identity and favorite time are server-derived.
+      responses:
+        "204": { description: The favorite exists. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+    delete:
+      tags: [Organization]
+      operationId: removeFavorite
+      summary: Idempotently remove the authenticated user's favorite relation
+      description: Has no request body and does not reveal whether the entry or relation exists.
+      responses:
+        "204": { description: The authenticated user's favorite relation is absent. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+  /tags:
+    get:
+      tags: [Organization]
+      operationId: listTags
+      summary: List the authenticated user's private tags
+      responses:
+        "200":
+          description: Tags ordered by normalized case-insensitive name and ID.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 200
+                items: { $ref: "#/components/schemas/TagItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+    post:
+      tags: [Organization]
+      operationId: createTag
+      summary: Create a private tag for the authenticated user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TagNameRequest" }
+      responses:
+        "201":
+          description: Tag created using server identity and time.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TagItem" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+  /tags/{tagId}:
+    parameters:
+      - $ref: "#/components/parameters/TagId"
+    patch:
+      tags: [Organization]
+      operationId: renameTag
+      summary: Rename one private tag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TagNameRequest" }
+      responses:
+        "200":
+          description: Renamed tag, or the unchanged tag for an idempotent retry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TagItem" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+    delete:
+      tags: [Organization]
+      operationId: deleteTag
+      summary: Delete one private tag and its entry relations
+      description: Has no request body and never changes another user's tags or file entries.
+      responses:
+        "204": { description: Tag and its relations deleted. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+  /files/{entryId}/organization:
+    parameters:
+      - $ref: "#/components/parameters/EntryId"
+    get:
+      tags: [Organization]
+      operationId: getEntryOrganization
+      summary: Get the authenticated user's private organization state for one readable entry
+      responses:
+        "200":
+          description: Current favorite and attached-tag state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryOrganizationState" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+  /files/{entryId}/tags/{tagId}:
+    parameters:
+      - $ref: "#/components/parameters/EntryId"
+      - $ref: "#/components/parameters/TagId"
+    put:
+      tags: [Organization]
+      operationId: attachTag
+      summary: Idempotently attach an owned tag to a currently readable active entry
+      description: Has no request body. Viewer and stronger readable permissions may organize their own metadata.
+      responses:
+        "204": { description: The tag relation exists. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+    delete:
+      tags: [Organization]
+      operationId: detachTag
+      summary: Idempotently detach the authenticated user's tag relation
+      description: Has no request body and remains available after permission loss or missing transitions.
+      responses:
+        "204": { description: The authenticated user's relation is absent. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
   /files/upload:
     post:
       tags: [Files]
@@ -1096,6 +1264,20 @@ components:
   parameters:
     FileId:
       name: fileId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    EntryId:
+      name: entryId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TagId:
+      name: tagId
       in: path
       required: true
       schema:
@@ -1800,6 +1982,65 @@ components:
         totalCount:
           type: integer
           minimum: 0
+    FavoriteItem:
+      allOf:
+        - $ref: "#/components/schemas/AccessibleEntryMetadata"
+        - type: object
+          required: [favoritedAt]
+          properties:
+            favoritedAt:
+              type: string
+              format: date-time
+    FavoritePage:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, totalCount]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/FavoriteItem" }
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        totalCount:
+          type: integer
+          minimum: 0
+    TagNameRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+    TagItem:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+    EntryOrganizationState:
+      type: object
+      additionalProperties: false
+      required: [isFavorite, tags]
+      properties:
+        isFavorite:
+          type: boolean
+        tags:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/TagItem" }
     SearchFileCategory:
       type: string
       enum: [IMAGE, VIDEO, AUDIO, DOCUMENT, ARCHIVE, OTHER]
@@ -1873,6 +2114,12 @@ components:
         - INVALID_SEARCH_QUERY
         - INVALID_SEARCH_FILTER
         - INVALID_RECENT_FILES_REQUEST
+        - INVALID_ORGANIZATION_REQUEST
+        - INVALID_FAVORITES_REQUEST
+        - TAG_LIMIT_EXCEEDED
+        - ENTRY_TAG_LIMIT_EXCEEDED
+        - TAG_NOT_FOUND
+        - TAG_NAME_CONFLICT
         - INTERNAL_ERROR
 security:
   - bearerAuth: []
