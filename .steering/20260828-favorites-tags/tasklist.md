@@ -171,12 +171,12 @@
   - [x] `docs/repository-structure.md`へ実配置を反映する。
   - [x] `docs/development-guidelines.md`へ新規の恒久的な実装規約がある場合だけ追記する。（既存のSecurity、TDD、Migration、Query規約で充足するため追記不要）
   - [x] Migration適用順、Backup、Lock、Rollback、データ保持を運用文書へ反映する。
-- [ ] PR1を完了する。
+- [x] PR1を完了する。
   - [x] フェーズ1の全項目が`[x]`であることを確認する。
   - [x] 差分にAndroid UI、Web UI、将来用Schema、不要Package、実環境値、Credentialがないことをセルフレビューする。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -316,14 +316,14 @@
 
 ### PR1: お気に入り・タグ Server APIと検索基盤
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・性能確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
+- 完了日: 2026-08-28
+- Pull Request: [#27 Add favorites and tags server APIs](https://github.com/ry825/Kura_Storage/pull/27)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-server.sh`成功（Domain 59件、Application 174件、Integration 116件）、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`dotnet format server/KuraStorage.sln --no-restore`、`git diff --check`成功。EF Migrationのpending model changeなし。Domain／Application全体Line Coverage 85.86%、今回の認可・Validation境界95.65%。GitHub必須CIのAndroid、Config、Security、Server成功。
+- 手動確認・性能確認: PostgreSQL 17 Testcontainersで30万Entry、10 User、User当たり200 Tag、最大10 Tag AND条件を構成し、Tag 1／10件、Tagのみ、名前＋Tag、共有＋Tag、MISSING＋Tag、Page後半を`EXPLAIN ANALYZE BUFFERS`で確認した。18 sampleでp50 554ms、p95／最大1,072ms、`entry_tags`の不要なSequential Scanなし。詳細は`docs/testing/20260828-favorites-tags-pr1-performance.md`へ記録した。
+- 計画と実装の差分: API、OpenAPI、Migration、認可、状態遷移、検索AND条件の機能範囲は計画どおり。性能Fixtureは初回の単一Tagへ30万件を集中させる過密条件から、要件の10 Userと共有経路を表す分布へ補正し、補正後の結果だけを受入値として記録した。Raspberry Pi実機確認は計画どおりPR2の本番相当E2Eへ引き継ぐ。
+- 実装中に追加したタスクと理由: MigrationのUp／Down／再Up、共有解除対Tag付与、Tag削除対付与、並列冪等PUT、孤立関連行、Adminの暗黙アクセス禁止を統合Testへ追加し、Lock順序、Cascade、Actor境界を回帰可能にした。
+- 技術的に不要になったタスク・理由・代替実装: `docs/development-guidelines.md`への追記は既存のSecurity、TDD、Migration、Query規約で充足するため不要。Tagなし検索へのTransaction／join追加も既存検索性能を維持するため行わず、Tag指定時だけ同一SnapshotとTag joinを適用した。
+- 後続Pull Requestへの引継ぎ事項: PR #27のMergeと必須CI成功を確認後、最新`main`からPR2 Branchを作成する。AndroidはOpenAPIの10 endpointとrepeated `tagId`をstrict mappingし、Session分離、結果不明時のServer再取得、権限失効時のfail-closedを維持する。Raspberry PiへのMigration適用、署名Android、LAN／ZeroTier、30万Entry性能、Log非漏えい、清掃をPR2の実機E2Eで完了する。
 
 ### PR2: Androidお気に入り・タグUIと実機E2E
 
