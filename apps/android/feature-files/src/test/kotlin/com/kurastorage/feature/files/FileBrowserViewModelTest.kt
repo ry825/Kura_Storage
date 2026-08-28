@@ -2,6 +2,8 @@ package com.kurastorage.feature.files
 
 import android.content.Intent
 import com.kurastorage.core.data.FileRepository
+import com.kurastorage.core.data.RecentFileRepository
+import com.kurastorage.core.data.RecentRecordOutcome
 import com.kurastorage.core.data.TransferRepository
 import com.kurastorage.core.model.ApiError
 import com.kurastorage.core.model.DownloadOperation
@@ -14,6 +16,7 @@ import com.kurastorage.core.model.FilePage
 import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.OwnerSummary
 import com.kurastorage.core.model.PermissionSource
+import com.kurastorage.core.model.RecentFilePage
 import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadOperation
@@ -309,7 +312,58 @@ class FileBrowserViewModelTest {
                     ?.name,
             )
             assertEquals("Renamed to renamed.txt.", viewModel.state.value.placementResult)
-            assertEquals(1, files.detailCalls)
+            assertEquals(2, files.detailCalls)
+        }
+
+    @Test
+    fun `only an authoritatively displayed active file records recent history without duplicate recomposition calls`() =
+        runTest(dispatcher) {
+            val recent = FakeRecentFiles()
+            val viewModel = FileBrowserViewModel(FakeFiles(), FakeTransfers(), recentFiles = recent)
+            val active = file("opened")
+
+            viewModel.select(active)
+            viewModel.select(active)
+            assertEquals(emptyList<String>(), recent.recorded)
+            viewModel.detailDisplayed(checkNotNull(viewModel.state.value.selected))
+            viewModel.detailDisplayed(checkNotNull(viewModel.state.value.selected))
+            assertEquals(listOf(active.id), recent.recorded)
+            assertEquals(
+                active.id,
+                viewModel.state.value.selected
+                    ?.id,
+            )
+
+            viewModel.dismissDetail()
+            viewModel.select(active)
+            viewModel.detailDisplayed(checkNotNull(viewModel.state.value.selected))
+            assertEquals(listOf(active.id, active.id), recent.recorded)
+
+            viewModel.select(active.copy(entryType = FileEntryType.FOLDER))
+            viewModel.detailDisplayed(checkNotNull(viewModel.state.value.selected))
+            viewModel.select(active.copy(status = FileEntryStatus.MISSING))
+            viewModel.detailDisplayed(checkNotNull(viewModel.state.value.selected))
+            assertEquals(2, recent.recorded.size)
+        }
+
+    @Test
+    fun `recent synchronization failure never hides an opened file`() =
+        runTest(dispatcher) {
+            val recent = FakeRecentFiles().apply { failure = KuraStorageException.Network(IOException("unknown")) }
+            val viewModel = FileBrowserViewModel(FakeFiles(), FakeTransfers(), recentFiles = recent)
+
+            viewModel.select(file("opened"))
+            viewModel.detailDisplayed(checkNotNull(viewModel.state.value.selected))
+
+            assertEquals(
+                "opened",
+                viewModel.state.value.selected
+                    ?.id,
+            )
+            assertEquals(
+                "File opened, but recent history could not be synchronized.",
+                viewModel.state.value.historySyncError,
+            )
         }
 
     @Test
@@ -700,6 +754,22 @@ class FileBrowserViewModelTest {
             destinationUri: String,
             mimeType: String?,
         ): Intent = error("unused")
+    }
+
+    private class FakeRecentFiles : RecentFileRepository {
+        val recorded = mutableListOf<String>()
+        var failure: Throwable? = null
+
+        override suspend fun list(
+            page: Int,
+            pageSize: Int,
+        ) = RecentFilePage(emptyList(), page, pageSize, 0)
+
+        override suspend fun record(fileId: String): RecentRecordOutcome {
+            recorded += fileId
+            failure?.let { throw it }
+            return RecentRecordOutcome.Confirmed
+        }
     }
 
     private class MissingFiles(

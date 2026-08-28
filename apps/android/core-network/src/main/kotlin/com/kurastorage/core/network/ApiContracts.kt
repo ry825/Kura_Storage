@@ -95,6 +95,70 @@ data class OwnerSummaryDto(
     val displayName: String,
 )
 
+data class SearchRequestDto(
+    val query: String? = null,
+    val entryType: String? = null,
+    val fileCategory: String? = null,
+    val status: String? = null,
+    val updatedFrom: String? = null,
+    val updatedTo: String? = null,
+    val minSize: Long? = null,
+    val maxSize: Long? = null,
+    val ownerUserId: String? = null,
+    val shareTargetId: String? = null,
+    val page: Int = 1,
+    val pageSize: Int = 50,
+)
+
+@Serializable
+data class SearchResultItemDto(
+    val id: String,
+    val entryType: String,
+    val name: String,
+    val mimeType: String? = null,
+    val fileCategory: String? = null,
+    val size: Long,
+    val status: String,
+    val updatedAt: String,
+    val owner: OwnerSummaryDto,
+    val permission: String,
+    val permissionSource: String,
+    val shareTargetId: String? = null,
+)
+
+@Serializable
+data class SearchPageDto(
+    val items: List<SearchResultItemDto>,
+    val page: Int,
+    val pageSize: Int,
+    val totalCount: Int,
+)
+
+@Serializable
+data class RecentFileItemDto(
+    val id: String,
+    val entryType: String,
+    val name: String,
+    val mimeType: String? = null,
+    val fileCategory: String? = null,
+    val size: Long,
+    val status: String,
+    val updatedAt: String,
+    val owner: OwnerSummaryDto,
+    val permission: String,
+    val permissionSource: String,
+    val shareTargetId: String? = null,
+    val openedAt: String,
+)
+
+@Serializable
+data class RecentFilePageDto(
+    val items: List<RecentFileItemDto>,
+    val page: Int,
+    val pageSize: Int,
+    val totalCount: Int,
+)
+
 @Serializable
 data class ShareCandidateDto(
     val userId: String,

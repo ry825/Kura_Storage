@@ -356,6 +356,112 @@ class KuraStorageApiContractTest {
             }
         }
 
+    @Test
+    fun `search sends every OpenAPI query with encoding and maps the page`() =
+        runTest {
+            server.enqueue(jsonResponse(SEARCH_PAGE_RESPONSE))
+
+            val result =
+                api.search(
+                    "token",
+                    SearchRequestDto(
+                        query = "report & 100%",
+                        entryType = "FILE",
+                        fileCategory = "DOCUMENT",
+                        status = "MISSING_CANDIDATE",
+                        updatedFrom = "2026-08-01T00:00:00Z",
+                        updatedTo = "2026-08-25T00:00:00Z",
+                        minSize = 1,
+                        maxSize = 999,
+                        ownerUserId = DEVICE_ID,
+                        shareTargetId = TARGET_PARENT_ID,
+                        page = 2,
+                        pageSize = 50,
+                    ),
+                ) as NetworkCallResult.Success
+
+            val request = server.takeRequest()
+            assertEquals("GET", request.method)
+            assertEquals("Bearer token", request.getHeader("Authorization"))
+            val url = checkNotNull(request.requestUrl)
+            assertEquals("report & 100%", url.queryParameter("q"))
+            assertEquals("FILE", url.queryParameter("entryType"))
+            assertEquals("DOCUMENT", url.queryParameter("fileCategory"))
+            assertEquals("MISSING_CANDIDATE", url.queryParameter("status"))
+            assertEquals("2", url.queryParameter("page"))
+            assertEquals(1, result.value.items.size)
+            assertEquals(
+                "Owner",
+                result.value.items
+                    .single()
+                    .owner.displayName,
+            )
+        }
+
+    @Test
+    fun `recent GET and bodyless idempotent PUT match OpenAPI`() =
+        runTest {
+            server.enqueue(jsonResponse(RECENT_PAGE_RESPONSE))
+            server.enqueue(MockResponse().setResponseCode(204))
+
+            val recent = api.listRecentFiles("token", page = 1, pageSize = 50) as NetworkCallResult.Success
+            assertEquals(
+                "2026-08-25T00:00:00Z",
+                recent.value.items
+                    .single()
+                    .openedAt,
+            )
+            assertEquals("/api/v1/recent-files?page=1&pageSize=50", server.takeRequest().path)
+
+            assertTrue(api.recordRecentFile("token", DEVICE_ID) is NetworkCallResult.Success)
+            val put = server.takeRequest()
+            assertEquals("PUT", put.method)
+            assertEquals("/api/v1/recent-files/$DEVICE_ID", put.path)
+            assertEquals(0, put.bodySize)
+        }
+
+    @Test
+    fun `search and recent return unauthorized for token refresh retry`() =
+        runTest {
+            server.enqueue(MockResponse().setResponseCode(401))
+            server.enqueue(MockResponse().setResponseCode(401))
+            server.enqueue(MockResponse().setResponseCode(401))
+
+            assertEquals(
+                NetworkCallResult.Unauthorized,
+                api.search("expired", SearchRequestDto(query = "report")),
+            )
+            assertEquals(NetworkCallResult.Unauthorized, api.listRecentFiles("expired", 1, 50))
+            assertEquals(NetworkCallResult.Unauthorized, api.recordRecentFile("expired", DEVICE_ID))
+        }
+
+    @Test
+    fun `search and recent preserve their stable validation and not found errors`() =
+        runTest {
+            listOf(
+                Triple(ErrorCode.INVALID_SEARCH_QUERY, 400, "search"),
+                Triple(ErrorCode.INVALID_SEARCH_FILTER, 400, "search"),
+                Triple(ErrorCode.INVALID_RECENT_FILES_REQUEST, 400, "recent"),
+                Triple(ErrorCode.FILE_NOT_FOUND, 404, "record"),
+            ).forEach { (code, status, operation) ->
+                server.enqueue(
+                    MockResponse().setResponseCode(status).setHeader("Content-Type", "application/json").setBody(
+                        """{"code":"$code","message":"failed","requestId":"contract-error","details":{}}""",
+                    ),
+                )
+                val failure =
+                    runCatching {
+                        when (operation) {
+                            "search" -> api.search("token", SearchRequestDto(query = "x"))
+                            "recent" -> api.listRecentFiles("token", 0, 50)
+                            else -> api.recordRecentFile("token", DEVICE_ID)
+                        }
+                    }.exceptionOrNull() as KuraStorageException.Api
+                assertEquals(code, failure.error.code)
+                assertEquals("contract-error", failure.error.requestId)
+            }
+        }
+
     private fun resource(name: String) = checkNotNull(javaClass.classLoader?.getResource(name)).readText()
 
     private fun jsonResponse(body: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(body)
@@ -383,6 +489,25 @@ class KuraStorageApiContractTest {
         const val UPLOAD_LIMIT_ERROR =
             """
             {"code":"UPLOAD_LIMIT_REACHED","message":"failed","requestId":"upload-request","details":{}}
+            """
+        const val SEARCH_ITEM =
+            """
+            {"id":"$DEVICE_ID","entryType":"FILE","name":"report.pdf","mimeType":"application/pdf",
+            "fileCategory":"DOCUMENT","size":20,"status":"MISSING_CANDIDATE","updatedAt":"$TIME",
+            "owner":{"id":"$TARGET_PARENT_ID","displayName":"Owner"},"permission":"VIEWER",
+            "permissionSource":"DIRECT","shareTargetId":"$TARGET_PARENT_ID"}
+            """
+        const val SEARCH_PAGE_RESPONSE =
+            """
+            {"items":[$SEARCH_ITEM],"page":2,"pageSize":50,"totalCount":51}
+            """
+        const val RECENT_PAGE_RESPONSE =
+            """
+            {"items":[{"id":"$DEVICE_ID","entryType":"FILE","name":"report.pdf",
+            "mimeType":"application/pdf","fileCategory":"DOCUMENT","size":20,"status":"ACTIVE",
+            "updatedAt":"$TIME","owner":{"id":"$TARGET_PARENT_ID","displayName":"Owner"},
+            "permission":"VIEWER","permissionSource":"DIRECT","shareTargetId":"$TARGET_PARENT_ID",
+            "openedAt":"2026-08-25T00:00:00Z"}],"page":1,"pageSize":50,"totalCount":1}
             """
         const val TOKEN_RESPONSE =
             """

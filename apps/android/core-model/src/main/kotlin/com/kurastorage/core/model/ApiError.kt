@@ -21,6 +21,9 @@ enum class ErrorCode {
     SHARE_MEMBER_NOT_FOUND,
     SHARE_CONFLICT,
     SHARE_OPERATION_NOT_ALLOWED,
+    INVALID_SEARCH_QUERY,
+    INVALID_SEARCH_FILTER,
+    INVALID_RECENT_FILES_REQUEST,
     FILE_RESTORE_CONFLICT,
     RECOVERY_REQUIRED,
     IDEMPOTENCY_CONFLICT,
@@ -92,6 +95,9 @@ data class ApiError(
                 -> ErrorCategory.AUTHENTICATION
                 ErrorCode.VALIDATION_FAILED,
                 ErrorCode.INVALID_SHARE_PERMISSION,
+                ErrorCode.INVALID_SEARCH_QUERY,
+                ErrorCode.INVALID_SEARCH_FILTER,
+                ErrorCode.INVALID_RECENT_FILES_REQUEST,
                 ErrorCode.UPLOAD_SIZE_MISMATCH,
                 ErrorCode.UPLOAD_CHECKSUM_MISMATCH,
                 ErrorCode.CHUNK_SIZE_LIMIT_EXCEEDED,
@@ -132,4 +138,6 @@ sealed class KuraStorageException(
     class UploadSourceChanged : KuraStorageException("Upload source content or size changed")
 
     class ServerUpgradeRequired : KuraStorageException("The server does not support resumable uploads")
+
+    class InvalidServerResponse : KuraStorageException("The server response did not satisfy the API contract")
 }

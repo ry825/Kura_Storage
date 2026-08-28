@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,9 +44,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.kurastorage.core.data.SharingRepository
 import com.kurastorage.core.model.ConnectionStatus
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryType
+import com.kurastorage.core.model.ShareItem
+import com.kurastorage.core.model.ShareScope
 import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.ui.AppDestination
 import com.kurastorage.core.ui.KuraStorageTheme
@@ -58,6 +62,11 @@ import com.kurastorage.feature.files.AdminStorageState
 import com.kurastorage.feature.files.AdminStorageViewModel
 import com.kurastorage.feature.files.FileBrowserScreen
 import com.kurastorage.feature.files.FileBrowserViewModel
+import com.kurastorage.feature.search.RecentFilesScreen
+import com.kurastorage.feature.search.RecentFilesViewModel
+import com.kurastorage.feature.search.SearchFilterOption
+import com.kurastorage.feature.search.SearchScreen
+import com.kurastorage.feature.search.SearchViewModel
 import com.kurastorage.feature.sharing.SharingListViewModel
 import com.kurastorage.feature.sharing.SharingScreen
 import com.kurastorage.feature.sharing.SharingSettingsScreen
@@ -183,6 +192,8 @@ private fun KuraStorageApp(
                 onRefreshAdminStorage = { storageViewModel?.refresh() },
                 onFiles = { navController.navigate(AppDestination.FILES.route) },
                 onShared = { navController.navigate(AppDestination.SHARING.route) },
+                onSearch = { navController.navigate(AppDestination.SEARCH.route) },
+                onRecent = { navController.navigate(AppDestination.RECENT_FILES.route) },
                 onTrash = { navController.navigate(AppDestination.TRASH.route) },
                 onLogout = {
                     logoutViewModel.logout {
@@ -204,7 +215,7 @@ private fun KuraStorageApp(
                     key = "files",
                     factory =
                         simpleViewModelFactory {
-                            FileBrowserViewModel(current.files, current.transfers)
+                            FileBrowserViewModel(current.files, current.transfers, recentFiles = current.recentFiles)
                         },
                 )
             val storageViewModel =
@@ -275,6 +286,93 @@ private fun KuraStorageApp(
                 },
             )
         }
+        composable(AppDestination.SEARCH.route) {
+            val current = services
+            if (current == null) {
+                navController.navigate(AppDestination.CONNECTION.route)
+                return@composable
+            }
+            val searchViewModel: SearchViewModel =
+                viewModel(
+                    key = "search-${connected?.route}",
+                    factory = simpleViewModelFactory { SearchViewModel(current.search, current.files::detail) },
+                )
+            val state by searchViewModel.state.collectAsStateWithLifecycle()
+            var ownerOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
+            var shareOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
+            var filterOptionsGeneration by remember { mutableStateOf(0) }
+            LaunchedEffect(current, filterOptionsGeneration) {
+                runCatching {
+                    val personalOwners =
+                        current.files
+                            .list(null, page = 1, pageSize = 1)
+                            .items
+                            .map { it.owner }
+                    val received = loadAllReceivedShares(current.sharing)
+                    ownerOptions =
+                        (personalOwners + received.map { it.owner })
+                            .filter { it.id.isNotBlank() }
+                            .distinctBy { it.id }
+                            .map { SearchFilterOption(it.id, it.displayName) }
+                    shareOptions =
+                        received
+                            .distinctBy { it.targetEntryId }
+                            .map { SearchFilterOption(it.targetEntryId, it.name) }
+                }
+            }
+            SearchScreen(
+                state = state,
+                onBack = { navController.popBackStack() },
+                onInput = searchViewModel::updateInput,
+                onSearch = searchViewModel::search,
+                onRefresh = {
+                    searchViewModel.refresh()
+                    filterOptionsGeneration++
+                },
+                onLoadMore = searchViewModel::loadMore,
+                onOpen = { item ->
+                    searchViewModel.open(item) { id, type -> navController.navigate(entryRoute(id, type)) }
+                },
+                ownerOptions = ownerOptions,
+                shareOptions = shareOptions,
+            )
+        }
+        composable(AppDestination.RECENT_FILES.route) {
+            val current = services
+            if (current == null) {
+                navController.navigate(AppDestination.CONNECTION.route)
+                return@composable
+            }
+            val recentViewModel: RecentFilesViewModel =
+                viewModel(
+                    key = "recent-${connected?.route}",
+                    factory = simpleViewModelFactory { RecentFilesViewModel(current.recentFiles, current.files::detail) },
+                )
+            val state by recentViewModel.state.collectAsStateWithLifecycle()
+            var shareOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
+            var shareOptionsGeneration by remember { mutableStateOf(0) }
+            LaunchedEffect(current, shareOptionsGeneration) {
+                runCatching {
+                    shareOptions =
+                        loadAllReceivedShares(current.sharing)
+                            .distinctBy { it.targetEntryId }
+                            .map { SearchFilterOption(it.targetEntryId, it.name) }
+                }
+            }
+            RecentFilesScreen(
+                state = state,
+                onBack = { navController.popBackStack() },
+                onRefresh = {
+                    recentViewModel.refresh()
+                    shareOptionsGeneration++
+                },
+                onLoadMore = recentViewModel::loadMore,
+                onOpen = { item ->
+                    recentViewModel.open(item) { id, type -> navController.navigate(entryRoute(id, type)) }
+                },
+                shareOptions = shareOptions,
+            )
+        }
         composable(
             route = "shared-entry/{entryId}/{entryType}",
             arguments =
@@ -296,6 +394,7 @@ private fun KuraStorageApp(
                                 current.transfers,
                                 initialParentId = entryId.takeIf { type == FileEntryType.FOLDER },
                                 initialSelectionId = entryId.takeIf { type == FileEntryType.FILE },
+                                recentFiles = current.recentFiles,
                             )
                         },
                 )
@@ -426,6 +525,7 @@ private fun FileRoute(
         onConfirmMove = viewModel::confirmMove,
         onDismissMove = viewModel::dismissMove,
         onRefreshPlacement = viewModel::refreshAfterPlacementFailure,
+        onDetailDisplayed = viewModel::detailDisplayed,
         onDismissDetail = viewModel::dismissDetail,
         onCancelTransfer = viewModel::cancelTransfer,
         onRetryTransfer = viewModel::retryTransfer,
@@ -454,6 +554,8 @@ fun HomeScreen(
     onRefreshAdminStorage: () -> Unit = {},
     onFiles: () -> Unit,
     onShared: () -> Unit = {},
+    onSearch: () -> Unit = {},
+    onRecent: () -> Unit = {},
     onTrash: () -> Unit,
     onLogout: () -> Unit,
 ) {
@@ -466,6 +568,8 @@ fun HomeScreen(
         AdminStoragePanel(adminStorageState, onRefreshAdminStorage, onTrash)
         Button(onClick = onFiles) { Text("My files") }
         Button(onClick = onShared) { Text("Shared") }
+        Button(onClick = onSearch) { Text("Search") }
+        Button(onClick = onRecent) { Text("Recent files") }
         Button(onClick = onTrash) { Text("Trash") }
         Button(onClick = onLogout) { Text("Log out") }
     }
@@ -477,3 +581,19 @@ private fun settingsRoute(
     type: FileEntryType,
     name: String,
 ): String = "${AppDestination.SHARING_SETTINGS.route}/$shareId/$targetId/${type.name}/${Uri.encode(name)}"
+
+private fun entryRoute(
+    id: String,
+    type: FileEntryType,
+): String = "shared-entry/$id/${type.name}"
+
+private suspend fun loadAllReceivedShares(repository: SharingRepository): List<ShareItem> {
+    val result = mutableListOf<ShareItem>()
+    var pageNumber = 1
+    do {
+        val page = repository.list(ShareScope.RECEIVED, page = pageNumber, pageSize = SharingRepository.DEFAULT_PAGE_SIZE)
+        result += page.items
+        pageNumber++
+    } while (page.hasNextPage)
+    return result
+}

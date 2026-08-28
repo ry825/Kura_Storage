@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kurastorage.core.data.FilePager
 import com.kurastorage.core.data.FileRepository
+import com.kurastorage.core.data.RecentFileRepository
 import com.kurastorage.core.data.TransferRepository
 import com.kurastorage.core.model.DownloadOperation
 import com.kurastorage.core.model.ErrorCategory
@@ -49,6 +50,7 @@ data class FileBrowserState(
     val error: BrowserError? = null,
     val currentFolder: FileEntry? = null,
     val personalRoot: Boolean = true,
+    val historySyncError: String? = null,
 )
 
 data class MissingIndexDeleteState(
@@ -126,6 +128,7 @@ class FileBrowserViewModel(
     private val idempotencyKeyFactory: () -> String = { UUID.randomUUID().toString() },
     private val initialParentId: String? = null,
     private val initialSelectionId: String? = null,
+    private val recentFiles: RecentFileRepository? = null,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(FileBrowserState(personalRoot = initialParentId == null))
     val state: StateFlow<FileBrowserState> = mutableState.asStateFlow()
@@ -138,12 +141,13 @@ class FileBrowserViewModel(
     private var placementDetailId: String? = null
     private val folderStack = ArrayDeque<String?>().apply { addLast(initialParentId) }
     private val moveFolderStack = ArrayDeque<PickerLocation>()
+    private var displayedFileId: String? = null
 
     init {
         refresh()
         initialParentId?.let(::loadCurrentFolder)
         initialSelectionId?.let { id ->
-            viewModelScope.launch { runCatching { files.detail(id) }.onSuccess(::showDetail).onFailure(::showError) }
+            displayFile(id)
         }
     }
 
@@ -174,11 +178,17 @@ class FileBrowserViewModel(
             mutableState.update { it.copy(currentFolder = entry) }
             refresh()
         } else {
-            showDetail(entry)
+            select(entry)
         }
     }
 
-    fun select(entry: FileEntry) = showDetail(entry)
+    fun select(entry: FileEntry) {
+        if (entry.entryType == FileEntryType.FILE && entry.status == FileEntryStatus.ACTIVE) {
+            displayFile(entry.id)
+        } else {
+            showDetail(entry)
+        }
+    }
 
     fun back(): Boolean {
         if (trashMode || folderStack.size <= 1) return false
@@ -189,7 +199,32 @@ class FileBrowserViewModel(
         return true
     }
 
-    fun dismissDetail() = mutableState.update { it.copy(selected = null, retention = null) }
+    fun dismissDetail() {
+        displayedFileId = null
+        mutableState.update { it.copy(selected = null, retention = null, historySyncError = null) }
+    }
+
+    @Suppress("ComplexCondition")
+    fun detailDisplayed(entry: FileEntry) {
+        if (
+            entry.entryType != FileEntryType.FILE ||
+            entry.status != FileEntryStatus.ACTIVE ||
+            mutableState.value.selected?.id != entry.id ||
+            displayedFileId == entry.id
+        ) {
+            return
+        }
+        displayedFileId = entry.id
+        val recent = recentFiles ?: return
+        viewModelScope.launch {
+            runCatching { recent.record(entry.id) }
+                .onFailure {
+                    mutableState.update { state ->
+                        state.copy(historySyncError = "File opened, but recent history could not be synchronized.")
+                    }
+                }
+        }
+    }
 
     fun createFolder(name: String) {
         if (currentCapabilities().canCreate) mutate { files.createFolder(folderStack.last(), name) }
@@ -616,6 +651,22 @@ class FileBrowserViewModel(
 
     private fun showDetail(entry: FileEntry) {
         mutableState.update { it.copy(selected = entry, retention = retention(entry)) }
+    }
+
+    private fun displayFile(fileId: String) {
+        if (displayedFileId == fileId && mutableState.value.selected?.id == fileId) return
+        viewModelScope.launch {
+            runCatching { files.detail(fileId) }
+                .onSuccess { latest ->
+                    if (latest.entryType != FileEntryType.FILE || latest.status != FileEntryStatus.ACTIVE) {
+                        showDetail(latest)
+                        return@onSuccess
+                    }
+                    mutableState.update {
+                        it.copy(selected = latest, retention = retention(latest), historySyncError = null)
+                    }
+                }.onFailure(::showError)
+        }
     }
 
     private fun retention(entry: FileEntry): RetentionDisplayState {

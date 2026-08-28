@@ -201,6 +201,24 @@ interface SharingApi {
     ): NetworkCallResult<Unit>
 }
 
+interface SearchApi {
+    suspend fun search(
+        accessToken: String,
+        request: SearchRequestDto,
+    ): NetworkCallResult<SearchPageDto>
+
+    suspend fun listRecentFiles(
+        accessToken: String,
+        page: Int,
+        pageSize: Int,
+    ): NetworkCallResult<RecentFilePageDto>
+
+    suspend fun recordRecentFile(
+        accessToken: String,
+        fileId: String,
+    ): NetworkCallResult<Unit>
+}
+
 @Suppress("TooManyFunctions")
 private interface KuraStorageService {
     @GET("system/health")
@@ -251,6 +269,37 @@ private interface KuraStorageService {
     suspend fun deleteShare(
         @Header("Authorization") authorization: String,
         @Path("shareId") shareId: String,
+    ): Response<Unit>
+
+    @GET("search")
+    @Suppress("LongParameterList")
+    suspend fun search(
+        @Header("Authorization") authorization: String,
+        @Query("q") query: String?,
+        @Query("entryType") entryType: String?,
+        @Query("fileCategory") fileCategory: String?,
+        @Query("status") status: String?,
+        @Query("updatedFrom") updatedFrom: String?,
+        @Query("updatedTo") updatedTo: String?,
+        @Query("minSize") minSize: Long?,
+        @Query("maxSize") maxSize: Long?,
+        @Query("ownerUserId") ownerUserId: String?,
+        @Query("shareTargetId") shareTargetId: String?,
+        @Query("page") page: Int,
+        @Query("pageSize") pageSize: Int,
+    ): Response<SearchPageDto>
+
+    @GET("recent-files")
+    suspend fun listRecentFiles(
+        @Header("Authorization") authorization: String,
+        @Query("page") page: Int,
+        @Query("pageSize") pageSize: Int,
+    ): Response<RecentFilePageDto>
+
+    @PUT("recent-files/{fileId}")
+    suspend fun recordRecentFile(
+        @Header("Authorization") authorization: String,
+        @Path("fileId") fileId: String,
     ): Response<Unit>
 
     @POST("auth/register-device")
@@ -409,7 +458,8 @@ class KuraStorageApi(
     FileApi,
     AdminStorageApi,
     UploadSessionApi,
-    SharingApi {
+    SharingApi,
+    SearchApi {
     private val service =
         Retrofit
             .Builder()
@@ -460,6 +510,38 @@ class KuraStorageApi(
         accessToken: String,
         shareId: String,
     ) = executeAuthenticatedNoContent { service.deleteShare(bearer(accessToken), shareId) }
+
+    override suspend fun search(
+        accessToken: String,
+        request: SearchRequestDto,
+    ) = executeAuthenticated {
+        service.search(
+            bearer(accessToken),
+            request.query,
+            request.entryType,
+            request.fileCategory,
+            request.status,
+            request.updatedFrom,
+            request.updatedTo,
+            request.minSize,
+            request.maxSize,
+            request.ownerUserId,
+            request.shareTargetId,
+            request.page,
+            request.pageSize,
+        )
+    }
+
+    override suspend fun listRecentFiles(
+        accessToken: String,
+        page: Int,
+        pageSize: Int,
+    ) = executeAuthenticated { service.listRecentFiles(bearer(accessToken), page, pageSize) }
+
+    override suspend fun recordRecentFile(
+        accessToken: String,
+        fileId: String,
+    ) = executeAuthenticatedNoContent { service.recordRecentFile(bearer(accessToken), fileId) }
 
     @Suppress("MaxLineLength")
     override suspend fun registerDevice(request: RegisterDeviceRequestDto): TokenResponseDto = execute { service.registerDevice(request) }

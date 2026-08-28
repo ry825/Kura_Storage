@@ -86,4 +86,6 @@ enum class AppDestination(
     TRASH("trash"),
     SHARING("sharing"),
     SHARING_SETTINGS("sharing-settings"),
+    SEARCH("search"),
+    RECENT_FILES("recent-files"),
 }

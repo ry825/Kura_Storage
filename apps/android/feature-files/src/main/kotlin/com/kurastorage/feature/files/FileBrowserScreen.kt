@@ -30,6 +30,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +84,7 @@ fun FileBrowserScreen(
     onConfirmMove: () -> Unit = {},
     onDismissMove: () -> Unit = {},
     onRefreshPlacement: () -> Unit = {},
+    onDetailDisplayed: (FileEntry) -> Unit = {},
     onDismissDetail: () -> Unit,
     onCancelTransfer: () -> Unit,
     onRetryTransfer: () -> Unit,
@@ -130,7 +132,9 @@ fun FileBrowserScreen(
             state.currentFolder?.let { folder ->
                 Text("Owner: ${folder.owner.displayName}")
                 Text("Permission: ${folder.permission} (${folder.permissionSource})")
-                folder.shareTargetId?.let { Text("Shared from folder: $it") }
+                folder.shareTargetId?.let {
+                    Text("Shared from folder: ${shareTargetLabel(it, state.currentFolder)}")
+                }
             }
         }
         state.placementResult?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
@@ -153,7 +157,7 @@ fun FileBrowserScreen(
                             Text("${if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File"}: ${entry.name}")
                             Text("Owner: ${entry.owner.displayName} • Permission: ${entry.permission}")
                             if (entry.permissionSource == PermissionSource.INHERITED) {
-                                Text("Shared from: ${entry.shareTargetId ?: "unknown"}")
+                                Text("Shared from: ${shareTargetLabel(entry.shareTargetId, state.currentFolder)}")
                             }
                             missingStatusText(entry)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                         }
@@ -181,6 +185,7 @@ fun FileBrowserScreen(
         )
     }
     state.selected?.let { entry ->
+        LaunchedEffect(entry.id) { onDetailDisplayed(entry) }
         AlertDialog(
             onDismissRequest = onDismissDetail,
             title = { Text(entry.name) },
@@ -190,9 +195,10 @@ fun FileBrowserScreen(
                     Text("Owner: ${entry.owner.displayName}")
                     Text("Permission: ${entry.permission} (${entry.permissionSource})")
                     if (entry.permissionSource == PermissionSource.INHERITED) {
-                        Text("Shared from folder: ${entry.shareTargetId ?: "unknown"}")
+                        Text("Shared from folder: ${shareTargetLabel(entry.shareTargetId, state.currentFolder)}")
                     }
                     missingStatusText(entry)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    state.historySyncError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     entry.missingLastCheckedAt?.let { Text("最終確認: $it") }
                     if (trashMode) Text(state.retention?.text ?: "Automatic deletion time is unavailable.")
                 }
@@ -675,6 +681,16 @@ private fun UploadState.uploadLabel() =
         UploadState.CANCELLED -> "Upload cancelled"
         UploadState.FAILED -> "Upload needs attention"
     }
+
+private fun shareTargetLabel(
+    shareTargetId: String?,
+    currentFolder: FileEntry?,
+): String =
+    currentFolder
+        ?.takeIf { folder ->
+            shareTargetId != null && (folder.id == shareTargetId || folder.shareTargetId == shareTargetId)
+        }?.name
+        ?: "Shared item"
 
 @Composable
 private fun ConfirmDialog(
