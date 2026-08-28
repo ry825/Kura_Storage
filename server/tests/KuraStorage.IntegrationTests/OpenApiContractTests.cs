@@ -33,6 +33,12 @@ public sealed class OpenApiContractTests
             "  /search:",
             "  /recent-files:",
             "  /recent-files/{fileId}:",
+            "  /favorites:",
+            "  /favorites/{entryId}:",
+            "  /tags:",
+            "  /tags/{tagId}:",
+            "  /files/{entryId}/organization:",
+            "  /files/{entryId}/tags/{tagId}:",
         })
         {
             Assert.Contains(path, contract, StringComparison.Ordinal);
@@ -80,6 +86,15 @@ public sealed class OpenApiContractTests
         Assert.Contains("RecentFileItem:", contract, StringComparison.Ordinal);
         Assert.Contains("RecentFilePage:", contract, StringComparison.Ordinal);
         Assert.Contains("INVALID_RECENT_FILES_REQUEST", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: listFavorites", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: createTag", contract, StringComparison.Ordinal);
+        Assert.Contains("FavoriteItem:", contract, StringComparison.Ordinal);
+        Assert.Contains("FavoritePage:", contract, StringComparison.Ordinal);
+        Assert.Contains("TagItem:", contract, StringComparison.Ordinal);
+        Assert.Contains("EntryOrganizationState:", contract, StringComparison.Ordinal);
+        Assert.Contains("style: form", contract, StringComparison.Ordinal);
+        Assert.Contains("uniqueItems: true", contract, StringComparison.Ordinal);
+        Assert.Contains("TAG_NAME_CONFLICT", contract, StringComparison.Ordinal);
         Assert.Contains(
             "required: [deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, role]",
             contract,

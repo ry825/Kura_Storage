@@ -31,7 +31,8 @@ public sealed record SearchQuery(
     Guid? OwnerUserId = null,
     Guid? ShareTargetId = null,
     int Page = 1,
-    int PageSize = 50);
+    int PageSize = 50,
+    IReadOnlyList<Guid>? TagIds = null);
 
 public sealed record SearchFilter(
     string? NormalizedText,
@@ -47,7 +48,8 @@ public sealed record SearchFilter(
     Guid? OwnerUserId,
     Guid? ShareTargetId,
     int Page,
-    int PageSize);
+    int PageSize,
+    IReadOnlyList<Guid> TagIds);
 
 public sealed record SearchResultItem(
     Guid Id,

@@ -1949,7 +1949,7 @@ Rename・Move・Trash・Restoreは、対象、source親、target親のGUIDから
 #### `GET /api/v1/search`
 
 `q`、`entryType`、`fileCategory`、`status`、`updatedFrom`、`updatedTo`、`minSize`、`maxSize`、
-`ownerUserId`、`shareTargetId`、`page`、`pageSize`を組み合わせて検索する。`q`はtrim・NFC正規化後
+`ownerUserId`、`shareTargetId`、繰返し`tagId`、`page`、`pageSize`を組み合わせて検索する。`q`はtrim・NFC正規化後
 1〜200 Unicode code pointとし、省略時は少なくとも1つのFilterを必須とする。1〜2文字は前方一致、
 3文字以上は`%`、`_`、`\\`をliteral escapeした部分一致とする。`pageSize`は1〜100とする。
 
@@ -1966,6 +1966,11 @@ Share Target、状態、MIME、サイズ、更新日時を含み、閲覧可能�
 不正Queryは`INVALID_SEARCH_QUERY`、不正enum・UUID・日時・範囲・Paginationは
 `INVALID_SEARCH_FILTER`の`400`とする。
 
+`tagId`は本人所有Tagを1〜10件、重複なしで受け付け、Tagだけの検索も許可する。複数指定は
+`entry_tags`の`GROUP BY/HAVING`で全Tagを持つEntryだけに一致させる。他UserTag、存在しないTag、
+不正UUID、重複、11件以上は存在差を公開しない`INVALID_SEARCH_FILTER`へ統一する。Tag指定時だけ
+read-only同一snapshotで所有確認と検索を行い、Tagなしの既存Search pathへTransactionを追加しない。
+
 #### `GET /api/v1/recent-files?page=1&pageSize=50`
 
 本人の履歴だけを現時点の権限と状態で再評価し、Search結果と同じmetadataに`openedAt`を加えて返す。
@@ -1974,6 +1979,24 @@ Share Target、状態、MIME、サイズ、更新日時を含み、閲覧可能�
 
 Request bodyは持たず、JWTのUserとServer時刻だけで`ACTIVE`な閲覧可能Fileを冪等upsertし、成功は`204`とする。
 Folder、非ACTIVE、未完了操作、権限なしは存在秘匿した`FILE_NOT_FOUND`へ正規化する。
+
+#### お気に入りAPI
+
+- `GET /api/v1/favorites?page=1&pageSize=50`: 本人の関連を現在権限で再評価し、Searchと同じmetadataに`favoritedAt`を加え、`favoritedAt DESC, entryId ASC`で安定Paginationする。
+- `PUT /api/v1/favorites/{entryId}`: bodyなし。閲覧可能な`ACTIVE` File／FolderをServer時刻で冪等登録する。
+- `DELETE /api/v1/favorites/{entryId}`: bodyなし。本人行だけを条件付き削除し、未登録・権限失効後も冪等成功する。
+
+一覧は`ACTIVE`、`MISSING_CANDIDATE`、`MISSING`を状態付きで返し、`TRASHED`、未完了操作、Purge済み、現在非認可の項目を返さない。共有権限を再取得した場合は保持した関連を再表示する。登録時だけEntryと祖先のmutation lock取得後に状態・権限を再評価し、解除時はEntryの存在を照会しない。
+
+#### Tag API
+
+- `GET／POST /api/v1/tags`、`PATCH／DELETE /api/v1/tags/{tagId}`で本人の非公開Tagを管理する。
+- `GET /api/v1/files/{entryId}/organization`で`isFavorite`と本人の付与済みTag最大20件を返す。
+- `PUT／DELETE /api/v1/files/{entryId}/tags/{tagId}`で本人Tagを冪等に付与・解除する。bodyを持たない。
+
+Tag名はtrim・NFC後1〜50 Unicode code point、Unicode control categoryなしとし、NFC後の`ToUpperInvariant`を`NameKey`としてUser内一意にする。User当たり200 Tag、Entry当たりUserごとに20 Tagを上限とする。Owner、`VIEWER`、`CONTRIBUTOR`、`EDITOR`、`MANAGER`は閲覧可能な`ACTIVE` Entryへ自分のTagだけを付与でき、Admin Roleに暗黙権限はない。`MISSING_CANDIDATE`／`MISSING`は既存Tagの表示・解除だけを許可する。Tag削除は本人Tagと関連だけを同一Transactionで削除する。
+
+Errorは`INVALID_ORGANIZATION_REQUEST`、`INVALID_FAVORITES_REQUEST`、`TAG_LIMIT_EXCEEDED`、`ENTRY_TAG_LIMIT_EXCEEDED`、`TAG_NOT_FOUND`、`TAG_NAME_CONFLICT`を共通Error形式で返す。ClientからUser、Owner、物理Path、作成・登録時刻を受け取らず、Tag名、検索語、File名、User名、物理Path、Tokenを通常Logへ記録しない。
 
 ### 8.12 MVP後: 自動バックアップ
 
