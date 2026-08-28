@@ -428,11 +428,11 @@
   - [x] Search表示だけのRecent更新、Client時刻、重複履歴、TRASHED表示がない。
   - [x] OCR、全文検索、候補、タグ、推薦、Admin横断検索、不要Package、将来用Schemaがない。
   - [x] 生成物、実環境値、Credentialが差分にない。
-- [ ] PR3を完了する。
-  - [ ] 3.1〜3.8のPR3対象項目がすべて`[x]`である。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する。
+- [x] PR3を完了する。
+  - [x] 3.1〜3.8のPR3対象項目がすべて`[x]`である。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する。
 
 ---
 
@@ -464,14 +464,14 @@
 
 ### PR3: Android検索・最近使用UI・実機E2E
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・性能確認: 未実施
-- 計画と実装の差分: 未完了
-- 実装中に追加したタスクと理由: 未完了
-- 技術的に不要になったタスク・理由・代替実装: 未完了
-- 後続作業への引継ぎ事項: 未完了
+- 完了日: 2026-08-28
+- Pull Request: [#26 Add Android search and recent files UI](https://github.com/ry825/Kura_Storage/pull/26)
+- 実施したTest・Build・静的解析: `verify-android.sh`の779 task、Android実機接続Test 36件（App 3、Data 2、Auth 2、Connection 1、Files 18、Search 5、Sharing 5）、Domain Test 52件、Application Test 162件、PostgreSQL Integration Test 109件、`verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`、`git diff --check`を成功させた。`build-release.sh`でlinux-arm64 ServerとAndroid `0.7.0-pr3.1`を生成し、versionCode 8、APK Signature Scheme v3、期待する署名証明書、Root CA／Hostname設定、非debuggableを確認した。実装Commit `5a6412e`でGitHub ActionsのAndroid、Config、Security、Serverがすべて成功した。
+- 手動確認・性能確認: 署名Release実機でLAN `LOCAL_DIRECT`とZeroTier `REMOTE_SECURE`の両経路を使い、Search／Recent、Folder／File遷移、Owner／Viewer／Contributor／Editor／Manager表示、Share解除・復旧、古い結果の再検証、通信断・復旧、Recent順序／User分離／過去時刻復帰を確認した。Raspberry Pi 4の30万件固定20ケースはwarm p50 486ms、p95 1,509ms、Error率0%で、2秒以内の通常目標を満たした。E2E清掃後は限定User、未完了FileOperation、active Upload Session、孤立Share／Recentがすべて0件で、全ServiceとStorage identity／mount状態が正常であった。
+- 計画と実装の差分: Search／Recentの機能範囲とModule境界は計画どおりとした。署名Release実機で確認したOwner wire permissionと共有元表示を補正し、Search／Recent Refresh時に受信Share候補も再取得するようにした。API契約や認可境界の変更はない。
+- 実装中に追加したタスクと理由: Ownerのwire表現を既存capabilityのManager／Ownerへ正規化するTest、Share解除・再作成後の候補再取得、Search／Recent／Folder browserで内部Share target IDを表示しないTestを追加した。署名Releaseの権限変更フローで初めて再現した表示不具合を固定するためである。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続作業への引継ぎ事項: PR #26はMergeせずReview待ちとする。Merge後の配置では記録済みのSearch Migration、Recent Migration、API／Worker、署名Androidの順序と、PostgreSQL／Storageの対応Backupを維持する。
 
 ---
 
@@ -481,24 +481,24 @@ PR1〜PR3、本ファイルの全タスク、各Pull Request完了記録が完�
 
 ### 実装完了日
 
-未完了
+2026-08-28
 
 ### 計画と実績の差分
 
-未完了
+Search API／Index、Recent API／権限再評価、Android UI／実機E2Eを3つのPull Requestに分ける計画どおり完了した。追加対応は、30万件性能のためのSearch CTE最適化、必須CIで再現したUpload Session競合修正、Recent PUTのbody拒否／Share失効競合Test、署名Android実機で見つけたOwner permission／共有元表示の補正である。いずれも当初の機能範囲を広げず、認可・契約・表示の完了条件を満たすための補強とした。
 
 ### 主な設計変更と理由
 
-未完了
+Searchは認可・Filter条件を`NOT MATERIALIZED` CTE内へpush downし、prefix B-treeとtrigram GINを選択できる構成とした。Recent記録は対象と祖先を最大64段で取得し、既存mutation lock取得後に再読込・再認可してからServer時刻でupsertする構成とした。AndroidはSearch／Recentの画面だけを`feature-search`に分離し、File詳細表示成功後だけRecentを記録し、結果選択時は既存File詳細を再取得する構成とした。
 
 ### 技術的な学び
 
-未完了
+大規模SearchではIndexの存在だけでなく、認可CTEと検索条件の最適化境界が実行計画を左右する。Share変更とRecent記録の競合は、lock前のEF追跡状態ではなくlock後の新しいsnapshotを明示的に使う必要がある。Clientはpermission値だけでなくsourceとstatusを組み合わせてFail-closed capabilityを決定し、画面遷移時に最新詳細を再検証することが重要である。
 
 ### プロセス上の改善点
 
-未完了
+署名Releaseの画面確認で表示不具合を段階的に見つけたため、同種のRelease Buildと検証を複数回実行することになった。次回は共有解除・復旧、権限変更、遷移先表示を含む実機シナリオを先に一巡し、表示契約を固定してから最終Release Buildを1回実行する。また、検証用`nginx`・`shellcheck`・`rg`のPATHを共通スクリプトで固定する。
 
 ### 次回への改善提案
 
-未完了
+署名Android E2Eの主要フローを再実行可能なスクリプトとテストデータ生成／限定清掃手順にまとめ、内部IDの表示禁止、Share候補再取得、stale result再検証をRelease gateに含める。性能試験は固定seed／20ケース／計測出力の自動化を維持し、環境依存ToolもRepositoryから一括準備できるようにする。
