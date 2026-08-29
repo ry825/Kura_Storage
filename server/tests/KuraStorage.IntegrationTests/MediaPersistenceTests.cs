@@ -1,9 +1,12 @@
+using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
+using KuraStorage.Application.Media;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Media;
 using KuraStorage.Infrastructure.Persistence;
 using KuraStorage.Infrastructure.Configuration;
+using KuraStorage.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -210,6 +213,272 @@ public sealed class MediaPersistenceTests
         Assert.NotNull(acquired);
         Assert.Equal(jobId, acquired.Id);
         Assert.Equal(MediaJobStatus.Running, acquired.Status);
+    }
+
+    [Fact]
+    public async Task Queue_StaleRecoveryWaitsForActiveGenerationLeaseAndRemovesOnlyExpiredLease()
+    {
+        await using var postgres = CreatePostgres("media_stale_lease");
+        await postgres.StartAsync();
+        var options = Options(postgres.GetConnectionString());
+        await using var database = new KuraStorageDbContext(options);
+        await database.Database.MigrateAsync();
+        var (user, file) = await SeedCatalogAsync(database);
+        var derivative = new FileDerivative(
+            Guid.NewGuid(), file.Id, file.FileVersion, DerivativeType.Thumbnail, 1, Now);
+        var job = new MediaJob(Guid.NewGuid(), derivative.Id, DerivativeType.Thumbnail, user.Id, Now);
+        database.AddRange(derivative, job);
+        await database.SaveChangesAsync();
+        var worker = Guid.NewGuid();
+        var queue = new PostgreSqlMediaJobQueue(database);
+        Assert.NotNull(await queue.TryAcquireNextAsync(worker, Now, CancellationToken.None));
+        var leaseOwner = Guid.NewGuid();
+        var repository = new PostgreSqlMediaRepository(database);
+        Assert.NotNull(await repository.TryAcquireGenerationAsync(
+            job.Id, worker, leaseOwner, Now, TimeSpan.FromMinutes(5), CancellationToken.None));
+
+        Assert.Equal(0, await queue.RecoverStaleAsync(Now.AddMinutes(3), 100, CancellationToken.None));
+        Assert.Single(await database.DerivativeLeases.AsNoTracking().ToListAsync());
+        Assert.Equal(1, await queue.RecoverStaleAsync(Now.AddMinutes(6), 100, CancellationToken.None));
+
+        database.ChangeTracker.Clear();
+        Assert.Empty(await database.DerivativeLeases.AsNoTracking().ToListAsync());
+        Assert.Null((await database.FileDerivatives.AsNoTracking().SingleAsync()).LeaseUntil);
+        Assert.Equal(MediaJobStatus.Queued, (await database.MediaJobs.AsNoTracking().SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Repository_GenerationLeaseConditionallyPublishesReadyDerivative()
+    {
+        await using var postgres = CreatePostgres("media_generation_lease");
+        await postgres.StartAsync();
+        var options = Options(postgres.GetConnectionString());
+        Guid derivativeId;
+        Guid jobId;
+        await using (var seed = new KuraStorageDbContext(options))
+        {
+            await seed.Database.MigrateAsync();
+            var (user, file) = await SeedCatalogAsync(seed);
+            var seedDerivative = new FileDerivative(
+                Guid.NewGuid(), file.Id, file.FileVersion, DerivativeType.ImageLow, 1, Now);
+            var job = new MediaJob(Guid.NewGuid(), seedDerivative.Id, DerivativeType.ImageLow, user.Id, Now);
+            derivativeId = seedDerivative.Id;
+            jobId = job.Id;
+            seed.AddRange(seedDerivative, job);
+            await seed.SaveChangesAsync();
+        }
+
+        var workerToken = Guid.NewGuid();
+        await using var database = new KuraStorageDbContext(options);
+        var queue = new PostgreSqlMediaJobQueue(database);
+        Assert.NotNull(await queue.TryAcquireNextAsync(workerToken, Now, CancellationToken.None));
+        var repository = new PostgreSqlMediaRepository(database);
+        Assert.Null(await repository.TryAcquireGenerationAsync(
+            jobId, Guid.NewGuid(), Guid.NewGuid(), Now, TimeSpan.FromMinutes(2), CancellationToken.None));
+
+        var leaseOwner = Guid.NewGuid();
+        var context = await repository.TryAcquireGenerationAsync(
+            jobId, workerToken, leaseOwner, Now, TimeSpan.FromMinutes(2), CancellationToken.None);
+        Assert.NotNull(context);
+        var heartbeat = new PostgreSqlMediaHeartbeat(
+            Microsoft.Extensions.Options.Options.Create(new DatabaseOptions
+            {
+                ConnectionString = postgres.GetConnectionString(),
+            }));
+        Assert.False(await heartbeat.PulseAsync(
+            jobId,
+            workerToken,
+            derivativeId,
+            Guid.NewGuid(),
+            Now.AddSeconds(10),
+            TimeSpan.FromMinutes(2),
+            CancellationToken.None));
+        Assert.True(await heartbeat.PulseAsync(
+            jobId,
+            workerToken,
+            derivativeId,
+            leaseOwner,
+            Now.AddSeconds(10),
+            TimeSpan.FromMinutes(2),
+            CancellationToken.None));
+        Assert.True(await repository.CompleteGenerationAsync(
+            jobId,
+            workerToken,
+            leaseOwner,
+            new PublishedDerivative(RelativeStoragePath.Create("derivatives/generated.webp"), 123),
+            Now.AddSeconds(11),
+            Now.AddDays(1),
+            CancellationToken.None));
+
+        await using var verify = new KuraStorageDbContext(options);
+        var derivative = await verify.FileDerivatives.SingleAsync(item => item.Id == derivativeId);
+        Assert.Equal(DerivativeStatus.Ready, derivative.Status);
+        Assert.Equal("derivatives/generated.webp", derivative.RelativePath);
+        Assert.Equal(123, derivative.Size);
+        Assert.Equal(MediaJobStatus.Completed, (await verify.MediaJobs.SingleAsync(item => item.Id == jobId)).Status);
+        Assert.Empty(await verify.DerivativeLeases.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Repository_ConcurrentDeliveryLeasesRenewReleaseAndProjectMaximum()
+    {
+        await using var postgres = CreatePostgres("media_delivery_lease");
+        await postgres.StartAsync();
+        var options = Options(postgres.GetConnectionString());
+        Guid derivativeId;
+        await using (var seed = new KuraStorageDbContext(options))
+        {
+            await seed.Database.MigrateAsync();
+            var (user, file) = await SeedCatalogAsync(seed);
+            var seedDerivative = ReadyDerivative(user.Id, file, DerivativeType.ImageLow, Now.AddHours(1));
+            derivativeId = seedDerivative.Id;
+            seed.Add(seedDerivative);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var firstDatabase = new KuraStorageDbContext(options);
+        await using var secondDatabase = new KuraStorageDbContext(options);
+        var first = new PostgreSqlMediaRepository(firstDatabase);
+        var second = new PostgreSqlMediaRepository(secondDatabase);
+        var firstOwner = Guid.NewGuid();
+        var secondOwner = Guid.NewGuid();
+        var leases = await Task.WhenAll(
+            first.TryAcquireDeliveryAsync(
+                derivativeId, firstOwner, Now, TimeSpan.FromMinutes(1), CancellationToken.None),
+            second.TryAcquireDeliveryAsync(
+                derivativeId, secondOwner, Now, TimeSpan.FromMinutes(2), CancellationToken.None));
+        Assert.All(leases, Assert.NotNull);
+        Assert.False(await first.RenewLeaseAsync(
+            derivativeId, DerivativeLeaseType.Delivery, Guid.NewGuid(), Now, TimeSpan.FromMinutes(3), CancellationToken.None));
+        Assert.True(await first.RenewLeaseAsync(
+            derivativeId, DerivativeLeaseType.Delivery, firstOwner, Now, TimeSpan.FromMinutes(3), CancellationToken.None));
+        Assert.True(await second.ReleaseLeaseAsync(
+            derivativeId, DerivativeLeaseType.Delivery, secondOwner, Now, CancellationToken.None));
+
+        await using (var verify = new KuraStorageDbContext(options))
+        {
+            Assert.Single(await verify.DerivativeLeases.ToListAsync());
+            Assert.Equal(Now.AddMinutes(3), (await verify.FileDerivatives.SingleAsync()).LeaseUntil);
+        }
+
+        Assert.True(await first.RecordDeliveryAccessAsync(
+            derivativeId, Now.AddMinutes(1), TimeSpan.FromHours(24), CancellationToken.None));
+        Assert.True(await first.ReleaseLeaseAsync(
+            derivativeId, DerivativeLeaseType.Delivery, firstOwner, Now.AddMinutes(1), CancellationToken.None));
+        await using var final = new KuraStorageDbContext(options);
+        var derivative = await final.FileDerivatives.SingleAsync();
+        Assert.Null(derivative.LeaseUntil);
+        Assert.Equal(Now.AddMinutes(1), derivative.LastAccessedAt);
+        Assert.Equal(Now.AddHours(24).AddMinutes(1), derivative.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task JobRunner_CopiesSourcePublishesAtomicallyAndCompletesCatalogState()
+    {
+        await using var postgres = CreatePostgres("media_job_runner");
+        await postgres.StartAsync();
+        var databaseOptions = Options(postgres.GetConnectionString());
+        var storageRoot = Path.Combine(Path.GetTempPath(), $"kurastorage-job-runner-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(storageRoot);
+        try
+        {
+            Guid derivativeId;
+            var sourceBytes = Enumerable.Range(0, 42).Select(value => (byte)value).ToArray();
+            await using (var seed = new KuraStorageDbContext(databaseOptions))
+            {
+                await seed.Database.MigrateAsync();
+                var (user, file) = await SeedCatalogAsync(seed);
+                var sourcePath = Path.Combine(storageRoot, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+                await File.WriteAllBytesAsync(sourcePath, sourceBytes);
+                var seedDerivative = new FileDerivative(
+                    Guid.NewGuid(), file.Id, file.FileVersion, DerivativeType.ImageLow, 1, Now);
+                derivativeId = seedDerivative.Id;
+                seed.AddRange(
+                    seedDerivative,
+                    new MediaJob(Guid.NewGuid(), seedDerivative.Id, DerivativeType.ImageLow, user.Id, Now));
+                await seed.SaveChangesAsync();
+            }
+
+            await using var database = new KuraStorageDbContext(databaseOptions);
+            var storage = Microsoft.Extensions.Options.Options.Create(new StorageOptions
+            {
+                RootPath = storageRoot,
+                StorageId = "job-runner-test",
+                MinimumFreeBytes = 1,
+            });
+            var mediaOptions = Microsoft.Extensions.Options.Options.Create(new MediaOptions());
+            var guard = new AvailableStorageGuard();
+            var runner = new MediaJobRunner(
+                new PostgreSqlMediaJobQueue(database),
+                new PostgreSqlMediaRepository(database),
+                new FixedOutputGenerator(sourceBytes),
+                new NoOpMediaHeartbeat(),
+                new FileStore(storage, mediaOptions),
+                new DerivativeStore(storage, mediaOptions, guard),
+                new FixedClock(),
+                new MediaRuntimeOptions());
+
+            Assert.True(await runner.RunNextAsync(CancellationToken.None));
+
+            await using var verify = new KuraStorageDbContext(databaseOptions);
+            var derivative = await verify.FileDerivatives.SingleAsync(item => item.Id == derivativeId);
+            Assert.Equal(DerivativeStatus.Ready, derivative.Status);
+            Assert.Equal(sourceBytes.Length, derivative.Size);
+            Assert.Null(derivative.LeaseUntil);
+            Assert.Empty(await verify.DerivativeLeases.ToListAsync());
+            Assert.Equal(MediaJobStatus.Completed, (await verify.MediaJobs.SingleAsync()).Status);
+            var outputPath = Path.Combine(storageRoot, derivative.RelativePath!.Replace('/', Path.DirectorySeparatorChar));
+            Assert.Equal(sourceBytes, await File.ReadAllBytesAsync(outputPath));
+            Assert.Empty(Directory.EnumerateFiles(
+                Path.Combine(storageRoot, "derivative-temp"), "*.part", SearchOption.AllDirectories));
+
+            Guid failedDerivativeId;
+            await using (var failureSeed = new KuraStorageDbContext(databaseOptions))
+            {
+                var file = await failureSeed.FileEntries.SingleAsync(item => item.Id == derivative.SourceFileId);
+                var failedDerivative = new FileDerivative(
+                    Guid.NewGuid(), file.Id, file.FileVersion, DerivativeType.ImageMedium, 1, Now.AddSeconds(1));
+                failedDerivativeId = failedDerivative.Id;
+                failureSeed.AddRange(
+                    failedDerivative,
+                    new MediaJob(
+                        Guid.NewGuid(), failedDerivative.Id, DerivativeType.ImageMedium,
+                        file.OwnerUserId, Now.AddSeconds(1)));
+                await failureSeed.SaveChangesAsync();
+            }
+
+            await using (var failureDatabase = new KuraStorageDbContext(databaseOptions))
+            {
+                var failureRunner = new MediaJobRunner(
+                    new PostgreSqlMediaJobQueue(failureDatabase),
+                    new PostgreSqlMediaRepository(failureDatabase),
+                    new FailingMediaGenerator(),
+                    new NoOpMediaHeartbeat(),
+                    new FileStore(storage, mediaOptions),
+                    new DerivativeStore(storage, mediaOptions, guard),
+                    new FixedClock(Now.AddSeconds(1)),
+                    new MediaRuntimeOptions());
+                Assert.True(await failureRunner.RunNextAsync(CancellationToken.None));
+            }
+
+            await using var failedVerify = new KuraStorageDbContext(databaseOptions);
+            Assert.Equal(
+                DerivativeStatus.Failed,
+                (await failedVerify.FileDerivatives.SingleAsync(item => item.Id == failedDerivativeId)).Status);
+            Assert.Empty(await failedVerify.DerivativeLeases
+                .Where(item => item.DerivativeId == failedDerivativeId)
+                .ToListAsync());
+            Assert.Empty(Directory.EnumerateFiles(
+                Path.Combine(storageRoot, "derivative-temp"), "*.part", SearchOption.AllDirectories));
+        }
+        finally
+        {
+            if (Directory.Exists(storageRoot))
+            {
+                Directory.Delete(storageRoot, recursive: true);
+            }
+        }
     }
 
     [Fact]
@@ -428,5 +697,52 @@ public sealed class MediaPersistenceTests
             Now,
             expiresAt);
         return derivative;
+    }
+
+    private sealed class FixedOutputGenerator(byte[] content) : IMediaGenerator
+    {
+        public async Task<GeneratedMedia> GenerateAsync(
+            MediaGenerationContext context,
+            Stream source,
+            CancellationToken cancellationToken)
+        {
+            using var observed = new MemoryStream();
+            await source.CopyToAsync(observed, cancellationToken);
+            Assert.Equal(content, observed.ToArray());
+            return new GeneratedMedia(
+                new MemoryStream(content, writable: false), content.LongLength, "webp");
+        }
+    }
+
+    private sealed class NoOpMediaHeartbeat : IMediaHeartbeat
+    {
+        public Task<bool> PulseAsync(
+            Guid jobId,
+            Guid workerToken,
+            Guid derivativeId,
+            Guid leaseOwnerToken,
+            DateTimeOffset now,
+            TimeSpan leaseDuration,
+            CancellationToken cancellationToken) => Task.FromResult(true);
+    }
+
+    private sealed class FixedClock(DateTimeOffset? now = null) : ISystemClock
+    {
+        public DateTimeOffset UtcNow => now ?? Now;
+    }
+
+    private sealed class FailingMediaGenerator : IMediaGenerator
+    {
+        public Task<GeneratedMedia> GenerateAsync(
+            MediaGenerationContext context,
+            Stream source,
+            CancellationToken cancellationToken) =>
+            throw new MediaGenerationException(MediaErrorCodes.GenerationFailed, retryable: false);
+    }
+
+    private sealed class AvailableStorageGuard : IStorageGuard
+    {
+        public Task<StorageStatus> InspectAsync(StorageIntent intent, CancellationToken cancellationToken) =>
+            Task.FromResult(StorageStatus.Available);
     }
 }

@@ -1,5 +1,5 @@
 [Unit]
-Description=KuraStorage maintenance and external index worker
+Description=KuraStorage media, maintenance, and external index worker
 After=postgresql.service ${KURASTORAGE_STORAGE_MOUNT_UNIT}
 Requires=postgresql.service ${KURASTORAGE_STORAGE_MOUNT_UNIT}
 ConditionPathIsMountPoint=${KURASTORAGE_STORAGE_MOUNT_PATH}

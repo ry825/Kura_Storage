@@ -13,6 +13,7 @@ tags:
   - name: Sharing
   - name: Search
   - name: Transfers
+  - name: Media
   - name: Trash
   - name: Administration
 paths:
@@ -1055,8 +1056,18 @@ paths:
     get:
       tags: [Files]
       operationId: downloadFile
-      summary: Download original file content with optional single-range support
+      summary: Download original or derived media content with optional single-range support
       parameters:
+        - name: variant
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/MediaVariant"
+        - name: disposition
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/MediaDisposition"
         - name: Range
           in: header
           required: false
@@ -1098,10 +1109,26 @@ paths:
               schema:
                 type: string
                 format: binary
+        "202":
+          description: The requested derivative is queued or being generated.
+          headers:
+            Retry-After:
+              required: true
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "416":
           description: The range is invalid or outside the file.
           content:
@@ -1135,6 +1162,64 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /media-jobs/{jobId}:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Media]
+      operationId: getMediaJob
+      summary: Get an authorized media generation job
+      responses:
+        "200":
+          description: Current public media job state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /media-jobs/{jobId}/retry:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Media]
+      operationId: retryMediaJob
+      summary: Retry a transiently failed authorized media job
+      responses:
+        "202":
+          description: One idempotently queued replacement job.
+          headers:
+            Retry-After:
+              required: true
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
   /files/{fileId}/missing/recheck:
@@ -2041,6 +2126,62 @@ components:
           type: array
           maxItems: 20
           items: { $ref: "#/components/schemas/TagItem" }
+    MediaVariant:
+      type: string
+      default: original
+      enum: [original, thumbnail, image-low, image-medium]
+    MediaDisposition:
+      type: string
+      default: inline
+      enum: [inline, attachment]
+    MediaAcceptedResponse:
+      type: object
+      additionalProperties: false
+      required: [status, jobId, jobStatusUrl, retryAfterSeconds]
+      properties:
+        status:
+          type: string
+          const: GENERATING
+        jobId:
+          type: string
+          format: uuid
+        jobStatusUrl:
+          type: string
+          pattern: ^/api/v1/media-jobs/[0-9a-f-]+$
+        retryAfterSeconds:
+          type: integer
+          minimum: 1
+    MediaJob:
+      type: object
+      additionalProperties: false
+      required: [jobId, status, progressPercent, processedDurationMs, totalDurationMs, queuePosition, retryAfterSeconds, contentUrl]
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [GENERATING, READY, FAILED, CANCELLED]
+        progressPercent:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
+        processedDurationMs:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
+        totalDurationMs:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
+        queuePosition:
+          type: [integer, "null"]
+          minimum: 1
+        retryAfterSeconds:
+          type: integer
+          minimum: 0
+        contentUrl:
+          type: [string, "null"]
     SearchFileCategory:
       type: string
       enum: [IMAGE, VIDEO, AUDIO, DOCUMENT, ARCHIVE, OTHER]
@@ -2120,6 +2261,12 @@ components:
         - ENTRY_TAG_LIMIT_EXCEEDED
         - TAG_NOT_FOUND
         - TAG_NAME_CONFLICT
+        - MEDIA_VARIANT_UNSUPPORTED
+        - MEDIA_SOURCE_NOT_ACTIVE
+        - MEDIA_GENERATION_FAILED
+        - MEDIA_RETRY_NOT_ALLOWED
+        - MEDIA_TOOL_UNAVAILABLE
+        - MEDIA_WORKER_UNAVAILABLE
         - INTERNAL_ERROR
 security:
   - bearerAuth: []

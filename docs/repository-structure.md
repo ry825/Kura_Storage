@@ -546,11 +546,16 @@ KuraStorage.Infrastructure/
 │   │   └── DerivativeLeaseConfiguration.cs
 │   ├── Migrations/<timestamp>_AddMediaDerivativeFoundation.cs
 │   ├── PostgreSqlMediaJobQueue.cs
+│   ├── PostgreSqlMediaRepository.cs
+│   ├── PostgreSqlMediaHeartbeat.cs
 │   └── MediaDeletionParticipant.cs
+├── Media/
+│   ├── MediaProcessRunner.cs
+│   └── ExternalMediaGenerator.cs
 └── Storage/DerivativeStore.cs
 ```
 
-対応Testは`KuraStorage.Domain.Tests/MediaDerivativeTests.cs`、`KuraStorage.Application.Tests/ConfigurationValidationTests.cs`、`KuraStorage.IntegrationTests/MediaPersistenceTests.cs`、`DerivativeStoreTests.cs`へ置く。将来構造にある未実装のMedia Processorや専用Test ProjectはPR1で作成しない。
+対応Testは`KuraStorage.Domain.Tests/MediaDerivativeTests.cs`、`KuraStorage.Application.Tests/MediaContractRulesTests.cs`、`ConfigurationValidationTests.cs`、`KuraStorage.IntegrationTests/MediaPersistenceTests.cs`、`DerivativeStoreTests.cs`、`MediaProcessRunnerTests.cs`、`ExternalMediaGeneratorTests.cs`、`ExternalMediaToolIntegrationTests.cs`、`MediaApiTests.cs`、`LeasedMediaResultTests.cs`へ置く。
 
 ### 6.3 配置ルール
 

@@ -23,7 +23,10 @@ verify_systemd_service_unit /etc/systemd/system/kurastorage-worker.service
 systemctl daemon-reload
 systemctl enable kurastorage-worker.service
 systemctl stop kurastorage-worker.service
-trap 'systemctl start kurastorage-worker.service || true' ERR
+systemctl stop kurastorage-api.service
+trap 'systemctl start kurastorage-api.service || true; systemctl start kurastorage-worker.service || true' ERR
+install_media_dependencies
+ensure_media_storage
 apply_migrations "${release_directory}"
 activate_release "${release_directory}"
 trap - ERR

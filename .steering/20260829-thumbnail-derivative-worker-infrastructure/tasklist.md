@@ -165,71 +165,71 @@
 
 ### 2.1 開始条件
 
-- [ ] PR2の開始条件を満たす。
-  - [ ] PR1が`main`へMerge済みで、必須CIが成功している。
-  - [ ] `git status`と既存差分を確認し、最新`main`からPR2用Branchを作成する。
-  - [ ] 既存File Content Range、Authorization、Storage Stream、OpenAPI Test、Worker ScopeのPatternを確認する。
-  - [ ] Pi／CIで`vips`、FFmpeg／ffprobe、`pdftoppm`の実行Path、Version、Loader／Encoder、arm64対応を確認する。
+- [x] PR2の開始条件を満たす。
+  - [x] PR1が`main`へMerge済みで、必須CIが成功している。
+  - [x] `git status`と既存差分を確認し、最新`main`からPR2用Branchを作成する。
+  - [x] 既存File Content Range、Authorization、Storage Stream、OpenAPI Test、Worker ScopeのPatternを確認する。
+  - [x] Pi／CIで`vips`、FFmpeg／ffprobe、`pdftoppm`の実行Path、Version、Loader／Encoder、arm64対応を確認する。（PiはDebian 12 arm64、FFmpeg／ffprobe 5.1.6、Poppler 22.12.0を確認。`libvips-tools`は未導入、CIはPopplerのみのためPR2配置更新で導入・検証する）
 
 ### 2.2 画像・PDF・動画Thumbnail生成
 
-- [ ] Thumbnail生成をTest firstで実装する。
-  - [ ] 承認済み対象MIMEだけをServer側で許可し、拡張子だけを信頼せずDecoder／Probe結果を検証する。
-  - [ ] `IMediaProcessRunner`で引数配列、absolute Binary、allow-list Environment、1MiB bounded出力、Timeout、Process tree終了を実装する。
-  - [ ] `vips`で写真をEXIF回転反映・Animated先頭Frame・長辺最大512px・WebP品質75・拡大なしに変換する。
-  - [ ] FFmpeg／ffprobeで動画Durationの10%かつ最大10秒地点からFrameを抽出し、Decode可能Frameへ安全にFallbackする。
-  - [ ] `pdftoppm`でPDF先頭PageだけをRaster化し、`vips`で長辺最大512px・WebP品質75へ変換する。
-  - [ ] Binary／Loader不足、暗号化PDF、巨大Document、Timeoutを`MEDIA_TOOL_UNAVAILABLE`または承認済み生成Errorへ変換する。
-  - [ ] Decompression bomb、巨大Dimension、破損入力、Unsupported codec、Timeout、取消、Process異常終了をTestする。
-  - [ ] 一時出力の検証とatomic rename後だけ`READY`にし、失敗・取消時に部分Fileを公開しない。
-  - [ ] 同一論理Keyへの並行要求を一意制約とJob取得で1回の生成へ収束させる。
-  - [ ] Thumbnailへ`expiresAt`を設定せず、通常Cache容量集計から除外する。
+- [x] Thumbnail生成をTest firstで実装する。
+  - [x] 承認済み対象MIMEだけをServer側で許可し、拡張子だけを信頼せずDecoder／Probe結果を検証する。
+  - [x] `IMediaProcessRunner`で引数配列、absolute Binary、allow-list Environment、1MiB bounded出力、Timeout、Process tree終了を実装する。
+  - [x] `vips`で写真をEXIF回転反映・Animated先頭Frame・長辺最大512px・WebP品質75・拡大なしに変換する。
+  - [x] FFmpeg／ffprobeで動画Durationの10%かつ最大10秒地点からFrameを抽出し、Decode可能Frameへ安全にFallbackする。
+  - [x] `pdftoppm`でPDF先頭PageだけをRaster化し、`vips`で長辺最大512px・WebP品質75へ変換する。
+  - [x] Binary／Loader不足、暗号化PDF、巨大Document、Timeoutを`MEDIA_TOOL_UNAVAILABLE`または承認済み生成Errorへ変換する。
+  - [x] Decompression bomb、巨大Dimension、破損入力、Unsupported codec、Timeout、取消、Process異常終了をTestする。
+  - [x] 一時出力の検証とatomic rename後だけ`READY`にし、失敗・取消時に部分Fileを公開しない。
+  - [x] 同一論理Keyへの並行要求を一意制約とJob取得で1回の生成へ収束させる。
+  - [x] Thumbnailへ`expiresAt`を設定せず、通常Cache容量集計から除外する。
 
 ### 2.3 写真Low／Medium生成
 
-- [ ] 写真派生生成をTest firstで実装する。
-  - [ ] Lowを長辺最大1280px・WebP品質70、Mediumを長辺最大2560px・WebP品質82で生成し、小さい元画像を拡大しない。
-  - [ ] EXIF回転、色Profile、Alpha、Animated imageの承認済み規則を実装する。
-  - [ ] 全写真生成をWorkerで実行し、APIは500msごと最大4回・合計2秒だけDB状態を待機して、超過時に`202 Accepted`を返す。
-  - [ ] API要求取消や画面離脱後も永続Jobを取消さず、Workerが完了または失敗まで処理する。
-  - [ ] 完成時にSize、`lastAccessedAt`、`expiresAt = now + 24h`を保存する。
-  - [ ] 元Source VersionまたはProfile Versionが変わった結果を現在要求へ誤公開しない。
+- [x] 写真派生生成をTest firstで実装する。
+  - [x] Lowを長辺最大1280px・WebP品質70、Mediumを長辺最大2560px・WebP品質82で生成し、小さい元画像を拡大しない。
+  - [x] EXIF回転、色Profile、Alpha、Animated imageの承認済み規則を実装する。
+  - [x] 全写真生成をWorkerで実行し、APIは500msごと最大4回・合計2秒だけDB状態を待機して、超過時に`202 Accepted`を返す。
+  - [x] API要求取消や画面離脱後も永続Jobを取消さず、Workerが完了または失敗まで処理する。
+  - [x] 完成時にSize、`lastAccessedAt`、`expiresAt = now + 24h`を保存する。
+  - [x] 元Source VersionまたはProfile Versionが変わった結果を現在要求へ誤公開しない。
 
 ### 2.4 PreviewService・API・認可
 
-- [ ] `PreviewService`とAPI契約をTest firstで実装する。
-  - [ ] `GET /api/v1/files/{fileId}/content`の`thumbnail`、`image-low`、`image-medium`を実装する。
-  - [ ] `READY`かつ現Source／Profile一致・物理File検証済みの場合だけ`200`／単一Range `206`で配信する。
-  - [ ] 未生成・生成中は正式契約の`202 Accepted`、Job ID、状態URL、Retry-Afterを返し、元画質へ自動Fallbackしない。
-  - [ ] 不正Rangeを`416 RANGE_NOT_SATISFIABLE`、非対応Variant／MIME、失敗、Source missingを承認済みErrorへ変換する。
-  - [ ] 最新`FileEntry.name`からRFC 5987のDownload名を生成し、物理Pathや生成時名称を公開しない。
-  - [ ] Owner／直接共有／継承共有の`VIEWER`以上だけに許可し、AdminやID列挙へ暗黙の閲覧権限を与えない。
-  - [ ] Job状態照会・Retryで要求Actorではなく現在のFile閲覧権限とSource状態を再評価する。
-  - [ ] `GET /api/v1/media-jobs/{jobId}`と`POST /api/v1/media-jobs/{jobId}/retry`を実装し、他User／非認可Jobを`404`へ正規化する。
-  - [ ] OpenAPI、Request／Response DTO、Error、未知enumの契約Testを追加する。
+- [x] `PreviewService`とAPI契約をTest firstで実装する。
+  - [x] `GET /api/v1/files/{fileId}/content`の`thumbnail`、`image-low`、`image-medium`を実装する。
+  - [x] `READY`かつ現Source／Profile一致・物理File検証済みの場合だけ`200`／単一Range `206`で配信する。
+  - [x] 未生成・生成中は正式契約の`202 Accepted`、Job ID、状態URL、Retry-Afterを返し、元画質へ自動Fallbackしない。
+  - [x] 不正Rangeを`416 RANGE_NOT_SATISFIABLE`、非対応Variant／MIME、失敗、Source missingを承認済みErrorへ変換する。
+  - [x] 最新`FileEntry.name`からRFC 5987のDownload名を生成し、物理Pathや生成時名称を公開しない。
+  - [x] Owner／直接共有／継承共有の`VIEWER`以上だけに許可し、AdminやID列挙へ暗黙の閲覧権限を与えない。
+  - [x] Job状態照会・Retryで要求Actorではなく現在のFile閲覧権限とSource状態を再評価する。
+  - [x] `GET /api/v1/media-jobs/{jobId}`と`POST /api/v1/media-jobs/{jobId}/retry`を実装し、他User／非認可Jobを`404`へ正規化する。
+  - [x] OpenAPI、Request／Response DTO、Error、未知enumの契約Testを追加する。
 
 ### 2.5 配信・生成Lease
 
-- [ ] LeaseをTest firstで実装する。
-  - [ ] 生成権取得時に2分の所有者別`GENERATION` Leaseを設定し、Heartbeatで更新して完了・失敗時に解放する。
-  - [ ] `LeasedFileResult`で配信直前に2分の`DELIVERY` Leaseを取得し、Stream終了・取消・例外時に所有行だけを解放する。
-  - [ ] 64KiB Range配信中は30秒ごとに同じOwner tokenのLeaseを更新し、Cleanupが使用中Fileを削除できないことをTestする。
-  - [ ] Process異常終了後は期限切れLeaseだけが回収され、現行Leaseを別Processが奪わない。
-  - [ ] Lease取得後にSource状態・Version・権限・Derivative状態を再読込し、競合時はfail-closedにする。
+- [x] LeaseをTest firstで実装する。
+  - [x] 生成権取得時に2分の所有者別`GENERATION` Leaseを設定し、Heartbeatで更新して完了・失敗時に解放する。
+  - [x] `LeasedFileResult`で配信直前に2分の`DELIVERY` Leaseを取得し、Stream終了・取消・例外時に所有行だけを解放する。
+  - [x] 64KiB Range配信中は30秒ごとに同じOwner tokenのLeaseを更新し、Cleanupが使用中Fileを削除できないことをTestする。
+  - [x] Process異常終了後は期限切れLeaseだけが回収され、現行Leaseを別Processが奪わない。
+  - [x] Lease取得後にSource状態・Version・権限・Derivative状態を再読込し、競合時はfail-closedにする。
 
 ### 2.6 PR2検証・文書・完了
 
-- [ ] PR2の自動・結合検証を完了する。
-  - [ ] 画像／PDF／動画Thumbnail、写真Low／Mediumのgolden／metadata／破損入力Testが成功する。
-  - [ ] 同時要求、待機閾値、API取消、Worker継続、Range、認可、Lease競合の統合Testが成功する。
-  - [ ] 実処理Library／実行Programを使用するTestと、失敗注入後の一時File・DB整合確認が成功する。
-  - [ ] Coverage基準と全Server／Config／Security／Deployment CI、`git diff --check`が成功する。
-- [ ] PR2に必要な正式文書、OpenAPI、依存関係、SBOM、運用設定を更新する。
-  - [ ] Debian 12の`libvips-tools`、`ffmpeg`、`poppler-utils`とBinary／Loader検証をinstall／upgrade／rollback／verify手順へ追加する。
-  - [ ] `Media`設定、`derivatives`／`derivative-temp`作成、systemd hardeningとStorage限定writeを配置Templateへ反映する。
+- [x] PR2の自動・結合検証を完了する。
+  - [x] 画像／PDF／動画Thumbnail、写真Low／Mediumのgolden／metadata／破損入力Testが成功する。
+  - [x] 同時要求、待機閾値、API取消、Worker継続、Range、認可、Lease競合の統合Testが成功する。
+  - [x] 実処理Library／実行Programを使用するTestと、失敗注入後の一時File・DB整合確認が成功する。
+  - [x] Coverage基準と全Server／Config／Security／Deployment CI、`git diff --check`が成功する。
+- [x] PR2に必要な正式文書、OpenAPI、依存関係、SBOM、運用設定を更新する。
+  - [x] Debian 12の`libvips-tools`、`ffmpeg`、`poppler-utils`とBinary／Loader検証をinstall／upgrade／rollback／verify手順へ追加する。
+  - [x] `Media`設定、`derivatives`／`derivative-temp`作成、systemd hardeningとStorage限定writeを配置Templateへ反映する。
 - [ ] PR2を完了する。
-  - [ ] フェーズ2の全項目が`[x]`であることを確認する。
-  - [ ] 差分にAndroid UI、動画Low／Medium変換本体、HLS、秘密情報、未使用Packageがないことを確認する。
+  - [x] フェーズ2の全項目が`[x]`であることを確認する。
+  - [x] 差分にAndroid UI、動画Low／Medium変換本体、HLS、秘密情報、未使用Packageがないことを確認する。
   - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
   - [ ] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
   - [ ] Pull Request URLと検証結果をUserへ報告して停止する。

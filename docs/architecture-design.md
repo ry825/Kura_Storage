@@ -306,8 +306,9 @@ Domain ───────────────────→ 外部ライ
 | Npgsql | EF Core対応版 | PostgreSQL接続 | PostgreSQL固有機能、配列、`jsonb`、トランザクションを扱える。 |
 | PostgreSQL | 17系を基準 | 管理情報、検索索引、ジョブ、監査 | 30万件規模の検索、排他、再帰CTE、部分Index、`pg_trgm`を利用できる。 |
 | Nginx | OS安定版 | TLS終端、リバースプロキシ | APIを外部へ直接公開せず、TLSと要求制御を一元化する。 |
-| FFmpeg / FFprobe | MVP後 | 写真縮小、動画変換、メタデータ確認 | Media機能追加時に導入する。 |
-| Poppler `pdftoppm` | MVP後 | PDF先頭ページ描画 | Preview機能追加時に導入する。 |
+| libvips | Debian 12系8.14 | 写真・Raster済みPDFの縮小、自動回転、WebP出力 | シェルを介さない独立Worker Processとして使用する。 |
+| FFmpeg / FFprobe | Debian 12系5.1 | 動画Thumbnail Frame抽出、出力メタデータ確認 | 動画Low／Medium変換は後続フェーズで同じAdapterを拡張する。 |
+| Poppler `pdftoppm` | Debian 12系22.12 | PDF先頭ページ描画 | 1ページだけを上限付きでRaster化する。 |
 | Argon2idライブラリ | 実装時に保守状況を確認して固定 | パスワードハッシュ | Argon2id v1.3と自己記述形式を扱い、独自暗号実装を避ける。 |
 | OpenTelemetry SDK | .NET対応安定版 | メトリクス、トレース | API時間、DB、ジョブ、変換を共通形式で計測できる。 |
 

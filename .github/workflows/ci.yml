@@ -34,7 +34,11 @@ jobs:
           global-json-file: global.json
           cache: true
           cache-dependency-path: server/**/packages.lock.json
+      - name: Install media runtime tools
+        run: sudo apt-get update && sudo apt-get install --yes libvips-tools ffmpeg poppler-utils
       - name: Verify server
+        env:
+          KURASTORAGE_RUN_MEDIA_TOOL_TESTS: "1"
         run: ./scripts/ci/verify-server.sh
 
   security:

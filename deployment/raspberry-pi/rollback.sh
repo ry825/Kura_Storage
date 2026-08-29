@@ -15,6 +15,7 @@ current_target="$(readlink -f "${INSTALL_ROOT}/current")"
 systemctl stop kurastorage-worker.service
 verify_no_unfinished_purges
 verify_no_unfinished_upload_sessions
+verify_no_active_media_jobs
 ln -sfn "${current_target}" "${INSTALL_ROOT}/previous"
 ln -sfn "${previous_target}" "${INSTALL_ROOT}/current"
 systemctl restart kurastorage-api.service

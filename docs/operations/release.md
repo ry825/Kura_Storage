@@ -44,3 +44,12 @@ sha256sum --check SHA256SUMS-0.1.0
 
 Private keys, password files, environment files, and production
 `appsettings` must not be present in release artifacts.
+
+The managed .NET dependency inventory and checksums cover the built release.
+Media conversion also depends on Debian packages installed on the target. Each
+install or upgrade records `libvips-tools`, `libvips42`, `ffmpeg`, and
+`poppler-utils` with resolved version and architecture in
+`/var/lib/kurastorage/media-runtime-packages.sbom`. Copy that inventory into
+the protected release evidence directory together with the checksum file and
+Pi verification record; do not place target-specific paths or secrets in the
+public artifact.

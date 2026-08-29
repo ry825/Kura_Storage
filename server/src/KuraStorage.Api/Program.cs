@@ -7,6 +7,7 @@ using KuraStorage.Api;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
+using KuraStorage.Application.Media;
 using KuraStorage.Application.Sharing;
 using KuraStorage.Application.Search;
 using KuraStorage.Application.Recent;
@@ -1012,13 +1013,56 @@ app.MapGet(
     "/api/v1/files/{fileId:guid}/content",
     async (
         Guid fileId,
+        string? variant,
+        string? disposition,
         HttpContext context,
         FileService files,
+        PreviewService previews,
         CancellationToken cancellationToken) =>
     {
         if (!TryAuthenticatedUserId(context, out var userId))
         {
             return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (!MediaContractRules.TryParseVariant(variant, out var parsedVariant))
+        {
+            return Error(StatusCodes.Status400BadRequest, MediaErrorCodes.VariantUnsupported, context);
+        }
+
+        if (!MediaContractRules.TryParseDisposition(disposition, out var parsedDisposition))
+        {
+            return Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context);
+        }
+
+        if (parsedVariant != MediaVariant.Original)
+        {
+            var preview = await previews.RequestAsync(
+                new MediaContentRequest(userId, fileId, variant, disposition), cancellationToken);
+            if (!preview.IsSuccess)
+            {
+                return MediaError(preview.Failure!, context);
+            }
+
+            if (preview.Value!.Status == MediaRequestStatus.Ready)
+            {
+                return new LeasedMediaResult(preview.Value.Content!);
+            }
+
+            if (preview.Value.Status == MediaRequestStatus.Failed)
+            {
+                return MediaCodeError(preview.Value.ErrorCode!, context);
+            }
+
+            context.Response.Headers.RetryAfter = preview.Value.RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+            var jobId = preview.Value.JobId!.Value;
+            return Results.Json(
+                new MediaAcceptedResponse(
+                    "GENERATING",
+                    jobId,
+                    $"/api/v1/media-jobs/{jobId}",
+                    preview.Value.RetryAfterSeconds),
+                statusCode: StatusCodes.Status202Accepted);
         }
 
         var result = await files.DownloadAsync(userId, fileId, cancellationToken);
@@ -1034,11 +1078,49 @@ app.MapGet(
             return Error(StatusCodes.Status416RangeNotSatisfiable, "RANGE_NOT_SATISFIABLE", context);
         }
 
+        if (disposition is not null && parsedDisposition == MediaDisposition.Inline)
+        {
+            context.Response.Headers.ContentDisposition = MediaContentDisposition.Format(
+                parsedDisposition, result.Value.Item.Name);
+        }
+
         return Results.File(
             result.Value.Content,
             result.Value.Item.MimeType ?? "application/octet-stream",
-            result.Value.Item.Name,
+            disposition is not null && parsedDisposition == MediaDisposition.Inline ? null : result.Value.Item.Name,
             enableRangeProcessing: true);
+    });
+
+app.MapGet(
+    "/api/v1/media-jobs/{jobId:guid}",
+    async (Guid jobId, HttpContext context, PreviewService previews, CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await previews.GetJobAsync(userId, jobId, cancellationToken);
+        return result.IsSuccess ? Results.Ok(result.Value) : MediaError(result.Failure!, context);
+    });
+
+app.MapPost(
+    "/api/v1/media-jobs/{jobId:guid}/retry",
+    async (Guid jobId, HttpContext context, PreviewService previews, CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var result = await previews.RetryJobAsync(userId, jobId, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return MediaError(result.Failure!, context);
+        }
+
+        context.Response.Headers.RetryAfter = result.Value!.RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+        return Results.Json(result.Value, statusCode: StatusCodes.Status202Accepted);
     });
 
 app.MapDelete(
@@ -1404,6 +1486,27 @@ static IResult TransferError(
     return Error(status, failure.Code, context);
 }
 
+static IResult MediaError(MediaFailure failure, HttpContext context)
+{
+    var status = failure.Kind switch
+    {
+        MediaFailureKind.BadRequest => StatusCodes.Status400BadRequest,
+        MediaFailureKind.NotFound => StatusCodes.Status404NotFound,
+        MediaFailureKind.Conflict => StatusCodes.Status409Conflict,
+        MediaFailureKind.StorageUnavailable => StatusCodes.Status503ServiceUnavailable,
+        _ => StatusCodes.Status500InternalServerError,
+    };
+    return Error(status, failure.Code, context);
+}
+
+static IResult MediaCodeError(string code, HttpContext context) => code switch
+{
+    FileErrorCodes.FileNotFound => Error(StatusCodes.Status404NotFound, code, context),
+    FileErrorCodes.StorageUnavailable => Error(StatusCodes.Status503ServiceUnavailable, code, context),
+    MediaErrorCodes.VariantUnsupported => Error(StatusCodes.Status400BadRequest, code, context),
+    _ => Error(StatusCodes.Status409Conflict, code, context),
+};
+
 static async Task<IResult> HandleUploadAsync(
     Guid userId,
     Guid deviceId,
@@ -1568,6 +1671,12 @@ public sealed record CreateUploadSessionRequest(
     long Size,
     string? ContentType,
     string? Sha256);
+
+public sealed record MediaAcceptedResponse(
+    string Status,
+    Guid JobId,
+    string JobStatusUrl,
+    int RetryAfterSeconds);
 
 public sealed class UpdateFileRequest
 {
