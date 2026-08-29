@@ -302,12 +302,12 @@
   - [x] Worker／API／DB／HDDの各異常終了後に、部分出力非公開・元File不変・Job回復を確認する。
   - [x] Coverage基準と全Server／Config／Security／Deployment CI、`git diff --check`が成功する。
 - [x] PR3に必要な正式文書、OpenAPI、配置、運用、Security、Test fixture出典を更新する。
-- [ ] PR3を完了する。
-  - [ ] フェーズ3の全項目が`[x]`であることを確認する。
+- [x] PR3を完了する。
+  - [x] フェーズ3の全項目が`[x]`であることを確認する。
   - [x] 差分にAndroid UI、HLS、任意Command実行、実環境Path、Credential、著作権不明Fixtureがないことを確認する。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -419,14 +419,14 @@
 
 ### PR3: 動画Low／Medium変換Workerと進捗・回復
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・性能確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
+- 完了日: 2026-08-29
+- Pull Request: [#31 Add resilient video transcoding and recovery](https://github.com/ry825/Kura_Storage/pull/31)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-server.sh`（Build warning 0、Domain 81件、Application 231件、Integration 175件）、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`dotnet format --verify-no-changes`、OpenAPI YAML parse、`git diff --check`が成功した。Coverlet Line CoverageはServer全体94.76%、PR3追加境界は`MediaContracts.cs` 96.83%、`MediaJobRunner.cs` 97.32%、`PreviewService.cs` 95.21%。GitHub必須CIのServer、Android、Config、Securityもすべて成功した。
+- 手動確認・性能確認: Piを読取専用で確認し、Debian 12 arm64、FFmpeg／ffprobe 5.1.6、libx264／AAC／`-progress`対応、Worker実行UserのTool／HDD権限、HDD空き約773GB、systemd制約を記録した。開発Hostでは`/tmp`に展開したFFmpeg／ffprobe 8.0.1を使い、短尺・横・音声なしLowと長尺・縦・複数音声Mediumの実MP4変換・Probeを確認した。Pi実機性能・容量受け入れは計画どおりPR4で実施する。
+- 計画と実装の差分: Retry仕様に「3回上限」と3つのBackoffが併記される矛盾があったため、現行実装に合わせて初回を含む最大3回、自動Retry 2回、30秒／2分に正式文書とSteeringを統一した。atomic rename後のDB更新結果不明で正式Fileを誤削除しないため、正式Pathの再検出と`MEDIA_COMPLETION_UNKNOWN`再試行を追加した。
+- 実装中に追加したタスクと理由: 実FFmpegの縦動画・複数音声Profile Test、API再起動後のJob永続Test、5秒単位の進捗合流Test、Heartbeat例外時にWorker Loopを停止せずJobだけを再試行するTest、低Cardinality Metric Testを追加した。実行Program差、API／Worker生命周期、古いWorkerの上書き、運用監視、追加境界Coverage 95%を保証するため。
+- 技術的に不要になったタスク・理由・代替実装: 8分Backoffは初回を含む3回上限では到達不可能であり、未使用分岐を残すと契約と実行回数が再び乖離するため除去した。代替は30秒／2分の2回の自動Retryと、権限・Source・Retry可否を再検証する明示Retry API。
+- 後続Pull Requestへの引継ぎ事項: PR #31のMergeと必須CI成功をPR4開始条件とする。PR4ではThumbnailを除外した24時間TTL／10GiBから6GiBへのLRU清掃、Job履歴清掃、Pi実機の性能／容量／物理障害E2E、Package inventory・Backup／Rollback・運用受け入れを完成させる。
 
 ### PR4: TTL・LRU清掃、Pi性能・障害E2E、運用完成
 
