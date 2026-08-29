@@ -143,11 +143,11 @@
   - [x] `./scripts/ci/verify-android.sh`、`./scripts/ci/verify-config.sh`、`git diff --check`が成功する。
   - [x] dependency lock、License、不要依存、秘密情報、認証URL／TokenのLog出力がないことを確認する。
 - [x] PR1に必要な正式文書を実装と同じ変更で更新する。
-- [ ] PR1を完了する。
-  - [ ] フェーズ1の全項目が`[x]`であることを確認する。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+- [x] PR1を完了する。
+  - [x] フェーズ1の全項目が`[x]`であることを確認する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -376,13 +376,13 @@
 
 ### PR1: Media契約・品質設定・共通Controller基盤
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest／Build／静的解析／手動確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク、理由、代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
+- 完了日: 2026-08-30
+- Pull Request: [#33 Add Android media contract and quality foundations](https://github.com/ry825/Kura_Storage/pull/33)
+- 実施したTest／Build／静的解析／手動確認: `./scripts/ci/verify-android.sh`（Unit Test、MockWebServer Test、ktlint、detekt、lint、Debug APK、Appと新規FeatureのAndroidTest APK）、`./scripts/ci/verify-server.sh`（Domain 81件、Application 236件、Integration 177件）、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`を実施して成功。Core Dataで短いBody、上限超過、途中切断を追加確認。Coil 3.5.0とMedia3 1.11.0のPOMがApache-2.0であること、依存Lock、認証URL／TokenのLog出力がないことを手動確認。GitHub必須CIはAndroid、Config、Security、Serverの4件が成功。実機実行は後続Viewer／Player PRの受け入れ範囲のため未実施。
+- 計画と実装の差分: AndroidがRetry操作の表示可否をfail-closedに判定できるよう、既存Server Media Job応答に`retryable`を最小追加し、OpenAPIとServer Testを同時更新した。その他は承認済みPR1設計どおり。
+- 実装中に追加したタスクと理由: `retryable`のServer／OpenAPI契約更新とIntegration Testを追加。理由は失敗JobのRetry可否をAndroid側で推測しないため。また、新規FeatureのAndroidTest APKをCIコンパイル対象へ追加し、承認済みCoil／Media3を旧MVP依存禁止Guardから除外した。`core-data`単体lintのため`ACCESS_NETWORK_STATE`をLibrary Manifestに宣言した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: PR #33の`main`へのMergeと必須CI成功をPR2開始条件とする。PR2では本PRの`MediaRepository`、`MediaViewerController`、品質設定、通信量確認を使用し、Coil認証Fetcher／Cache、一覧Thumbnail、写真Viewer、PDF Viewerを実装する。実Android 10／現行Androidでの実行、通信量、Memory／Leak確認はPR2以降の受け入れ項目で実施する。
 
 ### PR2: 一覧サムネイル・写真Viewer・PDF Viewer
 
