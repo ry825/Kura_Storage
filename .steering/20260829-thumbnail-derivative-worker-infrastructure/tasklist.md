@@ -227,12 +227,12 @@
 - [x] PR2に必要な正式文書、OpenAPI、依存関係、SBOM、運用設定を更新する。
   - [x] Debian 12の`libvips-tools`、`ffmpeg`、`poppler-utils`とBinary／Loader検証をinstall／upgrade／rollback／verify手順へ追加する。
   - [x] `Media`設定、`derivatives`／`derivative-temp`作成、systemd hardeningとStorage限定writeを配置Templateへ反映する。
-- [ ] PR2を完了する。
+- [x] PR2を完了する。
   - [x] フェーズ2の全項目が`[x]`であることを確認する。
   - [x] 差分にAndroid UI、動画Low／Medium変換本体、HLS、秘密情報、未使用Packageがないことを確認する。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -408,14 +408,14 @@
 
 ### PR2: Thumbnail・写真派生生成・API配信・Lease
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・性能確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
+- 完了日: 2026-08-29
+- Pull Request: [#30 Add media thumbnail generation and leased delivery](https://github.com/ry825/Kura_Storage/pull/30)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-server.sh`（Build warning 0、Domain 81件、Application 219件、Integration 166件）、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`dotnet format --verify-no-changes`、OpenAPI YAML parse、`git diff --check`が成功した。CoverletのDomain／Application合算Line Coverageは88.51%（Domain 91.81%、Application 87.59%）、PR2追加境界は`MediaContracts.cs` 98.11%、`MediaJobRunner.cs` 99.02%、`PreviewService.cs` 95.18%。GitHub必須CIのServer、Android、Config、Securityもすべて成功した。
+- 手動確認・性能確認: Piを読取専用で確認し、Debian 12 arm64、FFmpeg／ffprobe 5.1.6、Poppler 22.12.0、`libvips-tools` 8.14.1候補とWebP／H.264 codecを記録した。使い捨てUbuntu 26.04 containerで実`vips`・`ffmpeg`・`ffprobe`・`pdftoppm`を使い、画像・PDF・動画Thumbnailと破損入力を確認した。Config／Deployment文法は検証用containerでsystemd、nftables、Nginxまで確認し、一時container／imageは完了後に削除した。Pi実機の変換性能測定は計画どおりPR4で実施する。
+- 計画と実装の差分: 公開契約とProfileは計画どおり。実libvips検証により、回転は`thumbnail`の既定動作を使い、出力Optionをファイル名に付与する正式CLI形式へ確定した。並行Delivery Leaseの最大期限projectionはEF追跡更新ではなく、所有者別行を競合安全に扱う限定SQLへ変更した。元Fileの省略時Download動作は後方互換を維持し、明示`disposition=inline`のみ新契約を適用した。
+- 実装中に追加したタスクと理由: 実ツールのCLI互換性Test、配信StreamのDispose失敗後もLeaseを解放するTest、Workerの生成権喪失・保存障害・取消・予期しない例外・Heartbeat拒否Test、待機中READY遷移とJob終端状態Testを追加した。理由は実行Program差異、例外後のLease／部分File整合、95%追加境界Coverageを実際の失敗境界で保証するため。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: PR #30のMergeと必須CI成功をPR3開始条件とする。PR3では今回の`IMediaProcessRunner`、永続Queue、GENERATION Lease、atomic publishを再利用して動画Low／Medium、進捗、Retry／stale回復を実装する。PR4へはThumbnailを除外した24時間TTL／LRU清掃、Pi実機性能・容量・障害E2E、パッケージインベントリの運用確認を引き継ぐ。
 
 ### PR3: 動画Low／Medium変換Workerと進捗・回復
 
