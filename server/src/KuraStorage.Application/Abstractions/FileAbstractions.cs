@@ -166,6 +166,11 @@ public interface IPermanentDeleteParticipant
 
 public interface IFileIndexDeletionParticipant
 {
+    Task<IReadOnlyList<RelativeStoragePath>> ListPhysicalArtifactsAsync(
+        FileIndexDeletionTarget target,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<RelativeStoragePath>>([]);
+
     Task DeleteManagementDataAsync(FileIndexDeletionTarget target, CancellationToken cancellationToken);
 }
 

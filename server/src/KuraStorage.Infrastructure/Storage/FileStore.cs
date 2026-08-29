@@ -10,11 +10,15 @@ using Microsoft.Extensions.Options;
 
 namespace KuraStorage.Infrastructure.Storage;
 
-public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFileStore, IUploadSessionStore
+public sealed class FileStore(
+    IOptions<StorageOptions> configuredOptions,
+    IOptions<MediaOptions>? configuredMediaOptions = null) : IFileStore, IUploadSessionStore
 {
     private readonly StorageOptions options = configuredOptions.Value;
     private readonly string root = Path.TrimEndingDirectorySeparator(
         Path.GetFullPath(configuredOptions.Value.RootPath));
+    private readonly string derivativeRoot = configuredMediaOptions?.Value.DerivativeRoot ?? "derivatives";
+    private readonly string derivativeTemporaryRoot = configuredMediaOptions?.Value.TemporaryRoot ?? "derivative-temp";
 
     public Task<bool> HasCapacityAsync(long requiredBytes, CancellationToken cancellationToken)
     {
@@ -430,12 +434,14 @@ public sealed class FileStore(IOptions<StorageOptions> configuredOptions) : IFil
         return candidate;
     }
 
-    private static void EnsureDeletableTree(RelativeStoragePath path)
+    private void EnsureDeletableTree(RelativeStoragePath path)
     {
         var segments = path.Value.Split('/');
-        if (segments.Length < 4 ||
-            segments[0] is not ("users" or "derived") ||
-            (segments[0] == "users" && segments[2] is not ("trash" or "derived")))
+        var userTree = segments.Length >= 4 && segments[0] == "users" &&
+                       segments[2] is "trash" or "derived";
+        var derivativeTree = segments.Length >= 3 && segments[0] == derivativeRoot;
+        var temporaryTree = segments.Length >= 2 && segments[0] == derivativeTemporaryRoot;
+        if (!userTree && !derivativeTree && !temporaryTree)
         {
             throw new UnsafeStorageTreeException("The requested tree is a protected storage area.");
         }

@@ -11,7 +11,8 @@ public sealed class MissingEntryService(
     IStorageGuard storageGuard,
     IEnumerable<IFileIndexDeletionParticipant> participants,
     ISystemClock clock,
-    IndexingOptions options)
+    IndexingOptions options,
+    IFileStore? fileStore = null)
 {
     private readonly TimeSpan confirmationDelay = TimeSpan.FromMinutes(options.MissingConfirmationDelayMinutes);
 
@@ -173,6 +174,34 @@ public sealed class MissingEntryService(
             initial.Id,
             command.OwnerUserId,
             descendants.Select(entry => entry.Id).Append(initial.Id).ToArray());
+        if (fileStore is not null)
+        {
+            if (await storageGuard.InspectAsync(StorageIntent.Delete, cancellationToken) != StorageStatus.Available)
+            {
+                return await FailureAsync<bool>(
+                    command, "FILE_MISSING_INDEX_DELETE", FileErrorCodes.StorageUnavailable,
+                    FileFailureKind.StorageUnavailable, cancellationToken);
+            }
+
+            try
+            {
+                foreach (var participant in participants)
+                {
+                    var artifacts = await participant.ListPhysicalArtifactsAsync(target, cancellationToken);
+                    foreach (var artifact in artifacts)
+                    {
+                        await fileStore.DeleteTreeIfExistsAsync(artifact, cancellationToken);
+                    }
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return await FailureAsync<bool>(
+                    command, "FILE_MISSING_INDEX_DELETE", FileErrorCodes.StorageUnavailable,
+                    FileFailureKind.StorageUnavailable, cancellationToken);
+            }
+        }
+
         var now = clock.UtcNow;
         await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         try

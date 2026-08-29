@@ -7,7 +7,7 @@ The MVP backup set consists of:
 - PostgreSQL database dump;
 - the existing exFAT HDD application root at
   `/mnt/KuraStorage-hdd/KuraStorage`, including `.storage-identity`, `users`,
-  trash, and upload operation state;
+  trash, upload operation state, `derivatives`, and `derivative-temp`;
 - protected deployment configuration, TLS server material, and JWT signing key;
 - the matching versioned server artifact and release checksum.
 
@@ -32,6 +32,12 @@ POSIX ownership or modes; access control is restored by the configured mount
 UID, GID, and masks. Restart only after remounting by the configured UUID and
 running `scripts/maintenance/verify-storage.sh`. Never copy live upload
 temporary files as if they were a consistent database/filesystem snapshot.
+The derivative roots are cache data, but they must be copied with the matching
+database when a restorable point-in-time image is required. Never restore a
+`derivatives` tree from a different database snapshot. After restore, stale
+`RUNNING` jobs may be recovered only when their heartbeat is older than the
+configured threshold and no active generation lease exists; do not update job
+statuses manually.
 
 ## Manual restore
 

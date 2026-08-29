@@ -3,6 +3,7 @@ using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Indexing;
 using KuraStorage.Domain.Maintenance;
+using KuraStorage.Domain.Media;
 using KuraStorage.Domain.Organization;
 using KuraStorage.Domain.Sharing;
 using KuraStorage.Domain.Transfers;
@@ -45,6 +46,12 @@ public sealed class KuraStorageDbContext(DbContextOptions<KuraStorageDbContext> 
     public DbSet<IndexScanRun> IndexScanRuns => Set<IndexScanRun>();
 
     public DbSet<IndexScanItem> IndexScanItems => Set<IndexScanItem>();
+
+    public DbSet<FileDerivative> FileDerivatives => Set<FileDerivative>();
+
+    public DbSet<MediaJob> MediaJobs => Set<MediaJob>();
+
+    public DbSet<DerivativeLease> DerivativeLeases => Set<DerivativeLease>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

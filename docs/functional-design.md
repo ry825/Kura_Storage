@@ -526,6 +526,10 @@ interface MediaJob {
 
 `MediaJob`はすべての派生種別の生成履歴を表す。同じ派生データに対する`QUEUED`または`RUNNING`の有効Jobは最大1件とし、Retry上限は3回、Backoffは30秒・2分・8分、stale判定はHeartbeat途絶から2分、terminal Job保持は7日とする。`CANCELLED`はSource Version変更、Purge等により生成が不要になった場合だけ使用し、Client切断では使用しない。
 
+`DerivativeLease`は派生データごとに`GENERATION`または`DELIVERY`、Owner token、期限を保持する。同じOwner tokenのLeaseは更新可能とし、別Ownerの更新・解放を拒否する。`FileDerivative.leaseUntil`はactive Lease最大期限の保守的な投影であり、削除可否の正は`derivative_leases`行とする。
+
+初回基盤実装では`file_derivatives`、`media_jobs`、`derivative_leases`をPostgreSQLへ追加し、Queue取得・Heartbeat・進捗・完了・失敗・明示Retry・stale回収をApplication境界から提供する。変換エンジン、Hosted Worker、HTTP API、配信Leaseの実運用は後続実装とし、この段階で生成処理は開始しない。
+
 ### 5.5 転送と操作ジャーナル
 
 ```typescript

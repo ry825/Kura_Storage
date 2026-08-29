@@ -662,6 +662,8 @@ LIMIT 1;
 
 `LISTEN/NOTIFY`は待機時間短縮に使用できるが、通知自体を信頼できるキューとして扱わない。ジョブの正はテーブルとする。
 
+初回基盤は通知を使用せず500ms Pollingを正とする。取得時は安定順の`FOR UPDATE SKIP LOCKED`とTransaction advisory lockを併用し、全Media Jobと動画Jobの初期同時実行数をそれぞれ1に制限する。更新結果が不明な場合もJob ID、状態、Worker tokenを条件とする更新を再照会できる形に保つ。stale回収はHeartbeatが120秒を超え、activeな`GENERATION` LeaseがないJobだけを対象とする。
+
 ---
 
 ## 9. HDDストレージアーキテクチャ
@@ -689,12 +691,16 @@ Mountはデバイス名ではなくUUIDでsystemd Mount Unitへ定義する。AP
 │   └── <user-id>/
 │       ├── files/
 │       └── trash/
-└── upload-temp/
-    └── <user-id>/
+├── upload-temp/
+│   └── <user-id>/
+├── derivatives/
+│   └── <owner-id>/<source-id>/<source-version>/<profile-version>/<type>.<ext>
+└── derivative-temp/
+    └── <job-id>/<attempt>.part
 ```
 
 `.storage-identity`にはランダムな`storageId`とフォーマットバージョンを保存する。起動時に設定値と一致しない場合はストレージを`UNAVAILABLE`とする。
-共有、外部取り込み、サムネイル、派生キャッシュ、過去Versionの物理領域は、MVP後の各機能を追加する変更で設計・作成する。
+`derivatives`と`derivative-temp`はMedia基盤が管理する限定領域であり、Server生成のID、Version、Profile、種別からだけ相対Pathを組み立てる。一時出力をFlushして検証した後、同一Filesystem内の非上書きatomic renameで正式配置する。Storage Guard、Mount identity、read-only、容量確認に失敗した場合はOS RootへFallbackしない。共有、外部取り込み、過去Versionの追加物理領域は、MVP後の各機能を追加する変更で設計・作成する。
 
 ### 9.3 ストレージ利用可否
 

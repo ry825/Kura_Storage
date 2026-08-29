@@ -85,6 +85,45 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(Configuration.IndexingOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        services.AddOptions<MediaOptions>()
+            .Bind(configuration.GetSection(MediaOptions.SectionName))
+            .Validate(
+                options => IsSafeMediaRoot(options.DerivativeRoot) && IsSafeMediaRoot(options.TemporaryRoot) &&
+                    !string.Equals(options.DerivativeRoot, options.TemporaryRoot, StringComparison.Ordinal),
+                "Media roots must be distinct safe top-level relative segments.")
+            .Validate(
+                options => options.ImageWaitMilliseconds is >= 1 and <= 60_000 &&
+                    options.JobPollMilliseconds is >= 1 && options.JobPollMilliseconds <= options.ImageWaitMilliseconds,
+                "Media wait and polling settings are invalid.")
+            .Validate(
+                options => options.ThumbnailProfileVersion > 0 && options.ImageProfileVersion > 0 && options.VideoProfileVersion > 0 &&
+                    options.ThumbnailMaxDimension is >= 16 and <= 8192 && options.ThumbnailWebpQuality is >= 1 and <= 100,
+                "Media profile settings are invalid.")
+            .Validate(
+                options => options.JobHeartbeatSeconds > 0 && options.StaleJobSeconds > options.JobHeartbeatSeconds &&
+                    options.MaximumAttempts is >= 1 and <= 10,
+                "Media job recovery settings are invalid.")
+            .Validate(
+                options => options.GenerationLeaseSeconds > options.JobHeartbeatSeconds &&
+                    options.DeliveryLeaseSeconds > options.DeliveryLeaseRenewalSeconds &&
+                    options.DeliveryLeaseRenewalSeconds > 0,
+                "Media lease settings are invalid.")
+            .Validate(
+                options => options.CacheTtlHours > 0 && options.CacheHighWatermarkBytes > 0 &&
+                    options.CacheLowWatermarkBytes > 0 && options.CacheLowWatermarkBytes < options.CacheHighWatermarkBytes &&
+                    options.CleanupIntervalMinutes > 0 && options.CleanupBatchSize is >= 1 and <= 500 &&
+                    options.TerminalJobRetentionDays > 0,
+                "Media cleanup settings are invalid.")
+            .Validate(
+                options => options.MaximumConcurrentMediaJobs == 1 && options.MaximumConcurrentVideoJobs == 1,
+                "Initial media and video concurrency must both be one.")
+            .Validate(
+                options => Path.IsPathFullyQualified(options.VipsPath) &&
+                    Path.IsPathFullyQualified(options.FfmpegPath) &&
+                    Path.IsPathFullyQualified(options.FfprobePath) &&
+                    Path.IsPathFullyQualified(options.PdftoppmPath),
+                "Media tool paths must be absolute.")
+            .ValidateOnStart();
 
         services.AddDbContext<KuraStorageDbContext>(
             (serviceProvider, options) =>
@@ -98,11 +137,17 @@ public static class DependencyInjection
         services.AddScoped<IRecentFileRepository, PostgreSqlRecentFileRepository>();
         services.AddScoped<IOrganizationRepository, PostgreSqlOrganizationRepository>();
         services.AddScoped<IShareRepository, ShareRepository>();
+        services.AddScoped<IMediaJobQueue, PostgreSqlMediaJobQueue>();
         services.AddScoped<SharingDeletionParticipant>();
+        services.AddScoped<MediaDeletionParticipant>();
         services.AddScoped<IPermanentDeleteParticipant>(
             serviceProvider => serviceProvider.GetRequiredService<SharingDeletionParticipant>());
+        services.AddScoped<IPermanentDeleteParticipant>(
+            serviceProvider => serviceProvider.GetRequiredService<MediaDeletionParticipant>());
         services.AddScoped<IFileIndexDeletionParticipant>(
             serviceProvider => serviceProvider.GetRequiredService<SharingDeletionParticipant>());
+        services.AddScoped<IFileIndexDeletionParticipant>(
+            serviceProvider => serviceProvider.GetRequiredService<MediaDeletionParticipant>());
         services.AddScoped<IIndexCatalogRepository, IndexCatalogRepository>();
         services.AddScoped<IIndexScanService, IndexScanService>();
         services.AddScoped<IIndexEventService, IndexEventService>();
@@ -141,6 +186,7 @@ public static class DependencyInjection
         services.AddSingleton<IManagedFileSystemSnapshotReader, ManagedFileSystemSnapshotReader>();
         services.AddSingleton<IIndexChangeWatcher, LinuxInotifyWatcher>();
         services.AddSingleton<IFileStore, FileStore>();
+        services.AddSingleton<IDerivativeStore, DerivativeStore>();
         services.AddSingleton<IUploadSessionStore>(
             serviceProvider => (IUploadSessionStore)serviceProvider.GetRequiredService<IFileStore>());
         services.AddSingleton(
@@ -184,5 +230,16 @@ public static class DependencyInjection
         {
             return false;
         }
+    }
+
+    private static bool IsSafeMediaRoot(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || Path.IsPathFullyQualified(value) ||
+            value is "." or ".." || value.Contains('/') || value.Contains('\\'))
+        {
+            return false;
+        }
+
+        return value is not ("users" or "upload-temp" or "upload-sessions");
     }
 }

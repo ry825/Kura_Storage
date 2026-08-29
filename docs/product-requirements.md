@@ -1109,6 +1109,8 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 
 **優先度**: P0（必須）
 
+基盤実装では、上記の生成・配信機能に先立って`FileDerivative`、`MediaJob`、`DerivativeLease`、PostgreSQL永続Queue、派生物専用Storage境界を導入する。基盤だけでは変換Binaryを起動せず、派生データAPIも公開しない。元ファイルのVersion変更、Trash、`MISSING`確定、完全削除では、同一DB Transaction内の状態更新と限定された派生物削除Participantによって、古い派生物を配信可能状態へ残さない。
+
 ### 7.11.2 保持期限と容量上限
 
 **ユーザーストーリー**  

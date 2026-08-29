@@ -78,83 +78,83 @@
 
 ### 1.1 開始条件と既存実装確認
 
-- [ ] PR1の開始条件を満たす。
-  - [ ] フェーズ0の全項目が`[x]`で、`requirements.md`と`design.md`が承認済みである。
-  - [ ] 先行Pull Requestが`main`へMerge済みで、必須CIが成功している。
-  - [ ] `git status`と既存差分を確認し、Userの変更を混在させない。
-  - [ ] `FileEntry.fileVersion`、Migration、Upload Session、Trash Purge、MISSING削除Participant、既存Workerの実装Patternを確認する。
-  - [ ] 最新`main`からPR1用Branchを作成する。
+- [x] PR1の開始条件を満たす。
+  - [x] フェーズ0の全項目が`[x]`で、`requirements.md`と`design.md`が承認済みである。
+  - [x] 先行Pull Requestが`main`へMerge済みで、必須CIが成功している。
+  - [x] `git status`と既存差分を確認し、Userの変更を混在させない。
+  - [x] `FileEntry.fileVersion`、Migration、Upload Session、Trash Purge、MISSING削除Participant、既存Workerの実装Patternを確認する。
+  - [x] 最新`main`からPR1用Branchを作成する。
 
 ### 1.2 Domain modelと状態遷移
 
-- [ ] 派生データDomain modelをTest firstで実装する。
-  - [ ] `DerivativeType`へ写真・動画共通Thumbnail、PDF Thumbnail、写真Low／Medium、動画Low／Mediumを表現する。
-  - [ ] `FileDerivative`へSource File ID、Source Version、Type、Profile Version、相対Path、Size、Status、Access／Expiry／Lease、Error、UTC時刻を実装する。
-  - [ ] `(sourceFileId, sourceVersion, derivativeType, profileVersion)`を論理一意Keyとし、Rename／MoveをKeyへ含めない。
-  - [ ] `PENDING`、`RUNNING`、`READY`、`FAILED`、`BLOCKED_SOURCE_MISSING`、`DELETING`の許可遷移と不正遷移拒否をTestする。
-  - [ ] `READY`は検証済みSizeと正式相対Pathを必須とし、ThumbnailへExpiryを設定できない規則を実装する。
-- [ ] 永続Job Domain modelをTest firstで実装する。
-  - [ ] `MediaJob`へJob種別、`QUEUED`、`RUNNING`、`COMPLETED`、`FAILED`、`CANCELLED`、進捗、Queue順、試行、Heartbeat、Worker tokenを実装する。
-  - [ ] 同一Derivativeの有効Job重複、完了済みJobの再実行、不正な進捗・時刻遷移を拒否する。
-  - [ ] Retry上限3回、30秒／2分／8分Backoff、2分stale判定、terminal Job 7日保持をTestする。
-  - [ ] Server時刻とIDをServer側で生成し、Client指定User、Owner、Path、Profileを信頼しない。
-- [ ] 所有者別Lease Domain modelをTest firstで実装する。
-  - [ ] `DerivativeLease`へ`GENERATION`／`DELIVERY`、Owner token、Expiry、UTC時刻を実装する。
-  - [ ] 同一所有者Leaseの取得・更新・解放、複数配信Lease、期限切れ回収、不正所有者更新拒否をTestする。
-  - [ ] `FileDerivative.leaseUntil`をactive Lease最大期限の保守的投影として扱い、削除可否はLease行の存在で判定する。
+- [x] 派生データDomain modelをTest firstで実装する。
+  - [x] `DerivativeType`へ写真・動画共通Thumbnail、PDF Thumbnail、写真Low／Medium、動画Low／Mediumを表現する。
+  - [x] `FileDerivative`へSource File ID、Source Version、Type、Profile Version、相対Path、Size、Status、Access／Expiry／Lease、Error、UTC時刻を実装する。
+  - [x] `(sourceFileId, sourceVersion, derivativeType, profileVersion)`を論理一意Keyとし、Rename／MoveをKeyへ含めない。
+  - [x] `PENDING`、`RUNNING`、`READY`、`FAILED`、`BLOCKED_SOURCE_MISSING`、`DELETING`の許可遷移と不正遷移拒否をTestする。
+  - [x] `READY`は検証済みSizeと正式相対Pathを必須とし、ThumbnailへExpiryを設定できない規則を実装する。
+- [x] 永続Job Domain modelをTest firstで実装する。
+  - [x] `MediaJob`へJob種別、`QUEUED`、`RUNNING`、`COMPLETED`、`FAILED`、`CANCELLED`、進捗、Queue順、試行、Heartbeat、Worker tokenを実装する。
+  - [x] 同一Derivativeの有効Job重複、完了済みJobの再実行、不正な進捗・時刻遷移を拒否する。
+  - [x] Retry上限3回、30秒／2分／8分Backoff、2分stale判定、terminal Job 7日保持をTestする。
+  - [x] Server時刻とIDをServer側で生成し、Client指定User、Owner、Path、Profileを信頼しない。
+- [x] 所有者別Lease Domain modelをTest firstで実装する。
+  - [x] `DerivativeLease`へ`GENERATION`／`DELIVERY`、Owner token、Expiry、UTC時刻を実装する。
+  - [x] 同一所有者Leaseの取得・更新・解放、複数配信Lease、期限切れ回収、不正所有者更新拒否をTestする。
+  - [x] `FileDerivative.leaseUntil`をactive Lease最大期限の保守的投影として扱い、削除可否はLease行の存在で判定する。
 
 ### 1.3 PostgreSQL永続化と排他Queue
 
-- [ ] EF Core mappingとMigrationを実装する。
-  - [ ] `file_derivatives`へFK、状態Check、非負Size、論理Key unique、清掃・Lease・Source検索Indexを追加する。
-  - [ ] `media_jobs`へDerivative／要求Actor FK、状態・時刻・進捗・Retry・Worker token、Queue Index、有効Job partial uniqueを追加する。
-  - [ ] `derivative_leases`へDerivative FK、種別、Owner token、Expiry、一意制約、Cleanup Indexを追加する。
-  - [ ] `KuraStorageDbContext`へ3つの`DbSet`とmappingを追加し、既存Naming規約とUTC規約に従う。
-  - [ ] Migration Up、Down、再Up、model snapshot一致、既存データ非破壊を統合Testする。
-- [ ] PostgreSQL Queue repositoryをTest firstで実装する。
-  - [ ] `QUEUED`を`created_at`、IDの安定順で`FOR UPDATE SKIP LOCKED`取得し、同一Transactionで`RUNNING`へ変更する。
-  - [ ] 複数Worker競合時も同じJobを二重取得せず、Queue順と動画同時実行数1を守る。
-  - [ ] `LISTEN/NOTIFY`を使用する場合も通知消失後のPollingで必ず処理を再開できる。
-  - [ ] Heartbeat更新、進捗更新、完了、失敗、Retry、stale `RUNNING`回収を条件付き更新で実装する。
-  - [ ] API／Worker再起動、DB接続断、更新結果不明、並行Retryで状態を壊さないTestを追加する。
+- [x] EF Core mappingとMigrationを実装する。
+  - [x] `file_derivatives`へFK、状態Check、非負Size、論理Key unique、清掃・Lease・Source検索Indexを追加する。
+  - [x] `media_jobs`へDerivative／要求Actor FK、状態・時刻・進捗・Retry・Worker token、Queue Index、有効Job partial uniqueを追加する。
+  - [x] `derivative_leases`へDerivative FK、種別、Owner token、Expiry、一意制約、Cleanup Indexを追加する。
+  - [x] `KuraStorageDbContext`へ3つの`DbSet`とmappingを追加し、既存Naming規約とUTC規約に従う。
+  - [x] Migration Up、Down、再Up、model snapshot一致、既存データ非破壊を統合Testする。
+- [x] PostgreSQL Queue repositoryをTest firstで実装する。
+  - [x] `QUEUED`を`created_at`、IDの安定順で`FOR UPDATE SKIP LOCKED`取得し、同一Transactionで`RUNNING`へ変更する。
+  - [x] 複数Worker競合時も同じJobを二重取得せず、Queue順と動画同時実行数1を守る。
+  - [x] `LISTEN/NOTIFY`を使用する場合も通知消失後のPollingで必ず処理を再開できる。（PR1では`LISTEN/NOTIFY`を使用せず、PostgreSQL pollingを処理の正とする）
+  - [x] Heartbeat更新、進捗更新、完了、失敗、Retry、stale `RUNNING`回収を条件付き更新で実装する。
+  - [x] API／Worker再起動、DB接続断、更新結果不明、並行Retryで状態を壊さないTestを追加する。
 
 ### 1.4 派生Storageと設定
 
-- [ ] 派生データStorage境界をTest firstで実装する。
-  - [ ] `derivatives/<owner>/<source>/<version>/<profile>/<type>.<ext>`と`derivative-temp/<job>/<attempt>.part`だけをServer側で生成する。
-  - [ ] Path traversal、absolute path、Symlink、特殊File、Root外renameを拒否する。
-  - [ ] 一時File作成、Streaming read／write、Flush、出力検証、同一Filesystem内atomic rename、限定削除を実装する。
-  - [ ] HDD未Mount、Storage ID不一致、read-only、容量不足時にOS Rootへ書き込まず、元ファイルを変更しない。
-  - [ ] 同一正式Path競合、HDD成功後DB失敗、DB成功前Process停止の回復規則を統合Testする。
-- [ ] 型付きOptionsと起動時Validationを実装する。
-  - [ ] 派生Root、一時Root、2秒待機、500ms Polling、Profile version、10秒Heartbeat、3回Retry、2分stale／Lease、Cleanup周期、TTL、Watermark、7日Job保持を設定化する。
-  - [ ] 既定24時間、10GiB、6GiB、全Media直列・動画並列数1を表し、負値、Low≧High、危険なPath、不正な時間関係を起動時に拒否する。
-  - [ ] API、Worker、Production template、environment exampleへ同じ非秘密設定を追加する。
+- [x] 派生データStorage境界をTest firstで実装する。
+  - [x] `derivatives/<owner>/<source>/<version>/<profile>/<type>.<ext>`と`derivative-temp/<job>/<attempt>.part`だけをServer側で生成する。
+  - [x] Path traversal、absolute path、Symlink、特殊File、Root外renameを拒否する。
+  - [x] 一時File作成、Streaming read／write、Flush、出力検証、同一Filesystem内atomic rename、限定削除を実装する。
+  - [x] HDD未Mount、Storage ID不一致、read-only、容量不足時にOS Rootへ書き込まず、元ファイルを変更しない。
+  - [x] 同一正式Path競合、HDD成功後DB失敗、DB成功前Process停止の回復規則を統合Testする。
+- [x] 型付きOptionsと起動時Validationを実装する。
+  - [x] 派生Root、一時Root、2秒待機、500ms Polling、Profile version、10秒Heartbeat、3回Retry、2分stale／Lease、Cleanup周期、TTL、Watermark、7日Job保持を設定化する。
+  - [x] 既定24時間、10GiB、6GiB、全Media直列・動画並列数1を表し、負値、Low≧High、危険なPath、不正な時間関係を起動時に拒否する。
+  - [x] API、Worker、Production template、environment exampleへ同じ非秘密設定を追加する。
 
 ### 1.5 元ファイルLifecycle連携
 
-- [ ] 既存File操作との連動境界をTest firstで実装する。
-  - [ ] Rename／MoveではSource Versionを変えず、既存派生データとThumbnailを再利用する。
-  - [ ] 内容更新でSource Versionが増え、旧Versionを配信せず、新Versionを必要時生成する。
-  - [ ] Trash移動で低・中画質を削除対象にし、Thumbnailは保持する。
-  - [ ] Restoreで保持中Thumbnailを再利用し、低・中画質を必要時再生成する。
-  - [ ] `MISSING`確定で派生データを`BLOCKED_SOURCE_MISSING`へ変更し、正式ファイルの代替として配信しない。
-  - [ ] `MISSING`一覧削除とPermanent DeleteへParticipantを登録し、全派生物理Fileと管理行を対象Treeだけから削除する。
-  - [ ] Lifecycle操作と生成／配信Leaseの競合をadvisory lockと再読込で安全に直列化する。
+- [x] 既存File操作との連動境界をTest firstで実装する。
+  - [x] Rename／MoveではSource Versionを変えず、既存派生データとThumbnailを再利用する。
+  - [x] 内容更新でSource Versionが増え、旧Versionを配信せず、新Versionを必要時生成する。
+  - [x] Trash移動で低・中画質を削除対象にし、Thumbnailは保持する。
+  - [x] Restoreで保持中Thumbnailを再利用し、低・中画質を必要時再生成する。
+  - [x] `MISSING`確定で派生データを`BLOCKED_SOURCE_MISSING`へ変更し、正式ファイルの代替として配信しない。
+  - [x] `MISSING`一覧削除とPermanent DeleteへParticipantを登録し、全派生物理Fileと管理行を対象Treeだけから削除する。
+  - [x] Lifecycle操作と生成／配信Leaseの競合をadvisory lockと再読込で安全に直列化する。
 
 ### 1.6 PR1検証・文書・完了
 
-- [ ] PR1の自動検証を完了する。
-  - [ ] Domain／Applicationの状態遷移・Validation境界Line Coverage 95%以上、全体80%以上を満たす。
-  - [ ] Queue競合、Migration、Storage境界、Lifecycle連動の統合Testが成功する。
-  - [ ] `./scripts/ci/verify-server.sh`、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`git diff --check`が成功する。
-- [ ] PR1に必要な正式文書を実装と同じ変更で更新する。
-  - [ ] Domain、Schema、Queue、Storage、設定、Lifecycleの確定内容を5つの正式文書と運用文書へ反映する。
-  - [ ] `docs/repository-structure.md`へ実際に追加した配置だけを反映する。
-  - [ ] Migration適用、Backup、Rollback、stale Job回収、派生Root保護を運用手順へ記載する。
+- [x] PR1の自動検証を完了する。
+  - [x] Domain／Applicationの状態遷移・Validation境界Line Coverage 95%以上、全体80%以上を満たす。（Media Domain 95.89%、Server全体94.77%）
+  - [x] Queue競合、Migration、Storage境界、Lifecycle連動の統合Testが成功する。
+  - [x] `./scripts/ci/verify-server.sh`、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`git diff --check`が成功する。
+- [x] PR1に必要な正式文書を実装と同じ変更で更新する。
+  - [x] Domain、Schema、Queue、Storage、設定、Lifecycleの確定内容を5つの正式文書と運用文書へ反映する。
+  - [x] `docs/repository-structure.md`へ実際に追加した配置だけを反映する。
+  - [x] Migration適用、Backup、Rollback、stale Job回収、派生Root保護を運用手順へ記載する。
 - [ ] PR1を完了する。
   - [ ] フェーズ1の全項目が`[x]`であることを確認する。
-  - [ ] 差分に変換Engine本体、Android UI、不要Package、実環境値、Credentialがないことをセルフレビューする。
+  - [x] 差分に変換Engine本体、Android UI、不要Package、実環境値、Credentialがないことをセルフレビューする。
   - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
   - [ ] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
   - [ ] Pull Request URLと検証結果をUserへ報告して停止する。

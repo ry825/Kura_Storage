@@ -86,6 +86,39 @@ public sealed class ConfigurationValidationTests
             () => provider.GetRequiredService<IOptions<IndexingOptions>>().Value);
     }
 
+    [Theory]
+    [InlineData("Media:DerivativeRoot", "/tmp/derivatives")]
+    [InlineData("Media:TemporaryRoot", "../temp")]
+    [InlineData("Media:ImageWaitMilliseconds", "0")]
+    [InlineData("Media:JobPollMilliseconds", "2001")]
+    [InlineData("Media:ThumbnailProfileVersion", "0")]
+    [InlineData("Media:JobHeartbeatSeconds", "120")]
+    [InlineData("Media:DeliveryLeaseRenewalSeconds", "120")]
+    [InlineData("Media:CacheHighWatermarkBytes", "6442450944")]
+    [InlineData("Media:MaximumConcurrentMediaJobs", "2")]
+    [InlineData("Media:MaximumConcurrentVideoJobs", "2")]
+    public void MediaOptions_InvalidValue_IsRejected(string key, string value)
+    {
+        using var provider = BuildProvider(new Dictionary<string, string?> { [key] = value });
+
+        Assert.Throws<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<MediaOptions>>().Value);
+    }
+
+    [Fact]
+    public void MediaOptions_OverlappingRoots_AreRejected()
+    {
+        using var provider = BuildProvider(
+            new Dictionary<string, string?>
+            {
+                ["Media:DerivativeRoot"] = "media",
+                ["Media:TemporaryRoot"] = "media",
+            });
+
+        Assert.Throws<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<MediaOptions>>().Value);
+    }
+
     private static ServiceProvider BuildProvider(IReadOnlyDictionary<string, string?> values)
     {
         var configuration = new ConfigurationBuilder()
