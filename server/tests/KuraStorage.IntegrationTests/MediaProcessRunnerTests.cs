@@ -104,4 +104,52 @@ public sealed class MediaProcessRunnerTests
                 new Dictionary<string, string> { ["PATH"] = "/tmp" }),
             CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Run_StreamsBoundedStandardOutputLinesWithoutShellParsing()
+    {
+        var runner = new MediaProcessRunner();
+        var lines = new List<string>();
+
+        var result = await runner.RunAsync(
+            new MediaProcessRequest(
+                "/usr/bin/printf",
+                ["%s", "out_time_us=5000000\r\nprogress=continue\n"],
+                Path.GetTempPath(),
+                TimeSpan.FromSeconds(5),
+                StandardOutputLineHandler: (line, _) =>
+                {
+                    lines.Add(line);
+                    return ValueTask.CompletedTask;
+                }),
+            CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(["out_time_us=5000000", "progress=continue"], lines);
+        Assert.Contains("progress=continue", result.StandardOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Run_LongStreamingProgressRemainsMemoryBoundedWithoutRejectingCompletedProcess()
+    {
+        var runner = new MediaProcessRunner();
+        var lineCount = 0;
+
+        var result = await runner.RunAsync(
+            new MediaProcessRequest(
+                "/usr/bin/seq",
+                ["1", "300000"],
+                Path.GetTempPath(),
+                TimeSpan.FromSeconds(10),
+                StandardOutputLineHandler: (_, _) =>
+                {
+                    lineCount++;
+                    return ValueTask.CompletedTask;
+                }),
+            CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(300000, lineCount);
+        Assert.InRange(result.StandardOutput.Length, 1, MediaProcessRunner.MaximumDiagnosticBytes);
+    }
 }

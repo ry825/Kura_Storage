@@ -208,6 +208,8 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
     private readonly string directory = Path.Combine(
         Path.GetTempPath(),
         $"kurastorage-postgres-test-{Guid.NewGuid():N}");
+    private string keyPath = string.Empty;
+    private readonly List<WebApplicationFactory<Program>> apiFactories = [];
 
     public WebApplicationFactory<Program> Factory { get; private set; } = null!;
 
@@ -225,7 +227,7 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
     {
         await postgres.StartAsync();
         Directory.CreateDirectory(directory);
-        var keyPath = Path.Combine(directory, "jwt-signing-key.pem");
+        keyPath = Path.Combine(directory, "jwt-signing-key.pem");
         using (var key = ECDsa.Create(ECCurve.NamedCurves.nistP256))
         {
             SigningKeyPem = key.ExportECPrivateKeyPem();
@@ -233,14 +235,26 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
         }
 
         Factory = new ConfiguredApiFactory(postgres.GetConnectionString(), directory, keyPath, logger);
+        apiFactories.Add(Factory);
         _ = Factory.CreateClient();
         await using var scope = Factory.Services.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>().Database.MigrateAsync();
     }
 
+    public async Task RestartApiAsync()
+    {
+        Factory = new ConfiguredApiFactory(postgres.GetConnectionString(), directory, keyPath, logger);
+        apiFactories.Add(Factory);
+        _ = Factory.CreateClient();
+        await Task.CompletedTask;
+    }
+
     public async Task DisposeAsync()
     {
-        await Factory.DisposeAsync();
+        foreach (var factory in apiFactories.AsEnumerable().Reverse())
+        {
+            await factory.DisposeAsync();
+        }
         await postgres.DisposeAsync();
         if (Directory.Exists(directory))
         {
@@ -296,7 +310,9 @@ public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime
         };
         request.Headers.Add("X-KuraStorage-Route", "LOCAL_DIRECT");
         using var response = await client.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+        Assert.True(
+            response.IsSuccessStatusCode,
+            $"Device registration failed with {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
         var accessToken = json.RootElement.GetProperty("accessToken").GetString()!;
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Diagnostics;
 using KuraStorage.Application.Media;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Media;
@@ -169,7 +170,50 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
     }
 
     [Fact]
-    public async Task PendingThumbnail_ClientCancellationDoesNotCancelPersistentJob()
+    public async Task VideoVariants_ReturnImmediatelyAndReadyMp4SupportsAuthorizedRanges()
+    {
+        var ownerAuth = await fixture.CreateAuthenticatedClientAsync(
+            $"media-video-{Guid.NewGuid():N}", "media-video-password");
+        var strangerAuth = await fixture.CreateAuthenticatedClientAsync(
+            $"media-video-stranger-{Guid.NewGuid():N}", "media-video-stranger-password");
+        using var owner = ownerAuth.Client;
+        using var stranger = strangerAuth.Client;
+        var pendingFileId = await SeedSourceAsync(owner, "pending-video.mkv", "video/x-matroska");
+        var elapsed = Stopwatch.StartNew();
+
+        using var accepted = await owner.GetAsync(
+            $"/api/v1/files/{pendingFileId}/content?variant=video-medium");
+
+        elapsed.Stop();
+        Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+        Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(1));
+        using var acceptedJson = await JsonDocument.ParseAsync(await accepted.Content.ReadAsStreamAsync());
+        var jobId = acceptedJson.RootElement.GetProperty("jobId").GetGuid();
+        using var status = await owner.GetAsync($"/api/v1/media-jobs/{jobId}");
+        var view = await status.Content.ReadFromJsonAsync<MediaJobView>();
+        Assert.Equal("GENERATING", view!.Status);
+        Assert.True(view.QueuePosition >= 1);
+
+        var bytes = "0123456789"u8.ToArray();
+        var (readyFileId, _) = await SeedReadyAsync(
+            owner, "ready-video.mov", bytes, DerivativeType.VideoLow, "video/quicktime");
+        using var rangeRequest = new HttpRequestMessage(
+            HttpMethod.Get, $"/api/v1/files/{readyFileId}/content?variant=video-low");
+        rangeRequest.Headers.Range = new RangeHeaderValue(3, 6);
+        using var range = await owner.SendAsync(rangeRequest);
+        Assert.Equal(HttpStatusCode.PartialContent, range.StatusCode);
+        Assert.Equal("video/mp4", range.Content.Headers.ContentType!.MediaType);
+        Assert.Equal("bytes 3-6/10", range.Content.Headers.ContentRange!.ToString());
+        Assert.Equal("3456", await range.Content.ReadAsStringAsync());
+        Assert.Contains("ready-video_low.mp4", range.Content.Headers.ContentDisposition!.ToString());
+
+        using var hidden = await stranger.GetAsync(
+            $"/api/v1/files/{readyFileId}/content?variant=video-low");
+        Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+    }
+
+    [Fact]
+    public async Task PendingThumbnail_ClientCancellationAndApiRestartDoNotCancelPersistentJob()
     {
         var authenticated = await fixture.CreateAuthenticatedClientAsync(
             $"media-cancel-{Guid.NewGuid():N}", "media-cancel-password");
@@ -200,10 +244,21 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);
 
-        await using var verifyScope = fixture.Factory.Services.CreateAsyncScope();
-        var verify = verifyScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
-        var persistent = await verify.MediaJobs.SingleAsync(job => job.Id == jobId);
-        Assert.Equal(MediaJobStatus.Queued, persistent.Status);
+        await using (var verifyScope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var verify = verifyScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var persistent = await verify.MediaJobs.SingleAsync(job => job.Id == jobId);
+            Assert.Equal(MediaJobStatus.Queued, persistent.Status);
+        }
+
+        await fixture.RestartApiAsync();
+        using var restarted = fixture.Factory.CreateClient();
+        restarted.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", authenticated.AccessToken);
+        using var status = await restarted.GetAsync($"/api/v1/media-jobs/{jobId}");
+        status.EnsureSuccessStatusCode();
+        var view = await status.Content.ReadFromJsonAsync<MediaJobView>();
+        Assert.Equal("GENERATING", view!.Status);
     }
 
     [Fact]
@@ -331,17 +386,31 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
     private async Task<(Guid FileId, Guid DerivativeId)> SeedReadyAsync(
         HttpClient client,
         string name,
-        byte[] derivativeBytes)
+        byte[] derivativeBytes,
+        DerivativeType derivativeType = DerivativeType.Thumbnail,
+        string sourceMimeType = "image/jpeg")
     {
-        var fileId = await SeedSourceAsync(client, name);
+        var fileId = await SeedSourceAsync(client, name, sourceMimeType);
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
         var file = await database.FileEntries.SingleAsync(item => item.Id == fileId);
         var derivative = new FileDerivative(
-            Guid.NewGuid(), file.Id, file.FileVersion, DerivativeType.Thumbnail, 1, DateTimeOffset.UtcNow);
+            Guid.NewGuid(), file.Id, file.FileVersion, derivativeType, 1, DateTimeOffset.UtcNow);
         derivative.Start(DateTimeOffset.UtcNow);
-        var relative = $"derivatives/{file.OwnerUserId:N}/{file.Id:N}/1/1/thumbnail.webp";
-        derivative.MarkReady(relative, derivativeBytes.Length, DateTimeOffset.UtcNow, null);
+        var segment = derivativeType switch
+        {
+            DerivativeType.VideoLow => "video-low.mp4",
+            DerivativeType.VideoMedium => "video-medium.mp4",
+            _ => "thumbnail.webp",
+        };
+        var relative = $"derivatives/{file.OwnerUserId:N}/{file.Id:N}/1/1/{segment}";
+        derivative.MarkReady(
+            relative,
+            derivativeBytes.Length,
+            DateTimeOffset.UtcNow,
+            derivativeType is DerivativeType.VideoLow or DerivativeType.VideoMedium
+                ? DateTimeOffset.UtcNow.AddHours(24)
+                : null);
         database.FileDerivatives.Add(derivative);
         await database.SaveChangesAsync();
 
@@ -351,7 +420,10 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
         return (fileId, derivative.Id);
     }
 
-    private async Task<Guid> SeedSourceAsync(HttpClient client, string name)
+    private async Task<Guid> SeedSourceAsync(
+        HttpClient client,
+        string name,
+        string mimeType = "image/jpeg")
     {
         using (var provision = await client.GetAsync("/api/v1/files"))
         {
@@ -369,7 +441,7 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
         var fileName = FileName.Create(name);
         var file = FileEntry.CreateFile(
             Guid.NewGuid(), userId, root.Id, fileName, RelativeStoragePath.Create(root.RelativePath).Append(fileName),
-            "image/jpeg", 4, DateTimeOffset.UtcNow);
+            mimeType, 4, DateTimeOffset.UtcNow);
         database.FileEntries.Add(file);
         await database.SaveChangesAsync();
         return file.Id;

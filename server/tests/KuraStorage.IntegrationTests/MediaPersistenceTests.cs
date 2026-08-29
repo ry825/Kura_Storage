@@ -88,7 +88,15 @@ public sealed class MediaPersistenceTests
         Assert.True(await firstQueue.TryRecordHeartbeatAsync(
             ownedByFirst.Id, ownedByFirst.WorkerToken!.Value, Now.AddSeconds(10), 20, null, null, CancellationToken.None));
 
+        var snapshot = await firstQueue.GetOperationalSnapshotAsync(Now.AddSeconds(10), CancellationToken.None);
+        Assert.Equal(1, snapshot.QueuedCount);
+        Assert.Equal(1, snapshot.RunningCount);
+        Assert.InRange(snapshot.OldestWaitSeconds, 9, 10);
+
         Assert.Equal(0, await firstQueue.RecoverStaleAsync(Now.AddMinutes(2), 100, CancellationToken.None));
+        var staleCandidates = await firstQueue.FindStaleTemporaryCandidatesAsync(
+            Now.AddMinutes(2).AddSeconds(10), 100, CancellationToken.None);
+        Assert.Equal(new MediaTemporaryCandidate(ownedByFirst.Id, 1), Assert.Single(staleCandidates));
         Assert.Equal(1, await firstQueue.RecoverStaleAsync(Now.AddMinutes(2).AddSeconds(10), 100, CancellationToken.None));
 
         await using var verify = new KuraStorageDbContext(options);
@@ -301,12 +309,21 @@ public sealed class MediaPersistenceTests
             Now.AddSeconds(10),
             TimeSpan.FromMinutes(2),
             CancellationToken.None));
+        Assert.True(await heartbeat.PulseProgressAsync(
+            jobId,
+            workerToken,
+            derivativeId,
+            leaseOwner,
+            Now.AddSeconds(11),
+            TimeSpan.FromMinutes(2),
+            new MediaGenerationProgress(50, 5000, 10000),
+            CancellationToken.None));
         Assert.True(await repository.CompleteGenerationAsync(
             jobId,
             workerToken,
             leaseOwner,
             new PublishedDerivative(RelativeStoragePath.Create("derivatives/generated.webp"), 123),
-            Now.AddSeconds(11),
+            Now.AddSeconds(12),
             Now.AddDays(1),
             CancellationToken.None));
 
@@ -316,6 +333,10 @@ public sealed class MediaPersistenceTests
         Assert.Equal("derivatives/generated.webp", derivative.RelativePath);
         Assert.Equal(123, derivative.Size);
         Assert.Equal(MediaJobStatus.Completed, (await verify.MediaJobs.SingleAsync(item => item.Id == jobId)).Status);
+        var completedJob = await verify.MediaJobs.SingleAsync(item => item.Id == jobId);
+        Assert.Equal(50, completedJob.ProgressPercent);
+        Assert.Equal(5000, completedJob.ProcessedDurationMs);
+        Assert.Equal(10000, completedJob.TotalDurationMs);
         Assert.Empty(await verify.DerivativeLeases.ToListAsync());
     }
 
@@ -704,7 +725,8 @@ public sealed class MediaPersistenceTests
         public async Task<GeneratedMedia> GenerateAsync(
             MediaGenerationContext context,
             Stream source,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            Func<MediaGenerationProgress, CancellationToken, ValueTask>? progress = null)
         {
             using var observed = new MemoryStream();
             await source.CopyToAsync(observed, cancellationToken);
@@ -736,7 +758,8 @@ public sealed class MediaPersistenceTests
         public Task<GeneratedMedia> GenerateAsync(
             MediaGenerationContext context,
             Stream source,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            Func<MediaGenerationProgress, CancellationToken, ValueTask>? progress = null) =>
             throw new MediaGenerationException(MediaErrorCodes.GenerationFailed, retryable: false);
     }
 

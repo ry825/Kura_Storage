@@ -185,6 +185,7 @@ public static class DependencyInjection
                     JobPollMilliseconds = configured.JobPollMilliseconds,
                     ThumbnailProfileVersion = configured.ThumbnailProfileVersion,
                     ImageProfileVersion = configured.ImageProfileVersion,
+                    VideoProfileVersion = configured.VideoProfileVersion,
                     DeliveryLeaseSeconds = configured.DeliveryLeaseSeconds,
                     DeliveryLeaseRenewalSeconds = configured.DeliveryLeaseRenewalSeconds,
                     GenerationLeaseSeconds = configured.GenerationLeaseSeconds,
@@ -203,6 +204,7 @@ public static class DependencyInjection
         services.AddScoped<OrganizationService>();
         services.AddScoped<PreviewService>();
         services.AddScoped<MediaJobRunner>();
+        services.AddScoped<IMediaJobRunner>(serviceProvider => serviceProvider.GetRequiredService<MediaJobRunner>());
         services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IRefreshTokenService, RefreshTokenService>();

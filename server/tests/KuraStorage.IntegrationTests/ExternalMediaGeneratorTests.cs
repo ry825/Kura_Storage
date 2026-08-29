@@ -212,6 +212,116 @@ public sealed class ExternalMediaGeneratorTests
         Assert.Empty(fixture.Runner.Requests);
     }
 
+    [Theory]
+    [InlineData(DerivativeType.VideoLow, "1280", "720", "1500k", "96k", 1280, 720)]
+    [InlineData(DerivativeType.VideoMedium, "1920", "1080", "4000k", "128k", 1920, 1080)]
+    public async Task GenerateVideo_UsesFixedProfileValidatesMp4AndReportsProgress(
+        DerivativeType type,
+        string landscapeWidth,
+        string landscapeHeight,
+        string videoBitrate,
+        string audioBitrate,
+        int outputWidth,
+        int outputHeight)
+    {
+        await using var fixture = new GeneratorFixture();
+        var progress = new List<MediaGenerationProgress>();
+        var probeCalls = 0;
+        fixture.Runner.Handler = async request =>
+        {
+            if (request.BinaryPath == "/usr/bin/ffmpeg")
+            {
+                Assert.Contains("-nostdin", request.Arguments);
+                Assert.Equal("0:v:0", request.Arguments[request.Arguments.IndexOf("-map") + 1]);
+                Assert.Contains("0:a:0?", request.Arguments);
+                Assert.Contains("libx264", request.Arguments);
+                Assert.Contains("yuv420p", request.Arguments);
+                Assert.Contains(videoBitrate, request.Arguments);
+                Assert.Contains(audioBitrate, request.Arguments);
+                Assert.Contains("+faststart", request.Arguments);
+                Assert.Contains("pipe:1", request.Arguments);
+                var scale = request.Arguments[request.Arguments.IndexOf("-vf") + 1];
+                Assert.Contains($"min({landscapeWidth},iw)", scale, StringComparison.Ordinal);
+                Assert.Contains($"min({landscapeHeight},ih)", scale, StringComparison.Ordinal);
+                await request.StandardOutputLineHandler!("out_time_us=5000000", CancellationToken.None);
+                await request.StandardOutputLineHandler!("progress=continue", CancellationToken.None);
+                await File.WriteAllBytesAsync(request.Arguments[^1], [1, 2, 3, 4]);
+                return new MediaProcessResult(0, string.Empty, string.Empty);
+            }
+
+            probeCalls++;
+            return probeCalls == 1
+                ? new MediaProcessResult(0, VideoProbeJson("matroska,webm", 10, 4, "vp9", 1920, 1080, "60/1"), string.Empty)
+                : new MediaProcessResult(0, VideoProbeJson("mov,mp4,m4a,3gp,3g2,mj2", 10, 4, "h264",
+                    outputWidth, outputHeight, "30/1", includeAudio: true), string.Empty);
+        };
+
+        await using var generated = await fixture.GenerateAsync(
+            type,
+            "video/webm",
+            progress: (value, _) =>
+            {
+                progress.Add(value);
+                return ValueTask.CompletedTask;
+            });
+
+        Assert.Equal("mp4", generated.Extension);
+        Assert.Equal(4, generated.Size);
+        var update = Assert.Single(progress);
+        Assert.Equal(50, update.Percent);
+        Assert.Equal(5000, update.ProcessedDurationMs);
+        Assert.Equal(10_000, update.TotalDurationMs);
+    }
+
+    [Fact]
+    public async Task GenerateVideo_WhenOutputProbeIsNotH264_FailsPermanentlyAndCleansWorkspace()
+    {
+        await using var fixture = new GeneratorFixture();
+        var probeCalls = 0;
+        fixture.Runner.Handler = async request =>
+        {
+            if (request.BinaryPath == "/usr/bin/ffmpeg")
+            {
+                await File.WriteAllBytesAsync(request.Arguments[^1], [1, 2, 3, 4]);
+                return new MediaProcessResult(0, string.Empty, string.Empty);
+            }
+
+            probeCalls++;
+            return new MediaProcessResult(
+                0,
+                VideoProbeJson(
+                    probeCalls == 1 ? "mov,mp4,m4a,3gp,3g2,mj2" : "mov,mp4,m4a,3gp,3g2,mj2",
+                    10,
+                    4,
+                    probeCalls == 1 ? "h264" : "hevc",
+                    1280,
+                    720,
+                    "30/1"),
+                string.Empty);
+        };
+
+        var exception = await Assert.ThrowsAsync<MediaGenerationException>(() =>
+            fixture.GenerateAsync(DerivativeType.VideoLow, "video/mp4"));
+
+        Assert.Equal(MediaErrorCodes.GenerationFailed, exception.ErrorCode);
+        Assert.False(exception.Retryable);
+        Assert.Empty(Directory.EnumerateDirectories(Path.Combine(fixture.Root, "derivative-temp")));
+    }
+
+    private static string VideoProbeJson(
+        string format,
+        double duration,
+        long size,
+        string videoCodec,
+        int width,
+        int height,
+        string frameRate,
+        bool includeAudio = false) =>
+        $$"""
+        {"format":{"format_name":"{{format}}","duration":"{{duration.ToString(System.Globalization.CultureInfo.InvariantCulture)}}","size":"{{size}}"},
+         "streams":[{"codec_type":"video","codec_name":"{{videoCodec}}","width":{{width}},"height":{{height}},"avg_frame_rate":"{{frameRate}}"}{{(includeAudio ? ",{\"codec_type\":\"audio\",\"codec_name\":\"aac\",\"avg_frame_rate\":\"0/0\"}" : string.Empty)}}]}
+        """;
+
     private static async Task<byte[]> ReadAllAsync(Stream stream)
     {
         using var output = new MemoryStream();
@@ -245,13 +355,15 @@ public sealed class ExternalMediaGeneratorTests
             DerivativeType type,
             string mimeType,
             long? expectedSourceSize = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            Func<MediaGenerationProgress, CancellationToken, ValueTask>? progress = null)
         {
             var context = new MediaGenerationContext(
                 Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1,
                 RelativeStoragePath.Create("users/source.input"), expectedSourceSize ?? source.Length,
                 mimeType, type, 1, 1, Guid.NewGuid());
-            return Generator.GenerateAsync(context, new MemoryStream(source, writable: false), cancellationToken);
+            return Generator.GenerateAsync(
+                context, new MemoryStream(source, writable: false), cancellationToken, progress);
         }
 
         public ValueTask DisposeAsync()

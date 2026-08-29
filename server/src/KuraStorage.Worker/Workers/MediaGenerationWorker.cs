@@ -7,6 +7,7 @@ public sealed class MediaGenerationWorker(
     IServiceScopeFactory scopeFactory,
     ISystemClock clock,
     MediaRuntimeOptions options,
+    MediaWorkerMetrics metrics,
     ILogger<MediaGenerationWorker> logger) : BackgroundService
 {
     private DateTimeOffset nextRecoveryAt = DateTimeOffset.MinValue;
@@ -41,11 +42,37 @@ public sealed class MediaGenerationWorker(
         var now = clock.UtcNow;
         if (now >= nextRecoveryAt)
         {
-            await scope.ServiceProvider.GetRequiredService<IMediaJobQueue>()
-                .RecoverStaleAsync(now, 100, cancellationToken);
-            nextRecoveryAt = now.AddSeconds(30);
+            var queue = scope.ServiceProvider.GetRequiredService<IMediaJobQueue>();
+            var temporaryCandidates = await queue.FindStaleTemporaryCandidatesAsync(now, 100, cancellationToken);
+            var recovered = await queue.RecoverStaleAsync(now, 100, cancellationToken);
+            MediaGenerationMetrics.RecordStaleRecoveries(recovered);
+            var derivativeStore = scope.ServiceProvider.GetRequiredService<IDerivativeStore>();
+            foreach (var candidate in temporaryCandidates)
+            {
+                try
+                {
+                    await derivativeStore.DeleteTemporaryAsync(
+                        candidate.JobId, candidate.Attempt, cancellationToken);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    logger.LogWarning(
+                        exception,
+                        "Stale media temporary output cleanup failed for job {JobId} attempt {Attempt}.",
+                        candidate.JobId,
+                        candidate.Attempt);
+                }
+            }
+
+            metrics.RecordSnapshot(await queue.GetOperationalSnapshotAsync(now, cancellationToken), now);
+            nextRecoveryAt = now.AddMinutes(1);
         }
 
-        return await scope.ServiceProvider.GetRequiredService<MediaJobRunner>().RunNextAsync(cancellationToken);
+        else
+        {
+            metrics.RecordIteration(now);
+        }
+
+        return await scope.ServiceProvider.GetRequiredService<IMediaJobRunner>().RunNextAsync(cancellationToken);
     }
 }

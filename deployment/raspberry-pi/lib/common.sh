@@ -48,10 +48,12 @@ verify_media_dependencies() {
         [[ -x "${tool_path}" ]] || die "Configured media tool is not executable: ${tool_path}"
     done
 
-    local vips_version vips_operations ffmpeg_encoders ffprobe_version pdftoppm_version
+    local vips_version vips_operations ffmpeg_version ffmpeg_encoders ffmpeg_help ffprobe_version pdftoppm_version
     vips_version="$("${KURASTORAGE_MEDIA_VIPS_PATH}" --version)"
     vips_operations="$("${KURASTORAGE_MEDIA_VIPS_PATH}" -l)"
+    ffmpeg_version="$("${KURASTORAGE_MEDIA_FFMPEG_PATH}" -version 2>/dev/null)"
     ffmpeg_encoders="$("${KURASTORAGE_MEDIA_FFMPEG_PATH}" -hide_banner -encoders 2>/dev/null)"
+    ffmpeg_help="$("${KURASTORAGE_MEDIA_FFMPEG_PATH}" -hide_banner -h full 2>/dev/null)"
     ffprobe_version="$("${KURASTORAGE_MEDIA_FFPROBE_PATH}" -version 2>/dev/null)"
     pdftoppm_version="$("${KURASTORAGE_MEDIA_PDFTOPPM_PATH}" -v 2>&1)"
 
@@ -65,6 +67,14 @@ verify_media_dependencies() {
         die "libvips WebP encoder is unavailable."
     grep -q 'libwebp' <<<"${ffmpeg_encoders}" ||
         die "FFmpeg libwebp encoder is unavailable."
+    grep -q '^ffmpeg version' <<<"${ffmpeg_version}" ||
+        die "FFmpeg version verification failed."
+    grep -q 'libx264' <<<"${ffmpeg_encoders}" ||
+        die "FFmpeg H.264 libx264 encoder is unavailable."
+    grep -Eq '[[:space:]]aac[[:space:]]' <<<"${ffmpeg_encoders}" ||
+        die "FFmpeg AAC encoder is unavailable."
+    grep -q -- '-progress' <<<"${ffmpeg_help}" ||
+        die "FFmpeg progress output is unavailable."
     grep -q '^ffprobe version' <<<"${ffprobe_version}" ||
         die "ffprobe version verification failed."
     grep -q '^pdftoppm version' <<<"${pdftoppm_version}" ||

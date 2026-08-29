@@ -13,6 +13,7 @@ builder.Services.AddKuraStorageInfrastructure(builder.Configuration, addFileReco
 builder.Services.AddSingleton<ITrashPurgeDelay, SystemTrashPurgeDelay>();
 builder.Services.AddSingleton<IIndexRescanSignal, IndexRescanSignal>();
 builder.Services.AddSingleton<IndexingWorkerMetrics>();
+builder.Services.AddSingleton<MediaWorkerMetrics>();
 builder.Services.AddHostedService<TrashPurgeWorker>();
 builder.Services.AddHostedService<IndexEventWorker>();
 builder.Services.AddHostedService<FullRescanWorker>();

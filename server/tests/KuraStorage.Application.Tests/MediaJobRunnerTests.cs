@@ -3,6 +3,7 @@ using KuraStorage.Application.Files;
 using KuraStorage.Application.Media;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Media;
+using System.Diagnostics.Metrics;
 using Xunit;
 
 namespace KuraStorage.Application.Tests;
@@ -33,7 +34,7 @@ public sealed class MediaJobRunnerTests
     [InlineData(FailurePoint.Generation, MediaErrorCodes.ToolUnavailable, true, 0)]
     [InlineData(FailurePoint.SourceRead, FileErrorCodes.StorageUnavailable, true, 0)]
     [InlineData(FailurePoint.Unexpected, MediaErrorCodes.GenerationFailed, false, 0)]
-    [InlineData(FailurePoint.Completion, MediaErrorCodes.GenerationFailed, false, 1)]
+    [InlineData(FailurePoint.Completion, MediaErrorCodes.CompletionUnknown, true, 0)]
     public async Task RunNext_WhenProcessingFails_ReleasesLeaseAndClassifiesFailure(
         FailurePoint failurePoint,
         string expectedCode,
@@ -59,6 +60,46 @@ public sealed class MediaJobRunnerTests
         Assert.Equal((MediaErrorCodes.SourceNotActive, false), fixture.Failure);
         Assert.Equal(1, fixture.ReleaseCount);
         Assert.Equal(1, fixture.DeleteCount);
+    }
+
+    [Fact]
+    public async Task RunNext_WhenValidatedPublishedFileExists_CompletesWithoutRegeneration()
+    {
+        var fixture = new RunnerFixture { ExistingPublished = true };
+
+        Assert.True(await fixture.Runner.RunNextAsync(CancellationToken.None));
+
+        Assert.Equal(0, fixture.GenerationCount);
+        Assert.Null(fixture.Failure);
+        Assert.Equal(0, fixture.DeleteCount);
+    }
+
+    [Fact]
+    public async Task RunNext_EmitsLowCardinalityOperationalMetrics()
+    {
+        var measurements = new List<(string Name, KeyValuePair<string, object?>[] Tags)>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, current) =>
+        {
+            if (instrument.Meter.Name == "KuraStorage.Media")
+            {
+                current.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, _, tags, _) =>
+            measurements.Add((instrument.Name, tags.ToArray())));
+        listener.SetMeasurementEventCallback<double>((instrument, _, tags, _) =>
+            measurements.Add((instrument.Name, tags.ToArray())));
+        listener.Start();
+
+        Assert.True(await new RunnerFixture().Runner.RunNextAsync(CancellationToken.None));
+
+        Assert.Contains(measurements, value => value.Name == "kurastorage.media.job.results" &&
+            value.Tags.Any(tag => tag.Key == "result" && Equals(tag.Value, "succeeded")));
+        Assert.Contains(measurements, value => value.Name == "kurastorage.media.generation.duration");
+        Assert.Contains(measurements, value => value.Name == "kurastorage.media.output.bytes");
+        Assert.All(measurements.SelectMany(value => value.Tags), tag =>
+            Assert.Contains(tag.Key, new[] { "result", "reason", "variant" }));
     }
 
     [Fact]
@@ -91,6 +132,45 @@ public sealed class MediaJobRunnerTests
 
         Assert.True(fixture.HeartbeatCount >= 1);
         Assert.Null(fixture.Failure);
+    }
+
+    [Fact]
+    public async Task RunNext_RecordsProgressAndStopsWhenProgressLeaseOwnershipIsLost()
+    {
+        var fixture = new RunnerFixture { EmitProgress = true, HeartbeatResult = false };
+
+        Assert.True(await fixture.Runner.RunNextAsync(CancellationToken.None));
+
+        Assert.Equal(new MediaGenerationProgress(50, 5000, 10000), fixture.LastProgress);
+        Assert.Null(fixture.Failure);
+        Assert.Equal(0, fixture.DeleteCount);
+    }
+
+    [Fact]
+    public async Task RunNext_CoalescesProgressUpdatesWithinFiveSeconds()
+    {
+        var fixture = new RunnerFixture { ProgressUpdates = 2 };
+
+        Assert.True(await fixture.Runner.RunNextAsync(CancellationToken.None));
+
+        Assert.Equal(1, fixture.ProgressPulseCount);
+        Assert.Equal(new MediaGenerationProgress(50, 5000, 10000), fixture.LastProgress);
+    }
+
+    [Fact]
+    public async Task RunNext_WhenPeriodicHeartbeatFaults_RequeuesWithoutStoppingWorkerLoop()
+    {
+        var fixture = new RunnerFixture
+        {
+            GenerationDelay = TimeSpan.FromMilliseconds(1200),
+            HeartbeatThrows = true,
+        };
+
+        Assert.True(await fixture.Runner.RunNextAsync(CancellationToken.None));
+
+        Assert.True(fixture.HeartbeatCount >= 1);
+        Assert.Equal((MediaErrorCodes.WorkerUnavailable, true), fixture.Failure);
+        Assert.Equal(1, fixture.ReleaseCount);
     }
 
     public enum FailurePoint
@@ -140,7 +220,21 @@ public sealed class MediaJobRunnerTests
 
         public bool HeartbeatResult { get; init; } = true;
 
+        public bool HeartbeatThrows { get; init; }
+
+        public bool ExistingPublished { get; init; }
+
+        public bool EmitProgress { get; init; }
+
+        public int ProgressUpdates { get; init; }
+
+        public MediaGenerationProgress? LastProgress { get; private set; }
+
+        public int GenerationCount { get; private set; }
+
         public int HeartbeatCount { get; private set; }
+
+        public int ProgressPulseCount { get; private set; }
 
         public int ReleaseCount { get; private set; }
 
@@ -184,8 +278,10 @@ public sealed class MediaJobRunnerTests
         public async Task<GeneratedMedia> GenerateAsync(
             MediaGenerationContext context,
             Stream source,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            Func<MediaGenerationProgress, CancellationToken, ValueTask>? progress = null)
         {
+            GenerationCount++;
             if (GenerationDelay > TimeSpan.Zero)
             {
                 await Task.Delay(GenerationDelay, cancellationToken);
@@ -202,8 +298,22 @@ public sealed class MediaJobRunnerTests
                     throw new OperationCanceledException(Cancellation.Token);
             }
 
+            var progressUpdates = EmitProgress ? 1 : ProgressUpdates;
+            for (var index = 0; index < progressUpdates; index++)
+            {
+                await progress!(new MediaGenerationProgress(50, 5000, 10000), cancellationToken);
+            }
+
             return new GeneratedMedia(new MemoryStream([1, 2, 3], writable: false), 3, "webp");
         }
+
+        public Task<PublishedDerivative?> FindPublishedAsync(
+            MediaGenerationContext context,
+            string extension,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<PublishedDerivative?>(ExistingPublished
+                ? new PublishedDerivative(RelativeStoragePath.Create("derivatives/output.webp"), 3)
+                : null);
 
         public Task<Stream> OpenReadAsync(RelativeStoragePath path, CancellationToken cancellationToken) =>
             InjectedFailure == FailurePoint.SourceRead
@@ -253,6 +363,26 @@ public sealed class MediaJobRunnerTests
             CancellationToken cancellationToken)
         {
             HeartbeatCount++;
+            if (HeartbeatThrows)
+            {
+                return Task.FromException<bool>(new IOException("Injected heartbeat failure."));
+            }
+
+            return Task.FromResult(HeartbeatResult);
+        }
+
+        public Task<bool> PulseProgressAsync(
+            Guid requestedJobId,
+            Guid workerToken,
+            Guid requestedDerivativeId,
+            Guid leaseOwnerToken,
+            DateTimeOffset now,
+            TimeSpan leaseDuration,
+            MediaGenerationProgress progress,
+            CancellationToken cancellationToken)
+        {
+            LastProgress = progress;
+            ProgressPulseCount++;
             return Task.FromResult(HeartbeatResult);
         }
 

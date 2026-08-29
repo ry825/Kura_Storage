@@ -1091,8 +1091,8 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 - [ ] 写真・動画の低画質または中画質が要求されたときに対象品質のデータを生成する
 - [x] 写真を含むすべての派生データ生成はPostgreSQL永続Media Jobへ登録し、API要求とは分離されたWorkerで実行する
 - [x] 写真は要求処理内で既定2秒まで永続Jobの完了を待ち、待機時間を超える場合は生成状態を返してWorkerで継続する
-- [ ] 動画はMedia Jobをキューへ登録し、API要求とは分離されたWorkerで全体を生成する
-- [ ] 動画派生データは全体の生成と検証が完了した後にだけ`READY`として公開する
+- [x] 動画はMedia Jobをキューへ登録し、API要求とは分離されたWorkerで全体を生成する
+- [x] 動画派生データは全体の生成と検証が完了した後にだけ`READY`として公開する
 - [x] 写真・動画・PDFの生成について、`/api/v1/media-jobs/{jobId}`から進捗、キュー待ち、完了、失敗を確認できる
 - [x] Retry可能な失敗は`/api/v1/media-jobs/{jobId}/retry`から明示的かつ冪等に再試行できる
 - [x] 変換中にユーザーが画面を離れても、ジョブが完了または失敗するまで継続する
@@ -1109,7 +1109,7 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 
 **優先度**: P0（必須）
 
-基盤実装に続く画像・Thumbnail実装では、APIの`variant=thumbnail|image-low|image-medium`、Media Job API、独立Worker、libvips、FFmpegによる動画Frame抽出、PopplerによるPDF先頭Page描画、Lease付き単一Range配信を導入する。動画Low／MediumのMP4生成とCache清掃は後続フェーズとする。元ファイルのVersion変更、Trash、`MISSING`確定、完全削除では、同一DB Transaction内の状態更新と限定された派生物削除Participantによって、古い派生物を配信可能状態へ残さない。
+画像・Thumbnail基盤に続き、APIの`variant=video-low|video-medium`、単一実行の動画Worker、FFmpeg／ffprobeによる固定Profile MP4生成、進捗、stale回収、Lease付き単一Range配信を導入する。Cache清掃は後続フェーズとする。元ファイルのVersion変更、Trash、`MISSING`確定、完全削除では、同一DB Transaction内の状態更新と限定された派生物削除Participantによって、古い派生物を配信可能状態へ残さない。
 
 ### 7.11.2 保持期限と容量上限
 

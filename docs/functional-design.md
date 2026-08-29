@@ -524,7 +524,7 @@ interface MediaJob {
 
 `THUMBNAIL`と`PDF_THUMBNAIL`は最初の要求時に必要時生成し、通常キャッシュ10GBの集計対象外として元ファイルの完全削除まで保持する。長辺最大512px、WebP品質75、縦横比維持、拡大なしで生成し、TTLと容量上限を設定しない。低・中画質データだけを24時間TTLと容量上限の対象とする。
 
-`MediaJob`はすべての派生種別の生成履歴を表す。同じ派生データに対する`QUEUED`または`RUNNING`の有効Jobは最大1件とし、Retry上限は3回、Backoffは30秒・2分・8分、stale判定はHeartbeat途絶から2分、terminal Job保持は7日とする。`CANCELLED`はSource Version変更、Purge等により生成が不要になった場合だけ使用し、Client切断では使用しない。
+`MediaJob`はすべての派生種別の生成履歴を表す。同じ派生データに対する`QUEUED`または`RUNNING`の有効Jobは最大1件とし、初回を含む実行回数上限は3回、自動Retryは最大2回、Backoffは30秒・2分、stale判定はHeartbeat途絶から2分、terminal Job保持は7日とする。`CANCELLED`はSource Version変更、Purge等により生成が不要になった場合だけ使用し、Client切断では使用しない。
 
 `DerivativeLease`は派生データごとに`GENERATION`または`DELIVERY`、Owner token、期限を保持する。同じOwner tokenのLeaseは更新可能とし、別Ownerの更新・解放を拒否する。`FileDerivative.leaseUntil`はactive Lease最大期限の保守的な投影であり、削除可否の正は`derivative_leases`行とする。
 
@@ -1384,7 +1384,7 @@ SHA-256(fileId + sourceVersion + derivativeType + profileVersion)
 10. `READY`、サイズ、`lastAccessedAt`、`expiresAt = now + 24h`を保存する。
 11. 派生画像だけをクライアントへ送信する。
 
-## 7.4 MVP後: 動画の品質別プレビュー生成
+## 7.4 動画の品質別プレビュー生成
 
 1. 原動画の存在、権限、メタデータ、元ファイルサイズを取得する。
 2. 対象品質の`READY`派生データを検索する。
@@ -1741,7 +1741,7 @@ Access Tokenは15分、Refresh Tokenは発行または前回ローテーショ�
 
 #### `GET /api/v1/files/{fileId}/content`
 
-`variant`省略または`original`は従来の元ファイル配信を保つ。`thumbnail`、`image-low`、`image-medium`は永続Media Jobで生成した完成済みWebPだけをLease付きで配信する。`Range`がない場合は`200`、単一Rangeには`206`と`Content-Range`、不正または範囲外には`416 RANGE_NOT_SATISFIABLE`を返す。`video-low`と`video-medium`は後続Media Workerフェーズで公開する。
+`variant`省略または`original`は従来の元ファイル配信を保つ。`thumbnail`、`image-low`、`image-medium`は永続Media Jobで生成した完成済みWebP、`video-low`と`video-medium`は完成・ffprobe検証済みMP4だけをLease付きで配信する。`Range`がない場合は`200`、単一Rangeには`206`と`Content-Range`、不正または範囲外には`416 RANGE_NOT_SATISFIABLE`を返す。生成中の動画要求は待機せず`202 Accepted`と状態URLを返す。
 
 - `original`: 元ファイルを送信する。
 - `thumbnail`: 写真・動画・PDFの完成済み一覧用WebPだけを送信する。

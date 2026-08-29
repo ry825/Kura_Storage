@@ -142,9 +142,25 @@ operation identifiers and aggregate counts:
 ```bash
 sudo systemctl status kurastorage-worker
 sudo journalctl -u kurastorage-worker --since today
+sudo systemctl show kurastorage-worker --property=MemoryCurrent,CPUUsageNSec,IOReadBytes,IOWriteBytes
 sudo -u postgres psql --dbname=kurastorage --command \
   "SELECT id, started_at, completed_at, status, examined_root_count, deleted_root_count, released_bytes, error_count FROM trash_purge_runs ORDER BY started_at DESC LIMIT 10;"
 ```
+
+Video Low/Medium generation uses H.264 `libx264`, AAC, MP4 fast-start output,
+and FFmpeg progress records. `verify.sh` fails closed when either codec,
+`ffprobe`, or `-progress` support is unavailable. A stopped Worker can be
+distinguished from queue backlog through the Worker service state together
+with `kurastorage.media.worker.last_iteration`, `kurastorage.media.queue.depth`,
+and `kurastorage.media.queue.oldest_wait`; tool failures appear in the bounded
+Media Job result and retry metrics. These metrics never use Job, File, path,
+file-name, or user identifiers as labels.
+
+On graceful stop, the Worker stops acquiring new jobs. `TimeoutStopSec=45s`
+allows in-flight cleanup; if conversion cannot finish, the process tree is
+terminated and the durable job is safely re-queued or recovered after its
+two-minute stale threshold. The API remains available while the Worker is
+stopped, upgraded, or rolled back, and the Worker exposes no HTTP listener.
 
 `released_bytes` and the Admin API `trashBytes` are estimates based on database
 file-size snapshots, not exFAT allocation measurements. If a run fails, verify

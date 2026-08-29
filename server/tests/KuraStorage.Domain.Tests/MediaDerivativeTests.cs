@@ -236,7 +236,7 @@ public sealed class MediaDerivativeTests
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             job.RecordHeartbeat(worker, Now, null, 2, 1));
         Assert.Throws<ArgumentException>(() => job.Fail(worker, "", false, Now));
-        Assert.Equal(TimeSpan.FromMinutes(8), MediaJob.RetryDelayAfter(3));
+        Assert.Throws<ArgumentOutOfRangeException>(() => MediaJob.RetryDelayAfter(3));
         Assert.Throws<ArgumentOutOfRangeException>(() => MediaJob.RetryDelayAfter(0));
     }
 
