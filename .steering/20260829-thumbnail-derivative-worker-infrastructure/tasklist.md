@@ -1,0 +1,470 @@
+# サムネイル・派生データ・Worker基盤 タスクリスト
+
+## 対象要件・設計
+
+- `docs/product-requirements.md` 7.11「MVP後: 派生データとキャッシュ管理」
+  - 低・中画質データの必要時生成、重複生成防止、元Versionとの整合を実現する。
+  - 低・中画質キャッシュへ24時間TTL、10GB／6GBのLRU清掃、Lease保護を適用する。
+  - サムネイルは通常キャッシュと分離し、元ファイルの完全削除まで保持する。
+- `docs/functional-design.md` 5.4、6.2.7〜6.2.9、7.3〜7.5、8.5、18.2 Server Step 7
+  - `FileDerivative`、永続ジョブ、`PreviewService`、独立Worker、派生データ配信APIを実装する。
+  - 写真・動画・PDFサムネイル、写真・動画の低・中画質派生データを生成する。
+- `docs/architecture-design.md` 8.6〜8.7、11.3〜11.4、15.2
+  - 派生キー、PostgreSQL永続キュー、atomic rename後だけの公開、全件サムネイル保持を実装する。
+
+## タスク完全完了の原則
+
+**このファイルの全タスクは最終的に完了させる。ただし、1回の実装では1つのPull Request単位を完了し、Pull Request作成後に停止してよい。**
+
+### 必須ルール
+
+- 全タスクを最終的に`[x]`にする。
+- 「時間の都合」「実装が複雑」などを理由にタスクを後回しまたは省略しない。
+- 選択したPull Request単位に未完了タスクを残したまま作業を終了しない。
+- 後続Pull Requestのタスクは、先行Pull Request完了時点では`[ ]`のままでよい。
+- 親タスクは、すべての子タスクが完了した後にだけ`[x]`へ更新する。
+- 実装時はTDDのRed、Green、Refactor、Verifyを各変更単位で行う。
+
+### Pull Request運用
+
+- 各Pull Requestは原則として最新の`main`から短命Branchを作成する。
+- 未Mergeの先行Pull Requestに依存する作業は、先行Pull Requestが`main`へMergeされ、必須CIが成功してから開始する。
+- 実装、Test、文書、tasklist更新、Commit、Push、英語のPull Request作成までを同じPull Request単位で完了する。
+- Pull RequestはMergeしない。作成後は`steering`スキルのモード3-Aで完了記録を追記し、Commit・Pushして停止する。
+
+## スコープ境界
+
+- [x] 対象をServer側の独立Worker、PostgreSQL永続ジョブキュー、派生データ生成・配信、TTL／LRU清掃、Lease、元ファイル状態との連動に限定する。
+- [x] Androidの写真・動画Viewer、品質選択UI、Media3／Coil統合、一覧サムネイル表示は後続Steeringとし、本作業へ含めない。
+- [x] HLS、生成途中Segment配信、Web／iOS UI、音声専用変換、OCR、全文検索、AI分類、元ファイルの再圧縮・置換を追加しない。
+- [x] 元ファイルを正とし、派生データの欠損・失敗・削除が元ファイル、`FileEntry`、共有、Tag、お気に入りへ影響しない境界を維持する。
+- [x] 写真・動画・PDFサムネイルはTTL／10GB上限の対象外、写真・動画の低・中画質だけを通常キャッシュ清掃対象とする。
+- [x] API Process内でMedia変換を実行せず、写真・動画・PDFの全生成を既存`KuraStorage.Worker` Generic Hostへ分離する。
+
+---
+
+## フェーズ0: 実装前の要求・設計確定
+
+> 本タスクリストは正式文書から実装順序を作成したもの。専用の要求・設計文書を承認するまでPR1を開始しない。
+
+- [x] `.steering/20260829-thumbnail-derivative-worker-infrastructure/requirements.md`を`steering`スキルのモード1で作成し、Userの承認を得る。
+  - [x] 対象MIME、サムネイル寸法・形式・品質、写真低中画質Profile、動画Profile、PDF対象Pageを確定する。
+  - [x] 写真・サムネイルの同期待機閾値と、閾値超過後に独立Workerへ引き継ぐ永続方式を確定する。
+  - [x] 生成要求、状態照会、再試行、Range配信、認証・認可、HTTP Status、Error Codeを確定する。
+  - [x] Retry上限、Backoff、Heartbeat、stale `RUNNING`回収、失敗分類、Job保持期間を確定する。
+  - [x] Lease期間、更新間隔、Process異常終了時の失効、配信開始・終了と清掃の競合規則を確定する。
+  - [x] Thumbnail容量監視、30万件時のHDD容量推定、Pi実機の生成時間・CPU・Memoryを測定・記録して運用上限を確定する受け入れ手順を定義する。
+- [x] `.steering/20260829-thumbnail-derivative-worker-infrastructure/design.md`を`steering`スキルのモード1で作成し、Userの承認を得る。
+  - [x] `FileDerivative`、`MediaJob`、`DerivativeLease`の状態遷移、不変条件、論理Key、Profile versioningを設計する。
+  - [x] EF Core Schema、Index、制約、排他取得、Heartbeat、Retry、Migration Up／Downを設計する。
+  - [x] API、Application、Infrastructure、Workerの依存境界とTransaction／advisory lock境界を設計する。
+  - [x] HDD上の派生Root、決定的相対Path、一時Path、atomic rename、起動時回復、Symlink拒否を設計する。
+  - [x] `vips`、FFmpeg／ffprobe、`pdftoppm`の引数境界、Timeout、Process終了、出力検証を設計する。
+  - [x] TTL／LRU清掃、所有者別配信／生成Lease、Purge／Trash／Restore／`MISSING`／内容更新との連動を設計する。
+  - [x] Test matrix、Test fixture、Pi実機性能、障害注入、配置、Rollback、運用監視を設計する。
+- [x] 正式文書内の契約差分を解消し、同じ変更で関連文書を更新する。
+  - [x] 正式文書のJob状態APIを`/api/v1/media-jobs/{jobId}`へ統一し、`/api/v1/transcode-jobs/{jobId}`を除去する。
+  - [x] 正式文書の動画専用`TranscodeJob`／`transcode_jobs`を、全派生種別の`MediaJob`／`media_jobs`へ更新する。
+  - [x] 正式文書へ`CANCELLED`、Retry、stale Job回収時のDerivative／Job状態対応を反映する。
+  - [x] 正式文書へThumbnailの必要時生成後の完全削除まで保持、長辺512px、WebP品質75を反映する。
+- [x] 承認済み`requirements.md`と`design.md`に合わせて本タスクリストを再確認する。
+  - [x] API名、状態、制約値、Package、設定Key、確認コマンドを具体化する。
+  - [x] PR1〜PR4の依存関係と完了条件が承認済み設計を過不足なく覆うことを確認する。
+  - [x] 正式文書との矛盾が残っていないことを確認する。
+
+---
+
+## フェーズ1 / PR1: 派生データModel・永続ジョブキュー・Storage基盤
+
+### 1.1 開始条件と既存実装確認
+
+- [ ] PR1の開始条件を満たす。
+  - [ ] フェーズ0の全項目が`[x]`で、`requirements.md`と`design.md`が承認済みである。
+  - [ ] 先行Pull Requestが`main`へMerge済みで、必須CIが成功している。
+  - [ ] `git status`と既存差分を確認し、Userの変更を混在させない。
+  - [ ] `FileEntry.fileVersion`、Migration、Upload Session、Trash Purge、MISSING削除Participant、既存Workerの実装Patternを確認する。
+  - [ ] 最新`main`からPR1用Branchを作成する。
+
+### 1.2 Domain modelと状態遷移
+
+- [ ] 派生データDomain modelをTest firstで実装する。
+  - [ ] `DerivativeType`へ写真・動画共通Thumbnail、PDF Thumbnail、写真Low／Medium、動画Low／Mediumを表現する。
+  - [ ] `FileDerivative`へSource File ID、Source Version、Type、Profile Version、相対Path、Size、Status、Access／Expiry／Lease、Error、UTC時刻を実装する。
+  - [ ] `(sourceFileId, sourceVersion, derivativeType, profileVersion)`を論理一意Keyとし、Rename／MoveをKeyへ含めない。
+  - [ ] `PENDING`、`RUNNING`、`READY`、`FAILED`、`BLOCKED_SOURCE_MISSING`、`DELETING`の許可遷移と不正遷移拒否をTestする。
+  - [ ] `READY`は検証済みSizeと正式相対Pathを必須とし、ThumbnailへExpiryを設定できない規則を実装する。
+- [ ] 永続Job Domain modelをTest firstで実装する。
+  - [ ] `MediaJob`へJob種別、`QUEUED`、`RUNNING`、`COMPLETED`、`FAILED`、`CANCELLED`、進捗、Queue順、試行、Heartbeat、Worker tokenを実装する。
+  - [ ] 同一Derivativeの有効Job重複、完了済みJobの再実行、不正な進捗・時刻遷移を拒否する。
+  - [ ] Retry上限3回、30秒／2分／8分Backoff、2分stale判定、terminal Job 7日保持をTestする。
+  - [ ] Server時刻とIDをServer側で生成し、Client指定User、Owner、Path、Profileを信頼しない。
+- [ ] 所有者別Lease Domain modelをTest firstで実装する。
+  - [ ] `DerivativeLease`へ`GENERATION`／`DELIVERY`、Owner token、Expiry、UTC時刻を実装する。
+  - [ ] 同一所有者Leaseの取得・更新・解放、複数配信Lease、期限切れ回収、不正所有者更新拒否をTestする。
+  - [ ] `FileDerivative.leaseUntil`をactive Lease最大期限の保守的投影として扱い、削除可否はLease行の存在で判定する。
+
+### 1.3 PostgreSQL永続化と排他Queue
+
+- [ ] EF Core mappingとMigrationを実装する。
+  - [ ] `file_derivatives`へFK、状態Check、非負Size、論理Key unique、清掃・Lease・Source検索Indexを追加する。
+  - [ ] `media_jobs`へDerivative／要求Actor FK、状態・時刻・進捗・Retry・Worker token、Queue Index、有効Job partial uniqueを追加する。
+  - [ ] `derivative_leases`へDerivative FK、種別、Owner token、Expiry、一意制約、Cleanup Indexを追加する。
+  - [ ] `KuraStorageDbContext`へ3つの`DbSet`とmappingを追加し、既存Naming規約とUTC規約に従う。
+  - [ ] Migration Up、Down、再Up、model snapshot一致、既存データ非破壊を統合Testする。
+- [ ] PostgreSQL Queue repositoryをTest firstで実装する。
+  - [ ] `QUEUED`を`created_at`、IDの安定順で`FOR UPDATE SKIP LOCKED`取得し、同一Transactionで`RUNNING`へ変更する。
+  - [ ] 複数Worker競合時も同じJobを二重取得せず、Queue順と動画同時実行数1を守る。
+  - [ ] `LISTEN/NOTIFY`を使用する場合も通知消失後のPollingで必ず処理を再開できる。
+  - [ ] Heartbeat更新、進捗更新、完了、失敗、Retry、stale `RUNNING`回収を条件付き更新で実装する。
+  - [ ] API／Worker再起動、DB接続断、更新結果不明、並行Retryで状態を壊さないTestを追加する。
+
+### 1.4 派生Storageと設定
+
+- [ ] 派生データStorage境界をTest firstで実装する。
+  - [ ] `derivatives/<owner>/<source>/<version>/<profile>/<type>.<ext>`と`derivative-temp/<job>/<attempt>.part`だけをServer側で生成する。
+  - [ ] Path traversal、absolute path、Symlink、特殊File、Root外renameを拒否する。
+  - [ ] 一時File作成、Streaming read／write、Flush、出力検証、同一Filesystem内atomic rename、限定削除を実装する。
+  - [ ] HDD未Mount、Storage ID不一致、read-only、容量不足時にOS Rootへ書き込まず、元ファイルを変更しない。
+  - [ ] 同一正式Path競合、HDD成功後DB失敗、DB成功前Process停止の回復規則を統合Testする。
+- [ ] 型付きOptionsと起動時Validationを実装する。
+  - [ ] 派生Root、一時Root、2秒待機、500ms Polling、Profile version、10秒Heartbeat、3回Retry、2分stale／Lease、Cleanup周期、TTL、Watermark、7日Job保持を設定化する。
+  - [ ] 既定24時間、10GiB、6GiB、全Media直列・動画並列数1を表し、負値、Low≧High、危険なPath、不正な時間関係を起動時に拒否する。
+  - [ ] API、Worker、Production template、environment exampleへ同じ非秘密設定を追加する。
+
+### 1.5 元ファイルLifecycle連携
+
+- [ ] 既存File操作との連動境界をTest firstで実装する。
+  - [ ] Rename／MoveではSource Versionを変えず、既存派生データとThumbnailを再利用する。
+  - [ ] 内容更新でSource Versionが増え、旧Versionを配信せず、新Versionを必要時生成する。
+  - [ ] Trash移動で低・中画質を削除対象にし、Thumbnailは保持する。
+  - [ ] Restoreで保持中Thumbnailを再利用し、低・中画質を必要時再生成する。
+  - [ ] `MISSING`確定で派生データを`BLOCKED_SOURCE_MISSING`へ変更し、正式ファイルの代替として配信しない。
+  - [ ] `MISSING`一覧削除とPermanent DeleteへParticipantを登録し、全派生物理Fileと管理行を対象Treeだけから削除する。
+  - [ ] Lifecycle操作と生成／配信Leaseの競合をadvisory lockと再読込で安全に直列化する。
+
+### 1.6 PR1検証・文書・完了
+
+- [ ] PR1の自動検証を完了する。
+  - [ ] Domain／Applicationの状態遷移・Validation境界Line Coverage 95%以上、全体80%以上を満たす。
+  - [ ] Queue競合、Migration、Storage境界、Lifecycle連動の統合Testが成功する。
+  - [ ] `./scripts/ci/verify-server.sh`、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`git diff --check`が成功する。
+- [ ] PR1に必要な正式文書を実装と同じ変更で更新する。
+  - [ ] Domain、Schema、Queue、Storage、設定、Lifecycleの確定内容を5つの正式文書と運用文書へ反映する。
+  - [ ] `docs/repository-structure.md`へ実際に追加した配置だけを反映する。
+  - [ ] Migration適用、Backup、Rollback、stale Job回収、派生Root保護を運用手順へ記載する。
+- [ ] PR1を完了する。
+  - [ ] フェーズ1の全項目が`[x]`であることを確認する。
+  - [ ] 差分に変換Engine本体、Android UI、不要Package、実環境値、Credentialがないことをセルフレビューする。
+  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [ ] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
+  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+
+---
+
+## フェーズ2 / PR2: Thumbnail・写真派生生成・API配信・Lease
+
+### 2.1 開始条件
+
+- [ ] PR2の開始条件を満たす。
+  - [ ] PR1が`main`へMerge済みで、必須CIが成功している。
+  - [ ] `git status`と既存差分を確認し、最新`main`からPR2用Branchを作成する。
+  - [ ] 既存File Content Range、Authorization、Storage Stream、OpenAPI Test、Worker ScopeのPatternを確認する。
+  - [ ] Pi／CIで`vips`、FFmpeg／ffprobe、`pdftoppm`の実行Path、Version、Loader／Encoder、arm64対応を確認する。
+
+### 2.2 画像・PDF・動画Thumbnail生成
+
+- [ ] Thumbnail生成をTest firstで実装する。
+  - [ ] 承認済み対象MIMEだけをServer側で許可し、拡張子だけを信頼せずDecoder／Probe結果を検証する。
+  - [ ] `IMediaProcessRunner`で引数配列、absolute Binary、allow-list Environment、1MiB bounded出力、Timeout、Process tree終了を実装する。
+  - [ ] `vips`で写真をEXIF回転反映・Animated先頭Frame・長辺最大512px・WebP品質75・拡大なしに変換する。
+  - [ ] FFmpeg／ffprobeで動画Durationの10%かつ最大10秒地点からFrameを抽出し、Decode可能Frameへ安全にFallbackする。
+  - [ ] `pdftoppm`でPDF先頭PageだけをRaster化し、`vips`で長辺最大512px・WebP品質75へ変換する。
+  - [ ] Binary／Loader不足、暗号化PDF、巨大Document、Timeoutを`MEDIA_TOOL_UNAVAILABLE`または承認済み生成Errorへ変換する。
+  - [ ] Decompression bomb、巨大Dimension、破損入力、Unsupported codec、Timeout、取消、Process異常終了をTestする。
+  - [ ] 一時出力の検証とatomic rename後だけ`READY`にし、失敗・取消時に部分Fileを公開しない。
+  - [ ] 同一論理Keyへの並行要求を一意制約とJob取得で1回の生成へ収束させる。
+  - [ ] Thumbnailへ`expiresAt`を設定せず、通常Cache容量集計から除外する。
+
+### 2.3 写真Low／Medium生成
+
+- [ ] 写真派生生成をTest firstで実装する。
+  - [ ] Lowを長辺最大1280px・WebP品質70、Mediumを長辺最大2560px・WebP品質82で生成し、小さい元画像を拡大しない。
+  - [ ] EXIF回転、色Profile、Alpha、Animated imageの承認済み規則を実装する。
+  - [ ] 全写真生成をWorkerで実行し、APIは500msごと最大4回・合計2秒だけDB状態を待機して、超過時に`202 Accepted`を返す。
+  - [ ] API要求取消や画面離脱後も永続Jobを取消さず、Workerが完了または失敗まで処理する。
+  - [ ] 完成時にSize、`lastAccessedAt`、`expiresAt = now + 24h`を保存する。
+  - [ ] 元Source VersionまたはProfile Versionが変わった結果を現在要求へ誤公開しない。
+
+### 2.4 PreviewService・API・認可
+
+- [ ] `PreviewService`とAPI契約をTest firstで実装する。
+  - [ ] `GET /api/v1/files/{fileId}/content`の`thumbnail`、`image-low`、`image-medium`を実装する。
+  - [ ] `READY`かつ現Source／Profile一致・物理File検証済みの場合だけ`200`／単一Range `206`で配信する。
+  - [ ] 未生成・生成中は正式契約の`202 Accepted`、Job ID、状態URL、Retry-Afterを返し、元画質へ自動Fallbackしない。
+  - [ ] 不正Rangeを`416 RANGE_NOT_SATISFIABLE`、非対応Variant／MIME、失敗、Source missingを承認済みErrorへ変換する。
+  - [ ] 最新`FileEntry.name`からRFC 5987のDownload名を生成し、物理Pathや生成時名称を公開しない。
+  - [ ] Owner／直接共有／継承共有の`VIEWER`以上だけに許可し、AdminやID列挙へ暗黙の閲覧権限を与えない。
+  - [ ] Job状態照会・Retryで要求Actorではなく現在のFile閲覧権限とSource状態を再評価する。
+  - [ ] `GET /api/v1/media-jobs/{jobId}`と`POST /api/v1/media-jobs/{jobId}/retry`を実装し、他User／非認可Jobを`404`へ正規化する。
+  - [ ] OpenAPI、Request／Response DTO、Error、未知enumの契約Testを追加する。
+
+### 2.5 配信・生成Lease
+
+- [ ] LeaseをTest firstで実装する。
+  - [ ] 生成権取得時に2分の所有者別`GENERATION` Leaseを設定し、Heartbeatで更新して完了・失敗時に解放する。
+  - [ ] `LeasedFileResult`で配信直前に2分の`DELIVERY` Leaseを取得し、Stream終了・取消・例外時に所有行だけを解放する。
+  - [ ] 64KiB Range配信中は30秒ごとに同じOwner tokenのLeaseを更新し、Cleanupが使用中Fileを削除できないことをTestする。
+  - [ ] Process異常終了後は期限切れLeaseだけが回収され、現行Leaseを別Processが奪わない。
+  - [ ] Lease取得後にSource状態・Version・権限・Derivative状態を再読込し、競合時はfail-closedにする。
+
+### 2.6 PR2検証・文書・完了
+
+- [ ] PR2の自動・結合検証を完了する。
+  - [ ] 画像／PDF／動画Thumbnail、写真Low／Mediumのgolden／metadata／破損入力Testが成功する。
+  - [ ] 同時要求、待機閾値、API取消、Worker継続、Range、認可、Lease競合の統合Testが成功する。
+  - [ ] 実処理Library／実行Programを使用するTestと、失敗注入後の一時File・DB整合確認が成功する。
+  - [ ] Coverage基準と全Server／Config／Security／Deployment CI、`git diff --check`が成功する。
+- [ ] PR2に必要な正式文書、OpenAPI、依存関係、SBOM、運用設定を更新する。
+  - [ ] Debian 12の`libvips-tools`、`ffmpeg`、`poppler-utils`とBinary／Loader検証をinstall／upgrade／rollback／verify手順へ追加する。
+  - [ ] `Media`設定、`derivatives`／`derivative-temp`作成、systemd hardeningとStorage限定writeを配置Templateへ反映する。
+- [ ] PR2を完了する。
+  - [ ] フェーズ2の全項目が`[x]`であることを確認する。
+  - [ ] 差分にAndroid UI、動画Low／Medium変換本体、HLS、秘密情報、未使用Packageがないことを確認する。
+  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [ ] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
+  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+
+---
+
+## フェーズ3 / PR3: 動画Low／Medium変換Workerと進捗・回復
+
+### 3.1 開始条件
+
+- [ ] PR3の開始条件を満たす。
+  - [ ] PR2が`main`へMerge済みで、必須CIが成功している。
+  - [ ] `git status`と既存差分を確認し、最新`main`からPR3用Branchを作成する。
+  - [ ] PiのFFmpeg／ffprobe version、codec、実行User権限、HDD一時領域、systemd制約を確認する。
+
+### 3.2 FFmpeg Process境界
+
+- [ ] FFmpeg／ffprobe AdapterをTest firstで実装する。
+  - [ ] Shell文字列連結を使わずArgument listへ固定Profileと検証済みPathだけを渡す。
+  - [ ] Lowを最大720p・H.264・約1.5Mbps・AAC 96kbps・最大30fpsで生成する。
+  - [ ] Mediumを最大1080p・H.264・約4Mbps・AAC 128kbps・最大30fpsで生成する。
+  - [ ] 縦横比を維持し、小さい元動画を拡大せず、完成済みMP4として出力する。
+  - [ ] Duration、codec、stream、dimension、container、終了Code、出力Sizeを検証する。
+  - [ ] 進捗出力から処理済み時間とPercentを安全に解析し、算出不能時はPercentを省略する。
+  - [ ] stdout／stderrをboundedに処理し、File名、物理Path、User情報を通常Log／Metric labelへ出さない。
+  - [ ] Timeout、取消、SIGTERM、異常終了時に子Processを終了し、部分出力を公開しない。
+
+### 3.3 MediaGenerationWorkerの動画処理
+
+- [ ] 独立Workerの動画処理LoopをTest firstで実装する。
+  - [ ] PostgreSQL Queueから1件を排他取得し、Pi上の動画変換同時実行数を必ず1に制限する。
+  - [ ] Job取得後にSource `ACTIVE`、Version、権限不要のSystem処理条件、Storage状態、Derivative状態を再検証する。
+  - [ ] 元動画をRead-onlyで開き、同一Filesystemの一時MP4へ全体生成する。
+  - [ ] Heartbeatと進捗を条件付き更新し、古いWorkerが回収後のJob状態を上書きできないようにする。
+  - [ ] ffprobe検証、durable flush、atomic rename、`READY`／`COMPLETED`更新の順序を守る。
+  - [ ] Retry可能失敗を30秒／2分／8分Backoff付き`QUEUED`、恒久失敗を`FAILED`へ移し、3回上限を守る。
+  - [ ] Worker終了時に新規取得を停止し、猶予内終了または安全なstale回収へ移行する。
+
+### 3.4 動画APIと状態管理
+
+- [ ] 動画派生APIをTest firstで実装する。
+  - [ ] `video-low`／`video-medium`要求で、存在しないDerivativeとJobを一意・冪等に作成する。
+  - [ ] `QUEUED`／`RUNNING`では`202`とJob状態URL、Queue位置、進捗、Retry待機を返す。
+  - [ ] 正式Job状態APIで`GENERATING`、`READY`、`FAILED`と承認済みErrorを返す。
+  - [ ] Retry APIは現在権限、Source、Version、Retry可否を再確認し、同時Retryを1件へ収束させる。
+  - [ ] `READY`動画だけを`200`／`206`でRange配信し、生成途中・検証前・失敗出力を配信しない。
+  - [ ] 元画質は`variant=original`の明示要求だけで配信し、Low／Medium要求から自動Fallbackしない。
+  - [ ] 画面離脱、HTTP取消、API再起動がWorker Jobを取消さないことを統合Testする。
+
+### 3.5 回復・観測性・配置
+
+- [ ] Worker再起動と障害回復を実装する。
+  - [ ] 起動時と1分周期で2分staleの`RUNNING`、期限切れ生成Lease、DB候補に対応する一時Fileだけを回収する。
+  - [ ] DB停止、HDD切断、Storage read-only、容量不足、Process kill、Pi再起動、atomic rename後DB失敗を再現して安全に収束させる。
+  - [ ] Source内容更新、Trash、Purge、`MISSING`と変換完了の競合で古い結果を`READY`にしない。
+- [ ] Metricと構造化Logを追加する。
+  - [ ] Queue深さ、最古待機時間、実行中数、成功／失敗／Retry、変換時間、出力Bytes、stale回収を低Cardinalityで記録する。
+  - [ ] Job ID、File ID、Path、File名、User名をMetric labelへ含めず、必要な相関IDだけを機密情報なしで構造化Logへ記録する。
+  - [ ] Health／運用確認でAPIとは独立したWorker停止・Queue滞留・FFmpeg利用不可を識別できるようにする。
+- [ ] systemd／配置を更新する。
+  - [ ] Worker serviceの実行User、WorkingDirectory、EnvironmentFile、Restart、Timeout、Memory／CPU、Hardeningを更新する。
+  - [ ] FFmpeg／ffprobeの実Version、Codec、Profile、進捗出力をPiのinstall／verify／upgrade／rollback手順で確認する。
+  - [ ] API起動中にWorkerだけ停止・更新・Rollbackでき、WorkerへHTTP Listenerを追加していないことを確認する。
+
+### 3.6 PR3検証・文書・完了
+
+- [ ] PR3の自動・実Process検証を完了する。
+  - [ ] 動画Profile、Probe、進捗、Queue順、単一並列、Retry、stale回収、Range、認可のTestが成功する。
+  - [ ] 短尺・長尺、縦動画、音声なし、複数音声、破損、unsupported codec、巨大metadataのFixtureを確認する。
+  - [ ] Worker／API／DB／HDDの各異常終了後に、部分出力非公開・元File不変・Job回復を確認する。
+  - [ ] Coverage基準と全Server／Config／Security／Deployment CI、`git diff --check`が成功する。
+- [ ] PR3に必要な正式文書、OpenAPI、配置、運用、Security、Test fixture出典を更新する。
+- [ ] PR3を完了する。
+  - [ ] フェーズ3の全項目が`[x]`であることを確認する。
+  - [ ] 差分にAndroid UI、HLS、任意Command実行、実環境Path、Credential、著作権不明Fixtureがないことを確認する。
+  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [ ] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
+  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+
+---
+
+## フェーズ4 / PR4: TTL・LRU清掃、Pi性能・障害E2E、運用完成
+
+### 4.1 開始条件
+
+- [ ] PR4の開始条件を満たす。
+  - [ ] PR3が`main`へMerge済みで、必須CIが成功している。
+  - [ ] `git status`と既存差分を確認し、最新`main`からPR4用Branchを作成する。
+  - [ ] Production相当DB／StorageのBackup、復元可能性、空き容量、Storage ID、Service状態を確認する。
+
+### 4.2 TTL・LRU清掃
+
+- [ ] `CacheCleanupService`をTest firstで実装する。
+  - [ ] 30分ごとに100件Batchで期限切れの写真・動画Low／Mediumだけを検索する。
+  - [ ] `READY`かつ`expiresAt <= now`、Lease失効済みの候補だけを安定したLRU順で処理する。
+  - [ ] `PENDING`、`RUNNING`、`DELETING`、有効Lease、Thumbnail／PDF Thumbnailを除外する。
+  - [ ] 配信時に`lastAccessedAt`と`expiresAt = now + 24h`を競合安全に更新する。
+  - [ ] 通常Cache合計が10GBを超えた場合だけ追加LRU清掃し、6GB以下まで継続する。
+  - [ ] 候補を`DELETING`へ条件付き遷移し、物理削除後に管理行を削除する。
+  - [ ] 削除失敗は元ファイルへ影響させず、状態を再試行可能に戻して次回清掃で処理する。
+  - [ ] 大量候補をMemoryへ全保持せず、Batchごとに容量を再計算し、Worker間競合で二重削除しない。
+- [ ] Cleanup Workerを既存独立Workerへ追加する。
+  - [ ] 起動時と設定周期で実行し、停止Token、失敗Backoff、Scope生成、構造化Logの既存Patternへ従う。
+  - [ ] Cleanup同時実行を排除し、変換Worker、Trash Purge、MISSING削除、配信Leaseとの競合をTestする。
+  - [ ] 清掃候補数、削除数／Bytes、残容量、失敗、所要時間を低Cardinality Metricへ記録する。
+- [ ] Media Job履歴Cleanupを実装する。
+  - [ ] 1日ごとに完了・失敗・取消から7日を超えたterminal Jobだけを100件ずつ削除する。
+  - [ ] `QUEUED`、`RUNNING`、現行Retry参照中Jobを削除せず、Derivative状態と履歴削除を分離する。
+  - [ ] Job履歴Cleanupの同時実行、Worker再起動、DB失敗後の再試行をTestする。
+
+### 4.3 性能・容量・耐久E2E
+
+- [ ] Raspberry Pi 4実機で生成性能とResource上限を測定する。
+  - [ ] 写真Thumbnail／Low／Medium、動画Thumbnail／720p／1080p、PDF Thumbnailの代表Fixtureで時間、CPU、Memory、I/O、出力Sizeを記録する。
+  - [ ] 動画変換が同時1件でQueue順を守り、API latencyと既存Worker処理を許容範囲に保つことを確認する。
+  - [ ] 30万件のThumbnail推定容量と実測sampleを記録し、HDD容量計画・監視閾値を確定する。
+- [ ] TTL／Watermark／Lease E2Eを完了する。
+  - [ ] 23:59:59、24:00:00、時刻境界、Access更新、期限切れ削除をServer UTCで確認する。
+  - [ ] 10GB以下では容量清掃せず、10GB超過時はLRU順で6GB以下まで削除する。
+  - [ ] Thumbnailを保持し、配信中・生成中・削除中・有効LeaseのCacheを削除しない。
+  - [ ] API／Worker再起動、DB切断、HDD切断、容量不足、削除失敗後に再試行して整合状態へ戻る。
+- [ ] Lifecycle／認可／経路E2Eを完了する。
+  - [ ] Owner、直接共有、継承共有、未共有、権限変更・解除で生成、状態照会、Retry、配信が正しく許可・拒否される。
+  - [ ] Rename／Moveでは再利用し、内容更新では旧版を配信せず、Trash／Restore／Purge／`MISSING`で保持・削除規則を守る。
+  - [ ] LANとZeroTierで同じHTTPS Hostname、TLS、認証、202／状態照会／Range契約が機能する。
+  - [ ] 元画質への暗黙Fallback、生成途中公開、他User情報漏えい、Path漏えいがない。
+
+### 4.4 回帰・Security・運用確認
+
+- [ ] 既存機能の回帰を確認する。
+  - [ ] 一覧、詳細、Search、Recent、Favorites／Tags、共有、Upload、Download、Rename、Move、Trash、Restore、Purge、MISSINGが従来どおり動作する。
+  - [ ] 元FileのSize、SHA-256、File ID、Owner、`fileVersion`が派生生成・清掃だけでは変更されない。
+  - [ ] API、Worker、Nginx、PostgreSQL LogへFile名、物理Path、User名、検索語、Token、変換Command全文が漏れない。
+- [ ] Release／Rollbackを確認する。
+  - [ ] `./scripts/ci/build-release.sh`でlinux-arm64 Server成果物とSBOMを生成する。
+  - [ ] Migration、API、Worker、`libvips-tools`／FFmpeg／Poppler依存の適用順、サービス停止境界、Rollback、DB／Storage復元を確認する。
+  - [ ] Worker停止中も元File APIが利用でき、再開後に永続Queueの処理を再開する。
+  - [ ] 全必須CI、Migration、性能、障害注入、Pi実機E2Eが最終HEADで成功する。
+
+### 4.5 文書・清掃・PR4完了
+
+- [ ] 正式文書と実装を最終整合する。
+  - [ ] 5つの正式文書、Steering、OpenAPI、Migration、Server、Worker、配置、運用・Test記録を一致させる。
+  - [ ] Queue監視、stale回収、Cache容量、Thumbnail容量、Lease、FFmpeg失敗、HDD障害のRunbookを追加する。
+  - [ ] 実測したProfile、性能、Resource消費、容量推定、障害注入、Rollback結果を`docs/testing/`へ機密情報なしで記録する。
+- [ ] E2E環境を安全に清掃する。
+  - [ ] 限定識別子で作成したTest File、Derivative、Job、一時Fileだけを削除する。
+  - [ ] 実User、実File、実共有、Backup、資格情報、他機能の管理情報を削除しない。
+  - [ ] 孤立Derivative／Job／一時File、stale Lease、未完了Test Jobが0件で、全ServiceとStorageが正常である。
+- [ ] 全体差分をセルフレビューする。
+  - [ ] N+1、要求単位HDD全走査、無制限Query／Memory保持、長期認可Cache、Client-only認可がない。
+  - [ ] 元File変更、Root外Path、Shell injection、Symlink追跡、部分出力公開、Lease無視、Job二重実行がない。
+  - [ ] Android UI、HLS、Web／iOS、OCR、AI分類、不要Package、生成物、実環境値、Credentialがない。
+- [ ] PR4を完了する。
+  - [ ] フェーズ4の全項目が`[x]`であることを確認する。
+  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [ ] `steering`スキルのモード3-AでPR4完了記録を追記し、同じBranchへCommit・Pushする。
+  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+
+---
+
+## 各Pull Request完了記録
+
+各Pull Request作成後に`steering`スキルのモード3-Aを使用して追記する。対象Pull Request内のタスクがすべて完了するまで記録しない。
+
+### PR1: 派生データModel・永続ジョブキュー・Storage基盤
+
+- 完了日: 未完了
+- Pull Request: 未作成
+- 実施したTest・Build・静的解析: 未実施
+- 手動確認・性能確認: 未実施
+- 計画と実装の差分: 未記録
+- 実装中に追加したタスクと理由: 未記録
+- 技術的に不要になったタスク・理由・代替実装: 未記録
+- 後続Pull Requestへの引継ぎ事項: 未記録
+
+### PR2: Thumbnail・写真派生生成・API配信・Lease
+
+- 完了日: 未完了
+- Pull Request: 未作成
+- 実施したTest・Build・静的解析: 未実施
+- 手動確認・性能確認: 未実施
+- 計画と実装の差分: 未記録
+- 実装中に追加したタスクと理由: 未記録
+- 技術的に不要になったタスク・理由・代替実装: 未記録
+- 後続Pull Requestへの引継ぎ事項: 未記録
+
+### PR3: 動画Low／Medium変換Workerと進捗・回復
+
+- 完了日: 未完了
+- Pull Request: 未作成
+- 実施したTest・Build・静的解析: 未実施
+- 手動確認・性能確認: 未実施
+- 計画と実装の差分: 未記録
+- 実装中に追加したタスクと理由: 未記録
+- 技術的に不要になったタスク・理由・代替実装: 未記録
+- 後続Pull Requestへの引継ぎ事項: 未記録
+
+### PR4: TTL・LRU清掃、Pi性能・障害E2E、運用完成
+
+- 完了日: 未完了
+- Pull Request: 未作成
+- 実施したTest・Build・静的解析: 未実施
+- 手動確認・性能確認: 未実施
+- 計画と実装の差分: 未記録
+- 実装中に追加したタスクと理由: 未記録
+- 技術的に不要になったタスク・理由・代替実装: 未記録
+- 後続作業への引継ぎ事項: 未記録
+
+---
+
+## 全体振り返り
+
+PR1〜PR4、本ファイルの全タスク、各Pull Request完了記録が完了した後にだけ、`steering`スキルのモード3-Bを使用して記録する。
+
+### 実装完了日
+
+未完了
+
+### 計画と実績の差分
+
+未記録
+
+### 主な設計変更と理由
+
+未記録
+
+### 技術的な学び
+
+未記録
+
+### プロセス上の改善点
+
+未記録
+
+### 次回への改善提案
+
+未記録

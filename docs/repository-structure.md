@@ -482,7 +482,7 @@ KuraStorage.Infrastructure/
 │   │   ├── UserConfiguration.cs
 │   │   ├── DeviceConfiguration.cs
 │   │   ├── FileEntryConfiguration.cs
-│   │   └── TranscodeJobConfiguration.cs
+│   │   └── MediaJobConfiguration.cs
 │   ├── Repositories/
 │   │   ├── UserRepository.cs
 │   │   ├── FileEntryRepository.cs
@@ -1303,7 +1303,7 @@ AGENTS.md
 | Login HTTP Contract | `server/src/KuraStorage.Api/Contracts/Identity/` |
 | Login Endpoint | `server/src/KuraStorage.Api/Endpoints/Identity/` |
 | 動画Job polling UI | `apps/android/feature-media/.../presentation/` |
-| Transcode Worker Loop | `server/src/KuraStorage.Worker/Workers/MediaTranscodeWorker.cs` |
+| Media生成Worker Loop | `server/src/KuraStorage.Worker/Workers/MediaGenerationWorker.cs` |
 | FFmpeg引数生成 | `server/src/KuraStorage.Infrastructure/Media/` |
 | Device失効CLI | `server/src/KuraStorage.AdminCli/Commands/Devices/` |
 
