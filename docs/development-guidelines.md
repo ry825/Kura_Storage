@@ -945,7 +945,7 @@ Debug Assemblyを実行する。
 | Android Studio / Android SDK | Android開発・Emulator |
 | PostgreSQL Client | DB確認 |
 | Dockerまたは互換Runtime | Testcontainers用。Productionでは必須ではない |
-| FFmpeg | Media Integration Test |
+| libvips、FFmpeg／ffprobe、Poppler | `KURASTORAGE_RUN_MEDIA_TOOL_TESTS=1`のMedia Integration Test |
 | Nginx | 配置・E2E |
 | ShellCheck | Shell Script検査 |
 | k6 | Performance Test |

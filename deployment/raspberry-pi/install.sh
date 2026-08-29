@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/lib/common.sh"
 
 require_root
 load_config
-for command_name in blkid createuser createdb envsubst findmnt getent grep groupadd id ip \
+for command_name in apt-get blkid createuser createdb dpkg dpkg-query envsubst findmnt getent grep groupadd id ip \
     install mkdir mountpoint nginx nft openssl pg_conftool psql python3 readlink \
     runuser stat systemctl systemd-analyze systemd-escape tar useradd usermod; do
     require_command "${command_name}"
@@ -35,6 +35,7 @@ install -d -m 0750 -o kurastorage-api \
 install -d -m 0750 -o root -g kurastorage-secrets "${CONFIG_ROOT}/secrets"
 install -d -m 0750 -o root -g www-data "${CONFIG_ROOT}/tls"
 install -d -m 0750 -o kurastorage-api -g adm /var/log/kurastorage
+install_media_dependencies
 
 expected_mount_unit="$(systemd-escape --path --suffix=mount "${KURASTORAGE_STORAGE_MOUNT_PATH}")"
 [[ "${expected_mount_unit}" == "${KURASTORAGE_STORAGE_MOUNT_UNIT}" ]] ||
@@ -68,6 +69,7 @@ mkdir -p \
     "${KURASTORAGE_STORAGE_ROOT}/users" \
     "${KURASTORAGE_STORAGE_ROOT}/upload-temp" \
     "${KURASTORAGE_STORAGE_ROOT}/upload-sessions"
+ensure_media_storage
 
 install -m 0640 -o root -g www-data "${KURASTORAGE_TLS_CERT_FILE}" \
     "${CONFIG_ROOT}/tls/server.crt"

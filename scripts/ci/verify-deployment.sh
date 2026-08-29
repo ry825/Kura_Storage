@@ -230,7 +230,14 @@ grep -q '^LimitNOFILE=65536$' "${validation_root}/kurastorage-worker.service"
 grep -Fq '[[ -x "${INSTALL_ROOT}/current/KuraStorage.Worker" ]]' deployment/raspberry-pi/rollback.sh
 grep -Fq 'systemctl disable --now kurastorage-worker.service' deployment/raspberry-pi/rollback.sh
 grep -Fq 'verify_no_unfinished_upload_sessions' deployment/raspberry-pi/rollback.sh
+grep -Fq 'verify_no_active_media_jobs' deployment/raspberry-pi/rollback.sh
 grep -Fq 'ensure_upload_session_storage' deployment/raspberry-pi/upgrade.sh
+grep -Fq 'install_media_dependencies' deployment/raspberry-pi/install.sh
+grep -Fq 'install_media_dependencies' deployment/raspberry-pi/upgrade.sh
+grep -Fq 'ensure_media_storage' deployment/raspberry-pi/install.sh
+grep -Fq 'ensure_media_storage' deployment/raspberry-pi/upgrade.sh
+grep -Fq 'verify_media_dependencies' deployment/raspberry-pi/verify.sh
+grep -Fq 'media-runtime-packages.sbom' deployment/raspberry-pi/verify.sh
 # shellcheck disable=SC2016
 grep -Fq '[[ -x "${INSTALL_ROOT}/current/KuraStorage.Worker" ]]' deployment/raspberry-pi/verify.sh
 

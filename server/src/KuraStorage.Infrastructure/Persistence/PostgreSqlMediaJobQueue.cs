@@ -234,6 +234,13 @@ public sealed class PostgreSqlMediaJobQueue(KuraStorageDbContext database) : IMe
                 FROM candidates
                 WHERE job.id = candidates.id
                 RETURNING job.derivative_id, job.status
+            ), released_leases AS (
+                DELETE FROM derivative_leases AS lease
+                USING updated_jobs
+                WHERE lease.derivative_id = updated_jobs.derivative_id
+                  AND lease.lease_type = 'GENERATION'
+                  AND lease.expires_at <= @now
+                RETURNING lease.derivative_id
             )
             UPDATE file_derivatives AS derivative
             SET status = CASE WHEN updated_jobs.status = 'QUEUED' THEN 'PENDING' ELSE 'FAILED' END,
@@ -241,12 +248,18 @@ public sealed class PostgreSqlMediaJobQueue(KuraStorageDbContext database) : IMe
                 size = 0,
                 last_accessed_at = NULL,
                 expires_at = NULL,
+                lease_until = (
+                    SELECT max(lease.expires_at)
+                    FROM derivative_leases AS lease
+                    WHERE lease.derivative_id = derivative.id
+                      AND lease.expires_at > @now),
                 error_code = 'MEDIA_WORKER_STALE',
                 revision = derivative.revision + 1,
                 updated_at = @now
             FROM updated_jobs
             WHERE derivative.id = updated_jobs.derivative_id
-              AND derivative.status = 'RUNNING';
+              AND derivative.status = 'RUNNING'
+              AND (SELECT count(*) FROM released_leases) >= 0;
             """;
         return await ExecuteNonQueryAsync(sql, cancellationToken,
             new NpgsqlParameter("stale_before", now.Subtract(MediaJob.StaleAfter)),

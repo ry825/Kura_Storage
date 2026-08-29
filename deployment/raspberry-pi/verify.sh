@@ -15,6 +15,13 @@ set_storage_owner_variables
 verify_storage_mount
 verify_storage_identity_file "${KURASTORAGE_STORAGE_ROOT}/.storage-identity" ||
     die "Storage identity mismatch."
+verify_media_dependencies
+[[ -s "${STATE_ROOT}/media-runtime-packages.sbom" ]] ||
+    die "Media runtime package inventory is unavailable."
+[[ -d "${KURASTORAGE_STORAGE_ROOT}/${KURASTORAGE_MEDIA_DERIVATIVE_ROOT}" ]] ||
+    die "Derivative storage directory is unavailable."
+[[ -d "${KURASTORAGE_STORAGE_ROOT}/${KURASTORAGE_MEDIA_TEMPORARY_ROOT}" ]] ||
+    die "Derivative temporary directory is unavailable."
 [[ -d "${KURASTORAGE_STORAGE_ROOT}/upload-sessions" ]] ||
     die "Resumable upload temporary directory is unavailable."
 systemctl is-active --quiet postgresql.service

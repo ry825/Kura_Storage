@@ -22,6 +22,8 @@ public sealed class OpenApiContractTests
             "  /folders:",
             "  /files/{fileId}:",
             "  /files/{fileId}/content:",
+            "  /media-jobs/{jobId}:",
+            "  /media-jobs/{jobId}/retry:",
             "  /trash:",
             "  /trash/{fileId}:",
             "  /files/{fileId}/restore:",
@@ -52,6 +54,12 @@ public sealed class OpenApiContractTests
         Assert.Contains("FILE_OPERATION_NOT_ALLOWED", contract, StringComparison.Ordinal);
         Assert.Contains("RECOVERY_REQUIRED", contract, StringComparison.Ordinal);
         Assert.Contains("RANGE_NOT_SATISFIABLE", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: getMediaJob", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: retryMediaJob", contract, StringComparison.Ordinal);
+        Assert.Contains("MediaAcceptedResponse:", contract, StringComparison.Ordinal);
+        Assert.Contains("MediaJob:", contract, StringComparison.Ordinal);
+        Assert.Contains("enum: [original, thumbnail, image-low, image-medium]", contract, StringComparison.Ordinal);
+        Assert.Contains("MEDIA_VARIANT_UNSUPPORTED", contract, StringComparison.Ordinal);
         Assert.Contains("IDEMPOTENCY_CONFLICT", contract, StringComparison.Ordinal);
         Assert.Contains("operationId: createUploadSession", contract, StringComparison.Ordinal);
         Assert.Contains("operationId: uploadSessionChunk", contract, StringComparison.Ordinal);

@@ -16,4 +16,5 @@ builder.Services.AddSingleton<IndexingWorkerMetrics>();
 builder.Services.AddHostedService<TrashPurgeWorker>();
 builder.Services.AddHostedService<IndexEventWorker>();
 builder.Services.AddHostedService<FullRescanWorker>();
+builder.Services.AddHostedService<MediaGenerationWorker>();
 await builder.Build().RunAsync();

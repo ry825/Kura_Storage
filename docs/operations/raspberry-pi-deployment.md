@@ -11,8 +11,12 @@ that key-authenticated maintenance remains possible; it rejects SSH arriving
 through the ZeroTier interface.
 
 Required packages are `.NET` self-contained artifact dependencies, PostgreSQL
-17, Nginx, nftables, `curl`, `gettext-base`, OpenSSL, `findmnt`, `blkid`, and
-Linux exFAT support. The deployment unit mounts the existing filesystem by
+17, Nginx, nftables, `curl`, `gettext-base`, OpenSSL, `findmnt`, `blkid`, Linux
+exFAT support, `libvips-tools`, `ffmpeg`, and `poppler-utils`. The installer and
+upgrader install the three media packages from the configured Debian 12 ARM64
+repositories, verify the JPEG/PNG loaders, WebP encoders, ffprobe, and pdftoppm,
+and write the resolved package versions to
+`/var/lib/kurastorage/media-runtime-packages.sbom`. The deployment unit mounts the existing filesystem by
 UUID at `/mnt/KuraStorage-hdd` and uses `/mnt/KuraStorage-hdd/KuraStorage` as
 the application data root. It does not format the device or delete existing
 files.
@@ -77,7 +81,8 @@ sudo --preserve-env=KURASTORAGE_DEPLOY_CONFIG \
 The installer creates the restricted OS account, remounts the existing exFAT
 HDD with the required ownership and safety options, validates the mount source
 without formatting it, creates the
-PostgreSQL role/database, applies migrations explicitly, renders Nginx,
+PostgreSQL role/database, installs and verifies media runtime dependencies,
+creates the configured derivative and derivative-temporary directories, applies migrations explicitly, renders Nginx,
 systemd, and nftables configuration, activates a versioned release, and runs
 the deployment verifier. It does not install or configure ZeroTier.
 If UFW is already active, the installer keeps it enabled and adds only the
@@ -129,7 +134,9 @@ This prevents a boot-time failure when ZeroTier assigns its address after the
 base network has reached `network-online.target`.
 
 The Worker exposes no socket or TCP port. It runs once after process start and
-then every configured `KURASTORAGE_TRASH_INTERVAL_HOURS`. Inspect only
+polls persistent Media Jobs in addition to the configured maintenance loops.
+Media generation runs serially, uses only configured absolute binary paths,
+and writes only below the configured Storage Root. Inspect only
 operation identifiers and aggregate counts:
 
 ```bash
@@ -144,6 +151,30 @@ file-size snapshots, not exFAT allocation measurements. If a run fails, verify
 PostgreSQL, the HDD mount and identity, and read-only state before restarting
 the Worker. A restart recovers stopped runs and incomplete purge journals before
 examining new candidates. Do not edit run counters or delete journal rows.
+
+### Media runtime dependency lifecycle
+
+The reviewed Raspberry Pi target is Debian 12 ARM64. On 2026-08-29 the target
+repositories resolved `libvips-tools`/`libvips42` to `8.14.1-3+deb12u3`, FFmpeg
+to `8:5.1.9-0+deb12u1+rpt1`, and `poppler-utils` to
+`22.12.0-2+deb12u3`. These are deployment observations rather than unsafe
+permanent pins: security updates may advance them, and every install/upgrade
+records the versions actually selected in the runtime package inventory.
+
+Upgrade order is: build and inspect the release, create the PostgreSQL backup,
+stop Worker, stop API, install and verify media packages, ensure derivative
+directories, apply migrations, activate API and Worker, then run `verify.sh`.
+Do not start a new Worker against a partially upgraded tool set.
+
+Application rollback stops the Worker before switching the release symlink and
+is blocked while a Media Job remains `QUEUED` or `RUNNING`. Complete or
+explicitly reconcile those jobs under the current release before rollback. It
+does not remove shared media packages or derivative files. If a package-level
+rollback is required, keep the application stopped, restore only reviewed
+Debian package versions from an authenticated repository or retained package
+cache, run `verify.sh`, and then start the prior release. Database and Storage
+Root restoration remain a matched, manual recovery operation; never delete
+derivatives merely because application rollback occurred.
 
 ### External index watcher and rescan
 

@@ -1741,7 +1741,7 @@ Access Tokenは15分、Refresh Tokenは発行または前回ローテーショ�
 
 #### `GET /api/v1/files/{fileId}/content`
 
-MVPでは元ファイルだけをHTTP Range対応で配信する。`Range`がない場合は`200`、単一Rangeには`206`と`Content-Range`、不正または範囲外には`416 RANGE_NOT_SATISFIABLE`を返す。派生データの`variant`、Inline Preview、Media JobはMVP後とする。
+`variant`省略または`original`は従来の元ファイル配信を保つ。`thumbnail`、`image-low`、`image-medium`は永続Media Jobで生成した完成済みWebPだけをLease付きで配信する。`Range`がない場合は`200`、単一Rangeには`206`と`Content-Range`、不正または範囲外には`416 RANGE_NOT_SATISFIABLE`を返す。`video-low`と`video-medium`は後続Media Workerフェーズで公開する。
 
 - `original`: 元ファイルを送信する。
 - `thumbnail`: 写真・動画・PDFの完成済み一覧用WebPだけを送信する。
@@ -1771,6 +1771,7 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 {
   "status": "GENERATING",
   "jobId": "uuid",
+  "jobStatusUrl": "/api/v1/media-jobs/uuid",
   "retryAfterSeconds": 2
 }
 ```

@@ -23,6 +23,60 @@ require_command() {
     command -v "$1" >/dev/null 2>&1 || die "Required command is unavailable: $1"
 }
 
+install_media_dependencies() {
+    [[ "$(dpkg --print-architecture)" == "arm64" ]] ||
+        die "Media dependencies require the reviewed Debian 12 ARM64 deployment target."
+    apt-get update
+    apt-get install --yes --no-install-recommends libvips-tools ffmpeg poppler-utils
+    verify_media_dependencies
+
+    local inventory
+    inventory="$(mktemp)"
+    dpkg-query --show --showformat='${Package}\t${Version}\t${Architecture}\n' \
+        libvips-tools libvips42 ffmpeg poppler-utils >"${inventory}"
+    install -m 0644 -o root -g root "${inventory}" "${STATE_ROOT}/media-runtime-packages.sbom"
+    rm -f "${inventory}"
+}
+
+verify_media_dependencies() {
+    local tool_path
+    for tool_path in \
+        "${KURASTORAGE_MEDIA_VIPS_PATH}" \
+        "${KURASTORAGE_MEDIA_FFMPEG_PATH}" \
+        "${KURASTORAGE_MEDIA_FFPROBE_PATH}" \
+        "${KURASTORAGE_MEDIA_PDFTOPPM_PATH}"; do
+        [[ -x "${tool_path}" ]] || die "Configured media tool is not executable: ${tool_path}"
+    done
+
+    local vips_version vips_operations ffmpeg_encoders ffprobe_version pdftoppm_version
+    vips_version="$("${KURASTORAGE_MEDIA_VIPS_PATH}" --version)"
+    vips_operations="$("${KURASTORAGE_MEDIA_VIPS_PATH}" -l)"
+    ffmpeg_encoders="$("${KURASTORAGE_MEDIA_FFMPEG_PATH}" -hide_banner -encoders 2>/dev/null)"
+    ffprobe_version="$("${KURASTORAGE_MEDIA_FFPROBE_PATH}" -version 2>/dev/null)"
+    pdftoppm_version="$("${KURASTORAGE_MEDIA_PDFTOPPM_PATH}" -v 2>&1)"
+
+    grep -q '^vips-' <<<"${vips_version}" ||
+        die "libvips version verification failed."
+    grep -q 'VipsForeignLoadJpeg' <<<"${vips_operations}" ||
+        die "libvips JPEG loader is unavailable."
+    grep -q 'VipsForeignLoadPng' <<<"${vips_operations}" ||
+        die "libvips PNG loader is unavailable."
+    grep -q 'VipsForeignSaveWebp' <<<"${vips_operations}" ||
+        die "libvips WebP encoder is unavailable."
+    grep -q 'libwebp' <<<"${ffmpeg_encoders}" ||
+        die "FFmpeg libwebp encoder is unavailable."
+    grep -q '^ffprobe version' <<<"${ffprobe_version}" ||
+        die "ffprobe version verification failed."
+    grep -q '^pdftoppm version' <<<"${pdftoppm_version}" ||
+        die "pdftoppm version verification failed."
+}
+
+ensure_media_storage() {
+    mkdir -p \
+        "${KURASTORAGE_STORAGE_ROOT}/${KURASTORAGE_MEDIA_DERIVATIVE_ROOT}" \
+        "${KURASTORAGE_STORAGE_ROOT}/${KURASTORAGE_MEDIA_TEMPORARY_ROOT}"
+}
+
 ufw_is_active() {
     command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active$'
 }
@@ -446,6 +500,16 @@ verify_no_unfinished_upload_sessions() {
         tr -d '[:space:]')"
     [[ "${unfinished}" == "0" ]] ||
         die "Rollback is blocked while resumable upload sessions require the current server."
+}
+
+verify_no_active_media_jobs() {
+    local active
+    active="$(runuser -u postgres -- psql --no-psqlrc --tuples-only \
+        --dbname="${KURASTORAGE_POSTGRES_DATABASE}" --command \
+        "SELECT count(*) FROM media_jobs WHERE status IN ('QUEUED', 'RUNNING');" | \
+        tr -d '[:space:]')"
+    [[ "${active}" == "0" ]] ||
+        die "Rollback is blocked while active Media Jobs require the current worker."
 }
 
 activate_release() {

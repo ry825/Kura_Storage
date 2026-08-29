@@ -2,6 +2,7 @@ using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Identity;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Maintenance;
+using KuraStorage.Application.Media;
 using KuraStorage.Application.Sharing;
 using KuraStorage.Application.Search;
 using KuraStorage.Application.Recent;
@@ -11,6 +12,7 @@ using KuraStorage.Application.Transfers;
 using KuraStorage.Infrastructure.Configuration;
 using KuraStorage.Infrastructure.Identity;
 using KuraStorage.Infrastructure.Indexing;
+using KuraStorage.Infrastructure.Media;
 using KuraStorage.Infrastructure.Persistence;
 using KuraStorage.Infrastructure.Persistence.Queries;
 using KuraStorage.Infrastructure.Storage;
@@ -138,6 +140,11 @@ public static class DependencyInjection
         services.AddScoped<IOrganizationRepository, PostgreSqlOrganizationRepository>();
         services.AddScoped<IShareRepository, ShareRepository>();
         services.AddScoped<IMediaJobQueue, PostgreSqlMediaJobQueue>();
+        services.AddScoped<IMediaRepository, PostgreSqlMediaRepository>();
+        services.AddSingleton<IMediaHeartbeat, PostgreSqlMediaHeartbeat>();
+        services.AddSingleton<IMediaProcessRunner, MediaProcessRunner>();
+        services.AddSingleton<IMediaWaiter, SystemMediaWaiter>();
+        services.AddSingleton<IMediaGenerator, ExternalMediaGenerator>();
         services.AddScoped<SharingDeletionParticipant>();
         services.AddScoped<MediaDeletionParticipant>();
         services.AddScoped<IPermanentDeleteParticipant>(
@@ -168,6 +175,23 @@ public static class DependencyInjection
                 serviceProvider.GetRequiredService<IOptions<StorageOptions>>().Value.CapacityWarningFreeBytes));
         services.AddSingleton(
             serviceProvider => serviceProvider.GetRequiredService<IOptions<TrashPurgeOptions>>().Value);
+        services.AddSingleton(
+            serviceProvider =>
+            {
+                var configured = serviceProvider.GetRequiredService<IOptions<MediaOptions>>().Value;
+                return new MediaRuntimeOptions
+                {
+                    ImageWaitMilliseconds = configured.ImageWaitMilliseconds,
+                    JobPollMilliseconds = configured.JobPollMilliseconds,
+                    ThumbnailProfileVersion = configured.ThumbnailProfileVersion,
+                    ImageProfileVersion = configured.ImageProfileVersion,
+                    DeliveryLeaseSeconds = configured.DeliveryLeaseSeconds,
+                    DeliveryLeaseRenewalSeconds = configured.DeliveryLeaseRenewalSeconds,
+                    GenerationLeaseSeconds = configured.GenerationLeaseSeconds,
+                    JobHeartbeatSeconds = configured.JobHeartbeatSeconds,
+                    CacheTtlHours = configured.CacheTtlHours,
+                };
+            });
         services.AddScoped<FileOperationRecoveryService>();
         services.AddScoped<UploadSessionService>();
         services.AddScoped<UploadSessionRecoveryService>();
@@ -177,6 +201,8 @@ public static class DependencyInjection
         services.AddScoped<SearchService>();
         services.AddScoped<RecentFileService>();
         services.AddScoped<OrganizationService>();
+        services.AddScoped<PreviewService>();
+        services.AddScoped<MediaJobRunner>();
         services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IRefreshTokenService, RefreshTokenService>();
