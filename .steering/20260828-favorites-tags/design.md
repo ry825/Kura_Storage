@@ -454,7 +454,7 @@ Favorites／Search結果選択は既存patternどおり、Folderならbrowser、
 
 - Favoritesは`user_id`先頭Indexから最大100件だけを取得し、Page内認可を1つのCTEでBatch解決する。
 - Tag一覧はUser当たり最大200件の有界Queryとし、Androidでのみ一時保持する。Entry stateは最大20件だけ返す。
-- Tag Searchは`entry_tags(tag_id, entry_id)`から一致Entry IDを絞り、AND条件を`GROUP BY/HAVING`で解決する。
+- Tag Searchは1 Tagなら`entry_tags(tag_id, entry_id)`から一致Entry IDを直接取得し、2〜10 Tagなら`GROUP BY/HAVING`でAND条件を解決する。Tag一致集合とTag指定後のeligible集合は1要求内でMaterializeしてOwner／Shared認可分岐から共有する。Tag検索のRepeatable Read Transactionだけ`work_mem=16MB`を`SET LOCAL`し、DB全体設定は変更しない。
 - TagなしSearchへjoinやTransactionを追加せず、既存30万件性能を維持する。
 - `EXPLAIN ANALYZE BUFFERS`でTag 1件、10件、Tagのみ、名前＋Tag、共有＋Tag、MISSING＋Tag、Page後半を測定する。
 - Raspberry Pi相当の30万FileEntry、10 User、最大Tag条件で代表Queryのwarm p50／p95／最大、cold、CPU、Memory、DB connection、Index sizeを記録する。

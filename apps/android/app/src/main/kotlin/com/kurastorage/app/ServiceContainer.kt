@@ -8,6 +8,7 @@ import com.kurastorage.core.data.DataStoreCredentialMetadataStore
 import com.kurastorage.core.data.DefaultAdminStorageRepository
 import com.kurastorage.core.data.DefaultAuthenticationRepository
 import com.kurastorage.core.data.DefaultFileRepository
+import com.kurastorage.core.data.DefaultOrganizationRepository
 import com.kurastorage.core.data.DefaultRecentFileRepository
 import com.kurastorage.core.data.DefaultSearchRepository
 import com.kurastorage.core.data.DefaultSharingRepository
@@ -87,6 +88,7 @@ class ServiceContainer(
             sharing = DefaultSharingRepository(api, executor),
             search = DefaultSearchRepository(api, executor),
             recentFiles = DefaultRecentFileRepository(api, executor),
+            organization = DefaultOrganizationRepository(api, executor),
             adminStorage = DefaultAdminStorageRepository(api, executor, auth),
             transfers =
                 DefaultTransferRepository(
@@ -111,6 +113,7 @@ data class SessionServices(
     val sharing: DefaultSharingRepository,
     val search: DefaultSearchRepository,
     val recentFiles: DefaultRecentFileRepository,
+    val organization: DefaultOrganizationRepository,
     val adminStorage: DefaultAdminStorageRepository,
     val transfers: DefaultTransferRepository,
 )

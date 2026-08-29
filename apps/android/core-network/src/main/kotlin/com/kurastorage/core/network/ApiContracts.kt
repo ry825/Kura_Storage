@@ -106,8 +106,51 @@ data class SearchRequestDto(
     val maxSize: Long? = null,
     val ownerUserId: String? = null,
     val shareTargetId: String? = null,
+    val tagIds: List<String> = emptyList(),
     val page: Int = 1,
     val pageSize: Int = 50,
+)
+
+@Serializable
+data class TagNameRequestDto(
+    val name: String,
+)
+
+@Serializable
+data class TagItemDto(
+    val id: String,
+    val name: String,
+)
+
+@Serializable
+data class FavoriteItemDto(
+    val id: String,
+    val entryType: String,
+    val name: String,
+    val mimeType: String? = null,
+    val fileCategory: String? = null,
+    val size: Long,
+    val status: String,
+    val updatedAt: String,
+    val owner: OwnerSummaryDto,
+    val permission: String,
+    val permissionSource: String,
+    val shareTargetId: String? = null,
+    val favoritedAt: String,
+)
+
+@Serializable
+data class FavoritePageDto(
+    val items: List<FavoriteItemDto>,
+    val page: Int,
+    val pageSize: Int,
+    val totalCount: Int,
+)
+
+@Serializable
+data class EntryOrganizationStateDto(
+    val isFavorite: Boolean,
+    val tags: List<TagItemDto>,
 )
 
 @Serializable

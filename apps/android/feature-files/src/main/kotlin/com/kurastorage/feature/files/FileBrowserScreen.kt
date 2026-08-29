@@ -93,6 +93,7 @@ fun FileBrowserScreen(
     onRefreshAdminStorage: () -> Unit = {},
     onOpenTrashFromWarning: () -> Unit = {},
     onShare: (FileEntry) -> Unit = {},
+    onOrganization: (String) -> Unit = {},
 ) {
     var showCreate by remember { mutableStateOf(false) }
     var pendingTrash by remember { mutableStateOf<FileEntry?>(null) }
@@ -201,6 +202,21 @@ fun FileBrowserScreen(
                     state.historySyncError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     entry.missingLastCheckedAt?.let { Text("最終確認: $it") }
                     if (trashMode) Text(state.retention?.text ?: "Automatic deletion time is unavailable.")
+                    if (!trashMode &&
+                        entry.status in
+                        setOf(
+                            FileEntryStatus.ACTIVE,
+                            FileEntryStatus.MISSING_CANDIDATE,
+                            FileEntryStatus.MISSING,
+                        )
+                    ) {
+                        OutlinedButton(
+                            onClick = { onOrganization(entry.id) },
+                            modifier = Modifier.testTag("organize-entry"),
+                        ) {
+                            Text("Favorites and tags")
+                        }
+                    }
                 }
             },
             confirmButton = {

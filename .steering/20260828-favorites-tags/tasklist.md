@@ -184,124 +184,124 @@
 
 ### 2.1 開始条件とAndroid既存実装確認
 
-- [ ] PR2の開始条件を満たす。
-  - [ ] PR1とAndroid Search／Recentの先行Pull Requestが`main`へMerge済みで、必須CIが成功している。
-  - [ ] `git status`と既存差分を確認し、最新`main`からPR2用Branchを作成する。
-  - [ ] `feature-search`、Home、File／Folder詳細、一覧action、Navigation、Session単位Repositoryの既存patternを確認する。
+- [x] PR2の開始条件を満たす。
+  - [x] PR1とAndroid Search／Recentの先行Pull Requestが`main`へMerge済みで、必須CIが成功している。
+  - [x] `git status`と既存差分を確認し、最新`main`からPR2用Branchを作成する。
+  - [x] `feature-search`、Home、File／Folder詳細、一覧action、Navigation、Session単位Repositoryの既存patternを確認する。
 
 ### 2.2 Android model・network・data
 
-- [ ] `core-model`へお気に入り・Tag modelを追加する。
-  - [ ] `OrganizationModels.kt`へ`TagItem`、`FavoriteItem／Page`、`EntryOrganizationState`、Validationを追加する。
-  - [ ] Favorite metadataは既存`SearchResultItem`を再利用し、File／Folder、状態、Permission／Source、共有元を重複定義しない。
-  - [ ] Tag名1〜50 code point、control拒否、Tag 200件、Entry Tag 20件、Search Tag 10件の境界をTestする。
-  - [ ] 未知enum、不正response、欠落必須項目をfail-closedで扱うTestを追加する。
-- [ ] `core-network`へAPI contractを追加する。
-  - [ ] DTO、Retrofit endpoint、`OrganizationApi`を追加し、設計済み10 endpointをOpenAPIどおり実装する。
-  - [ ] Search requestへ`@Query("tagId") List<String>`のrepeated parameterを追加し、Tag名をURLへ含めない。
-  - [ ] URL encoding、Pagination、201、204、400、401 Refresh、404、409、429、5xx、取消をTestする。
-  - [ ] 通信結果不明時に登録状態を成功と推測せず、Server再取得へ収束させる。
-- [ ] `core-data`へRepositoryを追加する。
-  - [ ] `OrganizationRepository.kt`へFavorite Pager、Tag CRUD、Entry organization state、付与・解除を追加する。
-  - [ ] strict DTO mappingでUUID、UTC、Page、重複項目、Tag件数、Metadataを検証する。
-  - [ ] PUT／DELETEのNetwork結果不明時はorganization stateまたはFavorites一覧を再取得する。
-  - [ ] User／Session／接続先をまたいでお気に入り、Tag、検索条件、処理中状態を再利用しない。
-  - [ ] 連打、画面再構成、401再送で二重行・逆転・古い応答による上書きを起こさない。
-  - [ ] API Errorを既存共通Error modelへ変換し、Tag名、File名、ID、TokenをLogへ残さない。
+- [x] `core-model`へお気に入り・Tag modelを追加する。
+  - [x] `OrganizationModels.kt`へ`TagItem`、`FavoriteItem／Page`、`EntryOrganizationState`、Validationを追加する。
+  - [x] Favorite metadataは既存`SearchResultItem`を再利用し、File／Folder、状態、Permission／Source、共有元を重複定義しない。
+  - [x] Tag名1〜50 code point、control拒否、Tag 200件、Entry Tag 20件、Search Tag 10件の境界をTestする。
+  - [x] 未知enum、不正response、欠落必須項目をfail-closedで扱うTestを追加する。
+- [x] `core-network`へAPI contractを追加する。
+  - [x] DTO、Retrofit endpoint、`OrganizationApi`を追加し、設計済み10 endpointをOpenAPIどおり実装する。
+  - [x] Search requestへ`@Query("tagId") List<String>`のrepeated parameterを追加し、Tag名をURLへ含めない。
+  - [x] URL encoding、Pagination、201、204、400、401 Refresh、404、409、429、5xx、取消をTestする。
+  - [x] 通信結果不明時に登録状態を成功と推測せず、Server再取得へ収束させる。
+- [x] `core-data`へRepositoryを追加する。
+  - [x] `OrganizationRepository.kt`へFavorite Pager、Tag CRUD、Entry organization state、付与・解除を追加する。
+  - [x] strict DTO mappingでUUID、UTC、Page、重複項目、Tag件数、Metadataを検証する。
+  - [x] PUT／DELETEのNetwork結果不明時はorganization stateまたはFavorites一覧を再取得する。
+  - [x] User／Session／接続先をまたいでお気に入り、Tag、検索条件、処理中状態を再利用しない。
+  - [x] 連打、画面再構成、401再送で二重行・逆転・古い応答による上書きを起こさない。
+  - [x] API Errorを既存共通Error modelへ変換し、Tag名、File名、ID、TokenをLogへ残さない。
 
 ### 2.3 Androidお気に入りUI
 
-- [ ] Homeにお気に入り入口を追加する。
-  - [ ] `AppDestination.FAVORITES`を追加し、`MainActivity`と`ServiceContainer`へNavigation／DIを接続する。
-  - [ ] 既存Homeの情報階層、接続状態、検索・最近使用導線を崩さず表示する。
-  - [ ] 選択時にUser本人のお気に入り一覧へ遷移する。
-- [ ] お気に入り一覧を実装する。
-  - [ ] `OrganizationViewModels.kt`／`OrganizationScreens.kt`へFavorites state、Pager、Compose画面を追加する。
-  - [ ] Loading、Empty、Success、Pagination、Refresh、認証更新、通信Error、権限失効を表示する。
-  - [ ] File／Folder、Owner、Permission／Source、共有元、更新日時、`MISSING`状態を既存表示modelから描画する。
-  - [ ] 項目選択時はIDだけを既存Navigationへ渡し、最新詳細・権限を再取得してから開く。
-- [ ] お気に入り登録・解除操作を既存File／Folder UIへ追加する。
-  - [ ] `feature-files`はApp callbackへEntry IDだけを返し、`core-data`や`feature-search`へ直接依存しない。
-  - [ ] Entry actionから`GET /files/{entryId}/organization`を取得し、登録・解除できる。
-  - [ ] 処理中の二重操作を抑止し、成功後はServer結果を反映する。
-  - [ ] 失敗・結果不明・権限失効時はローカル成功を合成せず、再取得可能な表示にする。
+- [x] Homeにお気に入り入口を追加する。
+  - [x] `AppDestination.FAVORITES`を追加し、`MainActivity`と`ServiceContainer`へNavigation／DIを接続する。
+  - [x] 既存Homeの情報階層、接続状態、検索・最近使用導線を崩さず表示する。
+  - [x] 選択時にUser本人のお気に入り一覧へ遷移する。
+- [x] お気に入り一覧を実装する。
+  - [x] `OrganizationViewModels.kt`／`OrganizationScreens.kt`へFavorites state、Pager、Compose画面を追加する。
+  - [x] Loading、Empty、Success、Pagination、Refresh、認証更新、通信Error、権限失効を表示する。
+  - [x] File／Folder、Owner、Permission／Source、共有元、更新日時、`MISSING`状態を既存表示modelから描画する。
+  - [x] 項目選択時はIDだけを既存Navigationへ渡し、最新詳細・権限を再取得してから開く。
+- [x] お気に入り登録・解除操作を既存File／Folder UIへ追加する。
+  - [x] `feature-files`はApp callbackへEntry IDだけを返し、`core-data`や`feature-search`へ直接依存しない。
+  - [x] Entry actionから`GET /files/{entryId}/organization`を取得し、登録・解除できる。
+  - [x] 処理中の二重操作を抑止し、成功後はServer結果を反映する。
+  - [x] 失敗・結果不明・権限失効時はローカル成功を合成せず、再取得可能な表示にする。
 
 ### 2.4 Android Tag UI・Search統合
 
-- [ ] Tag管理UIを実装する。
-  - [ ] `AppDestination.TAGS`とTag management ViewModel／Compose画面を追加する。
-  - [ ] NameKey／ID順の一覧、作成、名前変更、削除確認Dialogを実装する。
-  - [ ] 正規化、長さ、重複、上限の入力ErrorをServer契約と一致させる。
-  - [ ] Loading、Empty、Success、処理中、Validation、競合、通信Errorを表示する。
-- [ ] File／FolderへのTag付与・解除UIを実装する。
-  - [ ] Entry organization stateの現在Tag最大20件と、本人Tag候補最大200件を表示するselectorを実装する。
-  - [ ] `ACTIVE`かつ既知Permissionでは付与・解除、`MISSING_CANDIDATE`／`MISSING`では解除だけを有効にする。
-  - [ ] 二重送信を抑止し、失敗・結果不明時はServerから再取得する。
-  - [ ] `MISSING`、Trash、権限失効などの操作不可状態をfail-closedで表示する。
-- [ ] 既存Search画面へTag filterを追加する。
-  - [ ] `SearchInput`／`ValidatedSearchInput`へ重複しないTag ID最大10件を追加する。
-  - [ ] 本人Tagの複数選択UIとTag管理導線を追加する。
-  - [ ] 名前、種類、日時、size、Owner／共有元、状態と組み合わせて検索できる。
-  - [ ] Filter変更時にPageと古い結果を破棄し、古い要求が新しい結果を上書きしない。
-  - [ ] Search結果選択時に最新詳細・権限を再取得し、Clientの古いお気に入り／Tag状態だけで操作しない。
+- [x] Tag管理UIを実装する。
+  - [x] `AppDestination.TAGS`とTag management ViewModel／Compose画面を追加する。
+  - [x] NameKey／ID順の一覧、作成、名前変更、削除確認Dialogを実装する。
+  - [x] 正規化、長さ、重複、上限の入力ErrorをServer契約と一致させる。
+  - [x] Loading、Empty、Success、処理中、Validation、競合、通信Errorを表示する。
+- [x] File／FolderへのTag付与・解除UIを実装する。
+  - [x] Entry organization stateの現在Tag最大20件と、本人Tag候補最大200件を表示するselectorを実装する。
+  - [x] `ACTIVE`かつ既知Permissionでは付与・解除、`MISSING_CANDIDATE`／`MISSING`では解除だけを有効にする。
+  - [x] 二重送信を抑止し、失敗・結果不明時はServerから再取得する。
+  - [x] `MISSING`、Trash、権限失効などの操作不可状態をfail-closedで表示する。
+- [x] 既存Search画面へTag filterを追加する。
+  - [x] `SearchInput`／`ValidatedSearchInput`へ重複しないTag ID最大10件を追加する。
+  - [x] 本人Tagの複数選択UIとTag管理導線を追加する。
+  - [x] 名前、種類、日時、size、Owner／共有元、状態と組み合わせて検索できる。
+  - [x] Filter変更時にPageと古い結果を破棄し、古い要求が新しい結果を上書きしない。
+  - [x] Search結果選択時に最新詳細・権限を再取得し、Clientの古いお気に入り／Tag状態だけで操作しない。
 
 ### 2.5 Android自動Test・標準検証
 
-- [ ] model／network／repository Testを完了する。
-  - [ ] 全Entry状態、Permission／Source、Pagination、Tag 0／1／10／11件、重複、401 Refresh、結果不明、未知responseをTestする。
-  - [ ] User切替、Logout、接続先変更、連打、取消、古い応答破棄をTestする。
-- [ ] ViewModel／Compose UI Testを完了する。
-  - [ ] Home導線、お気に入り一覧のLoading／Empty／Success／Paging／Error／遷移をTestする。
-  - [ ] お気に入り登録・解除、Tag CRUD・付与・解除、Validation、上限、競合、権限失効をTestする。
-  - [ ] Tag単独と既存Filterとの組合せ検索、Filter変更、Refresh、古い応答をTestする。
-  - [ ] 回転、狭い画面、Scroll、Keyboard、Dialog表示でも主要操作が可能であることをTestする。
-- [ ] Android標準検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`が成功する。
-  - [ ] 接続Android実機で対象Moduleの`connectedDebugAndroidTest --max-workers=1`相当が成功する。
-  - [ ] `./scripts/ci/verify-server.sh`、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`git diff --check`が成功する。
+- [x] model／network／repository Testを完了する。
+  - [x] 全Entry状態、Permission／Source、Pagination、Tag 0／1／10／11件、重複、401 Refresh、結果不明、未知responseをTestする。
+  - [x] User切替、Logout、接続先変更、連打、取消、古い応答破棄をTestする。
+- [x] ViewModel／Compose UI Testを完了する。
+  - [x] Home導線、お気に入り一覧のLoading／Empty／Success／Paging／Error／遷移をTestする。
+  - [x] お気に入り登録・解除、Tag CRUD・付与・解除、Validation、上限、競合、権限失効をTestする。
+  - [x] Tag単独と既存Filterとの組合せ検索、Filter変更、Refresh、古い応答をTestする。
+  - [x] 回転、狭い画面、Scroll、Keyboard、Dialog表示でも主要操作が可能であることをTestする。
+- [x] Android標準検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`が成功する。
+  - [x] 接続Android実機で対象Moduleの`connectedDebugAndroidTest --max-workers=1`相当が成功する。
+  - [x] `./scripts/ci/verify-server.sh`、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`git diff --check`が成功する。
 
 ### 2.6 Raspberry Pi・Android実機E2E
 
-- [ ] 本番相当環境の事前保護とRolloutを完了する。
-  - [ ] PostgreSQLとStorage Rootの対応Backup、復元可能性、Storage ID、Service状態を確認する。
-  - [ ] Migration、API、署名Androidの適用順とRollback手順を確認する。
-  - [ ] E2E User、File、Folder、Share、Tag、お気に入りを限定識別子で作成し、実データと分離する。
-- [ ] お気に入りE2Eを完了する。
-  - [ ] UserごとのFile／Folder登録・解除、Home入口、一覧順、Pagination、User分離を確認する。
-  - [ ] Rename、Move、Share解除／再取得、Permission変更、Trash、Restore、Purge、MISSING遷移を確認する。
-  - [ ] 古い一覧から項目を開く場合も最新権限が適用されることを確認する。
-- [ ] Tag E2Eを完了する。
-  - [ ] Tag管理、File／Folderへの付与・解除、重複・境界入力、同時操作を確認する。
-  - [ ] Tag単独および名前、種類、日時、size、Owner／共有元、状態との組合せ検索を確認する。
-  - [ ] 未共有User、権限失効User、AdminへTag名、対象、件数が漏れないことを確認する。
-- [ ] 性能・経路・回帰を確認する。
-  - [ ] 30万FileEntry、10 User、User当たり200 Tag、Entry当たり20 Tag条件で通常2秒以内を満たす。
-  - [ ] Tag 1／10件、Tagのみ、名前＋Tag、共有＋Tag、MISSING＋Tag、Page後半で意図したIndexを使用する。
-  - [ ] LANとZeroTierで同じHTTPS Hostname、TLS、認証、API契約、Android操作が機能する。
-  - [ ] Personal／Shared／Search／Recent、Upload、Download、Rename、Move、Trash、Restore、Purge、MISSINGが従来どおり動作する。
-  - [ ] Nginx、API、Android、PostgreSQL LogにTag名、検索語、File名、User名、物理Path、Tokenがない。
-- [ ] E2E環境を安全に清掃・記録する。
-  - [ ] 限定識別子の試験User、File、Folder、Share、Tag、お気に入りだけを削除する。
-  - [ ] 実User、実File、実Share、Backup、運用資格情報を削除しない。
-  - [ ] 孤立Tag関連・お気に入り、未完了FileOperation、active Upload Sessionが0件で、全ServiceとStorageが正常である。
-  - [ ] 手順、結果、性能、失敗注入、清掃結果を機密情報なしで`docs/testing/`へ記録する。
+- [x] 本番相当環境の事前保護とRolloutを完了する。
+  - [x] PostgreSQLとStorage Rootの対応Backup、復元可能性、Storage ID、Service状態を確認する。
+  - [x] Migration、API、署名Androidの適用順とRollback手順を確認する。
+  - [x] E2E User、File、Folder、Share、Tag、お気に入りを限定識別子で作成し、実データと分離する。
+- [x] お気に入りE2Eを完了する。
+  - [x] UserごとのFile／Folder登録・解除、Home入口、一覧順、Pagination、User分離を確認する。
+  - [x] Rename、Move、Share解除／再取得、Permission変更、Trash、Restore、Purge、MISSING遷移を確認する。
+  - [x] 古い一覧から項目を開く場合も最新権限が適用されることを確認する。
+- [x] Tag E2Eを完了する。
+  - [x] Tag管理、File／Folderへの付与・解除、重複・境界入力、同時操作を確認する。
+  - [x] Tag単独および名前、種類、日時、size、Owner／共有元、状態との組合せ検索を確認する。
+  - [x] 未共有User、権限失効User、AdminへTag名、対象、件数が漏れないことを確認する。
+- [x] 性能・経路・回帰を確認する。
+  - [x] 30万FileEntry、10 User、User当たり200 Tag、Entry当たり20 Tag条件で通常2秒以内を満たす。
+  - [x] Tag 1／10件、Tagのみ、名前＋Tag、共有＋Tag、MISSING＋Tag、Page後半で意図したIndexを使用する。
+  - [x] LANとZeroTierで同じHTTPS Hostname、TLS、認証、API契約、Android操作が機能する。
+  - [x] Personal／Shared／Search／Recent、Upload、Download、Rename、Move、Trash、Restore、Purge、MISSINGが従来どおり動作する。
+  - [x] Nginx、API、Android、PostgreSQL LogにTag名、検索語、File名、User名、物理Path、Tokenがない。
+- [x] E2E環境を安全に清掃・記録する。
+  - [x] 限定識別子の試験User、File、Folder、Share、Tag、お気に入りだけを削除する。
+  - [x] 実User、実File、実Share、Backup、運用資格情報を削除しない。
+  - [x] 孤立Tag関連・お気に入り、未完了FileOperation、active Upload Sessionが0件で、全ServiceとStorageが正常である。
+  - [x] 手順、結果、性能、失敗注入、清掃結果を機密情報なしで`docs/testing/`へ記録する。
 
 ### 2.7 最終文書・Release・PR2完了
 
-- [ ] 正式文書と実装を最終整合する。
-  - [ ] 5つの正式文書、Steering、OpenAPI、Migration、Server、Android、運用・Test記録が一致する。
-  - [ ] `docs/functional-design.md`のHome主要カード、Navigation、画面仕様、API、Test戦略、実装順序を更新する。
-  - [ ] `docs/repository-structure.md`へAndroidの実配置を反映する。
-  - [ ] 実装により`docs/product-requirements.md`の要件変更が必要になった場合は同じPull Requestで更新する。
-- [ ] Release Buildと最終検証を完了する。
-  - [ ] `./scripts/ci/build-release.sh`でlinux-arm64 Serverと署名済み・非debuggable Android Releaseを生成する。
-  - [ ] Version、署名、Root CA、Hostname、Migration適用状態を確認する。
-  - [ ] 全必須CI、Server／Android Test、Migration、性能、実機E2Eが最終HEADで成功する。
-- [ ] 全体差分をセルフレビューする。
-  - [ ] Client-only認可、N+1、HDD走査、無制限Query、長期Permission cache、他User情報漏えいがない。
-  - [ ] 古いお気に入り／Tag状態による操作許可、通信結果不明時の成功合成、Session間状態漏えいがない。
-  - [ ] OCR、全文検索、推薦、Tag階層、自動Tag、Web UI、不要Package、将来用Schemaがない。
-  - [ ] 生成物、実環境値、Credential、機密情報を含むTest記録が差分にない。
+- [x] 正式文書と実装を最終整合する。
+  - [x] 5つの正式文書、Steering、OpenAPI、Migration、Server、Android、運用・Test記録が一致する。
+  - [x] `docs/functional-design.md`のHome主要カード、Navigation、画面仕様、API、Test戦略、実装順序を更新する。
+  - [x] `docs/repository-structure.md`へAndroidの実配置を反映する。
+  - [x] 実装により`docs/product-requirements.md`の要件変更が必要になった場合は同じPull Requestで更新する。（承認済み要件の変更なし）
+- [x] Release Buildと最終検証を完了する。
+  - [x] `./scripts/ci/build-release.sh`でlinux-arm64 Serverと署名済み・非debuggable Android Releaseを生成する。
+  - [x] Version、署名、Root CA、Hostname、Migration適用状態を確認する。
+  - [x] 全必須CI、Server／Android Test、Migration、性能、実機E2Eが最終HEADで成功する。
+- [x] 全体差分をセルフレビューする。
+  - [x] Client-only認可、N+1、HDD走査、無制限Query、長期Permission cache、他User情報漏えいがない。
+  - [x] 古いお気に入り／Tag状態による操作許可、通信結果不明時の成功合成、Session間状態漏えいがない。
+  - [x] OCR、全文検索、推薦、Tag階層、自動Tag、Web UI、不要Package、将来用Schemaがない。
+  - [x] 生成物、実環境値、Credential、機密情報を含むTest記録が差分にない。
 - [ ] PR2を完了する。
   - [ ] フェーズ2の全項目が`[x]`であることを確認する。
   - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。

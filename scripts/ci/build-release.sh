@@ -47,6 +47,7 @@ done
     exit 2
 }
 android_sdk_root="${ANDROID_SDK_ROOT}"
+java_home="${JAVA_HOME}"
 apksigner_binary="${android_sdk_root}/build-tools/35.0.0/apksigner"
 apkanalyzer_binary="${android_sdk_root}/cmdline-tools/latest/bin/apkanalyzer"
 [[ -x "${apksigner_binary}" && -x "${apkanalyzer_binary}" ]] || {
@@ -83,16 +84,22 @@ staging_directory="$(mktemp -d)"
 trap 'rm -rf "${server_publish}" "${staging_directory}"' EXIT
 mkdir -p "${output_directory}"
 
-# The .NET SDK can treat ANDROID_SDK_ROOT as a workload resolver input and
-# terminate solution restore without diagnostics on hosts without that workload.
-unset ANDROID_HOME ANDROID_SDK_ROOT
-dotnet restore "${repository_root}/server/KuraStorage.sln" --locked-mode
+# The .NET SDK can treat Android toolchain variables as workload resolver inputs
+# and terminate solution restore without diagnostics on hosts without that workload.
+unset ANDROID_HOME ANDROID_SDK_ROOT JAVA_HOME
+dotnet restore \
+    "${repository_root}/server/KuraStorage.sln" \
+    --locked-mode \
+    --disable-build-servers \
+    --maxcpucount:1
 dotnet publish \
     "${repository_root}/server/src/KuraStorage.Api/KuraStorage.Api.csproj" \
     --configuration Release \
     --runtime linux-arm64 \
     --self-contained true \
     --no-restore \
+    --disable-build-servers \
+    --maxcpucount:1 \
     --output "${server_publish}/api"
 dotnet publish \
     "${repository_root}/server/src/KuraStorage.AdminCli/KuraStorage.AdminCli.csproj" \
@@ -100,6 +107,8 @@ dotnet publish \
     --runtime linux-arm64 \
     --self-contained true \
     --no-restore \
+    --disable-build-servers \
+    --maxcpucount:1 \
     --output "${server_publish}/cli"
 dotnet publish \
     "${repository_root}/server/src/KuraStorage.Worker/KuraStorage.Worker.csproj" \
@@ -107,6 +116,8 @@ dotnet publish \
     --runtime linux-arm64 \
     --self-contained true \
     --no-restore \
+    --disable-build-servers \
+    --maxcpucount:1 \
     --output "${server_publish}/worker"
 cp -a "${server_publish}/api/." "${staging_directory}/"
 cp -a "${server_publish}/cli/." "${staging_directory}/"
@@ -136,6 +147,7 @@ tar --create --gzip \
 
 version_code="${KURASTORAGE_ANDROID_VERSION_CODE:-1}"
 export ANDROID_SDK_ROOT="${android_sdk_root}"
+export JAVA_HOME="${java_home}"
 (
     cd "${repository_root}/apps/android"
     ./gradlew --no-daemon --no-configuration-cache --stacktrace \

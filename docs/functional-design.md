@@ -1998,6 +1998,14 @@ Tag名はtrim・NFC後1〜50 Unicode code point、Unicode control categoryなし
 
 Errorは`INVALID_ORGANIZATION_REQUEST`、`INVALID_FAVORITES_REQUEST`、`TAG_LIMIT_EXCEEDED`、`ENTRY_TAG_LIMIT_EXCEEDED`、`TAG_NOT_FOUND`、`TAG_NAME_CONFLICT`を共通Error形式で返す。ClientからUser、Owner、物理Path、作成・登録時刻を受け取らず、Tag名、検索語、File名、User名、物理Path、Tokenを通常Logへ記録しない。
 
+#### Androidのお気に入り・Tag画面
+
+Homeは既存のFiles、Shared、Search、Recent、Trash導線にFavoritesとTagsを追加する。Favorites画面はServerの安定Paginationをそのまま使用し、File／Folder、Owner、Permission／Source、共有元、更新日時、`MISSING_CANDIDATE`／`MISSING`をSearch共通metadataから表示する。項目選択時はEntry IDだけをApp Navigationへ渡し、最新詳細と権限を取得してから既存File画面を開く。
+
+FilesまたはSharedから開いた詳細actionはEntry IDだけをAppへ返し、Entry organization画面でお気に入り状態と本人Tagを再取得する。`ACTIVE`は登録・解除とTag付与・解除を許可し、`MISSING_CANDIDATE`／`MISSING`は既存関連の解除だけを許可する。二重操作を処理中状態で抑止し、PUT／DELETEの通信結果が不明な場合もローカル成功を合成せず、`GET /api/v1/files/{entryId}/organization`へ再照会する。
+
+Tags画面はServer順の本人Tag一覧、作成、名前変更、削除確認を提供する。trim・NFC、1〜50 code point、control character拒否は送信前にも検証し、重複名、User上限200件、Entry上限20件、対象消失を共通Error codeから操作可能な文言へ変換する。Search画面は本人Tagを最大10件まで複数選択し、repeated `tagId`として既存Filterと組み合わせる。RepositoryとViewModelは接続先・認証Session単位で生成し、Logoutまたは接続先変更時にBack Stackを破棄して状態を再利用しない。
+
 ### 8.12 MVP後: 自動バックアップ
 
 #### `POST /api/v1/backup/compare`
@@ -2316,12 +2324,16 @@ stateDiagram-v2
 
 ### 10.2 ホームからの主要ナビゲーション
 
-**この図で分かること:** MVPのホーム画面は、個人ファイル、転送状況、ゴミ箱、接続状態への入口となる。共有、検索、最近使用、自動バックアップ設定はMVP後に追加する。
+**この図で分かること:** Homeは既存のFile操作に加え、共有、検索、最近使用、お気に入り、Tag管理への主要入口となる。自動バックアップ設定は後続機能として追加する。
 
 ```mermaid
 flowchart LR
     Home["ホーム"] --> Files["ファイル"]
-    Home --> Transfer["転送状況"]
+    Home --> Shared["共有"]
+    Home --> Search["検索"]
+    Home --> Recent["最近使用"]
+    Home --> Favorites["お気に入り"]
+    Home --> Tags["Tag管理"]
     Home --> Trash["ゴミ箱"]
     Home --> Connection["接続状態"]
 ```
@@ -2343,6 +2355,9 @@ flowchart LR
 
     Files --> Share["共有設定"]
     Detail --> Share
+    Files --> Organize["お気に入り・Tag"]
+    Shared --> Organize
+    Organize --> Tags["Tag管理"]
     Files --> Trash["ゴミ箱"]
     Files --> Missing["MISSING項目"]
 ```
@@ -3119,7 +3134,7 @@ Androidの自動バックアップに必要なサーバー側処理を実装す�
 
 **完了条件:** 大容量ファイルを含む主要操作とFile・Folderの名前変更・移動を実行でき、通信中断後に安全に再試行または再取得できる。
 
-#### Android Step 6（MVP後）: 共有・検索・最近使用
+#### Android Step 6（MVP後）: 共有・検索・最近使用・お気に入り・Tag
 
 サーバー側の共有・検索APIへ接続する。
 
@@ -3131,9 +3146,15 @@ Androidの自動バックアップに必要なサーバー側処理を実装す�
 - 検索画面
 - ファイル形式、所有者、更新日時等の絞り込み
 - 最近使用したファイル一覧
+- お気に入り一覧、登録、解除、最新権限の再取得
+- Tag一覧、作成、名前変更、削除確認
+- File／Folderへの本人Tag付与・解除
+- 最大10件のTag AND検索と既存Filterの組合せ
+- `MISSING_CANDIDATE`／`MISSING`で既存関連だけを解除できるfail-closed表示
+- 通信結果不明時のorganization state再取得
 - 権限不足エラーの操作別表示
 
-**完了条件:** 所有者が共有を管理でき、共有先Userには許可された操作だけが表示・実行される。
+**完了条件:** 所有者が共有を管理でき、共有先Userには許可された操作だけが表示・実行される。閲覧可能Userは本人のお気に入りとTagだけを管理でき、Tag検索、状態制約、Session分離がServer契約と一致する。
 
 #### Android Step 7（MVP後）: 自動バックアップ
 

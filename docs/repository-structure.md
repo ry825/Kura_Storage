@@ -711,6 +711,7 @@ core-model/src/main/kotlin/com/kurastorage/core/model/
 
 - Server DTOやRoom Entityではなく、Android内で共有するDomain Modelを置く。
 - Android SDK依存を可能な限り避ける。
+- Search共通metadataは`SearchModels.kt`、お気に入り・Tag・Entry organization stateとTag名Validationは`OrganizationModels.kt`へ置き、同じEntry metadataを重複定義しない。
 
 #### `core-network/`
 
@@ -730,6 +731,7 @@ core-network/src/main/kotlin/com/kurastorage/core/network/
 - Access Token付与とRefresh調整を集約する。
 - Feature固有Repository実装を置かない。
 - TLS検証無効化Codeを置かない。
+- お気に入り・Tag DTOは`ApiContracts.kt`、OpenAPIどおりの10 endpointとrepeated `tagId`は`KuraStorageApi.kt`の`OrganizationApi`へ置く。
 
 #### `core-data/`
 
@@ -743,6 +745,7 @@ core-data/src/main/kotlin/com/kurastorage/core/data/
 
 - MVPで複数Featureが共有するRepository実装、DTO変換、Streaming Transfer調整を置く。
 - Room Entity、DAO、WorkManagerは置かない。永続Queueが必要になった時点でMVP後の`core-database`を追加する。
+- Favorite Pager、Tag CRUD、Entry organization state、strict DTO mapping、通信結果不明時の再照会は`OrganizationRepository.kt`へ置く。
 
 #### MVP後: `core-database/`
 
@@ -867,9 +870,9 @@ feature-files/
 | `feature-auth` | 初回Device登録、Login、Refresh、Logout、Device失効対応 |
 | `feature-files` | Home、一覧、詳細、Folder作成、Streaming Upload、Range Download、Trash、Restore、Rename、Move、MISSING表示・再確認・索引削除確認 |
 | `feature-sharing` | 所有・受信共有一覧、共有候補・Permission選択、Member追加・更新・解除、Share全体解除 |
-| `feature-search` | 権限対応検索、Filter、ページング、最近使用一覧。結果選択はApp callbackで既存File画面へ接続 |
+| `feature-search` | 権限対応検索、Tag Filter、ページング、最近使用、お気に入り一覧、Tag管理、Entry organization画面。結果選択はApp callbackで既存File画面へ接続 |
 
-`feature-sharing`は`SharingScreens.kt`と`SharingViewModels.kt`を持ち、`core-model`の共有・権限Model、`core-network`の`SharingApi`、`core-data`の`SharingRepository`を利用する。共有Folderの閲覧と権限別File操作は`app`のNavigationから既存`feature-files`へ遷移して再利用し、Feature間を直接依存させない。`feature-search`も同じ境界を守り、Search／Recentの画面・状態管理だけを保持する。`feature-media`、`feature-backup`、`feature-settings`はMVP後に必要となった時点で追加する。
+`feature-sharing`は`SharingScreens.kt`と`SharingViewModels.kt`を持ち、`core-model`の共有・権限Model、`core-network`の`SharingApi`、`core-data`の`SharingRepository`を利用する。共有Folderの閲覧と権限別File操作は`app`のNavigationから既存`feature-files`へ遷移して再利用し、Feature間を直接依存させない。`feature-search`も同じ境界を守り、`SearchScreens.kt`、`OrganizationScreens.kt`と対応ViewModelだけを保持する。`feature-files`のお気に入り・Tag actionはEntry IDだけをApp callbackへ返し、Appが`feature-search`のEntry organization画面へNavigationする。`feature-media`、`feature-backup`、`feature-settings`はMVP後に必要となった時点で追加する。
 
 ### 8.6 Gradle Build Logic
 
