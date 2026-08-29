@@ -152,12 +152,12 @@
   - [x] Domain、Schema、Queue、Storage、設定、Lifecycleの確定内容を5つの正式文書と運用文書へ反映する。
   - [x] `docs/repository-structure.md`へ実際に追加した配置だけを反映する。
   - [x] Migration適用、Backup、Rollback、stale Job回収、派生Root保護を運用手順へ記載する。
-- [ ] PR1を完了する。
-  - [ ] フェーズ1の全項目が`[x]`であることを確認する。
+- [x] PR1を完了する。
+  - [x] フェーズ1の全項目が`[x]`であることを確認する。
   - [x] 差分に変換Engine本体、Android UI、不要Package、実環境値、Credentialがないことをセルフレビューする。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR1完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -397,14 +397,14 @@
 
 ### PR1: 派生データModel・永続ジョブキュー・Storage基盤
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・性能確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
+- 完了日: 2026-08-29
+- Pull Request: [#29 Add media derivative persistence and storage foundation](https://github.com/ry825/Kura_Storage/pull/29)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-server.sh`（Domain 81件、Application 185件、Integration 131件）、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`git diff --check`が成功した。CoverletによるMedia Domain Line Coverageは95.89%、Server全体Line Coverageは94.77%。GitHub必須CIのServer、Android、Config、Securityもすべて成功した。
+- 手動確認・性能確認: Migration Up／Down／再Up、Queue競合・安定順・DB接続断後の再開、Storageの限定Path・atomic publish・HDD異常、Source Lifecycle連動をTestcontainersと実Filesystemの統合Testで確認した。PR1は変換Engineを実行しないためPi実機の変換性能確認はPR2以降へ引き継ぐ。
+- 計画と実装の差分: Queueの正は計画どおりPostgreSQL pollingとし、任意だった`LISTEN/NOTIFY`は導入しなかった。Source Version、Trash、`MISSING`の派生状態連動は、既存File操作を個別改修する代わりに同一Transactionで必ず動作するPostgreSQL triggerへ集約した。Productionの直列実行数もenvironment templateから明示設定する形へ確定した。
+- 実装中に追加したタスクと理由: Coverage計測で未到達だった不正Expiry、Access更新、Error code、Lease生成・解放後更新、3回目Backoff境界Testを追加し、95%基準を満たした。最終設定監査で全Media Optionsをenvironment exampleへ揃えるため、Media／動画同時実行数の展開・Shell Validationを追加した。
+- 技術的に不要になったタスク・理由・代替実装: `LISTEN/NOTIFY`は待機短縮の任意機構であり、PR1では通知消失を考慮不要な500ms pollingを処理の正としたため不要。変換Binary実行、Hosted generation、HTTP API、配信・清掃はPR1の基盤範囲外で、後続PRの永続QueueとStorage境界から実装する。
+- 後続Pull Requestへの引継ぎ事項: PR #29のMergeと必須CI成功をPR2開始条件とする。PR2ではPi／CI上の`vips`、FFmpeg／ffprobe、`pdftoppm`実体を先に検証し、Thumbnail・写真生成Runner、Media API、生成／配信Lease、認可、Range配信を今回のQueue・Storage・Lifecycle境界へ接続する。PR1のMigration DownはMedia行作成後に破壊的となるため、運用文書のBackup／Rollback手順を維持する。
 
 ### PR2: Thumbnail・写真派生生成・API配信・Lease
 
