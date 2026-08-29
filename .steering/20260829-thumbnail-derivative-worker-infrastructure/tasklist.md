@@ -447,24 +447,27 @@ PR1〜PR4、本ファイルの全タスク、各Pull Request完了記録が完�
 
 ### 実装完了日
 
-未完了
+2026-08-29
 
 ### 計画と実績の差分
 
-未記録
+計画どおり4つのPull Requestへ分割し、PR1でDomain・永続Queue・Storage、PR2でThumbnail／写真・API・Lease、PR3で動画・進捗・回復、PR4でTTL／LRU清掃・Pi運用受け入れを完成させた。主な差分は、Source lifecycle連動を個別Application改修ではなく同一TransactionのDB triggerへ集約したこと、容量LRUを100件Batchではなく1件ずつ再集計する方式へ修正したこと、Watermark E2Eを物理的なDisk fillではなく小さなFixtureとDB Size metadataで安全に実施したことである。Android Media UIは計画どおり対象外のまま、Server基盤と運用を完了した。
 
 ### 主な設計変更と理由
 
-未記録
+- PostgreSQLをQueue・Lease・Cleanup状態の正とし、partial unique constraint、`FOR UPDATE SKIP LOCKED`、worker token、global advisory lockで重複実行と競合を制御した。
+- 派生公開は一時File生成・検証・atomic publish・条件付きDB完了の順とし、結果不明時は正式Fileを誤削除せず再検出する設計へした。
+- Thumbnailは元File完全削除まで保持し、Low／Mediumだけを24時間TTLと10GiB／6GiB LRUの対象に分離した。
+- Cleanup中断状態は通常READY候補と混在させず`DELETING`専用復旧経路へ分離し、物理削除失敗は元Fileに影響せず再試行可能状態へ戻した。
 
 ### 技術的な学び
 
-未記録
+DB上の安定Batch取得だけではWatermarkの正確な停止を保証できず、候補状態を先に一括変更すると大きな先頭項目で閾値を跨いだ後も過剰削除する。容量清掃はclaim粒度と再集計粒度を一致させる必要がある。また、外部変換Process、DB、exFATの3境界では「成功したか不明」を失敗と同一視せず、再検出可能な正式Artifactとtoken付き状態遷移で収束させることが重要だった。Pi実測により、動画1080pは代表Fixtureで約550MiB RSSまで使用する一方、Thumbnail 30万件のsample推定は約1.24GiBであり、変換Resourceと長期容量を別々に監視すべきことも確認できた。
 
 ### プロセス上の改善点
 
-未記録
+各PRでMigration／契約／Coverage／実Toolを早期確認したことで後続PRの境界を安定させられた。一方、PR4の最初のPi Cleanup E2EでLRU過剰削除を検出したため、High／Low watermarkのTestはUnitだけでなく複数候補の実DB状態を使ってより早い段階から実施すべきだった。実環境Log検査ではApplication journalと管理者が直接投入したSQLのraw database logを区別し、主張対象を事前に固定する必要もあった。
 
 ### 次回への改善提案
 
-未記録
+大容量閾値機能では「開始境界」「停止境界」「1候補で閾値を跨ぐ場合」を最初から共通受け入れFixtureにする。外部Packageを使う機能は、候補Version確認だけでなくRelease evidenceへtarget runtime SBOMを自動収集する手順を初回PRから組み込む。Pi E2E用の限定識別子、物理Fixtureを小さく保つSize metadata方式、Service／mount復旧trap、最終孤立行検査を再利用可能な秘密情報非保持Harnessとして整備する。
