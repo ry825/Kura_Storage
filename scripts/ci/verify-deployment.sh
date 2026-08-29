@@ -225,6 +225,8 @@ verify_systemd_unit "${validation_root}/kurastorage-worker.service"
 grep -q '^PrivateNetwork=true$' "${validation_root}/kurastorage-worker.service"
 grep -q '^RestrictAddressFamilies=AF_UNIX$' "${validation_root}/kurastorage-worker.service"
 grep -q '^TimeoutStopSec=45s$' "${validation_root}/kurastorage-worker.service"
+grep -q '^KillMode=control-group$' "${validation_root}/kurastorage-worker.service"
+grep -q '^OOMPolicy=stop$' "${validation_root}/kurastorage-worker.service"
 grep -q '^LimitNOFILE=65536$' "${validation_root}/kurastorage-worker.service"
 # shellcheck disable=SC2016
 grep -Fq '[[ -x "${INSTALL_ROOT}/current/KuraStorage.Worker" ]]' deployment/raspberry-pi/rollback.sh

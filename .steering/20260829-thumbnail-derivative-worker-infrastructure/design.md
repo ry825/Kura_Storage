@@ -186,7 +186,7 @@ public enum MediaJobStatus
 | `ErrorCode` | string nullable | allow-list Code |
 | `CreatedAt`／`UpdatedAt` | UTC | Server時刻 |
 
-- Retry回数上限は3回、Backoffは30秒、2分、8分とする。
+- 初回を含む実行回数上限は3回、自動Retryは最大2回、Backoffは30秒、2分とする。
 - 手動Retryでは監査可能な新しいJob行を作成する。
 - terminal Jobは既定7日保持し、Job履歴CleanupでBatch削除する。
 - `CANCELLED`はSource Version変更、Purge、機能上不要になったJobにだけ使用し、Client切断では使用しない。

@@ -50,7 +50,7 @@ public sealed class PreviewService(
 
         var derivativeType = MediaContractRules.ToDerivativeType(source.MimeType, variant);
         var profileVersion = MediaContractRules.ProfileVersion(
-            variant, options.ThumbnailProfileVersion, options.ImageProfileVersion);
+            variant, options.ThumbnailProfileVersion, options.ImageProfileVersion, options.VideoProfileVersion);
         var snapshot = await media.GetOrCreateRequestAsync(
             source, derivativeType, profileVersion, request.ActorUserId, clock.UtcNow, cancellationToken);
         var result = await ResolveAsync(request.ActorUserId, variant, disposition, snapshot, cancellationToken);
@@ -179,7 +179,7 @@ public sealed class PreviewService(
                         snapshot.Derivative.Id,
                         RelativeStoragePath.Create(snapshot.Derivative.RelativePath),
                         snapshot.Derivative.Size,
-                        "image/webp",
+                        MediaContractRules.ContentType(snapshot.Derivative.DerivativeType),
                         MediaContractRules.DownloadName(snapshot.Source.Name, variant),
                         disposition,
                         ownerToken,
@@ -281,6 +281,7 @@ public sealed class PreviewService(
         FileErrorCodes.StorageUnavailable or
         MediaErrorCodes.ToolUnavailable or
         MediaErrorCodes.WorkerUnavailable or
+        MediaErrorCodes.CompletionUnknown or
         "MEDIA_WORKER_STOPPED" or
         "MEDIA_WORKER_STALE";
 }

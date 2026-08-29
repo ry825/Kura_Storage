@@ -169,7 +169,6 @@ public sealed class MediaJob
         {
             1 => TimeSpan.FromSeconds(30),
             2 => TimeSpan.FromMinutes(2),
-            3 => TimeSpan.FromMinutes(8),
             _ => throw new ArgumentOutOfRangeException(nameof(attemptCount)),
         };
 

@@ -267,6 +267,46 @@ public sealed class PostgreSqlMediaJobQueue(KuraStorageDbContext database) : IMe
             new NpgsqlParameter("batch_size", batchSize));
     }
 
+    public async Task<IReadOnlyList<MediaTemporaryCandidate>> FindStaleTemporaryCandidatesAsync(
+        DateTimeOffset now,
+        int batchSize,
+        CancellationToken cancellationToken)
+    {
+        if (batchSize is < 1 or > 500)
+        {
+            throw new ArgumentOutOfRangeException(nameof(batchSize));
+        }
+
+        return await database.MediaJobs.AsNoTracking()
+            .Where(job => job.Status == MediaJobStatus.Running &&
+                job.HeartbeatAt <= now.Subtract(MediaJob.StaleAfter) &&
+                !database.DerivativeLeases.Any(lease =>
+                    lease.DerivativeId == job.DerivativeId &&
+                    lease.LeaseType == DerivativeLeaseType.Generation &&
+                    lease.ExpiresAt > now))
+            .OrderBy(job => job.HeartbeatAt)
+            .ThenBy(job => job.Id)
+            .Take(batchSize)
+            .Select(job => new MediaTemporaryCandidate(job.Id, job.AttemptCount))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<MediaQueueSnapshot> GetOperationalSnapshotAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var queued = await database.MediaJobs.AsNoTracking()
+            .CountAsync(job => job.Status == MediaJobStatus.Queued, cancellationToken);
+        var running = await database.MediaJobs.AsNoTracking()
+            .CountAsync(job => job.Status == MediaJobStatus.Running, cancellationToken);
+        var oldest = await database.MediaJobs.AsNoTracking()
+            .Where(job => job.Status == MediaJobStatus.Queued)
+            .Select(job => (DateTimeOffset?)job.CreatedAt)
+            .MinAsync(cancellationToken);
+        var wait = oldest is null ? 0 : Math.Max(0, (long)(now - oldest.Value).TotalSeconds);
+        return new MediaQueueSnapshot(queued, running, wait);
+    }
+
     public async Task<Guid?> TryRetryFailedAsync(
         Guid failedJobId,
         Guid newJobId,

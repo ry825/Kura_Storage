@@ -16,6 +16,36 @@ public sealed class DerivativeStore(
         Path.GetFullPath(storageOptions.Value.RootPath));
     private readonly MediaOptions media = mediaOptions.Value;
 
+    public Task<PublishedDerivative?> FindPublishedAsync(
+        MediaGenerationContext context,
+        string extension,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (context.OwnerUserId == Guid.Empty || context.SourceFileId == Guid.Empty ||
+            context.SourceVersion < 1 || context.ProfileVersion < 1 || !IsSafeExtension(extension))
+        {
+            throw new ArgumentException("Published derivative metadata is invalid.", nameof(context));
+        }
+
+        var relative = PublishedPath(
+            context.OwnerUserId,
+            context.SourceFileId,
+            context.SourceVersion,
+            context.ProfileVersion,
+            context.DerivativeType,
+            extension);
+        var path = Resolve(relative, false);
+        if (!File.Exists(path))
+        {
+            return Task.FromResult<PublishedDerivative?>(null);
+        }
+
+        EnsureNoSymbolicLink(path);
+        var size = new FileInfo(path).Length;
+        return Task.FromResult<PublishedDerivative?>(size > 0 ? new PublishedDerivative(relative, size) : null);
+    }
+
     public async Task<DerivativeTemporaryFile> WriteTemporaryAsync(
         Guid jobId,
         int attempt,
@@ -112,9 +142,8 @@ public sealed class DerivativeStore(
         }
 
         await EnsureWritableAsync(cancellationToken);
-        var formal = RelativeStoragePath.Create(
-            $"{media.DerivativeRoot}/{ownerUserId:N}/{sourceFileId:N}/{sourceVersion}/{profileVersion}/" +
-            $"{TypeSegment(derivativeType)}.{extension}");
+        var formal = PublishedPath(
+            ownerUserId, sourceFileId, sourceVersion, profileVersion, derivativeType, extension);
         var temporaryPath = Resolve(temporary.Path, true);
         var formalPath = Resolve(formal, false);
         var temporaryInfo = new FileInfo(temporaryPath);
@@ -165,6 +194,35 @@ public sealed class DerivativeStore(
         {
             EnsureNoSymbolicLink(resolved);
             File.Delete(resolved);
+        }
+    }
+
+    public async Task DeleteTemporaryAsync(
+        Guid jobId,
+        int attempt,
+        CancellationToken cancellationToken)
+    {
+        if (jobId == Guid.Empty || attempt < 1)
+        {
+            throw new ArgumentException("Temporary derivative metadata is invalid.");
+        }
+
+        await EnsureWritableAsync(cancellationToken);
+        var jobRoot = RelativeStoragePath.Create($"{media.TemporaryRoot}/{jobId:N}");
+        var part = RelativeStoragePath.Create($"{jobRoot.Value}/{attempt}.part");
+        await DeleteIfExistsAsync(part, cancellationToken);
+
+        var workspace = Resolve(RelativeStoragePath.Create($"{jobRoot.Value}/{attempt}-work"), false);
+        if (Directory.Exists(workspace))
+        {
+            EnsureNoSymbolicLink(workspace);
+            Directory.Delete(workspace, recursive: true);
+        }
+
+        var jobDirectory = Resolve(jobRoot, false);
+        if (Directory.Exists(jobDirectory) && !Directory.EnumerateFileSystemEntries(jobDirectory).Any())
+        {
+            Directory.Delete(jobDirectory);
         }
     }
 
@@ -226,6 +284,17 @@ public sealed class DerivativeStore(
     private static bool IsSafeExtension(string extension) =>
         extension is { Length: >= 1 and <= 10 } && extension.All(character =>
             character is >= 'a' and <= 'z' or >= '0' and <= '9');
+
+    private RelativeStoragePath PublishedPath(
+        Guid ownerUserId,
+        Guid sourceFileId,
+        long sourceVersion,
+        int profileVersion,
+        DerivativeType derivativeType,
+        string extension) =>
+        RelativeStoragePath.Create(
+            $"{media.DerivativeRoot}/{ownerUserId:N}/{sourceFileId:N}/{sourceVersion}/{profileVersion}/" +
+            $"{TypeSegment(derivativeType)}.{extension}");
 
     private static string TypeSegment(DerivativeType type) => type switch
     {

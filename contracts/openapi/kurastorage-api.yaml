@@ -2129,7 +2129,7 @@ components:
     MediaVariant:
       type: string
       default: original
-      enum: [original, thumbnail, image-low, image-medium]
+      enum: [original, thumbnail, image-low, image-medium, video-low, video-medium]
     MediaDisposition:
       type: string
       default: inline

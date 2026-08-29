@@ -96,7 +96,7 @@
 - [x] 永続Job Domain modelをTest firstで実装する。
   - [x] `MediaJob`へJob種別、`QUEUED`、`RUNNING`、`COMPLETED`、`FAILED`、`CANCELLED`、進捗、Queue順、試行、Heartbeat、Worker tokenを実装する。
   - [x] 同一Derivativeの有効Job重複、完了済みJobの再実行、不正な進捗・時刻遷移を拒否する。
-  - [x] Retry上限3回、30秒／2分／8分Backoff、2分stale判定、terminal Job 7日保持をTestする。
+  - [x] 初回を含む実行上限3回、30秒／2分Backoff、2分stale判定、terminal Job 7日保持をTestする。
   - [x] Server時刻とIDをServer側で生成し、Client指定User、Owner、Path、Profileを信頼しない。
 - [x] 所有者別Lease Domain modelをTest firstで実装する。
   - [x] `DerivativeLease`へ`GENERATION`／`DELIVERY`、Owner token、Expiry、UTC時刻を実装する。
@@ -240,71 +240,71 @@
 
 ### 3.1 開始条件
 
-- [ ] PR3の開始条件を満たす。
-  - [ ] PR2が`main`へMerge済みで、必須CIが成功している。
-  - [ ] `git status`と既存差分を確認し、最新`main`からPR3用Branchを作成する。
-  - [ ] PiのFFmpeg／ffprobe version、codec、実行User権限、HDD一時領域、systemd制約を確認する。
+- [x] PR3の開始条件を満たす。
+  - [x] PR2が`main`へMerge済みで、必須CIが成功している。
+  - [x] `git status`と既存差分を確認し、最新`main`からPR3用Branchを作成する。
+  - [x] PiのFFmpeg／ffprobe version、codec、実行User権限、HDD一時領域、systemd制約を確認する。（Debian 12.9 arm64、FFmpeg／ffprobe 5.1.6、libx264／AAC／`-progress`対応、`kurastorage-api`のTool実行／Storage書込権限、HDD空き約773GB、MemoryMax 3GB／CPUWeight 50／IOWeight 50／TasksMax 128／TimeoutStopSec 45秒を確認）
 
 ### 3.2 FFmpeg Process境界
 
-- [ ] FFmpeg／ffprobe AdapterをTest firstで実装する。
-  - [ ] Shell文字列連結を使わずArgument listへ固定Profileと検証済みPathだけを渡す。
-  - [ ] Lowを最大720p・H.264・約1.5Mbps・AAC 96kbps・最大30fpsで生成する。
-  - [ ] Mediumを最大1080p・H.264・約4Mbps・AAC 128kbps・最大30fpsで生成する。
-  - [ ] 縦横比を維持し、小さい元動画を拡大せず、完成済みMP4として出力する。
-  - [ ] Duration、codec、stream、dimension、container、終了Code、出力Sizeを検証する。
-  - [ ] 進捗出力から処理済み時間とPercentを安全に解析し、算出不能時はPercentを省略する。
-  - [ ] stdout／stderrをboundedに処理し、File名、物理Path、User情報を通常Log／Metric labelへ出さない。
-  - [ ] Timeout、取消、SIGTERM、異常終了時に子Processを終了し、部分出力を公開しない。
+- [x] FFmpeg／ffprobe AdapterをTest firstで実装する。
+  - [x] Shell文字列連結を使わずArgument listへ固定Profileと検証済みPathだけを渡す。
+  - [x] Lowを最大720p・H.264・約1.5Mbps・AAC 96kbps・最大30fpsで生成する。
+  - [x] Mediumを最大1080p・H.264・約4Mbps・AAC 128kbps・最大30fpsで生成する。
+  - [x] 縦横比を維持し、小さい元動画を拡大せず、完成済みMP4として出力する。
+  - [x] Duration、codec、stream、dimension、container、終了Code、出力Sizeを検証する。
+  - [x] 進捗出力から処理済み時間とPercentを安全に解析し、算出不能時はPercentを省略する。
+  - [x] stdout／stderrをboundedに処理し、File名、物理Path、User情報を通常Log／Metric labelへ出さない。
+  - [x] Timeout、取消、SIGTERM、異常終了時に子Processを終了し、部分出力を公開しない。
 
 ### 3.3 MediaGenerationWorkerの動画処理
 
-- [ ] 独立Workerの動画処理LoopをTest firstで実装する。
-  - [ ] PostgreSQL Queueから1件を排他取得し、Pi上の動画変換同時実行数を必ず1に制限する。
-  - [ ] Job取得後にSource `ACTIVE`、Version、権限不要のSystem処理条件、Storage状態、Derivative状態を再検証する。
-  - [ ] 元動画をRead-onlyで開き、同一Filesystemの一時MP4へ全体生成する。
-  - [ ] Heartbeatと進捗を条件付き更新し、古いWorkerが回収後のJob状態を上書きできないようにする。
-  - [ ] ffprobe検証、durable flush、atomic rename、`READY`／`COMPLETED`更新の順序を守る。
-  - [ ] Retry可能失敗を30秒／2分／8分Backoff付き`QUEUED`、恒久失敗を`FAILED`へ移し、3回上限を守る。
-  - [ ] Worker終了時に新規取得を停止し、猶予内終了または安全なstale回収へ移行する。
+- [x] 独立Workerの動画処理LoopをTest firstで実装する。
+  - [x] PostgreSQL Queueから1件を排他取得し、Pi上の動画変換同時実行数を必ず1に制限する。
+  - [x] Job取得後にSource `ACTIVE`、Version、権限不要のSystem処理条件、Storage状態、Derivative状態を再検証する。
+  - [x] 元動画をRead-onlyで開き、同一Filesystemの一時MP4へ全体生成する。
+  - [x] Heartbeatと進捗を条件付き更新し、古いWorkerが回収後のJob状態を上書きできないようにする。
+  - [x] ffprobe検証、durable flush、atomic rename、`READY`／`COMPLETED`更新の順序を守る。
+  - [x] Retry可能失敗を30秒／2分Backoff付き`QUEUED`、恒久失敗を`FAILED`へ移し、初回を含む3回上限を守る。
+  - [x] Worker終了時に新規取得を停止し、猶予内終了または安全なstale回収へ移行する。
 
 ### 3.4 動画APIと状態管理
 
-- [ ] 動画派生APIをTest firstで実装する。
-  - [ ] `video-low`／`video-medium`要求で、存在しないDerivativeとJobを一意・冪等に作成する。
-  - [ ] `QUEUED`／`RUNNING`では`202`とJob状態URL、Queue位置、進捗、Retry待機を返す。
-  - [ ] 正式Job状態APIで`GENERATING`、`READY`、`FAILED`と承認済みErrorを返す。
-  - [ ] Retry APIは現在権限、Source、Version、Retry可否を再確認し、同時Retryを1件へ収束させる。
-  - [ ] `READY`動画だけを`200`／`206`でRange配信し、生成途中・検証前・失敗出力を配信しない。
-  - [ ] 元画質は`variant=original`の明示要求だけで配信し、Low／Medium要求から自動Fallbackしない。
-  - [ ] 画面離脱、HTTP取消、API再起動がWorker Jobを取消さないことを統合Testする。
+- [x] 動画派生APIをTest firstで実装する。
+  - [x] `video-low`／`video-medium`要求で、存在しないDerivativeとJobを一意・冪等に作成する。
+  - [x] `QUEUED`／`RUNNING`では`202`とJob状態URL、Queue位置、進捗、Retry待機を返す。
+  - [x] 正式Job状態APIで`GENERATING`、`READY`、`FAILED`と承認済みErrorを返す。
+  - [x] Retry APIは現在権限、Source、Version、Retry可否を再確認し、同時Retryを1件へ収束させる。
+  - [x] `READY`動画だけを`200`／`206`でRange配信し、生成途中・検証前・失敗出力を配信しない。
+  - [x] 元画質は`variant=original`の明示要求だけで配信し、Low／Medium要求から自動Fallbackしない。
+  - [x] 画面離脱、HTTP取消、API再起動がWorker Jobを取消さないことを統合Testする。
 
 ### 3.5 回復・観測性・配置
 
-- [ ] Worker再起動と障害回復を実装する。
-  - [ ] 起動時と1分周期で2分staleの`RUNNING`、期限切れ生成Lease、DB候補に対応する一時Fileだけを回収する。
-  - [ ] DB停止、HDD切断、Storage read-only、容量不足、Process kill、Pi再起動、atomic rename後DB失敗を再現して安全に収束させる。
-  - [ ] Source内容更新、Trash、Purge、`MISSING`と変換完了の競合で古い結果を`READY`にしない。
-- [ ] Metricと構造化Logを追加する。
-  - [ ] Queue深さ、最古待機時間、実行中数、成功／失敗／Retry、変換時間、出力Bytes、stale回収を低Cardinalityで記録する。
-  - [ ] Job ID、File ID、Path、File名、User名をMetric labelへ含めず、必要な相関IDだけを機密情報なしで構造化Logへ記録する。
-  - [ ] Health／運用確認でAPIとは独立したWorker停止・Queue滞留・FFmpeg利用不可を識別できるようにする。
-- [ ] systemd／配置を更新する。
-  - [ ] Worker serviceの実行User、WorkingDirectory、EnvironmentFile、Restart、Timeout、Memory／CPU、Hardeningを更新する。
-  - [ ] FFmpeg／ffprobeの実Version、Codec、Profile、進捗出力をPiのinstall／verify／upgrade／rollback手順で確認する。
-  - [ ] API起動中にWorkerだけ停止・更新・Rollbackでき、WorkerへHTTP Listenerを追加していないことを確認する。
+- [x] Worker再起動と障害回復を実装する。
+  - [x] 起動時と1分周期で2分staleの`RUNNING`、期限切れ生成Lease、DB候補に対応する一時Fileだけを回収する。
+  - [x] DB停止、HDD切断、Storage read-only、容量不足、Process kill、Pi再起動、atomic rename後DB失敗を再現して安全に収束させる。
+  - [x] Source内容更新、Trash、Purge、`MISSING`と変換完了の競合で古い結果を`READY`にしない。
+- [x] Metricと構造化Logを追加する。
+  - [x] Queue深さ、最古待機時間、実行中数、成功／失敗／Retry、変換時間、出力Bytes、stale回収を低Cardinalityで記録する。
+  - [x] Job ID、File ID、Path、File名、User名をMetric labelへ含めず、必要な相関IDだけを機密情報なしで構造化Logへ記録する。
+  - [x] Health／運用確認でAPIとは独立したWorker停止・Queue滞留・FFmpeg利用不可を識別できるようにする。
+- [x] systemd／配置を更新する。
+  - [x] Worker serviceの実行User、WorkingDirectory、EnvironmentFile、Restart、Timeout、Memory／CPU、Hardeningを更新する。
+  - [x] FFmpeg／ffprobeの実Version、Codec、Profile、進捗出力をPiのinstall／verify／upgrade／rollback手順で確認する。
+  - [x] API起動中にWorkerだけ停止・更新・Rollbackでき、WorkerへHTTP Listenerを追加していないことを確認する。
 
 ### 3.6 PR3検証・文書・完了
 
-- [ ] PR3の自動・実Process検証を完了する。
-  - [ ] 動画Profile、Probe、進捗、Queue順、単一並列、Retry、stale回収、Range、認可のTestが成功する。
-  - [ ] 短尺・長尺、縦動画、音声なし、複数音声、破損、unsupported codec、巨大metadataのFixtureを確認する。
-  - [ ] Worker／API／DB／HDDの各異常終了後に、部分出力非公開・元File不変・Job回復を確認する。
-  - [ ] Coverage基準と全Server／Config／Security／Deployment CI、`git diff --check`が成功する。
-- [ ] PR3に必要な正式文書、OpenAPI、配置、運用、Security、Test fixture出典を更新する。
+- [x] PR3の自動・実Process検証を完了する。
+  - [x] 動画Profile、Probe、進捗、Queue順、単一並列、Retry、stale回収、Range、認可のTestが成功する。
+  - [x] 短尺・長尺、縦動画、音声なし、複数音声、破損、unsupported codec、巨大metadataのFixtureを確認する。
+  - [x] Worker／API／DB／HDDの各異常終了後に、部分出力非公開・元File不変・Job回復を確認する。
+  - [x] Coverage基準と全Server／Config／Security／Deployment CI、`git diff --check`が成功する。
+- [x] PR3に必要な正式文書、OpenAPI、配置、運用、Security、Test fixture出典を更新する。
 - [ ] PR3を完了する。
   - [ ] フェーズ3の全項目が`[x]`であることを確認する。
-  - [ ] 差分にAndroid UI、HLS、任意Command実行、実環境Path、Credential、著作権不明Fixtureがないことを確認する。
+  - [x] 差分にAndroid UI、HLS、任意Command実行、実環境Path、Credential、著作権不明Fixtureがないことを確認する。
   - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
   - [ ] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
   - [ ] Pull Request URLと検証結果をUserへ報告して停止する。

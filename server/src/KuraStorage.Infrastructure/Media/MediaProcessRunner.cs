@@ -56,13 +56,23 @@ public sealed class MediaProcessRunner : IMediaProcessRunner
         }
 
         process.StandardInput.Close();
-        var stdout = ReadBoundedAsync(process.StandardOutput.BaseStream, cancellationToken);
-        var stderr = ReadBoundedAsync(process.StandardError.BaseStream, cancellationToken);
+        var stdout = ReadBoundedAsync(
+            process.StandardOutput.BaseStream, request.StandardOutputLineHandler, cancellationToken);
+        var stderr = ReadBoundedAsync(process.StandardError.BaseStream, null, cancellationToken);
         using var timeout = new CancellationTokenSource(request.Timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         try
         {
-            await process.WaitForExitAsync(linked.Token);
+            var exit = process.WaitForExitAsync(linked.Token);
+            var pending = new List<Task> { exit, stdout, stderr };
+            while (!exit.IsCompleted)
+            {
+                var completed = await Task.WhenAny(pending);
+                await completed;
+                pending.Remove(completed);
+            }
+
+            await exit;
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
@@ -71,6 +81,12 @@ public sealed class MediaProcessRunner : IMediaProcessRunner
             throw new MediaProcessTimeoutException();
         }
         catch (OperationCanceledException)
+        {
+            Kill(process);
+            await DrainAsync(stdout, stderr);
+            throw;
+        }
+        catch
         {
             Kill(process);
             await DrainAsync(stdout, stderr);
@@ -96,10 +112,14 @@ public sealed class MediaProcessRunner : IMediaProcessRunner
         }
     }
 
-    private static async Task<string> ReadBoundedAsync(Stream stream, CancellationToken cancellationToken)
+    private static async Task<string> ReadBoundedAsync(
+        Stream stream,
+        Func<string, CancellationToken, ValueTask>? lineHandler,
+        CancellationToken cancellationToken)
     {
         var buffer = new byte[8192];
         using var content = new MemoryStream();
+        using var line = new MemoryStream();
         var exceeded = false;
         int read;
         while ((read = await stream.ReadAsync(buffer, cancellationToken)) != 0)
@@ -110,7 +130,29 @@ public sealed class MediaProcessRunner : IMediaProcessRunner
                 await content.WriteAsync(buffer.AsMemory(0, Math.Min(read, remaining)), cancellationToken);
             }
 
-            exceeded |= read > remaining;
+            if (lineHandler is null)
+            {
+                exceeded |= read > remaining;
+            }
+            if (lineHandler is not null)
+            {
+                for (var index = 0; index < read; index++)
+                {
+                    if (buffer[index] == (byte)'\n')
+                    {
+                        await EmitLineAsync(line, lineHandler, cancellationToken);
+                    }
+                    else
+                    {
+                        if (line.Length >= MaximumDiagnosticBytes)
+                        {
+                            throw new MediaProcessOutputLimitException();
+                        }
+
+                        line.WriteByte(buffer[index]);
+                    }
+                }
+            }
         }
 
         if (exceeded)
@@ -118,7 +160,23 @@ public sealed class MediaProcessRunner : IMediaProcessRunner
             throw new MediaProcessOutputLimitException();
         }
 
+        if (lineHandler is not null && line.Length > 0)
+        {
+            await EmitLineAsync(line, lineHandler, cancellationToken);
+        }
+
         return Encoding.UTF8.GetString(content.ToArray());
+    }
+
+    private static async ValueTask EmitLineAsync(
+        MemoryStream content,
+        Func<string, CancellationToken, ValueTask> handler,
+        CancellationToken cancellationToken)
+    {
+        var bytes = content.ToArray();
+        var length = bytes.Length > 0 && bytes[^1] == (byte)'\r' ? bytes.Length - 1 : bytes.Length;
+        content.SetLength(0);
+        await handler(Encoding.UTF8.GetString(bytes, 0, length), cancellationToken);
     }
 
     private static void Kill(Process process)
@@ -141,7 +199,7 @@ public sealed class MediaProcessRunner : IMediaProcessRunner
         {
             await Task.WhenAll(stdout, stderr);
         }
-        catch (Exception exception) when (exception is IOException or OperationCanceledException)
+        catch (Exception)
         {
         }
     }

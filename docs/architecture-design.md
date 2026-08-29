@@ -659,7 +659,7 @@ FOR UPDATE SKIP LOCKED
 LIMIT 1;
 ```
 
-取得したトランザクション内でWorker tokenを設定して`RUNNING`へ変更してから処理を開始する。Heartbeat、進捗、完了、失敗はJob ID、`RUNNING`、Worker tokenの一致を条件に更新する。Worker停止で`RUNNING`のまま残ったJobは、Heartbeatが2分以上途絶え、有効な生成Leaseがない場合だけ回収する。Retry可能なら30秒・2分・8分の上限3回Backoffで`QUEUED`へ戻し、上限到達または恒久失敗は`FAILED`とする。Source Version変更、Purge等で処理が不要になった場合はJobを`CANCELLED`とし、Client切断では取消さない。
+取得したトランザクション内でWorker tokenを設定して`RUNNING`へ変更してから処理を開始する。Heartbeat、進捗、完了、失敗はJob ID、`RUNNING`、Worker tokenの一致を条件に更新する。Worker停止で`RUNNING`のまま残ったJobは、Heartbeatが2分以上途絶え、有効な生成Leaseがない場合だけ回収する。Retry可能なら30秒・2分のBackoffで`QUEUED`へ戻し、初回を含む3回の実行上限到達または恒久失敗は`FAILED`とする。Source Version変更、Purge等で処理が不要になった場合はJobを`CANCELLED`とし、Client切断では取消さない。
 
 `LISTEN/NOTIFY`は待機時間短縮に使用できるが、通知自体を信頼できるキューとして扱わない。ジョブの正はテーブルとする。
 
@@ -844,7 +844,7 @@ Access Tokenが署名上有効でも、User無効化、Device失効、Session失
 6. 閾値を超えた場合は`202 Accepted`と状態URLを返す。
 7. 完成後に一時出力をatomic renameし、DBを`READY`へ変更する。
 
-### 11.4 MVP後: 動画派生データ
+### 11.4 動画派生データ
 
 ```mermaid
 sequenceDiagram
@@ -871,7 +871,7 @@ sequenceDiagram
     end
 ```
 
-再生URLは完成済みMP4を返す。`.m3u8`は使用しない。
+再生URLは完成済みMP4を返す。`.m3u8`は使用しない。Workerは起動時と1分周期に、Heartbeatが2分以上途絶え、有効な生成Leaseがない`RUNNING`だけを回収する。対象Job IDとattemptから導いた一時出力だけを削除し、atomic rename後にDB確定結果が不明になった場合は、同じSource Version・Profile・種別の正式出力を次回取得時に再利用して`READY`へ収束させる。
 
 ### 11.5 MVP後: 自動バックアップ
 
@@ -1142,7 +1142,7 @@ DevelopmentとTestingでPathを省略した場合だけ、Process内に一時的
 ### 14.5 CPU・メモリ保護
 
 - MVPはAPI、PostgreSQL、Nginx、Androidの実測値を記録し、Upload同時数とRequest Buffering無効化を確認する。
-- 動画・画像変換のCPU・メモリ上限はMVP後のMedia機能追加時に定義する。
+- 動画・画像変換は独立Workerで直列実行し、下記のsystemd上限を適用する。
 - FFmpegの進捗出力間隔は1秒とする
 - FFmpeg Workerは低いCPU/IO優先度で動作させる
 - Workerはsystemdの`MemoryMax=3G`、`CPUWeight=50`、`IOWeight=50`でAPIより低い

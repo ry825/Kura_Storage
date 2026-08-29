@@ -3,6 +3,11 @@ using KuraStorage.Domain.Media;
 
 namespace KuraStorage.Application.Abstractions;
 
+public interface IMediaJobRunner
+{
+    Task<bool> RunNextAsync(CancellationToken cancellationToken);
+}
+
 public interface IMediaJobQueue
 {
     Task<MediaJob?> TryAcquireNextAsync(Guid workerToken, DateTimeOffset now, CancellationToken cancellationToken);
@@ -35,11 +40,27 @@ public interface IMediaJobQueue
 
     Task<int> RecoverStaleAsync(DateTimeOffset now, int batchSize, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<MediaTemporaryCandidate>> FindStaleTemporaryCandidatesAsync(
+        DateTimeOffset now,
+        int batchSize,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<MediaTemporaryCandidate>>([]);
+
+    Task<MediaQueueSnapshot> GetOperationalSnapshotAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new MediaQueueSnapshot(0, 0, 0));
+
     Task<int?> GetQueuePositionAsync(Guid jobId, DateTimeOffset now, CancellationToken cancellationToken);
 }
 
 public interface IDerivativeStore
 {
+    Task<PublishedDerivative?> FindPublishedAsync(
+        MediaGenerationContext context,
+        string extension,
+        CancellationToken cancellationToken) => Task.FromResult<PublishedDerivative?>(null);
+
     Task<DerivativeTemporaryFile> WriteTemporaryAsync(
         Guid jobId,
         int attempt,
@@ -61,9 +82,18 @@ public interface IDerivativeStore
     Task<Stream> OpenReadAsync(RelativeStoragePath path, CancellationToken cancellationToken);
 
     Task DeleteIfExistsAsync(RelativeStoragePath path, CancellationToken cancellationToken);
+
+    Task DeleteTemporaryAsync(
+        Guid jobId,
+        int attempt,
+        CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 public sealed record DerivativeTemporaryFile(RelativeStoragePath Path, long Size, Guid JobId, int Attempt);
+
+public sealed record MediaQueueSnapshot(int QueuedCount, int RunningCount, long OldestWaitSeconds);
+
+public sealed record MediaTemporaryCandidate(Guid JobId, int Attempt);
 
 public sealed record PublishedDerivative(RelativeStoragePath Path, long Size);
 
@@ -77,7 +107,8 @@ public sealed record MediaProcessRequest(
     IReadOnlyList<string> Arguments,
     string WorkingDirectory,
     TimeSpan Timeout,
-    IReadOnlyDictionary<string, string>? Environment = null);
+    IReadOnlyDictionary<string, string>? Environment = null,
+    Func<string, CancellationToken, ValueTask>? StandardOutputLineHandler = null);
 
 public sealed record MediaProcessResult(int ExitCode, string StandardOutput, string StandardError);
 
@@ -167,12 +198,41 @@ public interface IMediaGenerator
     Task<GeneratedMedia> GenerateAsync(
         MediaGenerationContext context,
         Stream source,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        Func<MediaGenerationProgress, CancellationToken, ValueTask>? progress = null);
 }
 
-public sealed record GeneratedMedia(Stream Content, long Size, string Extension) : IAsyncDisposable
+public sealed record MediaGenerationProgress(
+    int? Percent,
+    long? ProcessedDurationMs,
+    long? TotalDurationMs);
+
+public sealed class GeneratedMedia(
+    Stream content,
+    long size,
+    string extension,
+    Func<ValueTask>? cleanup = null) : IAsyncDisposable
 {
-    public ValueTask DisposeAsync() => Content.DisposeAsync();
+    public Stream Content { get; } = content;
+
+    public long Size { get; } = size;
+
+    public string Extension { get; } = extension;
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Content.DisposeAsync();
+        }
+        finally
+        {
+            if (cleanup is not null)
+            {
+                await cleanup();
+            }
+        }
+    }
 }
 
 public interface IMediaWaiter
@@ -190,6 +250,24 @@ public interface IMediaHeartbeat
         DateTimeOffset now,
         TimeSpan leaseDuration,
         CancellationToken cancellationToken);
+
+    Task<bool> PulseProgressAsync(
+        Guid jobId,
+        Guid workerToken,
+        Guid derivativeId,
+        Guid leaseOwnerToken,
+        DateTimeOffset now,
+        TimeSpan leaseDuration,
+        MediaGenerationProgress progress,
+        CancellationToken cancellationToken) =>
+        PulseAsync(
+            jobId,
+            workerToken,
+            derivativeId,
+            leaseOwnerToken,
+            now,
+            leaseDuration,
+            cancellationToken);
 }
 
 public sealed class MediaGenerationException(string errorCode, bool retryable, Exception? innerException = null)
@@ -199,3 +277,6 @@ public sealed class MediaGenerationException(string errorCode, bool retryable, E
 
     public bool Retryable { get; } = retryable;
 }
+
+public sealed class MediaGenerationOwnershipLostException()
+    : Exception("Media generation ownership was lost.");

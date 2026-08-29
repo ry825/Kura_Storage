@@ -1,4 +1,5 @@
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Media;
 using KuraStorage.Infrastructure.Configuration;
 using KuraStorage.Infrastructure.Storage;
@@ -111,6 +112,34 @@ public sealed class DerivativeStoreTests : IDisposable
 
         Assert.Equal(new byte[] { 1 }, await File.ReadAllBytesAsync(Path.Combine(root, path.Path.Value)));
         Assert.True(File.Exists(Path.Combine(root, second.Path.Value)));
+    }
+
+    [Fact]
+    public async Task Recovery_FindsPublishedResultAndDeletesOnlyExactTemporaryAttempt()
+    {
+        Directory.CreateDirectory(root);
+        var store = CreateStore(StorageStatus.Available);
+        var owner = Guid.NewGuid();
+        var source = Guid.NewGuid();
+        var job = Guid.NewGuid();
+        var temporary = await store.WriteTemporaryAsync(
+            job, 2, new MemoryStream([1, 2, 3]), 3, CancellationToken.None);
+        var published = await store.PublishAsync(
+            temporary, owner, source, 4, 5, DerivativeType.VideoLow, "mp4", 3, CancellationToken.None);
+        var work = Path.Combine(root, "derivative-temp", job.ToString("N"), "2-work");
+        Directory.CreateDirectory(work);
+        await File.WriteAllBytesAsync(Path.Combine(work, "generated.mp4"), [9]);
+        await store.WriteTemporaryAsync(job, 3, new MemoryStream([8]), 1, CancellationToken.None);
+        var context = new MediaGenerationContext(
+            job, Guid.NewGuid(), owner, source, 4, RelativeStoragePath.Create("users/source.mp4"),
+            3, "video/mp4", DerivativeType.VideoLow, 5, 2, Guid.NewGuid());
+
+        var found = await store.FindPublishedAsync(context, "mp4", CancellationToken.None);
+        await store.DeleteTemporaryAsync(job, 2, CancellationToken.None);
+
+        Assert.Equal(published, found);
+        Assert.False(Directory.Exists(work));
+        Assert.True(File.Exists(Path.Combine(root, "derivative-temp", job.ToString("N"), "3.part")));
     }
 
     [Fact]
