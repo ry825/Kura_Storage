@@ -416,7 +416,7 @@ Application Command / Query
 
 `TrashPurgeWorker`に加え、外部変更追従では`IndexEventWorker`と`FullRescanWorker`を配置する。1つのWorker実行ファイル内でも各処理は独立したHosted Service、DI Scope、例外境界、再試行周期を持ち、相互に不要な直列化を行わない。
 
-- `MediaTranscodeWorker`
+- `MediaGenerationWorker`
 - `ImageDerivativeWorker`
 - `CacheCleanupWorker`
 - `IndexEventWorker`
@@ -579,7 +579,7 @@ SSIDとBSSIDは外部Wi-Fiで自動バックアップを許可するポリシー
 | `shares` | `target_entry_id`一意、`(owner_user_id, updated_at, id)` |
 | `share_members` | `(user_id, share_id)`、`(share_id, user_id)`一意 |
 | `file_derivatives` | `(source_file_id, source_version, derivative_type, profile_version)`一意、`status`、`expires_at`、`last_accessed_at` |
-| `transcode_jobs` | `(status, created_at)`、`derivative_id` |
+| `media_jobs` | `(status, available_at, created_at, id)`、`derivative_id`、有効Jobの部分一意Index |
 | `refresh_sessions` | `token_hash`一意、`family_id`、`device_id`、現在Session行の部分一意Index |
 | `upload_sessions` | `(status, expires_at)`、`device_id` |
 | `backup_receipts` | `(device_id, local_document_key)`一意 |
@@ -650,16 +650,19 @@ Workerは次の形式でジョブを取得する。
 
 ```sql
 SELECT id
-FROM transcode_jobs
+FROM media_jobs
 WHERE status = 'QUEUED'
-ORDER BY created_at
+  AND available_at <= @now
+ORDER BY created_at, id
 FOR UPDATE SKIP LOCKED
 LIMIT 1;
 ```
 
-取得したトランザクション内で`RUNNING`へ変更してから処理を開始する。Worker停止で`RUNNING`のまま残ったジョブは、heartbeatまたは`started_at`の期限超過を基に再試行可能状態へ戻す。
+取得したトランザクション内でWorker tokenを設定して`RUNNING`へ変更してから処理を開始する。Heartbeat、進捗、完了、失敗はJob ID、`RUNNING`、Worker tokenの一致を条件に更新する。Worker停止で`RUNNING`のまま残ったJobは、Heartbeatが2分以上途絶え、有効な生成Leaseがない場合だけ回収する。Retry可能なら30秒・2分・8分の上限3回Backoffで`QUEUED`へ戻し、上限到達または恒久失敗は`FAILED`とする。Source Version変更、Purge等で処理が不要になった場合はJobを`CANCELLED`とし、Client切断では取消さない。
 
 `LISTEN/NOTIFY`は待機時間短縮に使用できるが、通知自体を信頼できるキューとして扱わない。ジョブの正はテーブルとする。
+
+初回基盤は通知を使用せず500ms Pollingを正とする。取得時は安定順の`FOR UPDATE SKIP LOCKED`とTransaction advisory lockを併用し、全Media Jobと動画Jobの初期同時実行数をそれぞれ1に制限する。更新結果が不明な場合もJob ID、状態、Worker tokenを条件とする更新を再照会できる形に保つ。stale回収はHeartbeatが120秒を超え、activeな`GENERATION` LeaseがないJobだけを対象とする。
 
 ---
 
@@ -688,12 +691,16 @@ Mountはデバイス名ではなくUUIDでsystemd Mount Unitへ定義する。AP
 │   └── <user-id>/
 │       ├── files/
 │       └── trash/
-└── upload-temp/
-    └── <user-id>/
+├── upload-temp/
+│   └── <user-id>/
+├── derivatives/
+│   └── <owner-id>/<source-id>/<source-version>/<profile-version>/<type>.<ext>
+└── derivative-temp/
+    └── <job-id>/<attempt>.part
 ```
 
 `.storage-identity`にはランダムな`storageId`とフォーマットバージョンを保存する。起動時に設定値と一致しない場合はストレージを`UNAVAILABLE`とする。
-共有、外部取り込み、サムネイル、派生キャッシュ、過去Versionの物理領域は、MVP後の各機能を追加する変更で設計・作成する。
+`derivatives`と`derivative-temp`はMedia基盤が管理する限定領域であり、Server生成のID、Version、Profile、種別からだけ相対Pathを組み立てる。一時出力をFlushして検証した後、同一Filesystem内の非上書きatomic renameで正式配置する。Storage Guard、Mount identity、read-only、容量確認に失敗した場合はOS RootへFallbackしない。共有、外部取り込み、過去Versionの追加物理領域は、MVP後の各機能を追加する変更で設計・作成する。
 
 ### 9.3 ストレージ利用可否
 
@@ -843,7 +850,7 @@ sequenceDiagram
     participant C as Client
     participant API as API
     participant DB as PostgreSQL
-    participant W as Transcode Worker
+    participant W as Media Worker
     participant FS as HDD
 
     C->>API: LOWまたはMEDIUM再生要求
@@ -1447,7 +1454,7 @@ APIには次を設定する。
 - 一覧と検索をページングする。
 - 名前検索へtrigram Indexを使用する。
 - 監査ログと認証試行に保持期間・アーカイブを設定する。
-- 完了済みTranscode JobとUpload Sessionを定期整理する。
+- 完了済みMedia Jobは7日保持し、Upload Sessionとそれぞれ定期整理する。
 - サムネイル容量を監視し、HDD容量計画へ含める。
 - 全体スキャンを差分化し、進捗を永続化する。
 
@@ -1623,7 +1630,7 @@ Phase 1では対象外。将来必要になった場合、次の分離が前提�
 - Refresh Tokenは24時間、使用ごとにローテーション。
 - Device有効上限はUserあたり10台。
 - Cacheは24時間、10GB超過時6GBまで清掃。
-- サムネイルは全件保持。
+- サムネイルは最初の要求時に必要時生成し、長辺最大512px・WebP品質75で、元ファイルの完全削除まで保持する。
 - ゴミ箱は30日。
 - テキスト取得・編集はUTF-8のみ、最大1 MiB。許可MIMEは`text/plain`、`text/markdown`、`text/csv`、`application/json`、`application/xml`、`application/yaml`。
 - Androidの画像閲覧MIMEは`image/jpeg`、`image/png`、`image/webp`、`image/gif`、`image/bmp`、`image/heic`、`image/heif`。
@@ -1632,7 +1639,7 @@ Phase 1では対象外。将来必要になった場合、次の分離が前提�
 
 ### 23.2 実機検証後に確定する値
 
-- Transcode Job保持期間
+- Media Job保持期間は7日。Pi実機では処理時間とQueue運用閾値を検証する
 - 同時アップロード・ダウンロード数
 - APIのsystemd MemoryMax
 - SAF定期走査間隔

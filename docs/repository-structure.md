@@ -339,6 +339,7 @@ KuraStorage.Domain/
 - Migrationは`Persistence/Migrations/`、OpenAPIは`contracts/openapi/kurastorage-api.yaml`、Domain・Application・API・Migration Testは各既存Test ProjectのUpload Session対応Fileへ配置する。
 - AndroidのResumable Upload契約は`core-network/KuraStorageApi.kt`、状態とOperationは`core-model/FileModels.kt`、SAF Chunk処理は`core-data/TransferRepository.kt`、表示と操作は`feature-files`へ配置する。Android固有型をServer契約へ持ち込まない。
 - Domain Eventを導入する場合は各Moduleの`Events/`へ置き、Infrastructure Eventと混同しない。
+- Media派生基盤の現行Domain実装は`Domain/Media/DerivativeEnums.cs`、`FileDerivative.cs`、`MediaJob.cs`、`DerivativeLease.cs`へ置く。未実装の下位Directoryを先に作成しない。
 
 ---
 
@@ -463,6 +464,7 @@ Login/
 - PurgeのUnit TestはApplication Tests、PostgreSQL制約・Migration・実Filesystem・API契約はIntegration Testsへ配置する。
 - 自動清掃のBatch・Run制御は`Application/Maintenance/`、周期制御だけを`KuraStorage.Worker/Workers/TrashPurgeWorker.cs`へ置く。WorkerからDbContext、HDD絶対Path、HTTP Endpointを直接扱わない。
 - `Shared/`へ業務機能を置かない。
+- Media基盤のQueueとStorage契約は、現行のApplication構造に合わせて`Abstractions/MediaAbstractions.cs`へまとめる。生成Use CaseとHTTP Contractは後続PRで追加する。
 
 ---
 
@@ -482,7 +484,7 @@ KuraStorage.Infrastructure/
 │   │   ├── UserConfiguration.cs
 │   │   ├── DeviceConfiguration.cs
 │   │   ├── FileEntryConfiguration.cs
-│   │   └── TranscodeJobConfiguration.cs
+│   │   └── MediaJobConfiguration.cs
 │   ├── Repositories/
 │   │   ├── UserRepository.cs
 │   │   ├── FileEntryRepository.cs
@@ -531,6 +533,24 @@ KuraStorage.Infrastructure/
 ├── DependencyInjection.cs
 └── KuraStorage.Infrastructure.csproj
 ```
+
+Media派生基盤で実際に追加するInfrastructure配置は次とする。
+
+```text
+KuraStorage.Infrastructure/
+├── Configuration/MediaOptions.cs
+├── Persistence/
+│   ├── Configurations/
+│   │   ├── FileDerivativeConfiguration.cs
+│   │   ├── MediaJobConfiguration.cs
+│   │   └── DerivativeLeaseConfiguration.cs
+│   ├── Migrations/<timestamp>_AddMediaDerivativeFoundation.cs
+│   ├── PostgreSqlMediaJobQueue.cs
+│   └── MediaDeletionParticipant.cs
+└── Storage/DerivativeStore.cs
+```
+
+対応Testは`KuraStorage.Domain.Tests/MediaDerivativeTests.cs`、`KuraStorage.Application.Tests/ConfigurationValidationTests.cs`、`KuraStorage.IntegrationTests/MediaPersistenceTests.cs`、`DerivativeStoreTests.cs`へ置く。将来構造にある未実装のMedia Processorや専用Test ProjectはPR1で作成しない。
 
 ### 6.3 配置ルール
 
@@ -1303,7 +1323,7 @@ AGENTS.md
 | Login HTTP Contract | `server/src/KuraStorage.Api/Contracts/Identity/` |
 | Login Endpoint | `server/src/KuraStorage.Api/Endpoints/Identity/` |
 | 動画Job polling UI | `apps/android/feature-media/.../presentation/` |
-| Transcode Worker Loop | `server/src/KuraStorage.Worker/Workers/MediaTranscodeWorker.cs` |
+| Media生成Worker Loop | `server/src/KuraStorage.Worker/Workers/MediaGenerationWorker.cs` |
 | FFmpeg引数生成 | `server/src/KuraStorage.Infrastructure/Media/` |
 | Device失効CLI | `server/src/KuraStorage.AdminCli/Commands/Devices/` |
 

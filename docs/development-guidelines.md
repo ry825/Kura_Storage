@@ -711,6 +711,10 @@ public void Rotate_UsedTokenIsPresented_RevokesSessionFamily()
 - Path traversal、Symbolic Link、巨大/破損Media
 - Android再起動、Worker再実行、ZeroTier切断
 
+Media派生処理ではPostgreSQLをJob状態の正とし、同一派生データの有効JobをDB制約で一意にする。Worker取得は安定順の`FOR UPDATE SKIP LOCKED`、状態更新はWorker token付き条件更新を使用する。Client切断を永続Media Jobの取消へ伝播させず、stale JobはHeartbeat期限と生成Leaseを確認してからだけ回収する。生成途中または検証前の出力を公開せず、必要時生成済みThumbnailは低・中画質のTTL／LRU清掃対象へ含めない。
+
+派生物の物理操作は`IDerivativeStore`を経由し、`derivatives/<owner>/<source>/<version>/<profile>/<type>.<ext>`と`derivative-temp/<job>/<attempt>.part`以外を生成しない。書込み前にStorage Guardを再確認し、期待Sizeを超えるStream、absolute path、traversal、symlink、特殊File、Root外移動、正式Pathの上書きを拒否する。DB更新と物理配置の間で停止しても、一時Fileまたは未参照の正式Fileとして後続回収できる順序を維持し、元ファイルを変更しない。
+
 ---
 
 ## 10. Git運用

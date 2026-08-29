@@ -488,22 +488,26 @@ interface FileDerivative {
   updatedAt: string;
 }
 
-type TranscodeJobStatus =
+type MediaJobStatus =
   | "QUEUED"
   | "RUNNING"
   | "COMPLETED"
   | "FAILED"
   | "CANCELLED";
 
-interface TranscodeJob {
+interface MediaJob {
   id: string;
   derivativeId: string;
-  status: TranscodeJobStatus;
-  progressPercent?: number; // FFmpeg進捗から算出可能な場合のみ
+  status: MediaJobStatus;
+  progressPercent?: number; // Media処理から算出可能な場合のみ
   queuePosition?: number;
   processedDurationMs?: number;
   totalDurationMs?: number;
   requestedByUserId: string;
+  attemptCount: number;
+  availableAt: string;
+  heartbeatAt?: string;
+  workerToken?: string;
   startedAt?: string;
   completedAt?: string;
   errorCode?: string;
@@ -518,7 +522,13 @@ interface TranscodeJob {
 (source_file_id, source_version, derivative_type, profile_version)
 ```
 
-`THUMBNAIL`と`PDF_THUMBNAIL`は通常キャッシュ10GBの集計対象外とし、元ファイルの完全削除まで保持する。写真・動画のサムネイルにはTTLと容量上限を設定しない。低・中画質データだけを24時間TTLと容量上限の対象とする。
+`THUMBNAIL`と`PDF_THUMBNAIL`は最初の要求時に必要時生成し、通常キャッシュ10GBの集計対象外として元ファイルの完全削除まで保持する。長辺最大512px、WebP品質75、縦横比維持、拡大なしで生成し、TTLと容量上限を設定しない。低・中画質データだけを24時間TTLと容量上限の対象とする。
+
+`MediaJob`はすべての派生種別の生成履歴を表す。同じ派生データに対する`QUEUED`または`RUNNING`の有効Jobは最大1件とし、Retry上限は3回、Backoffは30秒・2分・8分、stale判定はHeartbeat途絶から2分、terminal Job保持は7日とする。`CANCELLED`はSource Version変更、Purge等により生成が不要になった場合だけ使用し、Client切断では使用しない。
+
+`DerivativeLease`は派生データごとに`GENERATION`または`DELIVERY`、Owner token、期限を保持する。同じOwner tokenのLeaseは更新可能とし、別Ownerの更新・解放を拒否する。`FileDerivative.leaseUntil`はactive Lease最大期限の保守的な投影であり、削除可否の正は`derivative_leases`行とする。
+
+初回基盤実装では`file_derivatives`、`media_jobs`、`derivative_leases`をPostgreSQLへ追加し、Queue取得・Heartbeat・進捗・完了・失敗・明示Retry・stale回収をApplication境界から提供する。変換エンジン、Hosted Worker、HTTP API、配信Leaseの実運用は後続実装とし、この段階で生成処理は開始しない。
 
 ### 5.5 転送と操作ジャーナル
 
@@ -819,13 +829,13 @@ flowchart LR
 
     Derivative["FileDerivative<br/>サムネイル・低中画質データ"]
 
-    Job["TranscodeJob<br/>動画変換ジョブ"]
+    Job["MediaJob<br/>派生データ生成ジョブ"]
 
 
 
     Entry -->|"1ファイルから複数生成可能"| Derivative
 
-    Derivative -->|"動画変換時に処理履歴を持つ"| Job
+    Derivative -->|"生成・再試行ごとに処理履歴を持つ"| Job
 
 ```
 
@@ -833,9 +843,9 @@ flowchart LR
 
 - 同じ元ファイルでも、品質や変換設定ごとに異なるFileDerivativeを作成できる。
 
-- 動画の変換処理は`TranscodeJob`として非同期実行する。
+- 写真・動画・PDFの派生生成は`MediaJob`として非同期実行する。
 
-- 再試行や再生成により、1つのFileDerivativeに複数のTranscode Jobが関連する場合がある。
+- 再試行や再生成により、1つのFileDerivativeに複数のMedia Jobが関連する場合がある。ただし有効Jobは一意にする。
 
 #### 最近使用したファイル
 
@@ -1181,16 +1191,18 @@ Roomに次を保存する。
 ### 6.2.7 MVP後: PreviewService
 
 - 派生キャッシュの有無・元バージョンを確認する。
-- 写真の低・中画質データは要求処理内で短時間生成を試みる。
-- 写真生成が設定済み待機閾値を超える場合、`202 Accepted`を返して生成を継続する。
-- 動画変換ジョブをキューへ登録する。
+- 写真・動画・PDFの生成要求をPostgreSQL永続Media Jobへ登録し、API Processでは変換しない。
+- 写真とサムネイルは要求処理内で既定2秒までJob完了を待機する。
+- 設定済み待機閾値を超える場合、`202 Accepted`を返して独立Workerで生成を継続する。
 - 同一派生データの重複生成を防止する。
 - 元画質再生はクライアントが明示的に選択した場合だけ許可する。
 - 配信時に`lastAccessedAt`と`expiresAt`を更新する。
 
-### 6.2.8 MVP後: MediaTranscodeWorker
+### 6.2.8 MVP後: MediaGenerationWorker
 
-- FFmpegを使用して動画派生データをAPI要求とは独立して生成する。
+- 写真・動画・PDFの派生データをAPI要求とは独立して生成する。
+- PostgreSQLの`media_jobs`を`FOR UPDATE SKIP LOCKED`で排他取得し、Heartbeat、Retry、stale回収を永続状態として管理する。
+- 写真はvips、動画はFFmpeg／ffprobe、PDF先頭Pageはpdftoppmとvipsを使用する。
 - 基準ハードウェアをRaspberry Pi 4 Model B（8GB RAM）とし、同時変換数を1に制限する。
 - 低画質は最大720p・H.264・約1.5Mbps・AAC 96kbps・最大30fps、中画質は最大1080p・H.264・約4Mbps・AAC 128kbps・最大30fpsで生成する。
 - 出力コンテナを完成済みMP4に固定する。
@@ -1365,9 +1377,9 @@ SHA-256(fileId + sourceVersion + derivativeType + profileVersion)
 3. 対象キーの`READY`キャッシュを検索する。
 4. キャッシュがあり物理ファイルも存在する場合、最終アクセスを更新して返す。
 5. `PENDING`または`RUNNING`が存在する場合、設定した短時間だけ完了を待機し、未完了なら`202 Accepted`を返す。
-6. キャッシュがない場合、一意制約を利用して生成権を取得する。
-7. 低画質は長辺最大1280px・WebP品質70、中画質は長辺最大2560px・WebP品質82へ縮小する。元画像が対象長辺より小さい場合は拡大しない。
-8. 生成時間が同期処理の待機閾値を超える場合、処理をバックグラウンドへ引き継ぎ`202 Accepted`を返す。
+6. キャッシュがない場合、一意制約を利用して`PENDING`派生データと`QUEUED` Media Jobを作成する。
+7. 独立Workerが低画質を長辺最大1280px・WebP品質70、中画質を長辺最大2560px・WebP品質82へ縮小する。元画像が対象長辺より小さい場合は拡大しない。
+8. APIは既定2秒までDB状態を待機し、未完了なら`202 Accepted`を返す。HTTP要求終了後もJobは継続する。
 9. 一時パスへ出力し、完成後にatomic renameする。
 10. `READY`、サイズ、`lastAccessedAt`、`expiresAt = now + 24h`を保存する。
 11. 派生画像だけをクライアントへ送信する。
@@ -1377,7 +1389,7 @@ SHA-256(fileId + sourceVersion + derivativeType + profileVersion)
 1. 原動画の存在、権限、メタデータ、元ファイルサイズを取得する。
 2. 対象品質の`READY`派生データを検索する。
 3. キャッシュヒットなら完成済み派生MP4を返す。
-4. 未生成なら`PENDING`派生レコードと`QUEUED`変換ジョブを作成する。
+4. 未生成なら`PENDING`派生レコードと`QUEUED` Media Jobを作成する。
 5. クライアントへ`202 Accepted`、ジョブ状態URL、元画質サイズ、利用可能な選択肢を返す。
 6. クライアントは「完了まで待つ」「バックグラウンドで生成」「元画質で再生」のいずれかを選択できる。
 7. 元画質はユーザーが明示的に選択した場合だけRange Requestで配信し、自動フォールバックしない。
@@ -1773,7 +1785,7 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 
 #### `POST /api/v1/media-jobs/{jobId}/retry`
 
-- `FAILED`の動画変換だけを明示的に`QUEUED`へ戻す。
+- `FAILED`かつRetry可能な派生生成だけを、監査可能な新しい`QUEUED` Jobとして明示的に再登録する。
 - 再試行時にも元ファイルの閲覧権限と現在Versionを再確認する。
 
 #### `HEAD /api/v1/files/{fileId}/content?variant=original`
@@ -1806,7 +1818,7 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 {
   "status": "GENERATING",
   "jobId": "uuid",
-  "jobStatusUrl": "/api/v1/transcode-jobs/uuid",
+  "jobStatusUrl": "/api/v1/media-jobs/uuid",
   "progressPercent": 32,
   "queuePosition": 1,
   "retryAfterSeconds": 3,
@@ -1816,7 +1828,7 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 }
 ```
 
-#### `GET /api/v1/transcode-jobs/{jobId}`
+#### `GET /api/v1/media-jobs/{jobId}`
 
 ```json
 {
@@ -3024,9 +3036,9 @@ Androidの自動バックアップに必要なサーバー側処理を実装す�
 
 基本的なファイル閲覧が動作した後に、通信量と表示速度を改善する。
 
-- FileDerivativeとTranscodeJob
+- FileDerivativeとMediaJob
 - 写真・動画・PDFサムネイル生成
-- 写真・動画サムネイルの全件保持
+- 写真・動画・PDFサムネイルの必要時生成後の完全削除まで保持（長辺512px、WebP品質75）
 - 写真低画質・中画質生成
 - 写真生成の待機閾値と`202 Accepted`
 - 動画変換キュー

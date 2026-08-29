@@ -524,6 +524,41 @@ Migration Down deliberately fails while either new status remains. Restore or
 otherwise reconcile those entries with the matching release before retrying
 schema rollback; do not rewrite the statuses merely to bypass the guard.
 
+### Media derivative foundation rollout and rollback
+
+Before applying `AddMediaDerivativeFoundation`, stop the Worker and take a
+matched PostgreSQL dump and Storage Root backup. Confirm that the configured
+`Media:DerivativeRoot` and `Media:TemporaryRoot` are distinct relative paths
+under the verified Storage Root; the production defaults are `derivatives` and
+`derivative-temp`. Create them only through the deployment process, and do not
+grant either service write access to the mount parent or OS root. Apply the
+migration explicitly, then verify that `file_derivatives`, `media_jobs`, and
+`derivative_leases` exist and that the API and Worker start with the same Media
+settings. PR1 does not install or invoke media conversion binaries.
+
+After restart, inspect only aggregate state:
+
+```sql
+SELECT status, count(*) FROM media_jobs GROUP BY status ORDER BY status;
+SELECT status, count(*) FROM file_derivatives GROUP BY status ORDER BY status;
+SELECT lease_type, count(*) FROM derivative_leases GROUP BY lease_type ORDER BY lease_type;
+```
+
+A Worker restart does not justify manually resetting `RUNNING` rows. Recovery
+may requeue a job only after its heartbeat is older than 120 seconds (or the
+configured stale threshold) and no active `GENERATION` lease exists. Keep
+500ms polling enabled as the source of truth; no `LISTEN/NOTIFY` dependency is
+required by this foundation.
+
+Prefer application rollback while retaining the backward-compatible Media
+tables and protected derivative roots. Migration Down drops the three Media
+tables and their lifecycle trigger, so schema rollback is destructive once any
+Media row exists. If schema rollback is required, stop API and Worker, take a
+new matched backup, record aggregate row counts, obtain explicit approval for
+the loss, and restore the matching application and Storage Root together.
+Never delete arbitrary paths to make rollback succeed; only the configured
+derivative and temporary roots may be cleaned by reviewed Media maintenance.
+
 Application rollback switches to `previous`:
 
 ```bash
