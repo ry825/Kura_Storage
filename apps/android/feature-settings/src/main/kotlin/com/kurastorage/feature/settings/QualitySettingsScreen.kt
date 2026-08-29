@@ -1,0 +1,69 @@
+@file:Suppress("ktlint:standard:function-naming", "FunctionNaming")
+
+package com.kurastorage.feature.settings
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.kurastorage.core.model.media.MediaQuality
+import com.kurastorage.core.model.media.NetworkQualityContext
+
+@Composable
+fun QualitySettingsScreen(
+    state: QualitySettingsState,
+    onSelect: (NetworkQualityContext, MediaQuality) -> Unit,
+    onBack: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text("Media quality and data use", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            "These choices set the initial quality for photos and videos. " +
+                "You can always change quality while viewing.",
+        )
+        Text("Actual data use varies by file and format. Original content is never fetched before confirmation.")
+        NetworkQualityContext.entries.forEach { context ->
+            Text(context.label(), style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MediaQuality.entries.forEach { quality ->
+                    FilterChip(
+                        selected = state.preferences.qualityFor(context) == quality,
+                        onClick = { onSelect(context, quality) },
+                        enabled = !state.loading && state.saving == null,
+                        label = { Text(quality.label()) },
+                    )
+                }
+            }
+        }
+        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        Button(onClick = onBack) { Text("Back") }
+    }
+}
+
+private fun NetworkQualityContext.label(): String =
+    when (this) {
+        NetworkQualityContext.LOCAL_DIRECT -> "Local direct connection"
+        NetworkQualityContext.REGISTERED_REMOTE_WIFI -> "Registered remote Wi-Fi"
+        NetworkQualityContext.UNREGISTERED_REMOTE_WIFI -> "Other remote Wi-Fi"
+        NetworkQualityContext.REMOTE_MOBILE -> "Mobile connection"
+    }
+
+private fun MediaQuality.label(): String =
+    when (this) {
+        MediaQuality.LOW -> "Low"
+        MediaQuality.MEDIUM -> "Medium"
+        MediaQuality.ORIGINAL -> "Original"
+    }

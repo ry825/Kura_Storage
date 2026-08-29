@@ -82,7 +82,7 @@ for logging_config in \
 done
 
 if rg -n --glob '!**/build/**' --glob '!**/.gradle/**' \
-  '(androidx\.room|androidx\.work|androidx\.media3|io\.coil-kt|pdfbox|barteksc)' apps/android; then
+  '(androidx\.room|androidx\.work|pdfbox|barteksc)' apps/android; then
   echo "MVP-excluded Android dependency found." >&2
   exit 1
 fi

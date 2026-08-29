@@ -13,16 +13,30 @@ import com.kurastorage.core.data.DefaultRecentFileRepository
 import com.kurastorage.core.data.DefaultSearchRepository
 import com.kurastorage.core.data.DefaultSharingRepository
 import com.kurastorage.core.data.DefaultTransferRepository
+import com.kurastorage.core.data.media.AndroidNetworkTransportSource
+import com.kurastorage.core.data.media.DataStoreQualityPreferenceStore
+import com.kurastorage.core.data.media.DefaultMediaRepository
+import com.kurastorage.core.data.media.MediaRepository
+import com.kurastorage.core.data.media.NetworkQualityContextResolver
+import com.kurastorage.core.data.media.QualityPreferenceStore
+import com.kurastorage.core.data.media.TransferConfirmationPolicy
 import com.kurastorage.core.model.ConnectionRoute
 import com.kurastorage.core.network.AndroidHealthProbe
 import com.kurastorage.core.network.AndroidLocalNetworkSource
 import com.kurastorage.core.network.ConnectionDetector
 import com.kurastorage.core.network.FixedAddressDns
 import com.kurastorage.core.network.KuraStorageApi
+import com.kurastorage.core.network.media.OkHttpMediaApi
 import com.kurastorage.core.security.AndroidKeystoreCredentialCipher
 import com.kurastorage.core.security.SharedPreferencesEncryptedTokenStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import okhttp3.OkHttpClient
+import java.io.Closeable
 import java.time.Duration
+import java.util.UUID
 
 class ServiceContainer(
     context: Context,
@@ -38,6 +52,14 @@ class ServiceContainer(
     private val localNetworkSource =
         AndroidLocalNetworkSource(
             applicationContext.getSystemService(ConnectivityManager::class.java),
+        )
+    private val qualityPreferenceStore: QualityPreferenceStore =
+        DataStoreQualityPreferenceStore(applicationContext)
+    private val networkQualityContextResolver =
+        NetworkQualityContextResolver(
+            AndroidNetworkTransportSource(
+                applicationContext.getSystemService(ConnectivityManager::class.java),
+            ),
         )
 
     val connectionDetector =
@@ -96,6 +118,26 @@ class ServiceContainer(
                     executor,
                     AndroidContentStreamProvider(applicationContext),
                 ),
+            qualityPreferences = qualityPreferenceStore,
+            media = createMediaSession(apiClient, executor),
+        )
+    }
+
+    private fun createMediaSession(
+        apiClient: OkHttpClient,
+        executor: AuthenticatedRequestExecutor,
+    ): MediaSessionScope {
+        val repository =
+            DefaultMediaRepository(
+                OkHttpMediaApi("https://${BuildConfig.API_HOSTNAME}/api/v1", apiClient),
+                executor,
+            )
+        return MediaSessionScope(
+            scopeId = UUID.randomUUID().toString(),
+            repository = repository,
+            qualityPreferences = qualityPreferenceStore,
+            contextResolver = networkQualityContextResolver,
+            confirmationPolicy = TransferConfirmationPolicy(repository),
         )
     }
 
@@ -116,4 +158,22 @@ data class SessionServices(
     val organization: DefaultOrganizationRepository,
     val adminStorage: DefaultAdminStorageRepository,
     val transfers: DefaultTransferRepository,
-)
+    val qualityPreferences: QualityPreferenceStore,
+    val media: MediaSessionScope,
+) : Closeable {
+    override fun close() = media.close()
+}
+
+class MediaSessionScope(
+    val scopeId: String,
+    val repository: MediaRepository,
+    val qualityPreferences: QualityPreferenceStore,
+    val contextResolver: NetworkQualityContextResolver,
+    val confirmationPolicy: TransferConfirmationPolicy,
+) : Closeable {
+    val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    override fun close() {
+        coroutineScope.cancel()
+    }
+}

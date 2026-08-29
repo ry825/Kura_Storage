@@ -91,4 +91,5 @@ enum class AppDestination(
     FAVORITES("favorites"),
     TAGS("tags"),
     ENTRY_ORGANIZATION("entry-organization"),
+    MEDIA_SETTINGS("media-settings"),
 }

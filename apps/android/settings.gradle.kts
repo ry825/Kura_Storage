@@ -29,4 +29,6 @@ include(
     ":feature-files",
     ":feature-sharing",
     ":feature-search",
+    ":feature-media",
+    ":feature-settings",
 )

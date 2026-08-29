@@ -31,6 +31,8 @@ fi
   :feature-auth:assembleDebugAndroidTest \
   :feature-connection:assembleDebugAndroidTest \
   :feature-files:assembleDebugAndroidTest \
+  :feature-media:assembleDebugAndroidTest \
+  :feature-settings:assembleDebugAndroidTest \
   :core-data:assembleDebugAndroidTest \
   testDebugUnitTest \
   ktlintCheck \

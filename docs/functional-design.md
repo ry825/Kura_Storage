@@ -1797,53 +1797,29 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 
 ### 8.6 MVP後: 動画・音声再生
 
-#### `POST /api/v1/files/{fileId}/playback-sessions`
+動画の低画質または中画質は、`GET /api/v1/files/{fileId}/content?variant=video-low|video-medium&disposition=inline`を使用する。完成・ffprobe検証済みMP4は`200`または単一Rangeの`206`で返し、未生成または生成中は`202 Accepted`、Job ID、状態URL、進捗、Queue位置、再試行待機秒を返す。HLS、`.m3u8`、Playback Session、生成途中のFileは使用しない。
 
-```json
-{
-  "quality": "LOW"
-}
-```
+動画の元画質は、利用者が`HEAD /api/v1/files/{fileId}/content?variant=original`でサイズまたは推定通信量を確認して明示的に選択した場合だけ、`variant=original`をRange再生する。低・中品質から元画質へ自動Fallbackしない。
 
-準備済みの場合。
-
-```json
-{
-  "status": "READY",
-  "playbackUrl": "/api/v1/playback-sessions/uuid/master.m3u8",
-  "expiresAt": "2026-07-10T22:30:00+10:00"
-}
-```
-
-生成中またはキュー待ちの場合。
-
-```json
-{
-  "status": "GENERATING",
-  "jobId": "uuid",
-  "jobStatusUrl": "/api/v1/media-jobs/uuid",
-  "progressPercent": 32,
-  "queuePosition": 1,
-  "retryAfterSeconds": 3,
-  "originalAvailable": true,
-  "originalSize": 1842339840,
-  "availableActions": ["WAIT", "CONTINUE_IN_BACKGROUND", "PLAY_ORIGINAL"]
-}
-```
+音声は低・中品質派生と変換Jobを作らず、同じHEAD確認後に`variant=original`だけをRange再生する。
 
 #### `GET /api/v1/media-jobs/{jobId}`
 
 ```json
 {
-  "status": "RUNNING",
+  "jobId": "7f3f6466-2a31-45ea-b72b-4ca1eb608244",
+  "status": "GENERATING",
   "progressPercent": 46,
   "processedDurationMs": 276000,
   "totalDurationMs": 600000,
-  "retryAfterSeconds": 3
+  "queuePosition": null,
+  "retryable": false,
+  "retryAfterSeconds": 3,
+  "contentUrl": null
 }
 ```
 
-進捗を算出できない形式では`progressPercent`を省略し、`QUEUED`または`RUNNING`状態だけを返す。元画質はユーザーが明示的に選択した場合に限り、Range Request対応の`content`エンドポイントを利用する。
+公開状態は`GENERATING`、`READY`、`FAILED`、`CANCELLED`とする。進捗を算出できない場合は`progressPercent`、`processedDurationMs`、`totalDurationMs`を`null`とし、Queue位置を取得できない場合も`queuePosition`を`null`とする。`retryable`は現在の失敗を明示Retryできる場合だけ`true`とし、Androidは`FAILED`だけからRetry可能性を推測しない。元画質はユーザーが明示的に選択した場合に限り、Range Request対応の`content`エンドポイントを利用する。
 
 ### 8.7 MVP後: テキスト
 
@@ -2538,6 +2514,16 @@ flowchart LR
 
 初期画質は通信環境別設定から決定するが、ローカル直接接続を含むすべての手動閲覧可能な接続で、低・中・元画質へ切り替えられる。元画質へ切り替える前にはファイルサイズまたは推定転送量を表示する。
 
+## 11.5.1 MVP後: PDFビューアー
+
+- 対象MIMEは`application/pdf`とする。
+- PDF本体の取得前に`HEAD`でMIME、サイズ、Range対応を確認し、ファイルサイズまたは推定通信量を表示して利用者の確認を得る。
+- アプリ内表示の上限は1ファイル256MiBとし、超過時はStorage Access Frameworkを使用するダウンロード操作へ案内する。
+- PDF本体は64KiB単位でアプリ専用一時領域へストリーミング保存し、ファイル全体をメモリへ読み込まない。保存完了までは一時名を使用し、Content-LengthとPDFシグネチャを検証してから確定名へ変更する。
+- PDF一時ファイルのセッション合計上限は512MiBとし、保存前に`Content-Length + 64MiB`以上の空き容量を確認する。
+- OSの`PdfRenderer`で1ページずつ描画し、現在ページ、総ページ数、ページ移動、1〜4倍の拡大・縮小を提供する。描画Bitmapは長辺4096px、推定32MiBを上限とする。
+- 一時ファイルのTTLは1時間とし、画面離脱、セッション終了、ログアウト、次回起動時に清掃する。表示中のファイル記述子は清掃対象外とする。
+
 ## 11.6 MVP後: 動画・音声プレイヤー
 
 - MVP後の初回Playerで保証する動画MIME候補は`video/mp4`、`video/webm`、`video/3gpp`とする。
@@ -2545,17 +2531,18 @@ flowchart LR
 - コンテナMIMEが保証対象でも端末のMediaCodecが内部コーデックを再生できない場合は、非対応形式として表示し、再生失敗を再試行ループにしない。
 - 再生・一時停止
 - シークバー
-- 5秒戻る・進む
-- 10秒戻る・進む
+- 動画・音声は3秒戻る・進む
+- 動画・音声は10秒戻る・進む
 - 0.5〜3.0倍速
-- 画質選択（接続環境に関係なく低 / 中 / 元を選択可能）
+- 動画の画質選択（接続環境に関係なく低 / 中 / 元を選択可能）
+- 音声は元ファイルだけをRange再生
 - 現在時間・総時間
 - 変換キュー待ち・変換中・進捗・失敗表示
 - 変換中の操作: 完了まで待つ / バックグラウンドで続ける / 元画質で再生
 - 元画質を選択する前のファイルサイズ・推定通信量表示
 - 通信切断時の再接続表示
 
-低・中画質が未生成の場合、アプリは元画質へ自動切替しない。ユーザーが「バックグラウンドで続ける」を選択した場合は画面を離れてもジョブを継続し、後から同じファイルを開いた際に状態を再取得する。画質変更時は現在再生位置を保持し、準備完了後に同じ位置付近から再開する。
+動画の低・中画質が未生成の場合、アプリは元画質へ自動切替しない。ユーザーが「バックグラウンドで続ける」を選択した場合は画面を離れても動画変換Jobを継続し、後から同じファイルを開いた際に状態を再取得する。動画の画質変更時は現在再生位置を保持し、準備完了後に同じ位置付近から再開する。音声再生では品質選択と変換Jobを表示せず、元ファイルのサイズまたは推定通信量を確認してから再生する。
 
 ## 11.7 MVP後: テキストエディター
 

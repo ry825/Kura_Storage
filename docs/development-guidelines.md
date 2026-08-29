@@ -484,6 +484,25 @@ sealed interface FileListUiState {
 - ログアウト、Device失効、登録失敗時に対象秘密情報を削除する。
 - 証明書検証を無効化するDebugコードをReleaseへ含めない。
 
+### 5.10 MVP後: Android Media閲覧・再生
+
+- Media品質、Variant、Job状態、Byte数、再生位置、速度はenumまたはValue Typeで表し、任意Stringや裸の数値をFeatureへ渡さない。
+- 写真・動画だけにLOW／MEDIUM／ORIGINALを許可し、音声とPDFへLOW／MEDIUM Variantを組み立てない。
+- Coil、Media3、PDF取得は`SessionServices`と同じ認証Session、TLS Host、接続経路別`OkHttpClient`を使用する。TokenをURL、Query、Cache key、File名、Logへ含めない。
+- 401は既存の単一Flight Token refresh後に1回だけ再試行する。再発、Device／Session失効、権限消失では表示・再生を停止する。
+- 別HostへのRedirectへAuthorizationを転送しない。Media URLはClientが固定API Hostと型付きIDから組み立てる。
+- 一覧Thumbnail、写真LOW／MEDIUM、動画LOW／MEDIUMの失敗時に元Fileを自動取得しない。
+- 元写真、元動画、元音声、PDF本文はHEADでSizeを確認し、利用者の承認前にContent Requestを開始しない。
+- Coil Cache keyへSession scope、File ID、File Version、Variantを含め、Logout、Session失効、接続Route変更時にSession cacheを破棄する。
+- PDFはApp private cacheへ64KiB bufferでStreamingし、1 File 256MiB、Session合計512MiB、空き容量`Content-Length + 64MiB`、未参照TTL 1時間を強制する。部分File、Page、Bitmap、FileDescriptorを所有Lifecycleで閉じる。
+- 写真とPDFの表示Bitmapは1枚32MiB、長辺4096pxを上限とし、DecodeとRenderをMain threadで行わない。
+- Media3は1 Player／1 itemとし、動画・音声の3秒／10秒移動、0.5〜3.0倍速、単一Range Seekを実装する。Mobileの最大Bufferは15秒とし、次Mediaを自動準備しない。
+- 品質変更は旧Sourceを新Sourceの準備完了まで保持し、再生位置、速度、再生状態を可能な範囲で復元する。失敗時は旧Sourceへ戻し、元画質へFallbackしない。
+- Clientの画面離脱やRequest取消をServer Media Jobの取消へ伝播させない。「バックグラウンドで続ける」はServer Jobへ任せ、Media閲覧のためだけにWorkManagerを追加しない。
+- JVM Unit Testで状態変換、MockWebServerで認証・202・Range・切断、Instrumented TestでCompose・`PdfRenderer`・Media3 lifecycleを検証する。
+- `./scripts/ci/verify-android.sh`でFormat、静的解析、Lint、Unit Test、Debug Assemblyを確認し、`connectedDebugAndroidTest`はEmulator／実機Jobで実行する。
+- Android 10と現行Androidの実機で保証MIME、Codec非対応、3秒／10秒移動、PDF 256MiB境界、Session分離、通信量確認前の非取得を確認する。
+
 ---
 
 ## 6. API・契約規約
