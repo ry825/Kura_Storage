@@ -271,6 +271,7 @@ public sealed class PreviewService(
             job.ProcessedDurationMs,
             job.TotalDurationMs,
             position,
+            status == "FAILED" && CanRetry(job.ErrorCode),
             status == "READY" ? 0 : 2,
             status == "READY"
                 ? $"/api/v1/files/{snapshot.Source.Id}/content?variant={MediaContractRules.PublishedVariant(snapshot.Derivative.DerivativeType)}"

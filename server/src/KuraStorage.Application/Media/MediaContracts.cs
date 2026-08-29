@@ -99,6 +99,7 @@ public sealed record MediaJobView(
     long? ProcessedDurationMs,
     long? TotalDurationMs,
     int? QueuePosition,
+    bool Retryable,
     int RetryAfterSeconds,
     string? ContentUrl);
 

@@ -75,6 +75,8 @@ import com.kurastorage.feature.search.SearchScreen
 import com.kurastorage.feature.search.SearchViewModel
 import com.kurastorage.feature.search.TagsScreen
 import com.kurastorage.feature.search.TagsViewModel
+import com.kurastorage.feature.settings.QualitySettingsScreen
+import com.kurastorage.feature.settings.QualitySettingsViewModel
 import com.kurastorage.feature.sharing.SharingListViewModel
 import com.kurastorage.feature.sharing.SharingScreen
 import com.kurastorage.feature.sharing.SharingSettingsScreen
@@ -128,6 +130,7 @@ private fun KuraStorageApp(
                 onRecheck = connectionViewModel::check,
                 onConnected = { state ->
                     if (connected?.route != state.route || services == null) {
+                        services?.close()
                         connected = state
                         services = container.sessionServices(state.route)
                     }
@@ -205,8 +208,10 @@ private fun KuraStorageApp(
                 onFavorites = { navController.navigate(AppDestination.FAVORITES.route) },
                 onTags = { navController.navigate(AppDestination.TAGS.route) },
                 onTrash = { navController.navigate(AppDestination.TRASH.route) },
+                onMediaSettings = { navController.navigate(AppDestination.MEDIA_SETTINGS.route) },
                 onLogout = {
                     logoutViewModel.logout {
+                        services?.close()
                         services = null
                         connected = null
                         navController.navigate(AppDestination.CONNECTION.route) {
@@ -214,6 +219,24 @@ private fun KuraStorageApp(
                         }
                     }
                 },
+            )
+        }
+        composable(AppDestination.MEDIA_SETTINGS.route) {
+            val current = services
+            if (current == null) {
+                navController.navigate(AppDestination.CONNECTION.route)
+                return@composable
+            }
+            val settingsViewModel: QualitySettingsViewModel =
+                viewModel(
+                    key = "media-quality-settings",
+                    factory = simpleViewModelFactory { QualitySettingsViewModel(current.qualityPreferences) },
+                )
+            val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
+            QualitySettingsScreen(
+                state = settingsState,
+                onSelect = settingsViewModel::update,
+                onBack = { navController.popBackStack() },
             )
         }
         composable(AppDestination.FILES.route) {
@@ -652,6 +675,7 @@ fun HomeScreen(
     onRecent: () -> Unit = {},
     onFavorites: () -> Unit = {},
     onTags: () -> Unit = {},
+    onMediaSettings: () -> Unit = {},
     onTrash: () -> Unit,
     onLogout: () -> Unit,
 ) {
@@ -668,6 +692,7 @@ fun HomeScreen(
         Button(onClick = onRecent) { Text("Recent files") }
         Button(onClick = onFavorites) { Text("Favorites") }
         Button(onClick = onTags) { Text("Tags") }
+        Button(onClick = onMediaSettings) { Text("Media quality") }
         Button(onClick = onTrash) { Text("Trash") }
         Button(onClick = onLogout) { Text("Log out") }
     }

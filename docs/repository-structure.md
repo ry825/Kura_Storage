@@ -897,8 +897,39 @@ feature-files/
 | `feature-files` | Home、一覧、詳細、Folder作成、Streaming Upload、Range Download、Trash、Restore、Rename、Move、MISSING表示・再確認・索引削除確認 |
 | `feature-sharing` | 所有・受信共有一覧、共有候補・Permission選択、Member追加・更新・解除、Share全体解除 |
 | `feature-search` | 権限対応検索、Tag Filter、ページング、最近使用、お気に入り一覧、Tag管理、Entry organization画面。結果選択はApp callbackで既存File画面へ接続 |
+| `feature-media` | 一覧Thumbnail、写真Viewer、PDF Viewer、動画・音声Player、Media Job状態、品質切替、通信量確認 |
+| `feature-settings` | 接続環境別の写真・動画初期品質と通信量説明 |
 
-`feature-sharing`は`SharingScreens.kt`と`SharingViewModels.kt`を持ち、`core-model`の共有・権限Model、`core-network`の`SharingApi`、`core-data`の`SharingRepository`を利用する。共有Folderの閲覧と権限別File操作は`app`のNavigationから既存`feature-files`へ遷移して再利用し、Feature間を直接依存させない。`feature-search`も同じ境界を守り、`SearchScreens.kt`、`OrganizationScreens.kt`と対応ViewModelだけを保持する。`feature-files`のお気に入り・Tag actionはEntry IDだけをApp callbackへ返し、Appが`feature-search`のEntry organization画面へNavigationする。`feature-media`、`feature-backup`、`feature-settings`はMVP後に必要となった時点で追加する。
+`feature-sharing`は`SharingScreens.kt`と`SharingViewModels.kt`を持ち、`core-model`の共有・権限Model、`core-network`の`SharingApi`、`core-data`の`SharingRepository`を利用する。共有Folderの閲覧と権限別File操作は`app`のNavigationから既存`feature-files`へ遷移して再利用し、Feature間を直接依存させない。`feature-search`も同じ境界を守り、`SearchScreens.kt`、`OrganizationScreens.kt`と対応ViewModelだけを保持する。`feature-files`のお気に入り・Tag actionはEntry IDだけをApp callbackへ返し、Appが`feature-search`のEntry organization画面へNavigationする。
+
+`feature-media`と`feature-settings`もFeature間を直接依存させない。`feature-files`、`feature-search`、`feature-sharing`はFile IDと閲覧ContextをApp callbackへ返し、`app`がMedia destinationへ遷移する。一覧Thumbnailは`app`が`feature-media`のComposableを`feature-files`のslotへ渡す。`feature-backup`はMVP後に必要となった時点で追加する。
+
+PR1で追加したAndroid Media基盤の配置は次のとおり。後続PRのViewer／Player実装は、実際にFileを追加した時点でこの一覧へ反映する。
+
+```text
+core-model/src/main/kotlin/com/kurastorage/core/model/media/
+├── MediaModels.kt
+├── QualityPreferences.kt
+└── MediaOpenRequest.kt
+core-network/src/main/kotlin/com/kurastorage/core/network/media/
+├── MediaApi.kt
+└── MediaContracts.kt
+core-data/src/main/kotlin/com/kurastorage/core/data/media/
+├── MediaRepository.kt
+├── QualityPreferenceStore.kt
+├── NetworkQualityContextResolver.kt
+└── TransferConfirmationPolicy.kt
+feature-media/src/
+├── main/kotlin/com/kurastorage/feature/media/AssemblyMarker.kt
+├── main/kotlin/com/kurastorage/feature/media/MediaViewerController.kt
+└── test/kotlin/com/kurastorage/feature/media/MediaViewerControllerTest.kt
+feature-settings/src/
+├── main/kotlin/com/kurastorage/feature/settings/AssemblyMarker.kt
+├── main/kotlin/com/kurastorage/feature/settings/QualitySettingsScreen.kt
+├── main/kotlin/com/kurastorage/feature/settings/QualitySettingsViewModel.kt
+├── test/kotlin/com/kurastorage/feature/settings/QualitySettingsViewModelTest.kt
+└── androidTest/kotlin/com/kurastorage/feature/settings/QualitySettingsScreenTest.kt
+```
 
 ### 8.6 Gradle Build Logic
 

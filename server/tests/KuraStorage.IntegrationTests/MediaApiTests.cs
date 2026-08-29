@@ -155,6 +155,13 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
         var transientJobId = acceptedJson.RootElement.GetProperty("jobId").GetGuid();
         await FailJobAsync(transientJobId, MediaErrorCodes.ToolUnavailable);
 
+        using (var retryableStatus = await client.GetAsync($"/api/v1/media-jobs/{transientJobId}"))
+        {
+            retryableStatus.EnsureSuccessStatusCode();
+            var view = await retryableStatus.Content.ReadFromJsonAsync<MediaJobView>();
+            Assert.True(view!.Retryable);
+        }
+
         var retries = await Task.WhenAll(Enumerable.Range(0, 3).Select(_ =>
             client.PostAsync($"/api/v1/media-jobs/{transientJobId}/retry", null)));
         Assert.All(retries, response => Assert.Equal(HttpStatusCode.Accepted, response.StatusCode));

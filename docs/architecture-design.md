@@ -325,9 +325,9 @@ Domain ───────────────────→ 外部ライ
 | Android Keystore | OS標準 | 秘密情報保護 | 取り出し不可鍵、StrongBox、AES-GCMを利用できる。 |
 | OkHttp | 安定版固定 | HTTPS、Range、アップロード | ネットワークへの明示バインド、Interceptor、ストリーミングを実装しやすい。 |
 | Retrofit 3 | 安定版固定 | 型付きAPIクライアント | API DTOとエラー変換を`core-network`へ集約し、OkHttpのNetwork bindingと組み合わせる。 |
-| Media3 ExoPlayer | MVP後 | 動画・音声再生 | Media機能追加時に導入する。 |
-| Coil | MVP後 | 写真・サムネイル表示 | Preview機能追加時に導入する。 |
-| Android PdfRenderer | MVP後 | PDF表示 | アプリ内PDF表示追加時に導入する。 |
+| Media3 ExoPlayer | 1.11.0 | 完成済みMP4と元動画・元音声のRange再生 | Session-scoped認証DataSource、Seek、速度、品質変更時の位置維持を実装する。 |
+| Coil | 3.5.0 | 写真・サムネイル表示 | Kotlin language version 2.2と現行Project Kotlin 2.3.21の互換性を維持し、独自認証Fetcherを使用する。 |
+| Android PdfRenderer | OS標準（minSdk 29） | PDF表示 | App private一時Fileから1 Pageずつboundedに描画する。 |
 
 ### 5.3 開発・品質管理
 
@@ -872,6 +872,20 @@ sequenceDiagram
 ```
 
 再生URLは完成済みMP4を返す。`.m3u8`は使用しない。Workerは起動時と1分周期に、Heartbeatが2分以上途絶え、有効な生成Leaseがない`RUNNING`だけを回収する。対象Job IDとattemptから導いた一時出力だけを削除し、atomic rename後にDB確定結果が不明になった場合は、同じSource Version・Profile・種別の正式出力を次回取得時に再利用して`READY`へ収束させる。
+
+### 11.4.1 Android Media閲覧・再生
+
+Androidは`feature-media`、`feature-settings`と既存Core Moduleを使用する。写真・動画のLOW／MEDIUM／ORIGINAL、音声とPDFのORIGINALを同じ認証Sessionと接続経路別`OkHttpClient`から取得する。音声にLOW／MEDIUM派生や変換Jobを作らない。
+
+- Coilは`scopeId:fileId:fileVersion:variant`をCache keyにした独自認証Fetcherを使用する。Memory cacheはHeapの10%かつ最大64MiB、Disk cacheはSessionごとに最大256MiBとする。
+- Media3は認証Header付き単一Range DataSourceを使用する。401時は既存の単一Flight Token refresh後に現在位置から1回だけ再構築し、再発時は再生を停止する。
+- Playerは動画・音声とも3秒／10秒の戻る・進む、0.5〜3.0倍速を提供する。Mobileでは5〜15秒Buffer、Wi-Fiでは15〜50秒Bufferを初期値とし、Playlistは1件だけにする。
+- 動画品質変更時は旧Sourceを新Sourceの準備完了まで保持し、現在位置、速度、再生状態を可能な範囲で復元する。低・中品質が未準備でも元画質へ自動Fallbackしない。
+- 写真・動画の元画質、元音声、PDF本文はHEADでSizeを確認し、利用者の承認前にContentを開始しない。
+- PDFはApp private一時領域へStreamingする。1 File 256MiB、Session合計512MiB、必要空き容量`Content-Length + 64MiB`、未参照TTL 1時間とする。超過時は既存SAF Downloadへ案内する。
+- 写真とPDFの表示Bitmapは1枚32MiB、長辺4096pxを上限とする。PDFは1 Pageずつ開き、Page、Bitmap、FileDescriptorをLifecycle終了時に閉じる。
+- Logout、Device／Session失効、接続Route変更でPlayer、Polling、Coil Session cache、PDF一時File、認証済みURLを破棄する。
+- 許可Wi-Fi機能が未導入の間、REMOTE_SECUREなWi-Fiは未登録Wi-FiとしてLOWを初期値にする。将来は`RegisteredWifiSource`の実装だけを差し替える。
 
 ### 11.5 MVP後: 自動バックアップ
 
@@ -1556,6 +1570,12 @@ Phase 1では対象外。将来必要になった場合、次の分離が前提�
 - Device失効時にKuraStorageのTokenを削除し、ZeroTier Member失効が別途必要であることを案内する
 - 低・中画質未準備時に元画質へ自動フォールバックしない
 - 品質変更時に再生位置を維持する
+- 一覧Thumbnail取得時に元ファイルを取得しない
+- 元写真・元動画・元音声・PDF本文を通信量確認前に取得しない
+- 動画・音声の3秒／10秒移動、0.5〜3.0倍速、Seek Rangeを確認する
+- PDF 256MiB境界、空き容量不足、取消、破損、暗号化、TTL清掃を確認する
+- Logout、Session失効、接続先変更後に前Sessionの画像、PDF、Player、Job状態を再利用しない
+- Android 10と現行Androidで保証MIMEとCodec非対応を確認し、無限再試行しない
 
 ### 21.4 E2E
 
@@ -1638,6 +1658,9 @@ Phase 1では対象外。将来必要になった場合、次の分離が前提�
 - テキスト取得・編集はUTF-8のみ、最大1 MiB。許可MIMEは`text/plain`、`text/markdown`、`text/csv`、`application/json`、`application/xml`、`application/yaml`。
 - Androidの画像閲覧MIMEは`image/jpeg`、`image/png`、`image/webp`、`image/gif`、`image/bmp`、`image/heic`、`image/heif`。
 - Androidの動画再生MIMEは`video/mp4`、`video/webm`、`video/3gpp`。音声再生MIMEは`audio/mpeg`、`audio/mp4`、`audio/aac`、`audio/ogg`、`audio/opus`、`audio/flac`、`audio/wav`、`audio/3gpp`、`audio/amr`、`audio/amr-wb`。
+- Androidの品質選択は写真・動画だけを対象とし、音声は元ファイルだけをRange再生する。元写真、元動画、元音声、PDF本文はSizeまたは推定通信量の確認後に取得する。
+- Androidの動画・音声Playerは3秒／10秒の戻る・進むと0.5〜3.0倍速を提供する。
+- Android PDF Viewerは1 File 256MiB、Session一時File合計512MiB、未参照TTL 1時間とする。
 - MIMEが保証対象でも端末のMediaCodecが内部コーデックを再生できない場合は、実行時に非対応形式として扱う。Android 14以降を必要とするAVIF等は`minSdk 29`のMVP保証対象に含めない。
 
 ### 23.2 実機検証後に確定する値

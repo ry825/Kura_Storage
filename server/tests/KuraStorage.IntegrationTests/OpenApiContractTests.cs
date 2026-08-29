@@ -58,6 +58,7 @@ public sealed class OpenApiContractTests
         Assert.Contains("operationId: retryMediaJob", contract, StringComparison.Ordinal);
         Assert.Contains("MediaAcceptedResponse:", contract, StringComparison.Ordinal);
         Assert.Contains("MediaJob:", contract, StringComparison.Ordinal);
+        Assert.Contains("        retryable:", contract, StringComparison.Ordinal);
         Assert.Contains(
             "enum: [original, thumbnail, image-low, image-medium, video-low, video-medium]",
             contract,

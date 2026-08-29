@@ -2154,7 +2154,7 @@ components:
     MediaJob:
       type: object
       additionalProperties: false
-      required: [jobId, status, progressPercent, processedDurationMs, totalDurationMs, queuePosition, retryAfterSeconds, contentUrl]
+      required: [jobId, status, progressPercent, processedDurationMs, totalDurationMs, queuePosition, retryable, retryAfterSeconds, contentUrl]
       properties:
         jobId:
           type: string
@@ -2177,6 +2177,8 @@ components:
         queuePosition:
           type: [integer, "null"]
           minimum: 1
+        retryable:
+          type: boolean
         retryAfterSeconds:
           type: integer
           minimum: 0
