@@ -156,6 +156,33 @@ and `kurastorage.media.queue.oldest_wait`; tool failures appear in the bounded
 Media Job result and retry metrics. These metrics never use Job, File, path,
 file-name, or user identifiers as labels.
 
+Media cache cleanup runs at Worker start and every 30 minutes under one global
+PostgreSQL advisory lock. Monitor aggregate counters only:
+
+- cumulative `kurastorage.media.cleanup.candidates`, `.deleted`,
+  `.deleted_bytes`, `.failures`, and `.terminal_jobs`
+- last-run `kurastorage.media.cleanup.candidate_count`, `.deleted_count`,
+  `.deleted_bytes_last_run`, `.remaining_bytes`, and `.failure_count`
+- `kurastorage.media.cleanup.duration` and `.last_run`
+
+READY low/medium cache is expired at `expires_at <= Server UTC now`. Capacity
+cleanup starts only above 10 GiB and removes one stable oldest LRU candidate at
+a time until the recalculated total is at or below 6 GiB. Thumbnail rows,
+PENDING/RUNNING work, and active generation or delivery leases are excluded.
+Interrupted `DELETING` rows use a dedicated recovery pass. A filesystem delete
+failure returns the row to retryable READY state and must never trigger source
+file deletion or an HDD-wide scan.
+
+For queue backlog, inspect queue depth, oldest wait, Worker iteration, and
+bounded job error codes. For stale generation, confirm the two-minute heartbeat
+threshold and absence of an active generation lease before allowing recovery.
+For cache pressure, compare READY low/medium database bytes with derivative-root
+growth and HDD free space; thumbnail capacity is monitored separately. Repeated
+FFmpeg failure requires checking the recorded runtime package inventory, codec
+verification, resource limits, and only the bounded Media Job error code. On
+HDD loss, stop mutation processing, restore the reviewed mount and identical
+Storage ID, then restart; never treat an empty mount point as an empty catalog.
+
 On graceful stop, the Worker stops acquiring new jobs. `TimeoutStopSec=45s`
 allows in-flight cleanup; if conversion cannot finish, the process tree is
 terminated and the durable job is safely re-queued or recovered after its

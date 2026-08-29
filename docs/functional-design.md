@@ -528,7 +528,9 @@ interface MediaJob {
 
 `DerivativeLease`は派生データごとに`GENERATION`または`DELIVERY`、Owner token、期限を保持する。同じOwner tokenのLeaseは更新可能とし、別Ownerの更新・解放を拒否する。`FileDerivative.leaseUntil`はactive Lease最大期限の保守的な投影であり、削除可否の正は`derivative_leases`行とする。
 
-初回基盤実装では`file_derivatives`、`media_jobs`、`derivative_leases`をPostgreSQLへ追加し、Queue取得・Heartbeat・進捗・完了・失敗・明示Retry・stale回収をApplication境界から提供する。変換エンジン、Hosted Worker、HTTP API、配信Leaseの実運用は後続実装とし、この段階で生成処理は開始しない。
+`file_derivatives`、`media_jobs`、`derivative_leases`をPostgreSQLへ保持し、Queue取得・Heartbeat・進捗・完了・失敗・明示Retry・stale回収、変換、HTTP API、配信Lease、Cache清掃をApplication境界から提供する。
+
+`MediaCleanupWorker`は起動時と既定30分周期に固定PostgreSQL advisory lockを取得し、同時清掃を1実行に限定する。期限切れCacheは最大100件を`expiresAt <= Server UTC now`でclaimする。容量清掃はREADYな低・中画質Cache合計が10 GiBを超えた場合だけ開始し、`lastAccessedAt`、`createdAt`、IDの安定順で1件ずつclaim・物理削除・再集計して6 GiB以下で停止する。Thumbnail、PENDING、RUNNING、有効Lease付き行は候補外とする。通常候補から除外する`DELETING`は専用復旧経路で再開し、物理削除失敗時はREADYへ戻して次回再試行する。terminal Media Jobは7日を超え、active retryが参照しない行だけを日次削除する。
 
 ### 5.5 転送と操作ジャーナル
 

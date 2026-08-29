@@ -34,7 +34,7 @@ Phase 1では、OSまたは別アプリが管理するZeroTierをリモート通
 現在のPhase 1拡張を含む実行構成は、Androidアプリ、Nginx、`KuraStorage.Api`、`KuraStorage.Worker`、`KuraStorage.AdminCli`、PostgreSQL 17、共有exFAT HDD、OS・別アプリ管理ZeroTierとする。
 
 - APIはNginxのUnix Socketからだけ受信し、非rootで動作する。
-- 基本MVPでは独立Workerを配置しないが、現在のPhase 1完全削除拡張では保持期限清掃専用の`KuraStorage.Worker`を配置する。API内の期限付きHosted Serviceは、未完了Uploadの清掃と`FileOperation`の起動時・定期復旧を引き続き担当する。
+- 基本MVPでは独立Workerを配置しないが、現在のPhase 1拡張では完全削除、Media生成、Media Cache清掃を行う`KuraStorage.Worker`を配置する。API内の期限付きHosted Serviceは、未完了Uploadの清掃と`FileOperation`の起動時・定期復旧を引き続き担当する。
 - AndroidはRoom、WorkManager、Media3、Coil、PDF LibraryをMVP依存へ追加しない。ファイルはSAFで手動選択・保存し、アプリ内Media表示は行わない。
 - DBのMVP TableはUser、Device、Refresh Session、Authentication Attempt、Audit Log、File Entry、File Operationに限定する。
 - UploadはStreaming Multipartを同一Filesystem上の一時ファイルへ書き、検証後にatomic renameする。Downloadは元ファイルのHTTP Range配信だけとする。
@@ -108,7 +108,7 @@ Phase 2のWebアプリは実装対象外だが、同じApplication層とHTTP API
 | ADR-007 | Phase 1のリモートアクセスは外部管理ZeroTierとする | Public Portを開けず、KuraStorageへネットワーク資格情報の管理責務を追加せずにリモート到達性を確保できる。 |
 | ADR-004 | HDD上の実ファイルをファイル存在・内容・階層の正とする | KuraStorage外からの変更を検知・再索引でき、DB障害だけで実ファイルを失わない。 |
 | ADR-005 | PostgreSQLを管理情報、索引、操作ジャーナルの正とする | 認証、所有権、排他制御、状態遷移、再試行を一貫して扱える。 |
-| ADR-006 | 独立Media Workerと永続Media QueueはMVP後とし、保持期限清掃だけをPhase 1拡張の独立Workerへ分離する | 通常の復旧処理はAPI Hosted Serviceで足りるが、日次清掃はAPIの可用性と資源境界から分離する。 |
+| ADR-006 | 永続Media Queue、直列生成、TTL／LRU清掃をPhase 1拡張の独立Workerへ分離する | 長時間変換と周期清掃をAPIの可用性・資源境界から分離し、停止後もPostgreSQL状態から再開できる。 |
 | ADR-008 | APIは専用非rootユーザーで動作する | ファイル・DB・ネットワークへの権限を必要最小限にする。 |
 | ADR-010 | Nginxを唯一のHTTPS入口とする | TLS終端、要求サイズ・タイムアウト制御、Range配信、アクセスログ、将来のWeb静的配信を一元化する。 |
 | ADR-012 | ファイルシステムとDBをまたぐ更新には操作ジャーナルと補償処理を使用する | 両者を単一トランザクションにできないため、途中状態を記録してAPI起動時・期限付きHosted Serviceで復旧する。 |
@@ -419,7 +419,7 @@ Application Command / Query
 
 - `MediaGenerationWorker`
 - `ImageDerivativeWorker`
-- `CacheCleanupWorker`
+- `MediaCleanupWorker`
 - `IndexEventWorker`
 - `FullRescanWorker`
 - `OperationRecoveryWorker`
@@ -1169,10 +1169,12 @@ Worker本体、最大割当、画像処理、将来のLibrary差分を含む余�
 
 - 最終アクセスから24時間保持する。
 - 合計10GBを超えた場合、LRU順に6GB以下まで削除する。
-- 清掃は30分ごと、および上限超過検知時に実行する。
-- `PENDING`、`RUNNING`、`DELETING`、`leaseUntil > now`は削除しない。
+- 清掃はWorker起動時と30分ごとに実行し、その各Runで期限と容量上限を確認する。
+- `PENDING`、`RUNNING`、有効Lease付きCacheは通常候補にしない。`DELETING`は専用復旧経路だけで再開する。
 - 配信中はLeaseを取得する。
 - 削除失敗は記録し、次回再試行する。
+- 固定PostgreSQL advisory lockで同時清掃を1実行にし、期限切れは最大100件、LRUは削除後に容量を再集計できるよう1件ずつ処理する。
+- Cache容量はDBのREADY行を集計し、HDD全走査を行わない。Workerは起動時と30分周期に実行し、terminal Media Jobは7日保持後に日次清掃する。
 
 ### 15.2 MVP後: サムネイル
 
