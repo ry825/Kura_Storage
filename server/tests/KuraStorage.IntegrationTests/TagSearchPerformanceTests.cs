@@ -15,9 +15,11 @@ public sealed class TagSearchPerformanceTests(ITestOutputHelper output)
     private static readonly Guid RootId = Guid.Parse("10000000-0000-4000-8000-000000000002");
     private static readonly Guid SharedOwnerId = Guid.Parse("10000000-0000-4000-8000-000000000003");
     private static readonly Guid SharedRootId = Guid.Parse("10000000-0000-4000-8000-000000000004");
-    private static readonly Guid[] TagIds = Enumerable.Range(1, 10)
+    private static readonly Guid[] AllTagIds = Enumerable.Range(1, 200)
         .Select(index => Guid.Parse($"20000000-0000-4000-8000-{index:D12}"))
         .ToArray();
+    private static readonly Guid[] SelectedTagIds = AllTagIds.Take(10).ToArray();
+    private static readonly Guid[] AttachedTagIds = AllTagIds.Take(20).ToArray();
 
     [Fact]
     public async Task TagQueries_OnThreeHundredThousandEntries_UseIndexesAndStayUnderTwoSeconds()
@@ -45,12 +47,12 @@ public sealed class TagSearchPerformanceTests(ITestOutputHelper output)
         var service = new SearchService(new PostgreSqlSearchRepository(database));
         var queries = new SearchQuery[]
         {
-            new(TagIds: [TagIds[0]], PageSize: 100),
-            new(TagIds: TagIds, PageSize: 100),
-            new(Text: "performance-tag-file-100", TagIds: [TagIds[0]], PageSize: 100),
-            new(EntryType: "FILE", Status: "MISSING", TagIds: [TagIds[0]], PageSize: 100),
-            new(OwnerUserId: SharedOwnerId, TagIds: [TagIds[0]], PageSize: 100),
-            new(EntryType: "FILE", TagIds: TagIds, Page: 100, PageSize: 100),
+            new(TagIds: [SelectedTagIds[0]], PageSize: 100),
+            new(TagIds: SelectedTagIds, PageSize: 100),
+            new(Text: "performance-tag-file-100", TagIds: [SelectedTagIds[0]], PageSize: 100),
+            new(EntryType: "FILE", Status: "MISSING", TagIds: [SelectedTagIds[0]], PageSize: 100),
+            new(OwnerUserId: SharedOwnerId, TagIds: [SelectedTagIds[0]], PageSize: 100),
+            new(EntryType: "FILE", TagIds: SelectedTagIds, Page: 100, PageSize: 100),
         };
         foreach (var query in queries)
         {
@@ -107,6 +109,14 @@ public sealed class TagSearchPerformanceTests(ITestOutputHelper output)
             VALUES
                 (@actor, 'TAGPERFORMANCE', 'Tag Performance', 'hash', 'MEMBER', 'ACTIVE', 0, 'NONE', now(), now()),
                 (@shared_owner, 'TAGPERFSHARED', 'Tag Performance Shared', 'hash', 'MEMBER', 'ACTIVE', 0, 'NONE', now(), now());
+            INSERT INTO users
+                (id, username_normalized, display_name, password_hash, role, status,
+                 failed_login_count, lock_type, created_at, updated_at)
+            SELECT md5('tag-performance-user-' || value)::uuid,
+                   'TAGPERFORMANCE' || value,
+                   'Tag Performance ' || value,
+                   'hash', 'MEMBER', 'ACTIVE', 0, 'NONE', now(), now()
+            FROM generate_series(3, 10) AS value;
 
             INSERT INTO file_entries
                 (id, owner_user_id, parent_id, entry_type, name, relative_path, mime_type, size,
@@ -149,15 +159,36 @@ public sealed class TagSearchPerformanceTests(ITestOutputHelper output)
             INSERT INTO tags (id, user_id, name, name_key, created_at, updated_at)
             SELECT id, @actor, 'Tag ' || ordinal, 'TAG ' || ordinal, now(), now()
             FROM unnest(@tag_ids::uuid[]) WITH ORDINALITY AS item(id, ordinal);
+            INSERT INTO tags (id, user_id, name, name_key, created_at, updated_at)
+            SELECT md5('tag-performance-tag-' || owner.id || '-' || ordinal)::uuid,
+                   owner.id,
+                   'Tag ' || ordinal,
+                   'TAG ' || ordinal,
+                   now(), now()
+            FROM users AS owner
+            CROSS JOIN generate_series(1, 200) AS ordinal
+            WHERE owner.id <> @actor;
 
             INSERT INTO entry_tags (tag_id, entry_id, attached_at)
             SELECT tag.id, entry.id, now()
             FROM file_entries AS entry
-            CROSS JOIN tags AS tag
+            CROSS JOIN unnest(@attached_tag_ids::uuid[]) AS tag(id)
             WHERE entry.parent_id IN (@root, @shared_root)
               AND ((tag.id = @first_tag AND substring(entry.name from '[0-9]{6}')::integer % 5 = 0) OR
                    substring(entry.name from '[0-9]{6}')::integer % 10 = 0);
 
+            DO $$
+            BEGIN
+                IF (SELECT count(*) FROM users) <> 10 OR
+                   (SELECT count(*) FROM tags) <> 2000 OR
+                   (SELECT count(*) FROM file_entries WHERE entry_type = 'FILE') <> 300000 OR
+                   (SELECT max(tag_count) FROM
+                       (SELECT count(*) AS tag_count FROM entry_tags GROUP BY entry_id) AS counts) <> 20 THEN
+                    RAISE EXCEPTION 'Synthetic tag-search dataset assertion failed';
+                END IF;
+            END $$;
+
+            ANALYZE users;
             ANALYZE file_entries;
             ANALYZE tags;
             ANALYZE entry_tags;
@@ -172,8 +203,9 @@ public sealed class TagSearchPerformanceTests(ITestOutputHelper output)
         command.Parameters.AddWithValue("shared_root", SharedRootId);
         command.Parameters.AddWithValue("root_path", $"users/{ActorId:N}/files");
         command.Parameters.AddWithValue("shared_root_path", $"users/{SharedOwnerId:N}/files");
-        command.Parameters.AddWithValue("tag_ids", TagIds);
-        command.Parameters.AddWithValue("first_tag", TagIds[0]);
+        command.Parameters.AddWithValue("tag_ids", AllTagIds);
+        command.Parameters.AddWithValue("attached_tag_ids", AttachedTagIds);
+        command.Parameters.AddWithValue("first_tag", SelectedTagIds[0]);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -195,7 +227,7 @@ public sealed class TagSearchPerformanceTests(ITestOutputHelper output)
         {
             CommandTimeout = 30,
         };
-        command.Parameters.AddWithValue("tag_ids", TagIds);
+        command.Parameters.AddWithValue("tag_ids", SelectedTagIds);
         var lines = new List<string>();
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync()) lines.Add(reader.GetString(0));

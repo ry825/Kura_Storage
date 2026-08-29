@@ -48,6 +48,7 @@ import com.kurastorage.core.model.RecentFileItem
 import com.kurastorage.core.model.SearchFileCategory
 import com.kurastorage.core.model.SearchInput
 import com.kurastorage.core.model.SearchResultItem
+import com.kurastorage.core.model.TagItem
 import com.kurastorage.core.ui.EmptyState
 import com.kurastorage.core.ui.ErrorState
 import com.kurastorage.core.ui.LoadingState
@@ -59,6 +60,7 @@ data class SearchFilterOption(
 )
 
 @Composable
+@Suppress("CyclomaticComplexMethod")
 fun SearchScreen(
     state: SearchUiState,
     onBack: () -> Unit,
@@ -69,6 +71,8 @@ fun SearchScreen(
     onOpen: (SearchResultItem) -> Unit,
     ownerOptions: List<SearchFilterOption> = emptyList(),
     shareOptions: List<SearchFilterOption> = emptyList(),
+    tagOptions: List<TagItem> = emptyList(),
+    onManageTags: () -> Unit = {},
 ) {
     var updatedFrom by remember(state.input.updatedFrom) {
         mutableStateOf(
@@ -171,6 +175,28 @@ fun SearchScreen(
         item {
             OptionFilters("Shared from", shareOptions, state.input.shareTargetId) {
                 onInput(state.input.copy(shareTargetId = it))
+            }
+        }
+        item {
+            Column {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Tags")
+                    TextButton(onClick = onManageTags) { Text("Manage tags") }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    tagOptions.forEach { tag ->
+                        val selected = tag.id in state.input.tagIds
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                val ids = if (selected) state.input.tagIds - tag.id else state.input.tagIds + tag.id
+                                onInput(state.input.copy(tagIds = ids))
+                            },
+                            enabled = selected || state.input.tagIds.size < 10,
+                            label = { Text(tag.name) },
+                        )
+                    }
+                }
             }
         }
         state.validationError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }

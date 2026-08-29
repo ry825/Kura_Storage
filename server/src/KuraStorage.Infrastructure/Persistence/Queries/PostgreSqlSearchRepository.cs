@@ -12,6 +12,7 @@ public sealed class PostgreSqlSearchRepository(KuraStorageDbContext dbContext) :
 {
     private const int MaximumHierarchyDepth = 64;
     private const int CommandTimeoutSeconds = 10;
+    private const string TagSearchWorkMemorySql = "SET LOCAL work_mem = '16MB';";
 
     private const string SearchCte =
         """
@@ -20,6 +21,21 @@ public sealed class PostgreSqlSearchRepository(KuraStorageDbContext dbContext) :
             FROM users
             WHERE id = @actor_user_id
               AND upper(status) = 'ACTIVE'
+        ),
+        matching_tag_entries AS MATERIALIZED (
+            SELECT relation.entry_id
+            FROM entry_tags AS relation
+            WHERE cardinality(@tag_ids) = 1
+              AND relation.tag_id = @tag_ids[1]
+
+            UNION ALL
+
+            SELECT relation.entry_id
+            FROM entry_tags AS relation
+            WHERE cardinality(@tag_ids) > 1
+              AND relation.tag_id = ANY(@tag_ids)
+            GROUP BY relation.entry_id
+            HAVING count(DISTINCT relation.tag_id) = cardinality(@tag_ids)
         ),
         entry_metadata AS NOT MATERIALIZED (
             SELECT
@@ -75,7 +91,7 @@ public sealed class PostgreSqlSearchRepository(KuraStorageDbContext dbContext) :
                         operation_target.id = entry.id
                         OR starts_with(entry.relative_path, operation_target.relative_path || '/')))
         ),
-        eligible_entries AS NOT MATERIALIZED (
+        eligible_entries AS __eligible_materialization__ (
             SELECT
                 id,
                 owner_user_id,
@@ -101,13 +117,7 @@ public sealed class PostgreSqlSearchRepository(KuraStorageDbContext dbContext) :
               AND (@min_size IS NULL OR (entry_type = 'FILE' AND size >= @min_size))
               AND (@max_size IS NULL OR (entry_type = 'FILE' AND size <= @max_size))
               AND (@owner_user_id IS NULL OR owner_user_id = @owner_user_id)
-              AND (cardinality(@tag_ids) = 0 OR id IN (
-                    SELECT relation.entry_id
-                    FROM entry_tags AS relation
-                    JOIN tags AS tag ON tag.id = relation.tag_id
-                    WHERE tag.user_id = @actor_user_id AND relation.tag_id = ANY(@tag_ids)
-                    GROUP BY relation.entry_id
-                    HAVING count(DISTINCT relation.tag_id) = cardinality(@tag_ids)))
+              AND (cardinality(@tag_ids) = 0 OR id IN (SELECT entry_id FROM matching_tag_entries))
         ),
         owned_candidates AS (
             SELECT
@@ -340,6 +350,7 @@ public sealed class PostgreSqlSearchRepository(KuraStorageDbContext dbContext) :
         {
             if (filter.TagIds.Count > 0)
             {
+                await dbContext.Database.ExecuteSqlRawAsync(TagSearchWorkMemorySql, cancellationToken);
                 var ownedCount = await dbContext.Tags.AsNoTracking()
                     .CountAsync(tag => tag.UserId == actorUserId && filter.TagIds.Contains(tag.Id), cancellationToken);
                 if (ownedCount != filter.TagIds.Count)
@@ -419,6 +430,10 @@ public sealed class PostgreSqlSearchRepository(KuraStorageDbContext dbContext) :
         Guid actorUserId,
         SearchFilter filter)
     {
+        sql = sql.Replace(
+            "__eligible_materialization__",
+            filter.TagIds.Count > 0 ? "MATERIALIZED" : "NOT MATERIALIZED",
+            StringComparison.Ordinal);
         var command = new NpgsqlCommand(sql, connection)
         {
             CommandTimeout = CommandTimeoutSeconds,

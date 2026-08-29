@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import com.kurastorage.core.model.AdminStorageStatus
 import com.kurastorage.core.model.ConnectionRoute
 import com.kurastorage.core.model.ConnectionStatus
@@ -18,7 +19,7 @@ class HomeScreenTest {
     val compose = createComposeRule()
 
     @Test
-    fun homeContainsOnlyMvpEntriesAndConnection() {
+    fun homeContainsNavigationEntriesAndConnection() {
         compose.setContent {
             HomeScreen(
                 connection =
@@ -33,11 +34,13 @@ class HomeScreenTest {
         }
 
         compose.onNodeWithText("My files").assertIsDisplayed()
-        compose.onNodeWithText("Trash").assertIsDisplayed()
+        compose.onNodeWithText("Trash").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Search").assertIsDisplayed()
-        compose.onNodeWithText("Recent files").assertIsDisplayed()
-        compose.onNodeWithText("Connection: REMOTE_SECURE").assertIsDisplayed()
-        compose.onNodeWithText("Log out").assertIsDisplayed()
+        compose.onNodeWithText("Recent files").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Favorites").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Tags").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Connection: REMOTE_SECURE").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Log out").performScrollTo().assertIsDisplayed()
     }
 
     @Test

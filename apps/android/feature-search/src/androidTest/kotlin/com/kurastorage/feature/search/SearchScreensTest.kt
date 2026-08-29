@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -30,6 +31,7 @@ import com.kurastorage.core.model.SearchFileCategory
 import com.kurastorage.core.model.SearchInput
 import com.kurastorage.core.model.SearchResultItem
 import com.kurastorage.core.model.SharePermission
+import com.kurastorage.core.model.TagItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -53,6 +55,7 @@ class SearchScreensTest {
             )
         var searches = 0
         var opened = false
+        var managedTags = false
         compose.setContent {
             Box(Modifier.width(320.dp)) {
                 SearchScreen(
@@ -65,6 +68,8 @@ class SearchScreensTest {
                     { opened = true },
                     ownerOptions = listOf(SearchFilterOption(OWNER, "Owner")),
                     shareOptions = listOf(SearchFilterOption(TARGET, "Shared folder")),
+                    tagOptions = listOf(TagItem(ID_2, "Work")),
+                    onManageTags = { managedTags = true },
                 )
             }
         }
@@ -72,7 +77,10 @@ class SearchScreensTest {
         compose.onNodeWithTag("search-query").performImeAction()
         compose.onNodeWithText("DOCUMENT").performScrollTo().performClick()
         compose.onNodeWithText("Owner", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Shared from: Shared folder").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("search-results").performScrollToNode(hasText("Shared from: Shared folder"))
+        compose.onNodeWithText("Shared from: Shared folder").assertIsDisplayed()
+        compose.onNodeWithText("Work").performScrollTo().performClick()
+        compose.onNodeWithText("Manage tags").performScrollTo().performClick()
         compose.onNodeWithTag("search-result-$ID").performScrollTo().performClick()
         compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("search-load-more"))
         compose.onNodeWithText("Load more").performScrollTo().assertIsDisplayed()
@@ -80,6 +88,8 @@ class SearchScreensTest {
             assertEquals(1, searches)
             assertTrue(opened)
             assertEquals(SearchFileCategory.DOCUMENT, state.value.input.fileCategory)
+            assertEquals(listOf(ID_2), state.value.input.tagIds)
+            assertTrue(managedTags)
         }
     }
 
@@ -195,6 +205,7 @@ class SearchScreensTest {
                 SearchScreen(search.value, {}, { search.value = search.value.copy(input = it) }, {}, {}, {}, {})
             }
         }
+        compose.onNodeWithTag("search-results").performScrollToNode(hasText("Searching"))
         compose.onNodeWithText("Searching").assertIsDisplayed()
         compose.runOnIdle { search.value = SearchUiState(hasSearched = true) }
         compose.onNodeWithText("No matching files or folders.").assertIsDisplayed()
@@ -212,6 +223,7 @@ class SearchScreensTest {
 
     private companion object {
         const val ID = "00000000-0000-4000-8000-000000000001"
+        const val ID_2 = "00000000-0000-4000-8000-000000000002"
         const val OWNER = "00000000-0000-4000-8000-000000000002"
         const val TARGET = "00000000-0000-4000-8000-000000000003"
         val NOW: Instant = Instant.parse("2026-08-25T00:00:00Z")

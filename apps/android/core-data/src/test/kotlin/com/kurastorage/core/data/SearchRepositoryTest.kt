@@ -44,6 +44,7 @@ class SearchRepositoryTest {
                     maxSize = 999,
                     ownerUserId = OWNER,
                     shareTargetId = TARGET,
+                    tagIds = listOf(ID, ID_2),
                     page = 2,
                     pageSize = 50,
                 )
@@ -55,6 +56,7 @@ class SearchRepositoryTest {
             assertEquals(api.searchRequests[0], api.searchRequests[1])
             assertEquals("report", api.searchRequests.first().query)
             assertEquals("DOCUMENT", api.searchRequests.first().fileCategory)
+            assertEquals(listOf(ID, ID_2), api.searchRequests.first().tagIds)
             assertEquals(FileEntryStatus.MISSING_CANDIDATE, page.items.single().status)
             assertFalse(
                 page.items

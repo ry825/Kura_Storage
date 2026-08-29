@@ -79,7 +79,7 @@ class DefaultRecentFileRepository(
     }
 
     override suspend fun record(fileId: String): RecentRecordOutcome {
-        requireUuid(fileId)
+        strictUuid(fileId)
         return try {
             executor.execute { token -> api.recordRecentFile(token, fileId).toAuthenticatedResult() }
             RecentRecordOutcome.Confirmed
@@ -103,7 +103,7 @@ class SearchPager(
         if (!existing.hasNextPage) return existing
         val next = repository.search(fixedInput.copy(page = existing.page + 1))
         val existingIds = existing.items.mapTo(mutableSetOf()) { it.id }
-        if (next.items.any { !existingIds.add(it.id) }) invalidResponse()
+        if (next.items.any { !existingIds.add(it.id) }) invalidSearchResponse()
         return existing
             .copy(items = existing.items + next.items, page = next.page, totalCount = next.totalCount)
             .also { current = it }
@@ -123,7 +123,7 @@ class RecentFilePager(
         if (!existing.hasNextPage) return existing
         val next = repository.list(existing.page + 1, pageSize)
         val existingIds = existing.items.mapTo(mutableSetOf()) { it.id }
-        if (next.items.any { !existingIds.add(it.id) }) invalidResponse()
+        if (next.items.any { !existingIds.add(it.id) }) invalidSearchResponse()
         return existing
             .copy(items = existing.items + next.items, page = next.page, totalCount = next.totalCount)
             .also { current = it }
@@ -142,6 +142,7 @@ private fun ValidatedSearchInput.toRequest() =
         maxSize = maxSize,
         ownerUserId = ownerUserId,
         shareTargetId = shareTargetId,
+        tagIds = tagIds,
         page = page,
         pageSize = pageSize,
     )
@@ -156,9 +157,9 @@ private fun SearchPageDto.toModel(
     expectedPage: Int,
     expectedPageSize: Int,
 ): SearchPage {
-    validatePage(page, pageSize, totalCount, items.size, expectedPage, expectedPageSize)
+    validateSearchPage(page, pageSize, totalCount, items.size, expectedPage, expectedPageSize)
     val mapped = items.map(SearchResultItemDto::toStrictModel)
-    if (mapped.map { it.id }.toSet().size != mapped.size) invalidResponse()
+    if (mapped.map { it.id }.toSet().size != mapped.size) invalidSearchResponse()
     return SearchPage(mapped, page, pageSize, totalCount)
 }
 
@@ -166,13 +167,13 @@ private fun RecentFilePageDto.toModel(
     expectedPage: Int,
     expectedPageSize: Int,
 ): RecentFilePage {
-    validatePage(page, pageSize, totalCount, items.size, expectedPage, expectedPageSize)
+    validateSearchPage(page, pageSize, totalCount, items.size, expectedPage, expectedPageSize)
     val mapped = items.map(RecentFileItemDto::toStrictModel)
-    if (mapped.map { it.id }.toSet().size != mapped.size) invalidResponse()
+    if (mapped.map { it.id }.toSet().size != mapped.size) invalidSearchResponse()
     return RecentFilePage(mapped, page, pageSize, totalCount)
 }
 
-private fun SearchResultItemDto.toStrictModel() =
+internal fun SearchResultItemDto.toStrictModel() =
     strictMetadata(
         id,
         entryType,
@@ -206,7 +207,7 @@ private fun RecentFileItemDto.toStrictModel() =
             permissionSource,
             shareTargetId,
         ),
-        parseInstant(openedAt),
+        strictInstant(openedAt),
     )
 
 @Suppress("LongParameterList")
@@ -250,26 +251,26 @@ private fun strictMetadata(
         (source != PermissionSource.OWNER && shareTargetId == null) ||
         (source != PermissionSource.OWNER && permissionWire == "OWNER")
     ) {
-        invalidResponse()
+        invalidSearchResponse()
     }
     return SearchResultItem(
-        requireUuid(id),
+        strictUuid(id),
         entryType,
         name,
         mimeType,
         category,
         size,
         status,
-        parseInstant(updatedAtWire),
-        OwnerSummary(requireUuid(ownerId), ownerName),
+        strictInstant(updatedAtWire),
+        OwnerSummary(strictUuid(ownerId), ownerName),
         permission,
         source,
-        shareTargetId?.let(::requireUuid),
+        shareTargetId?.let(::strictUuid),
     )
 }
 
 @Suppress("LongParameterList")
-private fun validatePage(
+internal fun validateSearchPage(
     page: Int,
     pageSize: Int,
     totalCount: Int,
@@ -287,16 +288,19 @@ private fun validatePage(
         offset + itemCount > totalCount ||
         (itemCount == 0 && offset < totalCount)
     ) {
-        invalidResponse()
+        invalidSearchResponse()
     }
 }
 
-private fun requireUuid(value: String): String =
+internal fun strictUuid(value: String): String =
     runCatching { UUID.fromString(value).toString() }
         .getOrNull()
         ?.takeIf { it == value.lowercase() }
-        ?: invalidResponse()
+        ?: invalidSearchResponse()
 
-private fun parseInstant(value: String): Instant = runCatching { Instant.parse(value) }.getOrNull() ?: invalidResponse()
+internal fun strictInstant(value: String): Instant =
+    runCatching {
+        Instant.parse(value)
+    }.getOrNull() ?: invalidSearchResponse()
 
-private fun invalidResponse(): Nothing = throw KuraStorageException.InvalidServerResponse()
+internal fun invalidSearchResponse(): Nothing = throw KuraStorageException.InvalidServerResponse()

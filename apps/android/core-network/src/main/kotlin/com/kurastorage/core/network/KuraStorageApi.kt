@@ -219,6 +219,59 @@ interface SearchApi {
     ): NetworkCallResult<Unit>
 }
 
+interface OrganizationApi {
+    suspend fun listFavorites(
+        accessToken: String,
+        page: Int,
+        pageSize: Int,
+    ): NetworkCallResult<FavoritePageDto>
+
+    suspend fun addFavorite(
+        accessToken: String,
+        entryId: String,
+    ): NetworkCallResult<Unit>
+
+    suspend fun removeFavorite(
+        accessToken: String,
+        entryId: String,
+    ): NetworkCallResult<Unit>
+
+    suspend fun listTags(accessToken: String): NetworkCallResult<List<TagItemDto>>
+
+    suspend fun createTag(
+        accessToken: String,
+        request: TagNameRequestDto,
+    ): NetworkCallResult<TagItemDto>
+
+    suspend fun renameTag(
+        accessToken: String,
+        tagId: String,
+        request: TagNameRequestDto,
+    ): NetworkCallResult<TagItemDto>
+
+    suspend fun deleteTag(
+        accessToken: String,
+        tagId: String,
+    ): NetworkCallResult<Unit>
+
+    suspend fun getEntryOrganization(
+        accessToken: String,
+        entryId: String,
+    ): NetworkCallResult<EntryOrganizationStateDto>
+
+    suspend fun attachTag(
+        accessToken: String,
+        entryId: String,
+        tagId: String,
+    ): NetworkCallResult<Unit>
+
+    suspend fun detachTag(
+        accessToken: String,
+        entryId: String,
+        tagId: String,
+    ): NetworkCallResult<Unit>
+}
+
 @Suppress("TooManyFunctions")
 private interface KuraStorageService {
     @GET("system/health")
@@ -285,9 +338,73 @@ private interface KuraStorageService {
         @Query("maxSize") maxSize: Long?,
         @Query("ownerUserId") ownerUserId: String?,
         @Query("shareTargetId") shareTargetId: String?,
+        @Query("tagId") tagIds: List<String>,
         @Query("page") page: Int,
         @Query("pageSize") pageSize: Int,
     ): Response<SearchPageDto>
+
+    @GET("favorites")
+    suspend fun listFavorites(
+        @Header("Authorization") authorization: String,
+        @Query("page") page: Int,
+        @Query("pageSize") pageSize: Int,
+    ): Response<FavoritePageDto>
+
+    @PUT("favorites/{entryId}")
+    suspend fun addFavorite(
+        @Header("Authorization") authorization: String,
+        @Path("entryId") entryId: String,
+    ): Response<Unit>
+
+    @DELETE("favorites/{entryId}")
+    suspend fun removeFavorite(
+        @Header("Authorization") authorization: String,
+        @Path("entryId") entryId: String,
+    ): Response<Unit>
+
+    @GET("tags")
+    suspend fun listTags(
+        @Header("Authorization") authorization: String,
+    ): Response<List<TagItemDto>>
+
+    @POST("tags")
+    suspend fun createTag(
+        @Header("Authorization") authorization: String,
+        @Body request: TagNameRequestDto,
+    ): Response<TagItemDto>
+
+    @PATCH("tags/{tagId}")
+    suspend fun renameTag(
+        @Header("Authorization") authorization: String,
+        @Path("tagId") tagId: String,
+        @Body request: TagNameRequestDto,
+    ): Response<TagItemDto>
+
+    @DELETE("tags/{tagId}")
+    suspend fun deleteTag(
+        @Header("Authorization") authorization: String,
+        @Path("tagId") tagId: String,
+    ): Response<Unit>
+
+    @GET("files/{entryId}/organization")
+    suspend fun getEntryOrganization(
+        @Header("Authorization") authorization: String,
+        @Path("entryId") entryId: String,
+    ): Response<EntryOrganizationStateDto>
+
+    @PUT("files/{entryId}/tags/{tagId}")
+    suspend fun attachTag(
+        @Header("Authorization") authorization: String,
+        @Path("entryId") entryId: String,
+        @Path("tagId") tagId: String,
+    ): Response<Unit>
+
+    @DELETE("files/{entryId}/tags/{tagId}")
+    suspend fun detachTag(
+        @Header("Authorization") authorization: String,
+        @Path("entryId") entryId: String,
+        @Path("tagId") tagId: String,
+    ): Response<Unit>
 
     @GET("recent-files")
     suspend fun listRecentFiles(
@@ -459,7 +576,8 @@ class KuraStorageApi(
     AdminStorageApi,
     UploadSessionApi,
     SharingApi,
-    SearchApi {
+    SearchApi,
+    OrganizationApi {
     private val service =
         Retrofit
             .Builder()
@@ -527,10 +645,62 @@ class KuraStorageApi(
             request.maxSize,
             request.ownerUserId,
             request.shareTargetId,
+            request.tagIds,
             request.page,
             request.pageSize,
         )
     }
+
+    override suspend fun listFavorites(
+        accessToken: String,
+        page: Int,
+        pageSize: Int,
+    ) = executeAuthenticated { service.listFavorites(bearer(accessToken), page, pageSize) }
+
+    override suspend fun addFavorite(
+        accessToken: String,
+        entryId: String,
+    ) = executeAuthenticatedNoContent { service.addFavorite(bearer(accessToken), entryId) }
+
+    override suspend fun removeFavorite(
+        accessToken: String,
+        entryId: String,
+    ) = executeAuthenticatedNoContent { service.removeFavorite(bearer(accessToken), entryId) }
+
+    override suspend fun listTags(accessToken: String) = executeAuthenticated { service.listTags(bearer(accessToken)) }
+
+    override suspend fun createTag(
+        accessToken: String,
+        request: TagNameRequestDto,
+    ) = executeAuthenticated { service.createTag(bearer(accessToken), request) }
+
+    override suspend fun renameTag(
+        accessToken: String,
+        tagId: String,
+        request: TagNameRequestDto,
+    ) = executeAuthenticated { service.renameTag(bearer(accessToken), tagId, request) }
+
+    override suspend fun deleteTag(
+        accessToken: String,
+        tagId: String,
+    ) = executeAuthenticatedNoContent { service.deleteTag(bearer(accessToken), tagId) }
+
+    override suspend fun getEntryOrganization(
+        accessToken: String,
+        entryId: String,
+    ) = executeAuthenticated { service.getEntryOrganization(bearer(accessToken), entryId) }
+
+    override suspend fun attachTag(
+        accessToken: String,
+        entryId: String,
+        tagId: String,
+    ) = executeAuthenticatedNoContent { service.attachTag(bearer(accessToken), entryId, tagId) }
+
+    override suspend fun detachTag(
+        accessToken: String,
+        entryId: String,
+        tagId: String,
+    ) = executeAuthenticatedNoContent { service.detachTag(bearer(accessToken), entryId, tagId) }
 
     override suspend fun listRecentFiles(
         accessToken: String,

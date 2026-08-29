@@ -1058,7 +1058,7 @@ DevelopmentとTestingでPathを省略した場合だけ、Process内に一時的
 - Search／Recentは必要列だけをprojectionし、HDD走査、`SELECT *`、Page内N+1、無制限再帰、認可後のClient非表示を使用しない。
 - `recent_files`は`(user_id, file_id)`複合Primary Key、User／FileEntryへのCascade、`(user_id, opened_at DESC, file_id)`Indexを持つ。記録はServer時刻の単一Statement upsert、一覧は現在権限を毎要求で再評価する。
 - お気に入り登録とTag付与はEntry／祖先とUser organization keyを同じ64-bit key空間で昇順lockし、lock後に階層、`ACTIVE`、未完了操作、現在権限、Tag ownership、件数上限を再評価する。解除はActor行だけの条件付きDELETEとし、権限失効や`MISSING`後もcleanupできる。
-- Favorites一覧はActor関連を起点に最大深度64の所有・直接・継承共有をSQL内でrankし、状態、count、offset、limitまでDBで確定する。Tag検索は指定時だけRepeatable Read snapshotを使い、本人Tag確認と`entry_tags GROUP BY/HAVING count(DISTINCT tag_id)`によるAND条件を同じsnapshotで適用する。
+- Favorites一覧はActor関連を起点に最大深度64の所有・直接・継承共有をSQL内でrankし、状態、count、offset、limitまでDBで確定する。Tag検索は指定時だけRepeatable Read snapshotを使い、本人Tag確認とTag一致集合を同じsnapshotで適用する。1 Tagは`entry_tags(tag_id, entry_id)`から直接取得し、2〜10 Tagは`GROUP BY/HAVING count(DISTINCT tag_id)`でAND条件を解決する。Tag一致集合とTag指定後のeligible集合は1要求内でMaterializeしてOwner／Shared認可分岐から共有し、TagなしSearchは従来どおり`NOT MATERIALIZED`でFilterをbase tableへ押し込む。Tag検索だけ`SET LOCAL work_mem = '16MB'`を同じTransactionへ適用し、DB全体またはTagなしSearchの設定は変更しない。
 - お気に入り、Tag一覧、Entry organization、Tag検索はPage内N+1、HDD走査、Client後Filter、長期Permission cacheを使用しない。Tag名、検索語、File名、User名、物理PathをAccess Log、Metric label、例外へ含めない。
 - `pg_trgm`と名前Indexは明示Migrationで適用する。大TableへのIndex作成前にBackup、空き容量、Lock時間を確認し、Downでは本機能のIndexだけを削除して共有Extensionを無条件削除しない。
 - Search query、File名、User名、共有元名、物理PathをAccess Log、Metric label、例外へ含めない。Nginxは`$uri`を使用し、`$request`、`$request_uri`、`$args`を記録しない。

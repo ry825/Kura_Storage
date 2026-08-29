@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -62,11 +64,17 @@ import com.kurastorage.feature.files.AdminStorageState
 import com.kurastorage.feature.files.AdminStorageViewModel
 import com.kurastorage.feature.files.FileBrowserScreen
 import com.kurastorage.feature.files.FileBrowserViewModel
+import com.kurastorage.feature.search.EntryOrganizationScreen
+import com.kurastorage.feature.search.EntryOrganizationViewModel
+import com.kurastorage.feature.search.FavoritesScreen
+import com.kurastorage.feature.search.FavoritesViewModel
 import com.kurastorage.feature.search.RecentFilesScreen
 import com.kurastorage.feature.search.RecentFilesViewModel
 import com.kurastorage.feature.search.SearchFilterOption
 import com.kurastorage.feature.search.SearchScreen
 import com.kurastorage.feature.search.SearchViewModel
+import com.kurastorage.feature.search.TagsScreen
+import com.kurastorage.feature.search.TagsViewModel
 import com.kurastorage.feature.sharing.SharingListViewModel
 import com.kurastorage.feature.sharing.SharingScreen
 import com.kurastorage.feature.sharing.SharingSettingsScreen
@@ -194,9 +202,13 @@ private fun KuraStorageApp(
                 onShared = { navController.navigate(AppDestination.SHARING.route) },
                 onSearch = { navController.navigate(AppDestination.SEARCH.route) },
                 onRecent = { navController.navigate(AppDestination.RECENT_FILES.route) },
+                onFavorites = { navController.navigate(AppDestination.FAVORITES.route) },
+                onTags = { navController.navigate(AppDestination.TAGS.route) },
                 onTrash = { navController.navigate(AppDestination.TRASH.route) },
                 onLogout = {
                     logoutViewModel.logout {
+                        services = null
+                        connected = null
                         navController.navigate(AppDestination.CONNECTION.route) {
                             popUpTo(0)
                         }
@@ -234,6 +246,7 @@ private fun KuraStorageApp(
                 onOpenTrash = { navController.navigate(AppDestination.TRASH.route) },
                 onExit = { navController.popBackStack() },
                 onShare = { entry -> navController.navigate(settingsRoute("new", entry.id, entry.entryType, entry.name)) },
+                onOrganization = { entryId -> navController.navigate(organizationRoute(entryId)) },
             )
         }
         composable(AppDestination.TRASH.route) {
@@ -257,6 +270,7 @@ private fun KuraStorageApp(
                 onOpenTrash = {},
                 onExit = { navController.popBackStack() },
                 onShare = {},
+                onOrganization = {},
             )
         }
         composable(AppDestination.SHARING.route) {
@@ -300,6 +314,7 @@ private fun KuraStorageApp(
             val state by searchViewModel.state.collectAsStateWithLifecycle()
             var ownerOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
             var shareOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
+            var tagOptions by remember { mutableStateOf(emptyList<com.kurastorage.core.model.TagItem>()) }
             var filterOptionsGeneration by remember { mutableStateOf(0) }
             LaunchedEffect(current, filterOptionsGeneration) {
                 runCatching {
@@ -318,6 +333,7 @@ private fun KuraStorageApp(
                         received
                             .distinctBy { it.targetEntryId }
                             .map { SearchFilterOption(it.targetEntryId, it.name) }
+                    tagOptions = current.organization.listTags()
                 }
             }
             SearchScreen(
@@ -335,6 +351,8 @@ private fun KuraStorageApp(
                 },
                 ownerOptions = ownerOptions,
                 shareOptions = shareOptions,
+                tagOptions = tagOptions,
+                onManageTags = { navController.navigate(AppDestination.TAGS.route) },
             )
         }
         composable(AppDestination.RECENT_FILES.route) {
@@ -373,6 +391,79 @@ private fun KuraStorageApp(
                 shareOptions = shareOptions,
             )
         }
+        composable(AppDestination.FAVORITES.route) {
+            val current = services ?: return@composable
+            val favoritesViewModel: FavoritesViewModel =
+                viewModel(
+                    key = "favorites-${connected?.route}",
+                    factory = simpleViewModelFactory { FavoritesViewModel(current.organization, current.files::detail) },
+                )
+            val state by favoritesViewModel.state.collectAsStateWithLifecycle()
+            var shareOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
+            var shareOptionsGeneration by remember { mutableStateOf(0) }
+            LaunchedEffect(current, shareOptionsGeneration) {
+                runCatching {
+                    shareOptions =
+                        loadAllReceivedShares(current.sharing)
+                            .distinctBy { it.targetEntryId }
+                            .map { SearchFilterOption(it.targetEntryId, it.name) }
+                }
+            }
+            FavoritesScreen(
+                state,
+                onBack = { navController.popBackStack() },
+                onRefresh = {
+                    favoritesViewModel.refresh()
+                    shareOptionsGeneration++
+                },
+                onLoadMore = favoritesViewModel::loadMore,
+                onOpen = { item ->
+                    favoritesViewModel.open(item) { entry -> navController.navigate(entryRoute(entry.id, entry.entryType)) }
+                },
+                shareOptions = shareOptions,
+            )
+        }
+        composable(AppDestination.TAGS.route) {
+            val current = services ?: return@composable
+            val tagsViewModel: TagsViewModel =
+                viewModel(
+                    key = "tags-${connected?.route}",
+                    factory = simpleViewModelFactory { TagsViewModel(current.organization) },
+                )
+            val state by tagsViewModel.state.collectAsStateWithLifecycle()
+            TagsScreen(
+                state,
+                onBack = { navController.popBackStack() },
+                onRefresh = tagsViewModel::refresh,
+                onCreate = tagsViewModel::create,
+                onRename = tagsViewModel::rename,
+                onDelete = tagsViewModel::delete,
+                onInput = tagsViewModel::input,
+                onConfirm = tagsViewModel::confirm,
+                onDismiss = tagsViewModel::dismiss,
+            )
+        }
+        composable(
+            route = "${AppDestination.ENTRY_ORGANIZATION.route}/{entryId}",
+            arguments = listOf(navArgument("entryId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val current = services ?: return@composable
+            val entryId = checkNotNull(backStackEntry.arguments?.getString("entryId"))
+            val organizationViewModel: EntryOrganizationViewModel =
+                viewModel(
+                    key = "organization-$entryId-${connected?.route}",
+                    factory = simpleViewModelFactory { EntryOrganizationViewModel(entryId, current.organization, current.files::detail) },
+                )
+            val state by organizationViewModel.state.collectAsStateWithLifecycle()
+            EntryOrganizationScreen(
+                state,
+                onBack = { navController.popBackStack() },
+                onRefresh = organizationViewModel::refresh,
+                onToggleFavorite = organizationViewModel::toggleFavorite,
+                onToggleTag = organizationViewModel::toggleTag,
+                onManageTags = { navController.navigate(AppDestination.TAGS.route) },
+            )
+        }
         composable(
             route = "shared-entry/{entryId}/{entryType}",
             arguments =
@@ -405,6 +496,7 @@ private fun KuraStorageApp(
                 onOpenTrash = {},
                 onExit = { navController.popBackStack() },
                 onShare = { entry -> navController.navigate(settingsRoute("new", entry.id, entry.entryType, entry.name)) },
+                onOrganization = { entryId -> navController.navigate(organizationRoute(entryId)) },
             )
         }
         composable(
@@ -457,6 +549,7 @@ private fun FileRoute(
     onOpenTrash: () -> Unit,
     onExit: () -> Unit,
     onShare: (FileEntry) -> Unit,
+    onOrganization: (String) -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -536,6 +629,7 @@ private fun FileRoute(
         onRefreshAdminStorage = { adminStorageViewModel?.refresh() },
         onOpenTrashFromWarning = onOpenTrash,
         onShare = onShare,
+        onOrganization = onOrganization,
     )
 }
 
@@ -556,11 +650,13 @@ fun HomeScreen(
     onShared: () -> Unit = {},
     onSearch: () -> Unit = {},
     onRecent: () -> Unit = {},
+    onFavorites: () -> Unit = {},
+    onTags: () -> Unit = {},
     onTrash: () -> Unit,
     onLogout: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
     ) {
         Text("KuraStorage", style = MaterialTheme.typography.headlineMedium)
@@ -570,6 +666,8 @@ fun HomeScreen(
         Button(onClick = onShared) { Text("Shared") }
         Button(onClick = onSearch) { Text("Search") }
         Button(onClick = onRecent) { Text("Recent files") }
+        Button(onClick = onFavorites) { Text("Favorites") }
+        Button(onClick = onTags) { Text("Tags") }
         Button(onClick = onTrash) { Text("Trash") }
         Button(onClick = onLogout) { Text("Log out") }
     }
@@ -586,6 +684,8 @@ private fun entryRoute(
     id: String,
     type: FileEntryType,
 ): String = "shared-entry/$id/${type.name}"
+
+private fun organizationRoute(entryId: String): String = "${AppDestination.ENTRY_ORGANIZATION.route}/$entryId"
 
 private suspend fun loadAllReceivedShares(repository: SharingRepository): List<ShareItem> {
     val result = mutableListOf<ShareItem>()

@@ -47,11 +47,30 @@ class AuthViewModel(
         mutableState.value = AuthUiState.Loading
         viewModelScope.launch {
             val credential = repository.storedCredential()
+            if (credential == null) {
+                mutableState.value =
+                    if (route == ConnectionRoute.LOCAL_DIRECT) {
+                        AuthUiState.Form(true)
+                    } else {
+                        AuthUiState.RequiresLocalDirect
+                    }
+                return@launch
+            }
             mutableState.value =
-                when {
-                    credential != null -> AuthUiState.Form(false, credential.username.orEmpty())
-                    route == ConnectionRoute.LOCAL_DIRECT -> AuthUiState.Form(true)
-                    else -> AuthUiState.RequiresLocalDirect
+                try {
+                    repository.refresh()
+                    AuthUiState.Authenticated
+                } catch (error: KuraStorageException.Api) {
+                    AuthUiState.Error(error.error, registration = false)
+                } catch (_: KuraStorageException) {
+                    AuthUiState.Error(
+                        ApiError(
+                            code = com.kurastorage.core.model.ErrorCode.UNKNOWN,
+                            requestId = null,
+                            statusCode = null,
+                        ),
+                        registration = false,
+                    )
                 }
         }
     }

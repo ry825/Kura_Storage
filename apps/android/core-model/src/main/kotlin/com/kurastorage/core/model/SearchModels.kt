@@ -35,6 +35,7 @@ data class SearchInput(
     val maxSize: Long? = null,
     val ownerUserId: String? = null,
     val shareTargetId: String? = null,
+    val tagIds: List<String> = emptyList(),
     val page: Int = 1,
     val pageSize: Int = DEFAULT_PAGE_SIZE,
 ) {
@@ -62,7 +63,12 @@ data class SearchInput(
         val invalidFolderFilter =
             entryType == FileEntryType.FOLDER &&
                 (fileCategory != null || minSize != null || maxSize != null)
-        val invalidId = !validUuid(ownerUserId) || !validUuid(shareTargetId)
+        val invalidId =
+            !validUuid(ownerUserId) ||
+                !validUuid(shareTargetId) ||
+                tagIds.any { !isCanonicalUuid(it) } ||
+                tagIds.size > MAXIMUM_SEARCH_TAGS ||
+                tagIds.distinct().size != tagIds.size
         val invalidPage =
             page < 1 ||
                 pageSize !in 1..MAXIMUM_PAGE_SIZE ||
@@ -79,7 +85,8 @@ data class SearchInput(
                 minSize != null ||
                 maxSize != null ||
                 ownerUserId != null ||
-                shareTargetId != null
+                shareTargetId != null ||
+                tagIds.isNotEmpty()
         if (normalized == null && !hasFilter) {
             return SearchInputValidation(error = SearchValidationError.QUERY_REQUIRED)
         }
@@ -102,6 +109,7 @@ data class SearchInput(
                     maxSize = maxSize,
                     ownerUserId = ownerUserId,
                     shareTargetId = shareTargetId,
+                    tagIds = tagIds,
                     page = page,
                     pageSize = pageSize,
                 ),
@@ -137,6 +145,7 @@ data class ValidatedSearchInput(
     val maxSize: Long?,
     val ownerUserId: String?,
     val shareTargetId: String?,
+    val tagIds: List<String>,
     val page: Int,
     val pageSize: Int,
 )
