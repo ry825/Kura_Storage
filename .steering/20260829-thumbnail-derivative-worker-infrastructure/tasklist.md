@@ -315,79 +315,79 @@
 
 ### 4.1 開始条件
 
-- [ ] PR4の開始条件を満たす。
-  - [ ] PR3が`main`へMerge済みで、必須CIが成功している。
-  - [ ] `git status`と既存差分を確認し、最新`main`からPR4用Branchを作成する。
-  - [ ] Production相当DB／StorageのBackup、復元可能性、空き容量、Storage ID、Service状態を確認する。
+- [x] PR4の開始条件を満たす。
+  - [x] PR3が`main`へMerge済みで、必須CIが成功している。
+  - [x] `git status`と既存差分を確認し、最新`main`からPR4用Branchを作成する。
+  - [x] Production相当DB／StorageのBackup、復元可能性、空き容量、Storage ID、Service状態を確認する。
 
 ### 4.2 TTL・LRU清掃
 
-- [ ] `CacheCleanupService`をTest firstで実装する。
-  - [ ] 30分ごとに100件Batchで期限切れの写真・動画Low／Mediumだけを検索する。
-  - [ ] `READY`かつ`expiresAt <= now`、Lease失効済みの候補だけを安定したLRU順で処理する。
-  - [ ] `PENDING`、`RUNNING`、`DELETING`、有効Lease、Thumbnail／PDF Thumbnailを除外する。
-  - [ ] 配信時に`lastAccessedAt`と`expiresAt = now + 24h`を競合安全に更新する。
-  - [ ] 通常Cache合計が10GBを超えた場合だけ追加LRU清掃し、6GB以下まで継続する。
-  - [ ] 候補を`DELETING`へ条件付き遷移し、物理削除後に管理行を削除する。
-  - [ ] 削除失敗は元ファイルへ影響させず、状態を再試行可能に戻して次回清掃で処理する。
-  - [ ] 大量候補をMemoryへ全保持せず、Batchごとに容量を再計算し、Worker間競合で二重削除しない。
-- [ ] Cleanup Workerを既存独立Workerへ追加する。
-  - [ ] 起動時と設定周期で実行し、停止Token、失敗Backoff、Scope生成、構造化Logの既存Patternへ従う。
-  - [ ] Cleanup同時実行を排除し、変換Worker、Trash Purge、MISSING削除、配信Leaseとの競合をTestする。
-  - [ ] 清掃候補数、削除数／Bytes、残容量、失敗、所要時間を低Cardinality Metricへ記録する。
-- [ ] Media Job履歴Cleanupを実装する。
-  - [ ] 1日ごとに完了・失敗・取消から7日を超えたterminal Jobだけを100件ずつ削除する。
-  - [ ] `QUEUED`、`RUNNING`、現行Retry参照中Jobを削除せず、Derivative状態と履歴削除を分離する。
-  - [ ] Job履歴Cleanupの同時実行、Worker再起動、DB失敗後の再試行をTestする。
+- [x] `CacheCleanupService`をTest firstで実装する。
+  - [x] 30分ごとに100件Batchで期限切れの写真・動画Low／Mediumだけを検索する。
+  - [x] `READY`かつ`expiresAt <= now`、Lease失効済みの候補だけを安定したLRU順で処理する。
+  - [x] `PENDING`、`RUNNING`、`DELETING`、有効Lease、Thumbnail／PDF Thumbnailを除外する。（通常候補から除外し、中断済み`DELETING`は専用回復経路だけで再処理する）
+  - [x] 配信時に`lastAccessedAt`と`expiresAt = now + 24h`を競合安全に更新する。
+  - [x] 通常Cache合計が10GBを超えた場合だけ追加LRU清掃し、6GB以下まで継続する。
+  - [x] 候補を`DELETING`へ条件付き遷移し、物理削除後に管理行を削除する。
+  - [x] 削除失敗は元ファイルへ影響させず、状態を再試行可能に戻して次回清掃で処理する。
+  - [x] 大量候補をMemoryへ全保持せず、Batchごとに容量を再計算し、Worker間競合で二重削除しない。
+- [x] Cleanup Workerを既存独立Workerへ追加する。
+  - [x] 起動時と設定周期で実行し、停止Token、失敗Backoff、Scope生成、構造化Logの既存Patternへ従う。
+  - [x] Cleanup同時実行を排除し、変換Worker、Trash Purge、MISSING削除、配信Leaseとの競合をTestする。
+  - [x] 清掃候補数、削除数／Bytes、残容量、失敗、所要時間を低Cardinality Metricへ記録する。
+- [x] Media Job履歴Cleanupを実装する。
+  - [x] 1日ごとに完了・失敗・取消から7日を超えたterminal Jobだけを100件ずつ削除する。
+  - [x] `QUEUED`、`RUNNING`、現行Retry参照中Jobを削除せず、Derivative状態と履歴削除を分離する。
+  - [x] Job履歴Cleanupの同時実行、Worker再起動、DB失敗後の再試行をTestする。
 
 ### 4.3 性能・容量・耐久E2E
 
-- [ ] Raspberry Pi 4実機で生成性能とResource上限を測定する。
-  - [ ] 写真Thumbnail／Low／Medium、動画Thumbnail／720p／1080p、PDF Thumbnailの代表Fixtureで時間、CPU、Memory、I/O、出力Sizeを記録する。
-  - [ ] 動画変換が同時1件でQueue順を守り、API latencyと既存Worker処理を許容範囲に保つことを確認する。
-  - [ ] 30万件のThumbnail推定容量と実測sampleを記録し、HDD容量計画・監視閾値を確定する。
-- [ ] TTL／Watermark／Lease E2Eを完了する。
-  - [ ] 23:59:59、24:00:00、時刻境界、Access更新、期限切れ削除をServer UTCで確認する。
-  - [ ] 10GB以下では容量清掃せず、10GB超過時はLRU順で6GB以下まで削除する。
-  - [ ] Thumbnailを保持し、配信中・生成中・削除中・有効LeaseのCacheを削除しない。
-  - [ ] API／Worker再起動、DB切断、HDD切断、容量不足、削除失敗後に再試行して整合状態へ戻る。
-- [ ] Lifecycle／認可／経路E2Eを完了する。
-  - [ ] Owner、直接共有、継承共有、未共有、権限変更・解除で生成、状態照会、Retry、配信が正しく許可・拒否される。
-  - [ ] Rename／Moveでは再利用し、内容更新では旧版を配信せず、Trash／Restore／Purge／`MISSING`で保持・削除規則を守る。
-  - [ ] LANとZeroTierで同じHTTPS Hostname、TLS、認証、202／状態照会／Range契約が機能する。
-  - [ ] 元画質への暗黙Fallback、生成途中公開、他User情報漏えい、Path漏えいがない。
+- [x] Raspberry Pi 4実機で生成性能とResource上限を測定する。
+  - [x] 写真Thumbnail／Low／Medium、動画Thumbnail／720p／1080p、PDF Thumbnailの代表Fixtureで時間、CPU、Memory、I/O、出力Sizeを記録する。
+  - [x] 動画変換が同時1件でQueue順を守り、API latencyと既存Worker処理を許容範囲に保つことを確認する。
+  - [x] 30万件のThumbnail推定容量と実測sampleを記録し、HDD容量計画・監視閾値を確定する。
+- [x] TTL／Watermark／Lease E2Eを完了する。
+  - [x] 23:59:59、24:00:00、時刻境界、Access更新、期限切れ削除をServer UTCで確認する。
+  - [x] 10GB以下では容量清掃せず、10GB超過時はLRU順で6GB以下まで削除する。
+  - [x] Thumbnailを保持し、配信中・生成中・削除中・有効LeaseのCacheを削除しない。
+  - [x] API／Worker再起動、DB切断、HDD切断、容量不足、削除失敗後に再試行して整合状態へ戻る。
+- [x] Lifecycle／認可／経路E2Eを完了する。
+  - [x] Owner、直接共有、継承共有、未共有、権限変更・解除で生成、状態照会、Retry、配信が正しく許可・拒否される。
+  - [x] Rename／Moveでは再利用し、内容更新では旧版を配信せず、Trash／Restore／Purge／`MISSING`で保持・削除規則を守る。
+  - [x] LANとZeroTierで同じHTTPS Hostname、TLS、認証、202／状態照会／Range契約が機能する。
+  - [x] 元画質への暗黙Fallback、生成途中公開、他User情報漏えい、Path漏えいがない。
 
 ### 4.4 回帰・Security・運用確認
 
-- [ ] 既存機能の回帰を確認する。
-  - [ ] 一覧、詳細、Search、Recent、Favorites／Tags、共有、Upload、Download、Rename、Move、Trash、Restore、Purge、MISSINGが従来どおり動作する。
-  - [ ] 元FileのSize、SHA-256、File ID、Owner、`fileVersion`が派生生成・清掃だけでは変更されない。
-  - [ ] API、Worker、Nginx、PostgreSQL LogへFile名、物理Path、User名、検索語、Token、変換Command全文が漏れない。
-- [ ] Release／Rollbackを確認する。
-  - [ ] `./scripts/ci/build-release.sh`でlinux-arm64 Server成果物とSBOMを生成する。
-  - [ ] Migration、API、Worker、`libvips-tools`／FFmpeg／Poppler依存の適用順、サービス停止境界、Rollback、DB／Storage復元を確認する。
-  - [ ] Worker停止中も元File APIが利用でき、再開後に永続Queueの処理を再開する。
-  - [ ] 全必須CI、Migration、性能、障害注入、Pi実機E2Eが最終HEADで成功する。
+- [x] 既存機能の回帰を確認する。
+  - [x] 一覧、詳細、Search、Recent、Favorites／Tags、共有、Upload、Download、Rename、Move、Trash、Restore、Purge、MISSINGが従来どおり動作する。
+  - [x] 元FileのSize、SHA-256、File ID、Owner、`fileVersion`が派生生成・清掃だけでは変更されない。
+  - [x] API、Worker、Nginx、PostgreSQL LogへFile名、物理Path、User名、検索語、Token、変換Command全文が漏れない。
+- [x] Release／Rollbackを確認する。
+  - [x] `./scripts/ci/build-release.sh`でlinux-arm64 Server成果物とSBOMを生成する。
+  - [x] Migration、API、Worker、`libvips-tools`／FFmpeg／Poppler依存の適用順、サービス停止境界、Rollback、DB／Storage復元を確認する。
+  - [x] Worker停止中も元File APIが利用でき、再開後に永続Queueの処理を再開する。
+  - [x] 全必須CI、Migration、性能、障害注入、Pi実機E2Eが最終HEADで成功する。
 
 ### 4.5 文書・清掃・PR4完了
 
-- [ ] 正式文書と実装を最終整合する。
-  - [ ] 5つの正式文書、Steering、OpenAPI、Migration、Server、Worker、配置、運用・Test記録を一致させる。
-  - [ ] Queue監視、stale回収、Cache容量、Thumbnail容量、Lease、FFmpeg失敗、HDD障害のRunbookを追加する。
-  - [ ] 実測したProfile、性能、Resource消費、容量推定、障害注入、Rollback結果を`docs/testing/`へ機密情報なしで記録する。
-- [ ] E2E環境を安全に清掃する。
-  - [ ] 限定識別子で作成したTest File、Derivative、Job、一時Fileだけを削除する。
-  - [ ] 実User、実File、実共有、Backup、資格情報、他機能の管理情報を削除しない。
-  - [ ] 孤立Derivative／Job／一時File、stale Lease、未完了Test Jobが0件で、全ServiceとStorageが正常である。
-- [ ] 全体差分をセルフレビューする。
-  - [ ] N+1、要求単位HDD全走査、無制限Query／Memory保持、長期認可Cache、Client-only認可がない。
-  - [ ] 元File変更、Root外Path、Shell injection、Symlink追跡、部分出力公開、Lease無視、Job二重実行がない。
-  - [ ] Android UI、HLS、Web／iOS、OCR、AI分類、不要Package、生成物、実環境値、Credentialがない。
-- [ ] PR4を完了する。
-  - [ ] フェーズ4の全項目が`[x]`であることを確認する。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR4完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+- [x] 正式文書と実装を最終整合する。
+  - [x] 5つの正式文書、Steering、OpenAPI、Migration、Server、Worker、配置、運用・Test記録を一致させる。
+  - [x] Queue監視、stale回収、Cache容量、Thumbnail容量、Lease、FFmpeg失敗、HDD障害のRunbookを追加する。
+  - [x] 実測したProfile、性能、Resource消費、容量推定、障害注入、Rollback結果を`docs/testing/`へ機密情報なしで記録する。
+- [x] E2E環境を安全に清掃する。
+  - [x] 限定識別子で作成したTest File、Derivative、Job、一時Fileだけを削除する。
+  - [x] 実User、実File、実共有、Backup、資格情報、他機能の管理情報を削除しない。
+  - [x] 孤立Derivative／Job／一時File、stale Lease、未完了Test Jobが0件で、全ServiceとStorageが正常である。
+- [x] 全体差分をセルフレビューする。
+  - [x] N+1、要求単位HDD全走査、無制限Query／Memory保持、長期認可Cache、Client-only認可がない。
+  - [x] 元File変更、Root外Path、Shell injection、Symlink追跡、部分出力公開、Lease無視、Job二重実行がない。
+  - [x] Android UI、HLS、Web／iOS、OCR、AI分類、不要Package、生成物、実環境値、Credentialがない。
+- [x] PR4を完了する。
+  - [x] フェーズ4の全項目が`[x]`であることを確認する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR4完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -430,14 +430,14 @@
 
 ### PR4: TTL・LRU清掃、Pi性能・障害E2E、運用完成
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・性能確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続作業への引継ぎ事項: 未記録
+- 完了日: 2026-08-29
+- Pull Request: [#32 Add media cache cleanup and operational verification](https://github.com/ry825/Kura_Storage/pull/32)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-server.sh`（Build warning 0、Domain 81件、Application 236件、Integration 177件、合計494件）、`./scripts/ci/verify-android.sh`、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`dotnet format`、`git diff --check`が成功した。`./scripts/ci/build-release.sh 0.4.0-media-pr4`で最終HEADからlinux-arm64 Serverと署名APKを生成し、両Checksum、署名、Archiveへの秘密情報非混入を確認した。GitHub必須CIのServer、Android、Config、Securityもすべて成功した。
+- 手動確認・性能確認: Raspberry Pi 4実機で写真Thumbnail／Low／Medium、動画Thumbnail／720p／1080p、PDF Thumbnailの時間・CPU・最大RSS・I/O・出力Sizeを測定し、30万Thumbnailを約1.24GiB、計画Reserveを2GiB以上とした。動画Queue同時1件、API 202 latency 1秒未満、24時間境界、10GiB／6GiB Watermark、LRU順、Thumbnail／Lease除外、削除再試行を確認した。Owner／直接共有／継承共有／未共有、Retry、Range、Rename／Move／Trash／Restore／Purge／`MISSING`、LAN／ZeroTier同一Hostname TLS、既存機能回帰を確認した。DB切断、HDD unmount、容量Guard、物理削除失敗、Worker停止・再開、RC2→RC1→RC2 Rollback／Roll-forward、Log privacy、限定Test data清掃を完了し、全Service、Storage、孤立行0件を確認した。
+- 計画と実装の差分: 当初の100件Batchは期限切れ候補に維持したが、容量LRUをBatch claimすると最初の大きな候補だけでLow watermarkを下回っても後続候補を過剰削除することをPi E2Eで検出した。容量清掃だけを1件claim・物理削除・DB容量再集計へ変更し、正確に6GiB以下で停止させた。大容量Watermark E2EはHDDを実際に埋めず、小さな物理FixtureとDB上のSize metadataで安全に検証した。
+- 実装中に追加したタスクと理由: Cleanup中断後の`DELETING`専用復旧、物理削除失敗時のREADY復帰、PostgreSQL global advisory lock、terminal Jobの日次7日保持、低Cardinality Cleanup metrics、Pi runtime package SBOM、Release archive privacy検査を追加した。停止境界、二重清掃、再試行可能性、運用依存の再現性を実環境で保証するため。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続作業への引継ぎ事項: PR #32はMergeせずReview待ちとする。運用時はQueue／stale、Cache／Thumbnail容量、Lease、FFmpeg失敗、HDD mount／Storage IDをRunbookのaggregate metricで監視し、Schema rollbackではなく一致するApplication／DB／Storage Backupを用いる。
 
 ---
 
@@ -447,24 +447,27 @@ PR1〜PR4、本ファイルの全タスク、各Pull Request完了記録が完�
 
 ### 実装完了日
 
-未完了
+2026-08-29
 
 ### 計画と実績の差分
 
-未記録
+計画どおり4つのPull Requestへ分割し、PR1でDomain・永続Queue・Storage、PR2でThumbnail／写真・API・Lease、PR3で動画・進捗・回復、PR4でTTL／LRU清掃・Pi運用受け入れを完成させた。主な差分は、Source lifecycle連動を個別Application改修ではなく同一TransactionのDB triggerへ集約したこと、容量LRUを100件Batchではなく1件ずつ再集計する方式へ修正したこと、Watermark E2Eを物理的なDisk fillではなく小さなFixtureとDB Size metadataで安全に実施したことである。Android Media UIは計画どおり対象外のまま、Server基盤と運用を完了した。
 
 ### 主な設計変更と理由
 
-未記録
+- PostgreSQLをQueue・Lease・Cleanup状態の正とし、partial unique constraint、`FOR UPDATE SKIP LOCKED`、worker token、global advisory lockで重複実行と競合を制御した。
+- 派生公開は一時File生成・検証・atomic publish・条件付きDB完了の順とし、結果不明時は正式Fileを誤削除せず再検出する設計へした。
+- Thumbnailは元File完全削除まで保持し、Low／Mediumだけを24時間TTLと10GiB／6GiB LRUの対象に分離した。
+- Cleanup中断状態は通常READY候補と混在させず`DELETING`専用復旧経路へ分離し、物理削除失敗は元Fileに影響せず再試行可能状態へ戻した。
 
 ### 技術的な学び
 
-未記録
+DB上の安定Batch取得だけではWatermarkの正確な停止を保証できず、候補状態を先に一括変更すると大きな先頭項目で閾値を跨いだ後も過剰削除する。容量清掃はclaim粒度と再集計粒度を一致させる必要がある。また、外部変換Process、DB、exFATの3境界では「成功したか不明」を失敗と同一視せず、再検出可能な正式Artifactとtoken付き状態遷移で収束させることが重要だった。Pi実測により、動画1080pは代表Fixtureで約550MiB RSSまで使用する一方、Thumbnail 30万件のsample推定は約1.24GiBであり、変換Resourceと長期容量を別々に監視すべきことも確認できた。
 
 ### プロセス上の改善点
 
-未記録
+各PRでMigration／契約／Coverage／実Toolを早期確認したことで後続PRの境界を安定させられた。一方、PR4の最初のPi Cleanup E2EでLRU過剰削除を検出したため、High／Low watermarkのTestはUnitだけでなく複数候補の実DB状態を使ってより早い段階から実施すべきだった。実環境Log検査ではApplication journalと管理者が直接投入したSQLのraw database logを区別し、主張対象を事前に固定する必要もあった。
 
 ### 次回への改善提案
 
-未記録
+大容量閾値機能では「開始境界」「停止境界」「1候補で閾値を跨ぐ場合」を最初から共通受け入れFixtureにする。外部Packageを使う機能は、候補Version確認だけでなくRelease evidenceへtarget runtime SBOMを自動収集する手順を初回PRから組み込む。Pi E2E用の限定識別子、物理Fixtureを小さく保つSize metadata方式、Service／mount復旧trap、最終孤立行検査を再利用可能な秘密情報非保持Harnessとして整備する。

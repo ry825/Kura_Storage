@@ -141,6 +141,7 @@ public static class DependencyInjection
         services.AddScoped<IShareRepository, ShareRepository>();
         services.AddScoped<IMediaJobQueue, PostgreSqlMediaJobQueue>();
         services.AddScoped<IMediaRepository, PostgreSqlMediaRepository>();
+        services.AddScoped<IMediaCleanupRepository, PostgreSqlMediaCleanupRepository>();
         services.AddSingleton<IMediaHeartbeat, PostgreSqlMediaHeartbeat>();
         services.AddSingleton<IMediaProcessRunner, MediaProcessRunner>();
         services.AddSingleton<IMediaWaiter, SystemMediaWaiter>();
@@ -193,6 +194,20 @@ public static class DependencyInjection
                     CacheTtlHours = configured.CacheTtlHours,
                 };
             });
+        services.AddSingleton(
+            serviceProvider =>
+            {
+                var configured = serviceProvider.GetRequiredService<IOptions<MediaOptions>>().Value;
+                return new MediaCleanupOptions
+                {
+                    IntervalMinutes = configured.CleanupIntervalMinutes,
+                    FailureBackoffMinutes = Math.Min(5, configured.CleanupIntervalMinutes),
+                    BatchSize = configured.CleanupBatchSize,
+                    CacheHighWatermarkBytes = configured.CacheHighWatermarkBytes,
+                    CacheLowWatermarkBytes = configured.CacheLowWatermarkBytes,
+                    TerminalJobRetentionDays = configured.TerminalJobRetentionDays,
+                };
+            });
         services.AddScoped<FileOperationRecoveryService>();
         services.AddScoped<UploadSessionService>();
         services.AddScoped<UploadSessionRecoveryService>();
@@ -205,6 +220,8 @@ public static class DependencyInjection
         services.AddScoped<PreviewService>();
         services.AddScoped<MediaJobRunner>();
         services.AddScoped<IMediaJobRunner>(serviceProvider => serviceProvider.GetRequiredService<MediaJobRunner>());
+        services.AddScoped<MediaCleanupService>();
+        services.AddScoped<IMediaCleanupService>(serviceProvider => serviceProvider.GetRequiredService<MediaCleanupService>());
         services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IRefreshTokenService, RefreshTokenService>();

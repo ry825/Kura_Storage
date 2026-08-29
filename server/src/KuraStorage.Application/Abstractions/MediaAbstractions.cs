@@ -8,6 +8,50 @@ public interface IMediaJobRunner
     Task<bool> RunNextAsync(CancellationToken cancellationToken);
 }
 
+public interface IMediaCleanupRepository
+{
+    Task<IAsyncDisposable?> TryAcquireCleanupLockAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<MediaCleanupCandidate>> ClaimExpiredAsync(
+        DateTimeOffset now,
+        int batchSize,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<MediaCleanupCandidate>> ClaimDeletingAsync(
+        DateTimeOffset now,
+        int batchSize,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<MediaCleanupCandidate>> ClaimLruAsync(
+        DateTimeOffset now,
+        int batchSize,
+        CancellationToken cancellationToken);
+
+    Task<long> GetReadyCacheSizeAsync(CancellationToken cancellationToken);
+
+    Task CompleteDeleteAsync(Guid derivativeId, CancellationToken cancellationToken);
+
+    Task RestoreReadyAsync(Guid derivativeId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    Task<int> DeleteTerminalJobsAsync(
+        DateTimeOffset completedBefore,
+        int batchSize,
+        CancellationToken cancellationToken);
+}
+
+public sealed record MediaCleanupCandidate(
+    Guid DerivativeId,
+    RelativeStoragePath Path,
+    long Size,
+    bool RestoreReadyOnFailure = true);
+
+public interface IMediaCleanupService
+{
+    Task<Media.MediaCleanupResult> RunAsync(
+        bool includeTerminalJobCleanup,
+        CancellationToken cancellationToken);
+}
+
 public interface IMediaJobQueue
 {
     Task<MediaJob?> TryAcquireNextAsync(Guid workerToken, DateTimeOffset now, CancellationToken cancellationToken);
