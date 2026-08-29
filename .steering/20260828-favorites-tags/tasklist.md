@@ -302,11 +302,11 @@
   - [x] 古いお気に入り／Tag状態による操作許可、通信結果不明時の成功合成、Session間状態漏えいがない。
   - [x] OCR、全文検索、推薦、Tag階層、自動Tag、Web UI、不要Package、将来用Schemaがない。
   - [x] 生成物、実環境値、Credential、機密情報を含むTest記録が差分にない。
-- [ ] PR2を完了する。
-  - [ ] フェーズ2の全項目が`[x]`であることを確認する。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+- [x] PR2を完了する。
+  - [x] フェーズ2の全項目が`[x]`であることを確認する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -327,14 +327,14 @@
 
 ### PR2: Androidお気に入り・タグUIと実機E2E
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・性能確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続作業への引継ぎ事項: 未記録
+- 完了日: 2026-08-29
+- Pull Request: [#28 Add Android favorites and tags workflows](https://github.com/ry825/Kura_Storage/pull/28)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-android.sh`成功（784 actionable tasks）、接続Android Testのfeature-search 10件とapp 3件が成功。`./scripts/ci/verify-server.sh`成功（Domain 59件、Application 174件、Integration 116件）、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`git diff --check`が成功。GitHub必須CIのAndroid、Server、Config、Securityも成功。
+- 手動確認・性能確認: 本番Release署名の非debuggable Android `0.8.0-pr2.2`を実機へ導入し、登録、お気に入り追加・解除、Tag CRUD・付け外し、Home表示、Tag単独Search、Logout、回転・Process再生成後の自動Refreshを確認した。Raspberry Piへ同Versionを展開し、LANとZeroTierのHTTPS経路、権限喪失・再取得、API回帰、Log非漏えい、限定データ清掃を確認した。30万Entry条件でRaspberry Piはp95／最大1,948ms、統合Testはp95／最大824msで要件内。
+- 計画と実装の差分: 機能範囲は計画どおり。最終回転確認で既存の保存済みRefresh TokenがActivity再生成後に利用されない不具合を検出したため、認証回復をfail-closedのServer Refreshへ変更した。Pi実測で検索性能境界を確認し、Tag指定QueryのみMaterialized集合と単一Tag経路を適用した。
+- 実装中に追加したタスクと理由: Activity再生成時のRefresh回帰Testを追加し、本番署名APKで回転とProcess再生成を再確認した。制約のあるBuild環境でServerとAndroidのReleaseを連続生成するため、Build Server無効化と並列度制御をRelease Scriptへ追加した。
+- 技術的に不要になったタスク・理由・代替実装: PR1のSchemaとOpenAPIがPR2要件を満たしたため新規Migrationは不要。承認済み要件の変更がないため`docs/product-requirements.md`の変更も不要とし、実装配置とUI・Test戦略の差分は対象設計文書へ反映した。
+- 後続作業への引継ぎ事項: PR #28は必須CI成功済み。Review後にMergeする。Piは`0.8.0-pr2.2`稼働中で、更新前DB Backupと運用設定を保持している。実データと資格情報を変更する後続作業はない。
 
 ---
 
@@ -344,24 +344,24 @@ PR1、PR2、本ファイルの全タスク、各Pull Request完了記録が完�
 
 ### 実装完了日
 
-未完了
+2026-08-29
 
 ### 計画と実績の差分
 
-未記録
+お気に入り・TagのServer API、Android UI、検索、認可、性能、本番相当E2Eは当初の2 PR計画どおり完了した。実機検証で検出した認証回復とPi検索性能の境界は、要件を拡張せず最終PR内で修正・再検証した。
 
 ### 主な設計変更と理由
 
-未記録
+Tag付き検索はマッチ集合をMaterializeし、単一Tagと複数Tagの実行計画を分けた。AndroidはServer再取得を真実源とするRepositoryとSession所有者境界を維持し、Activity再生成時も保存済みRefresh TokenをServerで更新してから認証済みとするよう統一した。
 
 ### 技術的な学び
 
-未記録
+大規模なAND Tag検索は機能Testだけでなく、実際の共有分布とPage後半を含む実行計画の固定化が必要だった。Androidの回転はUI保持だけでなく、認証状態を復元する実際のRepository経路まで本番署名Buildで確認することが重要だった。
 
 ### プロセス上の改善点
 
-未記録
+署名Release、Pi展開、物理経路切替、失敗注入、清掃を一連の受入手順としたことで、ローカルTestでは見つからない認証回復の不具合をMerge前に検出できた。一方、端末とPiの接続切替が多いため、受入手順の前提状態と復帰状態をより早い段階で定型化できる。
 
 ### 次回への改善提案
 
-未記録
+本番相当E2Eは「事前状態確認→署名・Version確認→LAN→ZeroTier→失敗注入→Log確認→限定清掃→復帰状態確認」を再利用可能なChecklistにする。性能Testは関係分布、Page位置、コールド／ウォーム条件を記録し、Pi相当の回帰値と実行計画を同時に管理する。
