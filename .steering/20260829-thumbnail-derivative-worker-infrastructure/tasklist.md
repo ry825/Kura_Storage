@@ -383,11 +383,11 @@
   - [x] N+1、要求単位HDD全走査、無制限Query／Memory保持、長期認可Cache、Client-only認可がない。
   - [x] 元File変更、Root外Path、Shell injection、Symlink追跡、部分出力公開、Lease無視、Job二重実行がない。
   - [x] Android UI、HLS、Web／iOS、OCR、AI分類、不要Package、生成物、実環境値、Credentialがない。
-- [ ] PR4を完了する。
-  - [ ] フェーズ4の全項目が`[x]`であることを確認する。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR4完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+- [x] PR4を完了する。
+  - [x] フェーズ4の全項目が`[x]`であることを確認する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR4完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -430,14 +430,14 @@
 
 ### PR4: TTL・LRU清掃、Pi性能・障害E2E、運用完成
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析: 未実施
-- 手動確認・性能確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- 後続作業への引継ぎ事項: 未記録
+- 完了日: 2026-08-29
+- Pull Request: [#32 Add media cache cleanup and operational verification](https://github.com/ry825/Kura_Storage/pull/32)
+- 実施したTest・Build・静的解析: `./scripts/ci/verify-server.sh`（Build warning 0、Domain 81件、Application 236件、Integration 177件、合計494件）、`./scripts/ci/verify-android.sh`、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`dotnet format`、`git diff --check`が成功した。`./scripts/ci/build-release.sh 0.4.0-media-pr4`で最終HEADからlinux-arm64 Serverと署名APKを生成し、両Checksum、署名、Archiveへの秘密情報非混入を確認した。GitHub必須CIのServer、Android、Config、Securityもすべて成功した。
+- 手動確認・性能確認: Raspberry Pi 4実機で写真Thumbnail／Low／Medium、動画Thumbnail／720p／1080p、PDF Thumbnailの時間・CPU・最大RSS・I/O・出力Sizeを測定し、30万Thumbnailを約1.24GiB、計画Reserveを2GiB以上とした。動画Queue同時1件、API 202 latency 1秒未満、24時間境界、10GiB／6GiB Watermark、LRU順、Thumbnail／Lease除外、削除再試行を確認した。Owner／直接共有／継承共有／未共有、Retry、Range、Rename／Move／Trash／Restore／Purge／`MISSING`、LAN／ZeroTier同一Hostname TLS、既存機能回帰を確認した。DB切断、HDD unmount、容量Guard、物理削除失敗、Worker停止・再開、RC2→RC1→RC2 Rollback／Roll-forward、Log privacy、限定Test data清掃を完了し、全Service、Storage、孤立行0件を確認した。
+- 計画と実装の差分: 当初の100件Batchは期限切れ候補に維持したが、容量LRUをBatch claimすると最初の大きな候補だけでLow watermarkを下回っても後続候補を過剰削除することをPi E2Eで検出した。容量清掃だけを1件claim・物理削除・DB容量再集計へ変更し、正確に6GiB以下で停止させた。大容量Watermark E2EはHDDを実際に埋めず、小さな物理FixtureとDB上のSize metadataで安全に検証した。
+- 実装中に追加したタスクと理由: Cleanup中断後の`DELETING`専用復旧、物理削除失敗時のREADY復帰、PostgreSQL global advisory lock、terminal Jobの日次7日保持、低Cardinality Cleanup metrics、Pi runtime package SBOM、Release archive privacy検査を追加した。停止境界、二重清掃、再試行可能性、運用依存の再現性を実環境で保証するため。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続作業への引継ぎ事項: PR #32はMergeせずReview待ちとする。運用時はQueue／stale、Cache／Thumbnail容量、Lease、FFmpeg失敗、HDD mount／Storage IDをRunbookのaggregate metricで監視し、Schema rollbackではなく一致するApplication／DB／Storage Backupを用いる。
 
 ---
 
