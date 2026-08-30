@@ -94,4 +94,6 @@ enum class AppDestination(
     MEDIA_SETTINGS("media-settings"),
     PHOTO_VIEWER("media/photo"),
     PDF_VIEWER("media/pdf"),
+    VIDEO_PLAYER("media/video"),
+    AUDIO_PLAYER("media/audio"),
 }

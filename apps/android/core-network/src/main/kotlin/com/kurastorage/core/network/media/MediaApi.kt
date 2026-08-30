@@ -223,13 +223,28 @@ class OkHttpMediaApi(
 
 private fun invalidMediaResponse(): Nothing = throw KuraStorageException.InvalidServerResponse()
 
+@Suppress("ComplexCondition", "CyclomaticComplexMethod", "MagicNumber")
 private fun validateMediaRangeResponse(
     response: Response,
     requestedRange: String?,
 ) {
     if (response.code == HTTP_PARTIAL_CONTENT) {
         val contentRange = response.header("Content-Range") ?: invalidMediaResponse()
-        if (!CONTENT_RANGE.matches(contentRange)) invalidMediaResponse()
+        val responseMatch = CONTENT_RANGE.matchEntire(contentRange) ?: invalidMediaResponse()
+        val requestedMatch = requestedRange?.let(REQUEST_RANGE::matchEntire) ?: invalidMediaResponse()
+        val requestedStart = requestedMatch.groupValues[1].toLongOrNull() ?: invalidMediaResponse()
+        val requestedEnd = requestedMatch.groupValues[2].takeIf(String::isNotEmpty)?.toLongOrNull()
+        val responseStart = responseMatch.groupValues[1].toLongOrNull() ?: invalidMediaResponse()
+        val responseEnd = responseMatch.groupValues[2].toLongOrNull() ?: invalidMediaResponse()
+        val total = responseMatch.groupValues[3].toLongOrNull() ?: invalidMediaResponse()
+        if (
+            responseStart != requestedStart ||
+            responseEnd < responseStart ||
+            (requestedEnd != null && responseEnd != requestedEnd) ||
+            total <= responseEnd
+        ) {
+            invalidMediaResponse()
+        }
     }
     if (requestedRange == null && response.code == HTTP_PARTIAL_CONTENT) invalidMediaResponse()
 }
@@ -246,7 +261,8 @@ private fun okhttp3.ResponseBody.readBoundedUtf8(): String {
 }
 
 private const val HTTP_PARTIAL_CONTENT = 206
-private val CONTENT_RANGE = Regex("bytes [0-9]+-[0-9]+/[0-9]+")
+private val CONTENT_RANGE = Regex("bytes ([0-9]+)-([0-9]+)/([0-9]+)")
+private val REQUEST_RANGE = Regex("bytes=([0-9]+)-([0-9]*)")
 
 private suspend fun Call.awaitResponse(): Response =
     suspendCancellableCoroutine { continuation ->

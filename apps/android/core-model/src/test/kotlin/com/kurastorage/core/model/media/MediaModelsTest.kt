@@ -8,6 +8,14 @@ import org.junit.Test
 
 class MediaModelsTest {
     @Test
+    fun `supported media MIME routing distinguishes video audio and unsupported content`() {
+        assertTrue(SupportedMediaMimeTypes.isVideo("video/mp4; codecs=avc1"))
+        assertTrue(SupportedMediaMimeTypes.isAudio("audio/opus"))
+        assertFalse(SupportedMediaMimeTypes.isVideo("application/octet-stream"))
+        assertFalse(SupportedMediaMimeTypes.isAudio("video/mp4"))
+    }
+
+    @Test
     fun `photo mime support is explicit and normalized`() {
         assertTrue(SupportedMediaMimeTypes.isPhoto("image/jpeg"))
         assertTrue(SupportedMediaMimeTypes.isPhoto(" IMAGE/HEIC ; profile=main "))
