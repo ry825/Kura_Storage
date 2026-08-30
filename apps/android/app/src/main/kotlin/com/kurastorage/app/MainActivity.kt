@@ -5,6 +5,7 @@
     "LongParameterList",
     "CyclomaticComplexMethod",
     "MaxLineLength",
+    "TooGenericExceptionCaught",
 )
 
 package com.kurastorage.app
@@ -12,13 +13,16 @@ package com.kurastorage.app
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.StrictMode
 import android.provider.OpenableColumns
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -33,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,12 +52,16 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.kurastorage.core.data.SharingRepository
+import com.kurastorage.core.data.media.MediaContentDownloader
 import com.kurastorage.core.model.ConnectionStatus
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.ShareItem
 import com.kurastorage.core.model.ShareScope
 import com.kurastorage.core.model.UserRole
+import com.kurastorage.core.model.media.MediaLoadState
+import com.kurastorage.core.model.media.MediaVariant
+import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.core.ui.AppDestination
 import com.kurastorage.core.ui.KuraStorageTheme
 import com.kurastorage.feature.auth.AuthScreen
@@ -64,6 +73,12 @@ import com.kurastorage.feature.files.AdminStorageState
 import com.kurastorage.feature.files.AdminStorageViewModel
 import com.kurastorage.feature.files.FileBrowserScreen
 import com.kurastorage.feature.files.FileBrowserViewModel
+import com.kurastorage.feature.media.MediaViewerController
+import com.kurastorage.feature.media.pdf.PdfViewerScreen
+import com.kurastorage.feature.media.pdf.PdfViewerViewModel
+import com.kurastorage.feature.media.photo.PhotoViewerScreen
+import com.kurastorage.feature.media.photo.PhotoViewerViewModel
+import com.kurastorage.feature.media.thumbnail.FileThumbnail
 import com.kurastorage.feature.search.EntryOrganizationScreen
 import com.kurastorage.feature.search.EntryOrganizationViewModel
 import com.kurastorage.feature.search.FavoritesScreen
@@ -81,6 +96,9 @@ import com.kurastorage.feature.sharing.SharingListViewModel
 import com.kurastorage.feature.sharing.SharingScreen
 import com.kurastorage.feature.sharing.SharingSettingsScreen
 import com.kurastorage.feature.sharing.SharingSettingsViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private lateinit var container: ServiceContainer
@@ -89,6 +107,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (BuildConfig.DEBUG) enableStrictMode()
         super.onCreate(savedInstanceState)
         container = ServiceContainer(this)
         setContent {
@@ -96,6 +115,25 @@ class MainActivity : ComponentActivity() {
                 KuraStorageApp(container, connectionViewModel)
             }
         }
+    }
+
+    private fun enableStrictMode() {
+        StrictMode.setThreadPolicy(
+            StrictMode.ThreadPolicy
+                .Builder()
+                .detectAll()
+                .penaltyLog()
+                .build(),
+        )
+        StrictMode.setVmPolicy(
+            StrictMode.VmPolicy
+                .Builder()
+                .detectActivityLeaks()
+                .detectLeakedClosableObjects()
+                .detectLeakedRegistrationObjects()
+                .penaltyLog()
+                .build(),
+        )
     }
 }
 
@@ -108,6 +146,12 @@ private fun KuraStorageApp(
     val connectionState by connectionViewModel.state.collectAsStateWithLifecycle()
     var connected by remember { mutableStateOf<ConnectionStatus.Connected?>(null) }
     var services by remember { mutableStateOf<SessionServices?>(null) }
+    val mediaContexts = remember { MediaNavigationContextStore() }
+
+    DisposableEffect(services) {
+        val activeServices = services
+        onDispose { activeServices?.close() }
+    }
 
     DisposableEffect(Unit) {
         val observer =
@@ -131,6 +175,7 @@ private fun KuraStorageApp(
                 onConnected = { state ->
                     if (connected?.route != state.route || services == null) {
                         services?.close()
+                        mediaContexts.clear()
                         connected = state
                         services = container.sessionServices(state.route)
                     }
@@ -212,6 +257,7 @@ private fun KuraStorageApp(
                 onLogout = {
                     logoutViewModel.logout {
                         services?.close()
+                        mediaContexts.clear()
                         services = null
                         connected = null
                         navController.navigate(AppDestination.CONNECTION.route) {
@@ -270,6 +316,12 @@ private fun KuraStorageApp(
                 onExit = { navController.popBackStack() },
                 onShare = { entry -> navController.navigate(settingsRoute("new", entry.id, entry.entryType, entry.name)) },
                 onOrganization = { entryId -> navController.navigate(organizationRoute(entryId)) },
+                media = current.media,
+                onOpenMedia = { entry, entries ->
+                    mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
+                },
+                requestedDetailsId = mediaContexts.requestedDetailsId,
+                onDetailsConsumed = mediaContexts::consumeDetails,
             )
         }
         composable(AppDestination.TRASH.route) {
@@ -294,6 +346,7 @@ private fun KuraStorageApp(
                 onExit = { navController.popBackStack() },
                 onShare = {},
                 onOrganization = {},
+                media = null,
             )
         }
         composable(AppDestination.SHARING.route) {
@@ -520,6 +573,150 @@ private fun KuraStorageApp(
                 onExit = { navController.popBackStack() },
                 onShare = { entry -> navController.navigate(settingsRoute("new", entry.id, entry.entryType, entry.name)) },
                 onOrganization = { entryId -> navController.navigate(organizationRoute(entryId)) },
+                media = current.media,
+                onOpenMedia = { entry, entries ->
+                    mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
+                },
+                requestedDetailsId = mediaContexts.requestedDetailsId,
+                onDetailsConsumed = mediaContexts::consumeDetails,
+            )
+        }
+        composable(
+            route = "${AppDestination.PHOTO_VIEWER.route}/{contextId}/{fileId}",
+            arguments =
+                listOf(
+                    navArgument("contextId") { type = NavType.StringType },
+                    navArgument("fileId") { type = NavType.StringType },
+                ),
+        ) { backStackEntry ->
+            val current = services ?: return@composable
+            val route = connected?.route ?: return@composable
+            val contextId = checkNotNull(backStackEntry.arguments?.getString("contextId"))
+            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+            val photoViewModel: PhotoViewerViewModel =
+                viewModel(
+                    key = "photo-$contextId-$fileId-${current.media.scopeId}",
+                    factory =
+                        simpleViewModelFactory {
+                            PhotoViewerViewModel(
+                                fileId,
+                                mediaContexts.fileIds(contextId),
+                                current.files,
+                                MediaViewerController(
+                                    current.media.repository,
+                                    current.media.qualityPreferences,
+                                    current.media.contextResolver,
+                                    current.media.confirmationPolicy,
+                                    route,
+                                    current.media.coroutineScope,
+                                ),
+                            )
+                        },
+                )
+            val photoState by photoViewModel.state.collectAsStateWithLifecycle()
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val downloadScope = rememberCoroutineScope()
+            var pendingMediaDownload by remember { mutableStateOf<MediaDownloadSelection?>(null) }
+            val mediaDownloadPicker =
+                rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+                    val selection = pendingMediaDownload
+                    pendingMediaDownload = null
+                    if (uri != null && selection != null) {
+                        downloadScope.launch {
+                            val succeeded =
+                                runCatching {
+                                    downloadMedia(context, current.media.downloader, uri, selection)
+                                }.isSuccess
+                            Toast
+                                .makeText(
+                                    context,
+                                    if (succeeded) "Download completed." else "Download failed.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                        }
+                    }
+                }
+            PhotoViewerScreen(
+                state = photoState,
+                imageLoader = current.media.imageLoader,
+                scopeId = current.media.scopeId,
+                requestTicket = photoViewModel::requestTicket,
+                onImageReady = photoViewModel::contentReady,
+                onGenerating = photoViewModel::contentGenerating,
+                onImageFailed = photoViewModel::contentFailed,
+                onQuality = photoViewModel::selectQuality,
+                onConfirmOriginal = photoViewModel::confirmOriginal,
+                onPrevious = photoViewModel::previous,
+                onNext = photoViewModel::next,
+                onZoom = photoViewModel::setZoom,
+                onDetails = {
+                    photoState.file?.id?.let(mediaContexts::requestDetails)
+                    navController.popBackStack()
+                },
+                onDownload = {
+                    val file = photoState.file
+                    val ready = photoState.media?.loadState as? MediaLoadState.Ready
+                    if (file != null && ready != null) {
+                        pendingMediaDownload = MediaDownloadSelection(file.id, file.name, ready.source.variant)
+                        mediaDownloadPicker.launch(file.name)
+                    }
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = "${AppDestination.PDF_VIEWER.route}/{fileId}",
+            arguments = listOf(navArgument("fileId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val current = services ?: return@composable
+            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+            val pdfViewModel: PdfViewerViewModel =
+                viewModel(
+                    key = "pdf-$fileId-${current.media.scopeId}",
+                    factory =
+                        simpleViewModelFactory {
+                            PdfViewerViewModel(fileId, current.files, current.media.repository, current.media.temporaryPdfStore)
+                        },
+                )
+            val pdfState by pdfViewModel.state.collectAsStateWithLifecycle()
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val downloadScope = rememberCoroutineScope()
+            var pendingPdfDownload by remember { mutableStateOf<MediaDownloadSelection?>(null) }
+            val pdfDownloadPicker =
+                rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+                    val selection = pendingPdfDownload
+                    pendingPdfDownload = null
+                    if (uri != null && selection != null) {
+                        downloadScope.launch {
+                            val succeeded =
+                                runCatching {
+                                    downloadMedia(context, current.media.downloader, uri, selection)
+                                }.isSuccess
+                            Toast
+                                .makeText(
+                                    context,
+                                    if (succeeded) "Download completed." else "Download failed.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                        }
+                    }
+                }
+            PdfViewerScreen(
+                state = pdfState,
+                onConfirm = pdfViewModel::confirm,
+                onPrevious = pdfViewModel::previous,
+                onNext = pdfViewModel::next,
+                onPage = pdfViewModel::selectPage,
+                onZoom = pdfViewModel::setZoom,
+                onViewport = pdfViewModel::setViewport,
+                onDownload = {
+                    pdfState.file?.let { file ->
+                        pendingPdfDownload = MediaDownloadSelection(file.id, file.name, MediaVariant.ORIGINAL)
+                        pdfDownloadPicker.launch(file.name)
+                    }
+                },
+                onBack = { navController.popBackStack() },
+                onDisposeViewer = pdfViewModel::closeDocument,
             )
         }
         composable(
@@ -573,11 +770,22 @@ private fun FileRoute(
     onExit: () -> Unit,
     onShare: (FileEntry) -> Unit,
     onOrganization: (String) -> Unit,
+    media: MediaSessionScope?,
+    onOpenMedia: (FileEntry, List<FileEntry>) -> Boolean = { _, _ -> false },
+    requestedDetailsId: String? = null,
+    onDetailsConsumed: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val adminStorageState = AdminStorageStateFor(adminStorageViewModel)
     var pendingDownload by remember { mutableStateOf<FileEntry?>(null) }
+    LaunchedEffect(requestedDetailsId, state.entries) {
+        val requested = requestedDetailsId ?: return@LaunchedEffect
+        state.entries.firstOrNull { it.id == requested }?.let {
+            viewModel.select(it)
+            onDetailsConsumed()
+        }
+    }
     val uploadPicker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
@@ -610,7 +818,9 @@ private fun FileRoute(
     FileBrowserScreen(
         state = state,
         trashMode = trashMode,
-        onOpen = viewModel::open,
+        onOpen = { entry ->
+            if (!onOpenMedia(entry, state.entries)) viewModel.open(entry)
+        },
         onShowDetails = viewModel::select,
         onBack = { if (!viewModel.back()) onExit() },
         onRefresh = viewModel::refresh,
@@ -653,6 +863,18 @@ private fun FileRoute(
         onOpenTrashFromWarning = onOpenTrash,
         onShare = onShare,
         onOrganization = onOrganization,
+        onOpenMedia = { entry ->
+            if (onOpenMedia(entry, state.entries)) viewModel.dismissDetail()
+        },
+        thumbnail = { entry, modifier ->
+            if (media == null) {
+                Box(modifier, contentAlignment = Alignment.Center) {
+                    Text(if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File")
+                }
+            } else {
+                FileThumbnail(entry, media.scopeId, media.imageLoader, modifier)
+            }
+        },
     )
 }
 
@@ -711,6 +933,59 @@ private fun entryRoute(
 ): String = "shared-entry/$id/${type.name}"
 
 private fun organizationRoute(entryId: String): String = "${AppDestination.ENTRY_ORGANIZATION.route}/$entryId"
+
+private data class MediaDownloadSelection(
+    val fileId: String,
+    val fileName: String,
+    val variant: MediaVariant,
+)
+
+private suspend fun downloadMedia(
+    context: android.content.Context,
+    downloader: MediaContentDownloader,
+    destination: Uri,
+    selection: MediaDownloadSelection,
+) {
+    try {
+        withContext(Dispatchers.IO) {
+            val output = checkNotNull(context.contentResolver.openOutputStream(destination, "w"))
+            output.use { downloader.download(selection.fileId, selection.variant, it) }
+        }
+    } catch (error: Throwable) {
+        runCatching { context.contentResolver.delete(destination, null, null) }
+        throw error
+    }
+}
+
+private fun mediaRoute(
+    entry: FileEntry,
+    entries: List<FileEntry>,
+    contexts: MediaNavigationContextStore,
+): String? {
+    if (entry.entryType != FileEntryType.FILE || entry.status != com.kurastorage.core.model.FileEntryStatus.ACTIVE) return null
+    return when (
+        entry.mimeType
+            ?.substringBefore(';')
+            ?.trim()
+            ?.lowercase()
+    ) {
+        "application/pdf" -> "${AppDestination.PDF_VIEWER.route}/${entry.id}"
+        else ->
+            if (SupportedMediaMimeTypes.isPhoto(entry.mimeType)) {
+                val contextId =
+                    contexts.register(
+                        entries.filter { candidate ->
+                            candidate.entryType == FileEntryType.FILE &&
+                                candidate.status == com.kurastorage.core.model.FileEntryStatus.ACTIVE &&
+                                SupportedMediaMimeTypes.isPhoto(candidate.mimeType)
+                        },
+                    )
+                "${AppDestination.PHOTO_VIEWER.route}/$contextId/${entry.id}"
+            } else {
+                null
+            }
+    }
+}
 
 private suspend fun loadAllReceivedShares(repository: SharingRepository): List<ShareItem> {
     val result = mutableListOf<ShareItem>()

@@ -1009,8 +1009,9 @@ app.MapDelete(
             : TransferError(result.Failure!, context, uploadOptions);
     });
 
-app.MapGet(
+app.MapMethods(
     "/api/v1/files/{fileId:guid}/content",
+    [HttpMethods.Get, HttpMethods.Head],
     async (
         Guid fileId,
         string? variant,

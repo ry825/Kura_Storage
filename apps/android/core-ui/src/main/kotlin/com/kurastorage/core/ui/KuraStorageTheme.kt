@@ -92,4 +92,6 @@ enum class AppDestination(
     TAGS("tags"),
     ENTRY_ORGANIZATION("entry-organization"),
     MEDIA_SETTINGS("media-settings"),
+    PHOTO_VIEWER("media/photo"),
+    PDF_VIEWER("media/pdf"),
 }

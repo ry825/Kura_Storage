@@ -2,6 +2,7 @@ package com.kurastorage.app
 
 import android.content.Context
 import android.net.ConnectivityManager
+import coil3.ImageLoader
 import com.kurastorage.core.data.AndroidContentStreamProvider
 import com.kurastorage.core.data.AuthenticatedRequestExecutor
 import com.kurastorage.core.data.DataStoreCredentialMetadataStore
@@ -16,9 +17,11 @@ import com.kurastorage.core.data.DefaultTransferRepository
 import com.kurastorage.core.data.media.AndroidNetworkTransportSource
 import com.kurastorage.core.data.media.DataStoreQualityPreferenceStore
 import com.kurastorage.core.data.media.DefaultMediaRepository
+import com.kurastorage.core.data.media.MediaContentDownloader
 import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.data.media.NetworkQualityContextResolver
 import com.kurastorage.core.data.media.QualityPreferenceStore
+import com.kurastorage.core.data.media.TemporaryPdfStore
 import com.kurastorage.core.data.media.TransferConfirmationPolicy
 import com.kurastorage.core.model.ConnectionRoute
 import com.kurastorage.core.network.AndroidHealthProbe
@@ -29,6 +32,7 @@ import com.kurastorage.core.network.KuraStorageApi
 import com.kurastorage.core.network.media.OkHttpMediaApi
 import com.kurastorage.core.security.AndroidKeystoreCredentialCipher
 import com.kurastorage.core.security.SharedPreferencesEncryptedTokenStore
+import com.kurastorage.feature.media.MediaImageLoaderFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,6 +41,7 @@ import okhttp3.OkHttpClient
 import java.io.Closeable
 import java.time.Duration
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ServiceContainer(
     context: Context,
@@ -61,6 +66,11 @@ class ServiceContainer(
                 applicationContext.getSystemService(ConnectivityManager::class.java),
             ),
         )
+
+    init {
+        MediaImageLoaderFactory.cleanupPreviousSessions(applicationContext)
+        TemporaryPdfStore.cleanupPreviousSessions(applicationContext.cacheDir)
+    }
 
     val connectionDetector =
         ConnectionDetector(
@@ -132,12 +142,17 @@ class ServiceContainer(
                 OkHttpMediaApi("https://${BuildConfig.API_HOSTNAME}/api/v1", apiClient),
                 executor,
             )
+        val scopeId = UUID.randomUUID().toString()
         return MediaSessionScope(
-            scopeId = UUID.randomUUID().toString(),
+            scopeId = scopeId,
             repository = repository,
             qualityPreferences = qualityPreferenceStore,
             contextResolver = networkQualityContextResolver,
             confirmationPolicy = TransferConfirmationPolicy(repository),
+            downloader = MediaContentDownloader(repository),
+            imageLoader = MediaImageLoaderFactory.create(applicationContext, scopeId, repository),
+            temporaryPdfStore = TemporaryPdfStore(applicationContext.cacheDir, scopeId, repository),
+            cleanupImageCache = { MediaImageLoaderFactory.cleanupSession(applicationContext, scopeId) },
         )
     }
 
@@ -164,16 +179,26 @@ data class SessionServices(
     override fun close() = media.close()
 }
 
+@Suppress("LongParameterList")
 class MediaSessionScope(
     val scopeId: String,
     val repository: MediaRepository,
     val qualityPreferences: QualityPreferenceStore,
     val contextResolver: NetworkQualityContextResolver,
     val confirmationPolicy: TransferConfirmationPolicy,
+    val downloader: MediaContentDownloader,
+    val imageLoader: ImageLoader,
+    val temporaryPdfStore: TemporaryPdfStore,
+    private val cleanupImageCache: () -> Unit,
 ) : Closeable {
     val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val closed = AtomicBoolean(false)
 
     override fun close() {
+        if (!closed.compareAndSet(false, true)) return
         coroutineScope.cancel()
+        imageLoader.shutdown()
+        cleanupImageCache()
+        temporaryPdfStore.close()
     }
 }

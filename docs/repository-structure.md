@@ -904,7 +904,7 @@ feature-files/
 
 `feature-media`と`feature-settings`もFeature間を直接依存させない。`feature-files`、`feature-search`、`feature-sharing`はFile IDと閲覧ContextをApp callbackへ返し、`app`がMedia destinationへ遷移する。一覧Thumbnailは`app`が`feature-media`のComposableを`feature-files`のslotへ渡す。`feature-backup`はMVP後に必要となった時点で追加する。
 
-PR1で追加したAndroid Media基盤の配置は次のとおり。後続PRのViewer／Player実装は、実際にFileを追加した時点でこの一覧へ反映する。
+Android Media基盤と写真・PDF Viewerの配置は次のとおり。動画・音声Playerは、実際にFileを追加した時点でこの一覧へ反映する。
 
 ```text
 core-model/src/main/kotlin/com/kurastorage/core/model/media/
@@ -915,14 +915,34 @@ core-network/src/main/kotlin/com/kurastorage/core/network/media/
 ├── MediaApi.kt
 └── MediaContracts.kt
 core-data/src/main/kotlin/com/kurastorage/core/data/media/
+├── KuraMediaFetcher.kt
+├── MediaContentDownloader.kt
 ├── MediaRepository.kt
 ├── QualityPreferenceStore.kt
 ├── NetworkQualityContextResolver.kt
+├── TemporaryPdfStore.kt
 └── TransferConfirmationPolicy.kt
 feature-media/src/
 ├── main/kotlin/com/kurastorage/feature/media/AssemblyMarker.kt
+├── main/kotlin/com/kurastorage/feature/media/MediaImageLoaderFactory.kt
 ├── main/kotlin/com/kurastorage/feature/media/MediaViewerController.kt
-└── test/kotlin/com/kurastorage/feature/media/MediaViewerControllerTest.kt
+├── main/kotlin/com/kurastorage/feature/media/photo/
+│   ├── PhotoViewerScreen.kt
+│   └── PhotoViewerViewModel.kt
+├── main/kotlin/com/kurastorage/feature/media/pdf/
+│   ├── PdfDocumentController.kt
+│   ├── PdfViewerScreen.kt
+│   └── PdfViewerViewModel.kt
+├── main/kotlin/com/kurastorage/feature/media/thumbnail/FileThumbnail.kt
+├── test/kotlin/com/kurastorage/feature/media/MediaViewerControllerTest.kt
+├── test/kotlin/com/kurastorage/feature/media/photo/PhotoViewerViewModelTest.kt
+├── test/kotlin/com/kurastorage/feature/media/pdf/PdfViewerViewModelTest.kt
+├── androidTest/kotlin/com/kurastorage/feature/media/MediaViewerScreenTest.kt
+└── androidTest/kotlin/com/kurastorage/feature/media/pdf/PdfDocumentControllerTest.kt
+app/src/main/kotlin/com/kurastorage/app/
+├── MainActivity.kt
+├── MediaNavigationContextStore.kt
+└── ServiceContainer.kt
 feature-settings/src/
 ├── main/kotlin/com/kurastorage/feature/settings/AssemblyMarker.kt
 ├── main/kotlin/com/kurastorage/feature/settings/QualitySettingsScreen.kt

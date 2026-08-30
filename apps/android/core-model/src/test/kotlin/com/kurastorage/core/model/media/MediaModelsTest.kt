@@ -1,10 +1,20 @@
 package com.kurastorage.core.model.media
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MediaModelsTest {
+    @Test
+    fun `photo mime support is explicit and normalized`() {
+        assertTrue(SupportedMediaMimeTypes.isPhoto("image/jpeg"))
+        assertTrue(SupportedMediaMimeTypes.isPhoto(" IMAGE/HEIC ; profile=main "))
+        assertFalse(SupportedMediaMimeTypes.isPhoto("image/svg+xml"))
+        assertFalse(SupportedMediaMimeTypes.isPhoto(null))
+    }
+
     @Test
     fun `variant resolver permits quality only for images and videos`() {
         assertEquals(MediaVariant.IMAGE_LOW, MediaVariantResolver.resolve(MediaKind.IMAGE, MediaQuality.LOW))
