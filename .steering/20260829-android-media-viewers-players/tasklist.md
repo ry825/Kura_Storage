@@ -368,12 +368,12 @@
 - [x] 正式文書と運用文書を最終実装へ一致させる。
   - [x] 5つの正式文書、対象Mockup対応表、E2E手順、対応MIME／Codec、性能測定値、既知制約を更新する。
   - [x] 実装していない将来機能や存在しないFile／Moduleを`docs/repository-structure.md`へ記載しない。
-- [ ] PR4を完了する。
-  - [ ] フェーズ4の全項目が`[x]`であることを確認する。
-  - [ ] 本タスクリスト全体に未完了項目がないことを確認する。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR4完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+- [x] PR4を完了する。
+  - [x] フェーズ4の全項目が`[x]`であることを確認する。
+  - [x] 本タスクリスト全体に未完了項目がないことを確認する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR4完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -413,13 +413,13 @@
 
 ### PR4: 統合E2E・性能・運用仕上げ
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest／Build／静的解析／手動確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク、理由、代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
+- 完了日: 2026-08-30
+- Pull Request: [#37 Complete Android media integration verification](https://github.com/ry825/Kura_Storage/pull/37)
+- 実施したTest／Build／静的解析／手動確認: OPPO CPH2333 / Android 13実機で全対象`connectedDebugAndroidTest` 59件が成功。署名済み非Debuggable Release `0.9.0-pr4-test2`でLOCAL_DIRECTとCellular＋ZeroTier REMOTE_SECURE、写真／PDF／動画／音声、Original 2.9MiB確認、Range再生、Seek、通信切断／再接続、全Player Button 48dp高を確認した。Player PSS 117,912KiB、RSS 259,820KiB、Frame median 13ms／p95 53ms、UID通信量を記録した。`./scripts/ci/verify-android.sh`（1,042 tasks）、JaCoCo 83.04%／95.92%、CycloneDX 1.6 SBOM、`./scripts/ci/verify-server.sh`（Domain 81件、Application 236件、Integration 178件）、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、ShellCheck、bash構文、`git diff --check`が成功。GitHub必須CIはAndroid、Config、Security、Serverの4件が成功。Server初回実行で既存Heartbeat timing Testが一時失敗したが、同一Commitの再実行では全件成功し、ローカル全件成功とも一致した。
+- 計画と実装の差分: Userの明示判断によりAndroid 10は今回の受け入れ対象外とし、Android 13実機と`minSdk 29` Build／Lintを基準に確定した。PR3時点で到達不能だったCellular＋ZeroTierは今回実Serverへ到達し、REMOTE_SECURE Original動画を実再生できた。実機でRoute切替中の古いPlayer readinessが閉じたEngineを準備するlifecycle raceを検出し、期待Engineだけをdetachして保留Jobと古い完了を破棄する修正へ広げた。
+- 実装中に追加したタスクと理由: 全Module実機E2E／証跡取得Script、JaCoCo 80%／95% gate、CycloneDX app Release-runtime SBOM、Media Controller／ViewModelの追加Coverage Test、Player lifecycle race回帰Testを追加した。理由はPR4の再現性、定量的品質ゲート、依存監査、実機で発見したCrashの恒久防止を満たすため。
+- 技術的に不要になったタスク、理由、代替実装: なし。Android 10は技術的取消ではなくUserが承認した受け入れ範囲変更として記録し、Android 13物理端末、`minSdk 29` Build／Lint、API非依存境界Testで代替範囲を明示した。
+- 後続Pull Requestへの引継ぎ事項: 本Steeringの後続PRはない。PR #37をReview／Mergeし、将来Android 10実行を再びRelease matrixへ含める場合は端末または専用Emulator Jobを別途用意する。Media3 UI Composeの公開POMにCompose依存VersionがないためCycloneDXが同ComponentのLicenseを推定できない既知警告は、上流POMのApache-2.0確認とSBOM Component／依存Edge保持を継続する。
 
 ---
 
@@ -429,24 +429,24 @@
 
 ### 実装完了日
 
-未完了
+2026-08-30
 
 ### 全体の計画と実績の差分
 
-未記録
+PR1〜PR3でMedia契約・認証付き取得、品質設定、Thumbnail、写真／PDF Viewer、動画／音声Playerを段階実装し、PR4で統合E2Eと運用品質ゲートを完了した。実績では実機E2EからServer HEAD契約、長いFile名、PDF Main thread I/O、Player回転／Replay／Button寸法、Route切替lifecycle raceを検出して各PR内で修正した。Android 10はUser承認により対象外とし、Android 13を物理基準にした。
 
 ### 主な設計変更と理由
 
-未記録
+認証HeaderとNetwork bindingを共有するCoil／Media3境界、Session単位Cache／一時File、Server Jobを取消さない画面lifecycle、品質変更時の位置維持を採用した。実機で古い非同期readinessが新Engine lifecycleへ干渉し得ることが分かり、Engine identity確認と保留Job取消を追加した。品質ゲートにはJaCoCo 80%／95%、全Instrumented Test APK Assembly、CycloneDX app Release-runtime SBOMを組み込んだ。
 
 ### 技術的な学び
 
-未記録
+認証付きMediaは単体の正常系だけでは不十分で、Route変更、Session失効、通信切断、確認取消、生成Job、Range再要求を同じlifecycleとして検証する必要がある。Composeの均等WeightだけではButton高が保証されず明示48dpとSemantics Testが有効だった。物理端末のPSS／Frame／UID通信量は有用だが、UID値にはTLS、API、Thumbnail、Test trafficが混在するため表示推定値と分離して解釈する必要がある。
 
 ### プロセス上の改善点
 
-未記録
+各PRで実機確認と完了記録を行ったことで、後続PRの前提と未解決事項を追跡できた。一方、最終PRまでCoverageとSBOM gateを導入しなかったため、PR4でTest拡充とBuild時間が集中した。物理端末接続、Tool package、一時Cache容量を事前flight-checkすることで、環境要因による再試行を減らせる。
 
 ### 次回への改善提案
 
-未記録
+次の大規模Android機能では、PR1からCoverage対象とSBOM生成を有効化し、各PRで閾値を維持する。実機E2E Scriptへ操作区間のwall-clock、画面別Frame、request/cache counterを機密情報なしで収集する計測Hookを早期に用意する。複数Android APIをRelease要件へ含める場合は、作業開始前に専用端末／Emulator JobをCI matrixとして確保する。
