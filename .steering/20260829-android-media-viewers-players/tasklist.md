@@ -228,11 +228,11 @@
   - 実機検証記録（2026-08-30）: OPPO CPH2333 / Android 13で一覧Thumbnail、写真Low／Medium／Original、PDF 3 Page、長いFile名を確認し、`feature-media` Instrumented Test 8件が成功した。
   - 通信／Resource検証記録（2026-08-30）: Server側の派生File更新時刻で選択Variantのみの取得を確認し、StrictModeで検出したPDFのMain thread I/Oを修正後、KuraStorage由来の違反、CloseGuard、OOM、Activity／View増加がないことを確認した。
 - [x] PR2に必要な正式文書とUI mockup対応を実装と同じ変更で更新する。
-- [ ] PR2を完了する。
+- [x] PR2を完了する。
   - [x] フェーズ2の全項目が`[x]`であることを確認する。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -390,13 +390,13 @@
 
 ### PR2: 一覧サムネイル・写真Viewer・PDF Viewer
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest／Build／静的解析／手動確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク、理由、代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
+- 完了日: 2026-08-30
+- Pull Request: [#35 Add Android thumbnails, photo viewer, and PDF viewer](https://github.com/ry825/Kura_Storage/pull/35)
+- 実施したTest／Build／静的解析／手動確認: `./scripts/ci/verify-android.sh`（960 tasks、Unit Test、MockWebServer Test、ktlint、detekt、lint、Debug APK）、`./scripts/ci/verify-server.sh`（Domain 81件、Application 236件、Integration 178件）、`./scripts/ci/verify-config.sh`、`git diff --check`が成功。OPPO CPH2333 / Android 13で`feature-media` Instrumented Test 8件が成功。一覧Thumbnail、写真Low／Medium／Original、Original通信量Confirm、PDF 3 Page、長いFile名、選択Variantのみの取得、StrictMode、Memory、CloseGuard／OOMがないことを実機で確認。GitHub必須CIはAndroid、Config、Security、Serverの4件が成功。
+- 計画と実装の差分: 実機E2EでServerのOriginal ContentにHEAD対応がないことを検出し、GETと同じEndpointにSize／MIME／RangeのHEAD応答を追加した。長いFile名でViewer HeaderとPDF Page操作が崩れる問題、PDFのFile／Renderer操作がMain threadで実行される問題を実機検証から追加修正した。Userの受け入れ変更により、Android 13を今回の現行Android実機とし、Android 10実機は対象外とした。
+- 実装中に追加したタスクと理由: Original ContentのHEAD契約修正、長いFile名のViewer Layout修正、debug StrictMode導入、PDFのFile lease／`PdfRenderer`生成をI/O dispatcherへ移動するタスクを追加。理由は通信量Confirm、主要操作、Main thread I/Oの実機E2E不具合を受け入れ条件まで修正するため。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: PR #35の`main`へのMergeと必須CI成功をPR3開始条件とする。PR3では本PRの認証付きMedia Repository、品質選択、通信量Confirm、Session scope、debug StrictModeを維持して動画／音声Playerを実装する。
 
 ### PR3: 動画・音声Playerと動画変換状態
 
