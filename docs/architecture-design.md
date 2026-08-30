@@ -887,6 +887,8 @@ Androidは`feature-media`、`feature-settings`と既存Core Moduleを使用す�
 - Logout、Device／Session失効、接続Route変更でPlayer、Polling、Coil Session cache、PDF一時File、認証済みURLを破棄する。
 - 許可Wi-Fi機能が未導入の間、REMOTE_SECUREなWi-Fiは未登録Wi-FiとしてLOWを初期値にする。将来は`RegisteredWifiSource`の実装だけを差し替える。
 
+Android 13実機のREMOTE_SECURE Original動画再生で、Player PSS 117,912 KiB、RSS 259,820 KiB、Frame median 13 ms、p95 53 msを観測した。通信切断は自動再試行ループに入らず、再接続後のOriginal取得で再度確認を必要とした。現行のBuffer、Cache、Bitmap、PDF一時容量の初期値は維持する。詳細は`docs/testing/20260830-android-media-integration-pr4.md`を参照する。
+
 ### 11.5 MVP後: 自動バックアップ
 
 1. AndroidがMediaStore/SAF差分をRoomへ記録する。

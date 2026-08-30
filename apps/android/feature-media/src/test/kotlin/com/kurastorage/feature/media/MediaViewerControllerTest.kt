@@ -8,13 +8,17 @@ import com.kurastorage.core.data.media.NetworkTransportSource
 import com.kurastorage.core.data.media.QualityPreferenceStore
 import com.kurastorage.core.data.media.RegisteredWifiSource
 import com.kurastorage.core.data.media.TransferConfirmationPolicy
+import com.kurastorage.core.model.ApiError
 import com.kurastorage.core.model.ConnectionRoute
+import com.kurastorage.core.model.ErrorCode
+import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.media.ByteCount
 import com.kurastorage.core.model.media.MediaJobSnapshot
 import com.kurastorage.core.model.media.MediaJobStatus
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
 import com.kurastorage.core.model.media.MediaQuality
+import com.kurastorage.core.model.media.MediaUiError
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.OriginalMetadata
 import com.kurastorage.core.model.media.QualityPreferences
@@ -26,6 +30,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MediaViewerControllerTest {
@@ -131,6 +136,110 @@ class MediaViewerControllerTest {
             assertNull(controller.state.value)
         }
 
+    @Test
+    fun `audio confirmation can be cancelled and stale tickets cannot change state`() =
+        runTest {
+            val repository = FakeRepository()
+            val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
+            controller.start("audio", 1, MediaKind.AUDIO)
+            assertEquals(MediaQuality.ORIGINAL, controller.state.value?.quality)
+            controller.cancelOriginalConfirmation()
+            assertTrue(controller.state.value?.loadState is MediaLoadState.Idle)
+            assertNull(controller.requestTicket())
+
+            controller.selectQuality(MediaQuality.ORIGINAL)
+            controller.confirmOriginal()
+            val stale = checkNotNull(controller.requestTicket())
+            controller.start("replacement", 2, MediaKind.VIDEO)
+            controller.contentFailed(stale, MediaUiError.PERMISSION_DENIED)
+            assertEquals("replacement", controller.state.value?.fileId)
+            assertTrue(controller.state.value?.loadState is MediaLoadState.Loading)
+        }
+
+    @Test
+    fun `polling terminal and network failures remain explicit`() =
+        runTest {
+            val failedRepository = FakeRepository().apply { jobs += job(MediaJobStatus.FAILED, 0, false) }
+            val failed = controller(failedRepository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
+            failed.start("file", 1, MediaKind.VIDEO)
+            failed.contentGenerating(failed.requestTicket()!!, job(MediaJobStatus.GENERATING, 1))
+            advanceTimeBy(1_000)
+            runCurrent()
+            assertEquals(MediaUiError.GENERATION_FAILED, (failed.state.value?.loadState as MediaLoadState.Failed).error)
+            assertEquals(false, failed.state.value?.canRetryGeneration)
+
+            val disconnectedRepository =
+                FakeRepository().apply {
+                    jobError = KuraStorageException.Network(IOException("offline"))
+                }
+            val disconnected = controller(disconnectedRepository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
+            disconnected.start("file", 1, MediaKind.VIDEO)
+            disconnected.contentGenerating(disconnected.requestTicket()!!, job(MediaJobStatus.GENERATING, 1))
+            advanceTimeBy(1_000)
+            runCurrent()
+            assertEquals(
+                MediaUiError.DISCONNECTED,
+                (disconnected.state.value?.loadState as MediaLoadState.Failed).error,
+            )
+        }
+
+    @Test
+    fun `retry handles ready terminal result and API failure`() =
+        runTest {
+            val repository =
+                FakeRepository().apply {
+                    jobs += job(MediaJobStatus.FAILED, 0, true)
+                    retryResult = job(MediaJobStatus.READY, 0)
+                }
+            val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
+            controller.start("file", 1, MediaKind.VIDEO)
+            controller.contentGenerating(controller.requestTicket()!!, job(MediaJobStatus.GENERATING, 1))
+            advanceTimeBy(1_000)
+            runCurrent()
+            controller.retryGeneration()
+            assertTrue(controller.state.value?.loadState is MediaLoadState.Loading)
+
+            repository.jobs += job(MediaJobStatus.FAILED, 0, true)
+            controller.contentGenerating(controller.requestTicket()!!, job(MediaJobStatus.GENERATING, 1))
+            advanceTimeBy(1_000)
+            runCurrent()
+            repository.retryError = apiError(403)
+            controller.retryGeneration()
+            assertEquals(
+                MediaUiError.PERMISSION_DENIED,
+                (controller.state.value?.loadState as MediaLoadState.Failed).error,
+            )
+        }
+
+    @Test
+    fun `original inspection maps every stable HTTP failure without content fallback`() =
+        runTest {
+            val expected =
+                mapOf(
+                    401 to MediaUiError.AUTHENTICATION_REQUIRED,
+                    403 to MediaUiError.PERMISSION_DENIED,
+                    404 to MediaUiError.NOT_FOUND,
+                    409 to MediaUiError.FILE_CHANGED,
+                    416 to MediaUiError.RANGE_INVALID,
+                )
+            expected.forEach { (status, uiError) ->
+                val repository = FakeRepository().apply { inspectError = apiError(status) }
+                val controller = controller(repository, ConnectionRoute.LOCAL_DIRECT, backgroundScope)
+                controller.start("file-$status", 1, MediaKind.IMAGE)
+                assertEquals(uiError, (controller.state.value?.loadState as MediaLoadState.Failed).error)
+                assertEquals(0, repository.contentRequests)
+            }
+            val unavailable = FakeRepository().apply { inspectError = apiError(500) }
+            val controller = controller(unavailable, ConnectionRoute.LOCAL_DIRECT, backgroundScope)
+            controller.start("file-500", 1, MediaKind.IMAGE)
+            assertEquals(
+                "Size unavailable",
+                controller.state.value
+                    ?.confirmation
+                    ?.formattedSize,
+            )
+        }
+
     private fun controller(
         repository: FakeRepository,
         route: ConnectionRoute,
@@ -170,17 +279,25 @@ class MediaViewerControllerTest {
         var jobRequests = 0
         var retryRequests = 0
         var retryResult: MediaJobSnapshot? = null
+        var retryError: KuraStorageException? = null
+        var jobError: KuraStorageException? = null
+        var inspectError: KuraStorageException? = null
         var contentRequests = 0
 
-        override suspend fun inspectOriginal(fileId: String) = OriginalMetadata(ByteCount(100), "image/jpeg", true)
+        override suspend fun inspectOriginal(fileId: String): OriginalMetadata {
+            inspectError?.let { throw it }
+            return OriginalMetadata(ByteCount(100), "image/jpeg", true)
+        }
 
         override suspend fun job(jobId: String): MediaJobSnapshot {
             jobRequests++
+            jobError?.let { throw it }
             return jobs.removeFirst()
         }
 
         override suspend fun retryJob(jobId: String): MediaJobSnapshot {
             retryRequests++
+            retryError?.let { throw it }
             return checkNotNull(retryResult)
         }
 
@@ -195,6 +312,8 @@ class MediaViewerControllerTest {
     }
 
     private companion object {
+        fun apiError(status: Int) = KuraStorageException.Api(ApiError(ErrorCode.UNKNOWN, "request", status))
+
         fun job(
             status: MediaJobStatus,
             retry: Int,

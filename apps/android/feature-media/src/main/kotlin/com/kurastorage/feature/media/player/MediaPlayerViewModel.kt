@@ -17,6 +17,7 @@ import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.feature.media.MediaRequestTicket
 import com.kurastorage.feature.media.MediaViewerController
 import com.kurastorage.feature.media.MediaViewerState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -87,8 +88,11 @@ class MediaPlayerViewModel(
             }
     }
 
-    fun detachEngine() {
+    fun detachEngine(expected: ObservablePlayerEngine? = null) {
+        if (expected != null && engine !== expected) return
         val detachedSnapshot = engine?.snapshot
+        prepareJob?.cancel()
+        prepareJob = null
         engineCollection?.cancel()
         engineCollection = null
         engine?.pause()
@@ -172,6 +176,7 @@ class MediaPlayerViewModel(
             viewModelScope.launch {
                 runCatching { readinessProbe.check(ticket) }
                     .onSuccess { readiness ->
+                        if (engine !== player) return@onSuccess
                         when (readiness) {
                             MediaReadiness.Ready ->
                                 player.prepare(
@@ -183,6 +188,7 @@ class MediaPlayerViewModel(
                             is MediaReadiness.Generating -> mediaController.contentGenerating(ticket, readiness.job)
                         }
                     }.onFailure {
+                        if (it is CancellationException || engine !== player) return@onFailure
                         mediaController.contentFailed(ticket, MediaUiError.DISCONNECTED)
                     }
             }

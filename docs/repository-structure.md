@@ -1235,6 +1235,8 @@ scripts/
 │   ├── verify-security.sh
 │   ├── build-release.sh
 │   └── generate-sbom.sh
+├── e2e/
+│   └── verify-android-media.sh
 ├── development/
 │   ├── start-postgres.sh
 │   ├── reset-local-db.sh

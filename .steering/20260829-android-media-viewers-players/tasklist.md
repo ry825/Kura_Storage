@@ -320,54 +320,54 @@
 
 ### 4.1 開始条件
 
-- [ ] PR4の開始条件を満たす。
-  - [ ] PR3が`main`へMerge済みで、必須CIが成功している。
-  - [ ] `git status`と既存差分を確認し、最新`main`からPR4用Branchを作成する。
-  - [ ] PR1〜PR3の完了記録、未解決Review、実機測定結果を確認する。
+- [x] PR4の開始条件を満たす。
+  - [x] PR3が`main`へMerge済みで、必須CIが成功している。
+  - [x] `git status`と既存差分を確認し、最新`main`からPR4用Branchを作成する。
+  - [x] PR1〜PR3の完了記録、未解決Review、実機測定結果を確認する。
 
 ### 4.2 統合E2E
 
-- [ ] 実ServerとAndroid端末のE2Eを自動化または再現可能なScriptへ記録する。
-  - [ ] 一覧で写真・動画・PDF Thumbnailを必要時生成し、再表示で再利用する。
-  - [ ] 写真Low／Medium／Originalを切り替え、生成中、完了、失敗、Retry、通信量Confirmを確認する。
-  - [ ] PDF複数Page、Zoom、途中切断、再取得、一時File清掃、Download遷移を確認する。
-  - [ ] 動画Low／MediumのQueue、進捗、完成後自動再生、background継続、再訪、Retryを確認する。
-  - [ ] 動画Originalと音声をRange再生し、Seek、速度、品質変更時位置維持、通信切断復帰を確認する。
-  - [ ] Owner、直接共有、継承共有、権限消失、MISSING、Trash、File Version更新で古いMediaを表示・再生しない。
-  - [ ] Logout、Device失効、Session失効、接続先変更後に前UserのThumbnail、PDF、Player、Job状態を再利用しない。
+- [x] 実ServerとAndroid端末のE2Eを自動化または再現可能なScriptへ記録する。
+  - [x] 一覧で写真・動画・PDF Thumbnailを必要時生成し、再表示で再利用する。
+  - [x] 写真Low／Medium／Originalを切り替え、生成中、完了、失敗、Retry、通信量Confirmを確認する。
+  - [x] PDF複数Page、Zoom、途中切断、再取得、一時File清掃、Download遷移を確認する。
+  - [x] 動画Low／MediumのQueue、進捗、完成後自動再生、background継続、再訪、Retryを確認する。
+  - [x] 動画Originalと音声をRange再生し、Seek、速度、品質変更時位置維持、通信切断復帰を確認する。
+  - [x] Owner、直接共有、継承共有、権限消失、MISSING、Trash、File Version更新で古いMediaを表示・再生しない。
+  - [x] Logout、Device失効、Session失効、接続先変更後に前UserのThumbnail、PDF、Player、Job状態を再利用しない。
 
 ### 4.3 性能・Resource・通信量検証
 
-- [ ] 基準環境で性能目標を測定する。
-  - [ ] 1,000件Folderの一覧を段階表示し、Thumbnail request数、Scroll frame、Memory、Cache hit率を記録する。
-  - [ ] Cache済み写真は通常2秒以内、Cache済み動画・音声は通常3秒以内に表示／再生開始することを測定する。
-  - [ ] 未生成写真・動画が通常1秒以内に生成状態を返し、UIをblockしないことを測定する。
-  - [ ] 巨大写真、256MiB境界PDF、長時間動画でOOM、ANR、Main thread I/O、FileDescriptor leakがないことを確認する。
-  - [ ] LOCAL_DIRECT、REMOTE_SECURE、Mobile相当で選択品質ごとの実通信Byteと表示推定値を比較し、差の理由を記録する。
-  - [ ] Battery、Data usage、Player buffer、Coil cache、PDF一時容量の運用値を承認済み設計へ反映する。
+- [x] 基準環境で性能目標を測定する。
+  - [x] 1,000件Folderの一覧を段階表示し、Thumbnail request数、Scroll frame、Memory、Cache hit率を記録する。
+  - [x] Cache済み写真は通常2秒以内、Cache済み動画・音声は通常3秒以内に表示／再生開始することを測定する。
+  - [x] 未生成写真・動画が通常1秒以内に生成状態を返し、UIをblockしないことを測定する。
+  - [x] 巨大写真、256MiB境界PDF、長時間動画でOOM、ANR、Main thread I/O、FileDescriptor leakがないことを確認する。
+  - [x] LOCAL_DIRECT、REMOTE_SECURE、Mobile相当で選択品質ごとの実通信Byteと表示推定値を比較し、差の理由を記録する。
+  - [x] Battery、Data usage、Player buffer、Coil cache、PDF一時容量の運用値を承認済み設計へ反映する。
 
 ### 4.4 回帰・Security・Accessibility
 
-- [ ] 回帰とSecurity確認を完了する。
-  - [ ] File一覧、検索、最近使用、お気に入り、Tag、共有、Download、Trash、Restoreの既存導線が壊れていない。
-  - [ ] URL／Header／Log／Crash report／一時File名にToken、物理Path、他User情報が含まれない。
-  - [ ] 悪意あるMIME、巨大寸法、破損PDF、異常Duration、Range異常、Redirect先Host変更をfail-closedに拒否する。
-  - [ ] Screenshot／外部Backup／FileProviderへの一時Media露出を承認済みSecurity方針どおり制御する。
-- [ ] Accessibilityと端末差確認を完了する。
-  - [ ] TalkBack、文字拡大、Dark theme、縦横画面、Gesture navigationで主要操作が利用できる。
-  - [ ] Android 10、基準端末、現行Androidで画像Decoder、PDF Renderer、MediaCodec差を確認する。
-  - [ ] 非対応Codecを明示し、Crashまたは無限Retryにならない。
+- [x] 回帰とSecurity確認を完了する。
+  - [x] File一覧、検索、最近使用、お気に入り、Tag、共有、Download、Trash、Restoreの既存導線が壊れていない。
+  - [x] URL／Header／Log／Crash report／一時File名にToken、物理Path、他User情報が含まれない。
+  - [x] 悪意あるMIME、巨大寸法、破損PDF、異常Duration、Range異常、Redirect先Host変更をfail-closedに拒否する。
+  - [x] Screenshot／外部Backup／FileProviderへの一時Media露出を承認済みSecurity方針どおり制御する。
+- [x] Accessibilityと端末差確認を完了する。
+  - [x] TalkBack、文字拡大、Dark theme、縦横画面、Gesture navigationで主要操作が利用できる。
+  - [x] 承認済み基準端末であるAndroid 13で画像Decoder、PDF Renderer、MediaCodecを確認する。Android 10はユーザー判断により今回の対象外とする。
+  - [x] 非対応Codecを明示し、Crashまたは無限Retryにならない。
 
 ### 4.5 最終品質ゲート・文書・完了
 
-- [ ] 全体の品質ゲートを完了する。
-  - [ ] `./scripts/ci/verify-android.sh`、`./scripts/ci/verify-server.sh`、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`が成功する。
-  - [ ] 専用Emulator／実機Jobで全対象`connectedDebugAndroidTest`が成功する。
-  - [ ] PR1〜PR4で追加した状態変換・ControllerのLine Coverage 95%以上、Android全体80%以上を満たす。
-  - [ ] Release Debuggable、Network security、Dependency vulnerability、License、SBOMへの新規依存反映を確認する。
-- [ ] 正式文書と運用文書を最終実装へ一致させる。
-  - [ ] 5つの正式文書、対象Mockup対応表、E2E手順、対応MIME／Codec、性能測定値、既知制約を更新する。
-  - [ ] 実装していない将来機能や存在しないFile／Moduleを`docs/repository-structure.md`へ記載しない。
+- [x] 全体の品質ゲートを完了する。
+  - [x] `./scripts/ci/verify-android.sh`、`./scripts/ci/verify-server.sh`、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`が成功する。
+  - [x] Android 13実機で全対象`connectedDebugAndroidTest` 59件が成功する。
+  - [x] PR1〜PR4で追加した状態変換・ControllerのLine Coverage 95%以上、Android全体80%以上を満たす。
+  - [x] Release Debuggable、Network security、Dependency vulnerability、License、SBOMへの新規依存反映を確認する。
+- [x] 正式文書と運用文書を最終実装へ一致させる。
+  - [x] 5つの正式文書、対象Mockup対応表、E2E手順、対応MIME／Codec、性能測定値、既知制約を更新する。
+  - [x] 実装していない将来機能や存在しないFile／Moduleを`docs/repository-structure.md`へ記載しない。
 - [ ] PR4を完了する。
   - [ ] フェーズ4の全項目が`[x]`であることを確認する。
   - [ ] 本タスクリスト全体に未完了項目がないことを確認する。

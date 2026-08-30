@@ -77,7 +77,7 @@ internal fun MediaPlayerRoute(
     DisposableEffect(engine) {
         playerViewModel.attachEngine(engine)
         onDispose {
-            playerViewModel.detachEngine()
+            playerViewModel.detachEngine(engine)
             engine.close()
         }
     }
