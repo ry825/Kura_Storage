@@ -29,6 +29,30 @@ enum class MediaKind {
     AUDIO,
 }
 
+object SupportedMediaMimeTypes {
+    private val photo =
+        setOf(
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/gif",
+            "image/bmp",
+            "image/heic",
+            "image/heif",
+        )
+
+    fun isPhoto(mimeType: String?): Boolean = normalize(mimeType) in photo
+
+    fun isPdf(mimeType: String?): Boolean = normalize(mimeType) == "application/pdf"
+
+    private fun normalize(mimeType: String?): String? =
+        mimeType
+            ?.substringBefore(';')
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf(String::isNotEmpty)
+}
+
 enum class MediaJobStatus {
     GENERATING,
     READY,

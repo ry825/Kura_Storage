@@ -16,6 +16,25 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
     : IClassFixture<PostgreSqlAuthFlowFixture>
 {
     [Fact]
+    public async Task OriginalHead_ReturnsMetadataAndRangeSupportWithoutBody()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync(
+            $"media-original-head-{Guid.NewGuid():N}", "media-original-head-password");
+        using var client = authenticated.Client;
+        var fileId = await SeedStoredSourceAsync(client, "photo.png", "image/png", "0123456789"u8.ToArray());
+        using var request = new HttpRequestMessage(
+            HttpMethod.Head, $"/api/v1/files/{fileId}/content?variant=original");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("image/png", response.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(10, response.Content.Headers.ContentLength);
+        Assert.Equal("bytes", response.Headers.AcceptRanges.Single());
+        Assert.Empty(await response.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
     public async Task ReadyThumbnail_AuthorizesStreamsRangesAndUsesCurrentUnicodeName()
     {
         var ownerAuth = await fixture.CreateAuthenticatedClientAsync(
@@ -452,6 +471,27 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
         database.FileEntries.Add(file);
         await database.SaveChangesAsync();
         return file.Id;
+    }
+
+    private async Task<Guid> SeedStoredSourceAsync(
+        HttpClient client,
+        string name,
+        string mimeType,
+        byte[] content)
+    {
+        var fileId = await SeedSourceAsync(client, name, mimeType);
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        var relativePath = await database.FileEntries
+            .Where(item => item.Id == fileId)
+            .Select(item => item.RelativePath)
+            .SingleAsync();
+        var physicalPath = Path.Combine(
+            fixture.StorageRootPath,
+            relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(physicalPath)!);
+        await File.WriteAllBytesAsync(physicalPath, content);
+        return fileId;
     }
 
     private async Task FailJobAsync(Guid jobId, string errorCode)

@@ -1,6 +1,7 @@
 package com.kurastorage.feature.files
 
 import android.view.KeyEvent
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,9 +36,11 @@ import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadOperation
 import com.kurastorage.core.model.UploadState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 
 class FileBrowserScreenTest {
     @get:Rule val compose = createComposeRule()
@@ -862,6 +865,44 @@ class FileBrowserScreenTest {
         compose.runOnIdle { state.value = state.value.copy(selected = null) }
         compose.runOnIdle { state.value = state.value.copy(selected = file()) }
         compose.runOnIdle { assertEquals(2, displayed) }
+    }
+
+    @Test
+    fun thousandEntryListAndGridComposeOnlyVisibleThumbnailWindow() {
+        val thumbnails = AtomicInteger()
+        val entries =
+            (0 until 1_000).map { index ->
+                file().copy(id = "file-$index", name = "photo-$index.jpg", mimeType = "image/jpeg")
+            }
+        compose.setContent {
+            FileBrowserScreen(
+                state = FileBrowserState(loading = false, entries = entries),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+                thumbnail = { _, _ ->
+                    SideEffect { thumbnails.incrementAndGet() }
+                    androidx.compose.material3.Text("thumbnail")
+                },
+            )
+        }
+
+        compose.runOnIdle { assertTrue(thumbnails.get() < 100) }
+        thumbnails.set(0)
+        compose.onNodeWithText("Grid").performClick()
+        compose.runOnIdle { assertTrue(thumbnails.get() < 250) }
     }
 
     private fun sharedControlState(

@@ -155,80 +155,84 @@
 
 ### 2.1 開始条件
 
-- [ ] PR2の開始条件を満たす。
-  - [ ] PR1が`main`へMerge済みで、必須CIが成功している。
-  - [ ] `git status`と既存差分を確認し、最新`main`からPR2用Branchを作成する。
-  - [ ] `FileBrowserScreen`、File詳細／Download、Compose状態保存、List／Grid、MockWebServerの既存Patternを確認する。
+- [x] PR2の開始条件を満たす。
+  - [x] PR1が`main`へMerge済みで、必須CIが成功している。
+  - [x] `git status`と既存差分を確認し、最新`main`からPR2用Branchを作成する。
+  - [x] `FileBrowserScreen`、File詳細／Download、Compose状態保存、List／Grid、MockWebServerの既存Patternを確認する。
 
 ### 2.2 一覧サムネイル
 
-- [ ] 認証付きThumbnail取得をTest firstで実装する。
-  - [ ] Coil ImageLoaderを既存OkHttp／認証／Network binding境界へ接続し、別の未認証Clientを作らない。
-  - [ ] File ID、Version、`thumbnail` VariantをCache keyへ含め、Rename／Moveだけでは画像内容Cacheを無効化しない。
-  - [ ] Session scopeをCache keyとDirectoryへ含め、MemoryをHeap 10%かつ最大64MiB、DiskをSession最大256MiBに制限する。
-  - [ ] `202`時はPlaceholderとbounded再取得を行い、元ファイルを代替取得しない。
-  - [ ] `FAILED`、非対応MIME、権限消失、MISSING、通信切断を種類Iconまたは操作可能なErrorへ変換する。
-  - [ ] Scrollで画面外になったRequestを取消し、同一Thumbnailの重複取得と無制限並列Requestを防止する。
-  - [ ] Thumbnail取得を最大8並列とし、Session終了時とProcess起動時に旧Session cacheを清掃する。
-- [ ] File一覧UIへThumbnailを統合する。
-  - [ ] GridではThumbnailを表示し、Listでは承認済み表示規則に従ってThumbnailまたは種類Iconを表示する。
-  - [ ] Folder、Thumbnail非対象File、生成中、Error、MISSING、共有Badgeを視覚的・Accessibility上で区別する。
-  - [ ] 1,000件Folderの段階表示でMain thread decode、過剰Recomposition、元画質通信が発生しないことを計測する。
+- [x] 認証付きThumbnail取得をTest firstで実装する。
+  - [x] Coil ImageLoaderを既存OkHttp／認証／Network binding境界へ接続し、別の未認証Clientを作らない。
+  - [x] File ID、Version、`thumbnail` VariantをCache keyへ含め、Rename／Moveだけでは画像内容Cacheを無効化しない。
+  - [x] Session scopeをCache keyとDirectoryへ含め、MemoryをHeap 10%かつ最大64MiB、DiskをSession最大256MiBに制限する。
+  - [x] `202`時はPlaceholderとbounded再取得を行い、元ファイルを代替取得しない。
+  - [x] `FAILED`、非対応MIME、権限消失、MISSING、通信切断を種類Iconまたは操作可能なErrorへ変換する。
+  - [x] Scrollで画面外になったRequestを取消し、同一Thumbnailの重複取得と無制限並列Requestを防止する。
+  - [x] Thumbnail取得を最大8並列とし、Session終了時とProcess起動時に旧Session cacheを清掃する。
+- [x] File一覧UIへThumbnailを統合する。
+  - [x] GridではThumbnailを表示し、Listでは承認済み表示規則に従ってThumbnailまたは種類Iconを表示する。
+  - [x] Folder、Thumbnail非対象File、生成中、Error、MISSING、共有Badgeを視覚的・Accessibility上で区別する。
+  - [x] 1,000件Folderの段階表示でMain thread decode、過剰Recomposition、元画質通信が発生しないことを計測する。
 
 ### 2.3 写真Viewer
 
-- [ ] 写真表示と操作をTest firstで実装する。
-  - [ ] 対象MIMEだけを写真ViewerへRoutingし、Server宣言とDecode結果が不正な場合は非対応表示にする。
-  - [ ] Coilの認証付き取得で選択品質だけをDecodeし、Loading／Generating／Ready／Failedを表示する。
-  - [ ] 画面fit、ピンチZoom、Pan、Double tap復帰、回転後の安全な状態復元を実装する。
-  - [ ] Decodeを長辺4096px、Bitmap見積り32MiB、Zoom 1〜4倍に制限し、Main threadでDecodeしない。
-  - [ ] 同じ閲覧Context内の前後写真へ移動し、Folder／非画像／閲覧不可／MISSINGを候補から除外する。
-  - [ ] 前後移動時の先読みを承認済み上限内にし、モバイル通信で元画質を先読みしない。
-- [ ] 写真の品質・通信量操作を実装する。
-  - [ ] 低／中／元の現在値、接続種別、元Size、生成状態を表示する。
-  - [ ] 低／中切替では選択Variantだけを要求し、旧Request完了が新しい画像を上書きしない。
-  - [ ] 元画質はサイズ／推定通信量Confirm後だけ取得し、File Version変更時は再確認する。
-  - [ ] Viewerから詳細と品質指定Downloadへ移動し、最新File名と選択品質を引き渡す。
+- [x] 写真表示と操作をTest firstで実装する。
+  - [x] 対象MIMEだけを写真ViewerへRoutingし、Server宣言とDecode結果が不正な場合は非対応表示にする。
+  - [x] Coilの認証付き取得で選択品質だけをDecodeし、Loading／Generating／Ready／Failedを表示する。
+  - [x] 画面fit、ピンチZoom、Pan、Double tap復帰、回転後の安全な状態復元を実装する。
+  - [x] Decodeを長辺4096px、Bitmap見積り32MiB、Zoom 1〜4倍に制限し、Main threadでDecodeしない。
+  - [x] 同じ閲覧Context内の前後写真へ移動し、Folder／非画像／閲覧不可／MISSINGを候補から除外する。
+  - [x] 前後移動時の先読みを承認済み上限内にし、モバイル通信で元画質を先読みしない。
+- [x] 写真の品質・通信量操作を実装する。
+  - [x] 低／中／元の現在値、接続種別、元Size、生成状態を表示する。
+  - [x] 低／中切替では選択Variantだけを要求し、旧Request完了が新しい画像を上書きしない。
+  - [x] 元画質はサイズ／推定通信量Confirm後だけ取得し、File Version変更時は再確認する。
+  - [x] Viewerから詳細と品質指定Downloadへ移動し、最新File名と選択品質を引き渡す。
 
 ### 2.4 PDF Viewer
 
-- [ ] PDF取得・一時File管理をTest firstで実装する。
-  - [ ] HEADでSize／MIME／Range対応を確認し、1 File 256MiBと空き容量`Content-Length + 64MiB`を満たす場合だけ取得する。
-  - [ ] 元PDFの通信量を表示して確認後に、Streamingで一時Fileへ書き、全体をMemoryへ保持しない。
-  - [ ] 取消、途中切断、Content-Length不一致、空き容量不足、破損PDFで部分Fileを閉じて限定削除する。
-  - [ ] File ID／VersionからServer制御の安全な一時名を生成し、元File名をPathとして使用しない。
-  - [ ] 画面終了、Process再生成、期限切れ、Logout、接続先変更時のFileDescriptorと一時File清掃を実装する。
-  - [ ] PDF一時FileをSession合計512MiB、未参照TTL 1時間のLRUで清掃し、active FileDescriptor付きFileを除外する。
-- [ ] `PdfRenderer` ViewerをTest firstで実装する。
-  - [ ] Pageを必要時に1枚ずつRenderし、現在Page以外のBitmapとPageをboundedに解放する。
-  - [ ] PDF Bitmapを長辺4096px、1枚32MiB、Zoom 1〜4倍に制限し、Main threadでRenderしない。
-  - [ ] 前後Page移動、Page指定、現在Page／総Page数、Pinch zoom、Pan、画面fitを実装する。
-  - [ ] 0 Page、暗号化、破損、巨大Page、Renderer例外をCrashさせずError表示へ変換する。
-  - [ ] Download操作へ移動でき、Viewer一時Fileを公開Storageや他Appへ直接公開しない。
+- [x] PDF取得・一時File管理をTest firstで実装する。
+  - [x] HEADでSize／MIME／Range対応を確認し、1 File 256MiBと空き容量`Content-Length + 64MiB`を満たす場合だけ取得する。
+  - [x] 元PDFの通信量を表示して確認後に、Streamingで一時Fileへ書き、全体をMemoryへ保持しない。
+  - [x] 取消、途中切断、Content-Length不一致、空き容量不足、破損PDFで部分Fileを閉じて限定削除する。
+  - [x] File ID／VersionからServer制御の安全な一時名を生成し、元File名をPathとして使用しない。
+  - [x] 画面終了、Process再生成、期限切れ、Logout、接続先変更時のFileDescriptorと一時File清掃を実装する。
+  - [x] PDF一時FileをSession合計512MiB、未参照TTL 1時間のLRUで清掃し、active FileDescriptor付きFileを除外する。
+- [x] `PdfRenderer` ViewerをTest firstで実装する。
+  - [x] Pageを必要時に1枚ずつRenderし、現在Page以外のBitmapとPageをboundedに解放する。
+  - [x] PDF Bitmapを長辺4096px、1枚32MiB、Zoom 1〜4倍に制限し、Main threadでRenderしない。
+  - [x] 前後Page移動、Page指定、現在Page／総Page数、Pinch zoom、Pan、画面fitを実装する。
+  - [x] 0 Page、暗号化、破損、巨大Page、Renderer例外をCrashさせずError表示へ変換する。
+  - [x] Download操作へ移動でき、Viewer一時Fileを公開Storageや他Appへ直接公開しない。
 
 ### 2.5 Navigation・UI検証
 
-- [ ] File一覧／詳細から写真・PDF ViewerへのNavigationを実装する。
-  - [ ] MIMEとFile状態に応じて正しいViewerへ遷移し、不明MIMEを誤って開かない。
-  - [ ] Back、画面回転、Process再生成、Logout、Token失効、接続先変更で別Userの表示状態を残さない。
-- [ ] Compose Instrumented Testを追加する。
-  - [ ] ThumbnailのPlaceholder／Ready／Error、写真Zoom／品質Confirm、PDF Page移動／ErrorをSemantics経由で確認する。
-  - [ ] Accessibility label、Touch target、文字拡大、Dark theme、縦横画面で主要操作が利用できることを確認する。
+- [x] File一覧／詳細から写真・PDF ViewerへのNavigationを実装する。
+  - [x] MIMEとFile状態に応じて正しいViewerへ遷移し、不明MIMEを誤って開かない。
+  - [x] Back、画面回転、Process再生成、Logout、Token失効、接続先変更で別Userの表示状態を残さない。
+- [x] Compose Instrumented Testを追加する。
+  - [x] ThumbnailのPlaceholder／Ready／Error、写真Zoom／品質Confirm、PDF Page移動／ErrorをSemantics経由で確認する。
+  - [x] Accessibility label、Touch target、文字拡大、Dark theme、縦横画面で主要操作が利用できることを確認する。
 
 ### 2.6 PR2検証・文書・完了
 
-- [ ] PR2の自動・手動検証を完了する。
-  - [ ] JVM Unit Test、MockWebServer Test、Compose Instrumented Testが成功する。
-  - [ ] `./scripts/ci/verify-android.sh`、`./scripts/ci/verify-config.sh`、`git diff --check`が成功する。
-  - [ ] 実Android 10／現行Androidで一覧Thumbnail、写真Low／Medium／Original、PDF複数Pageを確認する。
-  - [ ] Network inspectionで一覧が元画質を取得せず、写真が選択品質だけを取得することを確認する。
-  - [ ] Leak／StrictMode／Memory profilerでBitmap、PDF Page、FileDescriptor、一時Fileの解放を確認する。
-- [ ] PR2に必要な正式文書とUI mockup対応を実装と同じ変更で更新する。
-- [ ] PR2を完了する。
-  - [ ] フェーズ2の全項目が`[x]`であることを確認する。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+- [x] PR2の自動・手動検証を完了する。
+  - [x] JVM Unit Test、MockWebServer Test、Compose Instrumented Testが成功する。
+  - [x] `./scripts/ci/verify-android.sh`、`./scripts/ci/verify-config.sh`、`git diff --check`が成功する。
+  - [x] 実機E2Eで検出した元ContentのHEAD契約不備をServerに最小追加し、Size／MIME／Range応答をTest firstで確認する。
+  - [x] 実機E2Eで検出した長いFile名のViewer Header崩れとPDF Page操作の画面外配置をTest firstで修正する。
+  - [x] 現行Android（Android 13）実機で一覧Thumbnail、写真Low／Medium／Original、PDF複数Pageを確認する。Android 10実機は今回の受け入れ対象外とする。
+  - [x] Network inspectionで一覧が元画質を取得せず、写真が選択品質だけを取得することを確認する。
+  - [x] Leak／StrictMode／Memory profilerでBitmap、PDF Page、FileDescriptor、一時Fileの解放を確認する。
+  - 実機検証記録（2026-08-30）: OPPO CPH2333 / Android 13で一覧Thumbnail、写真Low／Medium／Original、PDF 3 Page、長いFile名を確認し、`feature-media` Instrumented Test 8件が成功した。
+  - 通信／Resource検証記録（2026-08-30）: Server側の派生File更新時刻で選択Variantのみの取得を確認し、StrictModeで検出したPDFのMain thread I/Oを修正後、KuraStorage由来の違反、CloseGuard、OOM、Activity／View増加がないことを確認した。
+- [x] PR2に必要な正式文書とUI mockup対応を実装と同じ変更で更新する。
+- [x] PR2を完了する。
+  - [x] フェーズ2の全項目が`[x]`であることを確認する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR2完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -386,13 +390,13 @@
 
 ### PR2: 一覧サムネイル・写真Viewer・PDF Viewer
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest／Build／静的解析／手動確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク、理由、代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
+- 完了日: 2026-08-30
+- Pull Request: [#35 Add Android thumbnails, photo viewer, and PDF viewer](https://github.com/ry825/Kura_Storage/pull/35)
+- 実施したTest／Build／静的解析／手動確認: `./scripts/ci/verify-android.sh`（960 tasks、Unit Test、MockWebServer Test、ktlint、detekt、lint、Debug APK）、`./scripts/ci/verify-server.sh`（Domain 81件、Application 236件、Integration 178件）、`./scripts/ci/verify-config.sh`、`git diff --check`が成功。OPPO CPH2333 / Android 13で`feature-media` Instrumented Test 8件が成功。一覧Thumbnail、写真Low／Medium／Original、Original通信量Confirm、PDF 3 Page、長いFile名、選択Variantのみの取得、StrictMode、Memory、CloseGuard／OOMがないことを実機で確認。GitHub必須CIはAndroid、Config、Security、Serverの4件が成功。
+- 計画と実装の差分: 実機E2EでServerのOriginal ContentにHEAD対応がないことを検出し、GETと同じEndpointにSize／MIME／RangeのHEAD応答を追加した。長いFile名でViewer HeaderとPDF Page操作が崩れる問題、PDFのFile／Renderer操作がMain threadで実行される問題を実機検証から追加修正した。Userの受け入れ変更により、Android 13を今回の現行Android実機とし、Android 10実機は対象外とした。
+- 実装中に追加したタスクと理由: Original ContentのHEAD契約修正、長いFile名のViewer Layout修正、debug StrictMode導入、PDFのFile lease／`PdfRenderer`生成をI/O dispatcherへ移動するタスクを追加。理由は通信量Confirm、主要操作、Main thread I/Oの実機E2E不具合を受け入れ条件まで修正するため。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: PR #35の`main`へのMergeと必須CI成功をPR3開始条件とする。PR3では本PRの認証付きMedia Repository、品質選択、通信量Confirm、Session scope、debug StrictModeを維持して動画／音声Playerを実装する。
 
 ### PR3: 動画・音声Playerと動画変換状態
 

@@ -18,7 +18,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -34,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,8 +53,10 @@ import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadState
 import com.kurastorage.core.model.filePermissionCapabilities
+import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.core.ui.ErrorState
 import com.kurastorage.core.ui.LoadingState
+import androidx.compose.foundation.lazy.grid.items as gridItems
 
 @Composable
 fun FileBrowserScreen(
@@ -94,10 +100,17 @@ fun FileBrowserScreen(
     onOpenTrashFromWarning: () -> Unit = {},
     onShare: (FileEntry) -> Unit = {},
     onOrganization: (String) -> Unit = {},
+    onOpenMedia: (FileEntry) -> Unit = {},
+    thumbnail: @Composable (FileEntry, Modifier) -> Unit = { entry, modifier ->
+        Box(modifier, contentAlignment = Alignment.Center) {
+            Text(if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File")
+        }
+    },
 ) {
     var showCreate by remember { mutableStateOf(false) }
     var pendingTrash by remember { mutableStateOf<FileEntry?>(null) }
     var pendingRestore by remember { mutableStateOf<FileEntry?>(null) }
+    var gridMode by rememberSaveable { mutableStateOf(false) }
     if (state.loading && state.entries.isEmpty()) return LoadingState("Loading files")
     if (state.error != null && state.entries.isEmpty() && state.transfer == null) {
         return ErrorState(state.error.message, state.error.requestId, onRefresh)
@@ -129,6 +142,12 @@ fun FileBrowserScreen(
                 else -> "Shared folder"
             }
         Text(folderTitle, style = MaterialTheme.typography.headlineSmall)
+        if (!trashMode) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { gridMode = false }, enabled = gridMode) { Text("List") }
+                OutlinedButton(onClick = { gridMode = true }, enabled = !gridMode) { Text("Grid") }
+            }
+        }
         if (!trashMode && !state.personalRoot) {
             state.currentFolder?.let { folder ->
                 Text("Owner: ${folder.owner.displayName}")
@@ -147,14 +166,39 @@ fun FileBrowserScreen(
             ) {
                 Text(if (trashMode) "Trash is empty." else "This folder is empty.")
             }
+        } else if (gridMode && !trashMode) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(144.dp),
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                gridItems(state.entries, key = { it.id }) { entry ->
+                    Column(
+                        Modifier.clickable { onOpen(entry) }.padding(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        thumbnail(entry, Modifier.fillMaxWidth().heightIn(min = 96.dp, max = 144.dp))
+                        Text(entry.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (entry.shareTargetId != null || entry.permissionSource == PermissionSource.INHERITED) {
+                            Text("Shared", style = MaterialTheme.typography.labelSmall)
+                        }
+                        missingStatusText(entry)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        TextButton(onClick = { onShowDetails(entry) }) { Text("Actions") }
+                    }
+                }
+                if (state.canLoadMore) item { Button(onClick = onLoadMore) { Text("Load more") } }
+            }
         } else {
             LazyColumn(Modifier.weight(1f)) {
                 items(state.entries, key = { it.id }) { entry ->
                     Row(
                         Modifier.fillMaxWidth().clickable { onOpen(entry) }.padding(vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column {
+                        thumbnail(entry, Modifier.size(48.dp))
+                        Column(Modifier.weight(1f)) {
                             Text("${if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File"}: ${entry.name}")
                             Text("Owner: ${entry.owner.displayName} • Permission: ${entry.permission}")
                             if (entry.permissionSource == PermissionSource.INHERITED) {
@@ -264,6 +308,9 @@ fun FileBrowserScreen(
                 } else {
                     Column {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (entry.isMediaPreview()) {
+                                TextButton(onClick = { onOpenMedia(entry) }) { Text("Open") }
+                            }
                             if (entry.entryType == FileEntryType.FILE && capabilities.canDownload) {
                                 TextButton(onClick = {
                                     onChooseDownload(entry)
@@ -357,6 +404,12 @@ private fun missingStatusText(entry: FileEntry): String? =
         FileEntryStatus.UNKNOWN -> "アプリの更新が必要です"
         else -> null
     }
+
+private fun FileEntry.isMediaPreview(): Boolean {
+    val activeFile = entryType == FileEntryType.FILE && status == FileEntryStatus.ACTIVE
+    return activeFile &&
+        (SupportedMediaMimeTypes.isPhoto(mimeType) || SupportedMediaMimeTypes.isPdf(mimeType))
+}
 
 @Composable
 private fun MissingIndexDeleteDialog(
