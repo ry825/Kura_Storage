@@ -25,6 +25,7 @@ import com.kurastorage.core.model.media.PlaybackRate
 import com.kurastorage.core.model.media.QualityPreferences
 import com.kurastorage.core.model.media.ReadyMediaSource
 import com.kurastorage.feature.media.MediaViewerController
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -211,6 +212,32 @@ class MediaPlayerViewModelTest {
         }
 
     @Test
+    fun `replacing engine while readiness is pending never prepares the closed engine`() =
+        runTest(dispatcher) {
+            val repository = FakeMediaRepository("video/mp4")
+            val readiness = CompletableDeferred<MediaReadiness>()
+            val viewModel =
+                MediaPlayerViewModel(
+                    FILE_ID,
+                    MediaKind.VIDEO,
+                    FakeFiles(file("video/mp4")),
+                    controller(repository, backgroundScope),
+                    MediaReadinessProbe { readiness.await() },
+                )
+            val first = FakeEngine()
+            viewModel.attachEngine(first)
+
+            viewModel.detachEngine(first)
+            first.close()
+            val replacement = FakeEngine()
+            viewModel.attachEngine(replacement)
+            readiness.complete(MediaReadiness.Ready)
+
+            assertNull(first.preparedSource)
+            assertEquals(MediaVariant.VIDEO_LOW, replacement.preparedSource?.variant)
+        }
+
+    @Test
     fun `generating video keeps player source unset and exposes the server job`() =
         runTest(dispatcher) {
             val repository = FakeMediaRepository("video/mp4")
@@ -273,6 +300,108 @@ class MediaPlayerViewModelTest {
             )
         }
 
+    @Test
+    fun `player commands background pause and reconnect preserve bounded state`() =
+        runTest(dispatcher) {
+            val repository = FakeMediaRepository("video/mp4")
+            val viewModel =
+                MediaPlayerViewModel(
+                    FILE_ID,
+                    MediaKind.VIDEO,
+                    FakeFiles(file("video/mp4")),
+                    controller(repository, backgroundScope),
+                    MediaReadinessProbe { MediaReadiness.Ready },
+                )
+            val engine = FakeEngine()
+            viewModel.attachEngine(engine)
+            engine.emit(
+                PlayerSnapshot(positionMs = 5_000, durationMs = 20_000, seekable = true, phase = PlayerPhase.READY),
+            )
+            viewModel.play()
+            viewModel.seekTo(8_000)
+            viewModel.skipBack(3_000)
+            viewModel.skipForward(10_000)
+            viewModel.setRate(PlaybackRate(2f))
+            assertEquals(15_000, engine.snapshot.positionMs)
+            assertEquals(2f, engine.snapshot.rate.value)
+            viewModel.onAppBackgrounded()
+            assertTrue(!engine.snapshot.playWhenReady)
+
+            viewModel.retryPlayback()
+            assertEquals(MediaVariant.VIDEO_LOW, engine.preparedSource?.variant)
+            viewModel.detachEngine(FakeEngine())
+            viewModel.pause()
+        }
+
+    @Test
+    fun `readiness and player failures map to explicit UI errors`() =
+        runTest(dispatcher) {
+            val repository = FakeMediaRepository("video/mp4")
+            val disconnected =
+                MediaPlayerViewModel(
+                    FILE_ID,
+                    MediaKind.VIDEO,
+                    FakeFiles(file("video/mp4")),
+                    controller(repository, backgroundScope),
+                    MediaReadinessProbe { error("offline") },
+                )
+            disconnected.attachEngine(FakeEngine())
+            assertEquals(
+                com.kurastorage.core.model.media.MediaUiError.DISCONNECTED,
+                (
+                    disconnected.state.value.media
+                        ?.loadState as MediaLoadState.Failed
+                ).error,
+            )
+
+            PlayerFailure.entries.forEach { failure ->
+                val viewModel =
+                    MediaPlayerViewModel(
+                        FILE_ID,
+                        MediaKind.VIDEO,
+                        FakeFiles(file("video/mp4")),
+                        controller(repository, backgroundScope),
+                        MediaReadinessProbe { MediaReadiness.Ready },
+                    )
+                val engine = FakeEngine()
+                viewModel.attachEngine(engine)
+                engine.emit(PlayerSnapshot(phase = PlayerPhase.FAILED, error = failure))
+                assertTrue(
+                    viewModel.state.value.media
+                        ?.loadState is MediaLoadState.Failed,
+                )
+            }
+        }
+
+    @Test
+    fun `invalid details and mismatched kind fail closed without preparing`() =
+        runTest(dispatcher) {
+            val repository = FakeMediaRepository("video/mp4")
+            val wrongKind =
+                MediaPlayerViewModel(
+                    FILE_ID,
+                    MediaKind.AUDIO,
+                    FakeFiles(file("video/mp4")),
+                    controller(repository, backgroundScope),
+                    MediaReadinessProbe { MediaReadiness.Ready },
+                )
+            val wrongEngine = FakeEngine()
+            wrongKind.attachEngine(wrongEngine)
+            assertEquals(com.kurastorage.core.model.media.MediaUiError.UNSUPPORTED, wrongKind.state.value.error)
+            assertNull(wrongEngine.preparedSource)
+
+            val missing =
+                MediaPlayerViewModel(
+                    FILE_ID,
+                    MediaKind.VIDEO,
+                    FailingFiles,
+                    controller(repository, backgroundScope),
+                    MediaReadinessProbe { MediaReadiness.Ready },
+                )
+            missing.attachEngine(FakeEngine())
+            assertEquals(com.kurastorage.core.model.media.MediaUiError.UNKNOWN, missing.state.value.error)
+        }
+
     private fun controller(
         repository: MediaRepository,
         scope: kotlinx.coroutines.CoroutineScope,
@@ -311,6 +440,7 @@ class MediaPlayerViewModelTest {
         var preparedPosition: Long = 0
         var preparedRate = PlaybackRate(1f)
         var preparedPlayWhenReady = false
+        private var closed = false
 
         override fun prepare(
             source: ReadyMediaSource,
@@ -318,6 +448,7 @@ class MediaPlayerViewModelTest {
             rate: PlaybackRate,
             playWhenReady: Boolean,
         ) {
+            check(!closed) { "Player is closed" }
             preparedSource = source
             preparedPosition = positionMs
             preparedRate = rate
@@ -336,7 +467,9 @@ class MediaPlayerViewModelTest {
 
         override fun setRate(rate: PlaybackRate) = emit(snapshot.copy(rate = rate))
 
-        override fun close() = Unit
+        override fun close() {
+            closed = true
+        }
     }
 
     private class FakeMediaRepository(
@@ -374,6 +507,40 @@ class MediaPlayerViewModelTest {
             page: Int,
             pageSize: Int,
         ) = FilePage(parentId, listOf(file), page, pageSize, 1)
+
+        override suspend fun createFolder(
+            parentId: String?,
+            name: String,
+        ): FileEntry = error("not used")
+
+        override suspend fun rename(
+            fileId: String,
+            name: String,
+        ): FileEntry = error("not used")
+
+        override suspend fun move(
+            fileId: String,
+            targetParentId: String,
+        ): FileEntry = error("not used")
+
+        override suspend fun trash(fileId: String): FileEntry = error("not used")
+
+        override suspend fun listTrash(
+            page: Int,
+            pageSize: Int,
+        ): FilePage = error("not used")
+
+        override suspend fun restore(fileId: String): FileEntry = error("not used")
+    }
+
+    private object FailingFiles : FileRepository {
+        override suspend fun detail(fileId: String): FileEntry = error("missing")
+
+        override suspend fun list(
+            parentId: String?,
+            page: Int,
+            pageSize: Int,
+        ): FilePage = error("not used")
 
         override suspend fun createFolder(
             parentId: String?,

@@ -2,6 +2,7 @@ package com.kurastorage.feature.media.photo
 
 import com.kurastorage.core.data.FileRepository
 import com.kurastorage.core.data.media.MediaContentResult
+import com.kurastorage.core.data.media.MediaGeneratingException
 import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.data.media.NetworkQualityContextResolver
 import com.kurastorage.core.data.media.NetworkTransport
@@ -19,6 +20,8 @@ import com.kurastorage.core.model.PermissionSource
 import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.media.ByteCount
 import com.kurastorage.core.model.media.MediaJobSnapshot
+import com.kurastorage.core.model.media.MediaJobStatus
+import com.kurastorage.core.model.media.MediaLoadState
 import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.OriginalMetadata
@@ -32,6 +35,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.time.Instant
@@ -83,6 +88,73 @@ class PhotoViewerViewModelTest {
             )
             viewModel.setZoom(10f)
             assertEquals(4f, viewModel.state.value.zoom)
+        }
+
+    @Test
+    fun `unsupported and missing initial entries fail closed`() =
+        runTest(dispatcher) {
+            val unsupported = file("text").copy(mimeType = "text/plain")
+            val unsupportedViewModel =
+                PhotoViewerViewModel(
+                    unsupported.id,
+                    listOf(unsupported.id),
+                    FakeFiles(listOf(unsupported)),
+                    controller(backgroundScope),
+                )
+            assertEquals(
+                com.kurastorage.core.model.media.MediaUiError.UNSUPPORTED,
+                unsupportedViewModel.state.value.error,
+            )
+
+            val missingViewModel =
+                PhotoViewerViewModel("absent", listOf("absent"), FakeFiles(emptyList()), controller(backgroundScope))
+            assertEquals(com.kurastorage.core.model.media.MediaUiError.UNKNOWN, missingViewModel.state.value.error)
+        }
+
+    @Test
+    fun `viewer delegates quality generation ready and failure states and navigates backward`() =
+        runTest(dispatcher) {
+            val first = file("first")
+            val second = file("second")
+            val viewModel =
+                PhotoViewerViewModel(
+                    second.id,
+                    listOf(first.id, second.id),
+                    FakeFiles(listOf(first, second)),
+                    controller(backgroundScope),
+                )
+            assertTrue(viewModel.state.value.canGoPrevious)
+            viewModel.previous()
+            assertEquals(
+                first.id,
+                viewModel.state.value.file
+                    ?.id,
+            )
+            viewModel.previous()
+            assertFalse(viewModel.state.value.canGoPrevious)
+
+            viewModel.selectQuality(MediaQuality.MEDIUM)
+            val ticket = checkNotNull(viewModel.requestTicket())
+            val generating = MediaJobSnapshot("job", MediaJobStatus.GENERATING, null, null, null, null, 1, false)
+            viewModel.contentGenerating(ticket, MediaGeneratingException(generating))
+            assertTrue(
+                viewModel.state.value.media
+                    ?.loadState is MediaLoadState.Generating,
+            )
+            viewModel.contentFailed(ticket)
+            assertTrue(
+                viewModel.state.value.media
+                    ?.loadState is MediaLoadState.Failed,
+            )
+
+            viewModel.selectQuality(MediaQuality.ORIGINAL)
+            viewModel.confirmOriginal()
+            val original = checkNotNull(viewModel.requestTicket())
+            viewModel.contentReady(original)
+            assertTrue(
+                viewModel.state.value.media
+                    ?.loadState is MediaLoadState.Ready,
+            )
         }
 
     private class FakeFiles(
@@ -144,6 +216,21 @@ class PhotoViewerViewModelTest {
             context: com.kurastorage.core.model.media.NetworkQualityContext,
             quality: MediaQuality,
         ) = Unit
+    }
+
+    private fun controller(scope: kotlinx.coroutines.CoroutineScope): MediaViewerController {
+        val repository = FakeMediaRepository()
+        return MediaViewerController(
+            repository,
+            FakeQualityStore(),
+            NetworkQualityContextResolver(
+                NetworkTransportSource { NetworkTransport.CELLULAR },
+                RegisteredWifiSource { false },
+            ),
+            TransferConfirmationPolicy(repository),
+            ConnectionRoute.REMOTE_SECURE,
+            scope,
+        )
     }
 
     private fun file(id: String) =

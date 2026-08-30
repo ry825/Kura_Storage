@@ -40,15 +40,47 @@ class QualitySettingsViewModelTest {
             assertEquals(NetworkQualityContext.REMOTE_MOBILE to MediaQuality.MEDIUM, store.updated)
         }
 
-    private class FakeStore : QualityPreferenceStore {
-        var updated: Pair<NetworkQualityContext, MediaQuality>? = null
+    @Test
+    fun `updates every network context and exposes load and save failures`() =
+        runTest(dispatcher) {
+            val store = FakeStore()
+            val viewModel = QualitySettingsViewModel(store)
+            dispatcher.scheduler.advanceUntilIdle()
+            NetworkQualityContext.entries.forEach { context ->
+                viewModel.update(context, MediaQuality.LOW)
+                dispatcher.scheduler.advanceUntilIdle()
+            }
+            assertEquals(MediaQuality.LOW, viewModel.state.value.preferences.localDirect)
+            assertEquals(MediaQuality.LOW, viewModel.state.value.preferences.registeredRemoteWifi)
+            assertEquals(MediaQuality.LOW, viewModel.state.value.preferences.unregisteredRemoteWifi)
+            assertEquals(MediaQuality.LOW, viewModel.state.value.preferences.remoteMobile)
 
-        override suspend fun read() = QualityPreferences()
+            store.updateFailure = IllegalStateException("write")
+            viewModel.update(NetworkQualityContext.LOCAL_DIRECT, MediaQuality.ORIGINAL)
+            dispatcher.scheduler.advanceUntilIdle()
+            assertEquals("Quality setting could not be saved", viewModel.state.value.error)
+
+            val unreadable = QualitySettingsViewModel(FakeStore(readFailure = IllegalStateException("read")))
+            dispatcher.scheduler.advanceUntilIdle()
+            assertEquals("Quality settings could not be loaded", unreadable.state.value.error)
+        }
+
+    private class FakeStore(
+        private val readFailure: Throwable? = null,
+    ) : QualityPreferenceStore {
+        var updated: Pair<NetworkQualityContext, MediaQuality>? = null
+        var updateFailure: Throwable? = null
+
+        override suspend fun read(): QualityPreferences {
+            readFailure?.let { throw it }
+            return QualityPreferences()
+        }
 
         override suspend fun update(
             context: NetworkQualityContext,
             quality: MediaQuality,
         ) {
+            updateFailure?.let { throw it }
             updated = context to quality
         }
     }

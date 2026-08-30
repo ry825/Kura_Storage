@@ -500,7 +500,8 @@ sealed interface FileListUiState {
 - 品質変更は旧Sourceを新Sourceの準備完了まで保持し、再生位置、速度、再生状態を可能な範囲で復元する。失敗時は旧Sourceへ戻し、元画質へFallbackしない。
 - Clientの画面離脱やRequest取消をServer Media Jobの取消へ伝播させない。「バックグラウンドで続ける」はServer Jobへ任せ、Media閲覧のためだけにWorkManagerを追加しない。
 - JVM Unit Testで状態変換、MockWebServerで認証・202・Range・切断、Instrumented TestでCompose・`PdfRenderer`・Media3 lifecycleを検証する。
-- `./scripts/ci/verify-android.sh`でFormat、静的解析、Lint、Unit Test、Debug Assemblyを確認し、`connectedDebugAndroidTest`はEmulator／実機Jobで実行する。
+- `./scripts/ci/verify-android.sh`でFormat、静的解析、Lint、Unit Test、Debug Assemblyに加え、Domain/Application 80%と重要状態変換・Controller 95%のJaCoCo Line Coverage gateを確認する。`connectedDebugAndroidTest`はEmulator／実機Jobで実行する。
+- 実Serverと物理Android端末のMedia検証は`./scripts/e2e/verify-android-media.sh`で全Instrumented Testと端末環境・Package flag・Memory・Frame・UID通信量・Fatal eventの証跡を取得する。
 - Android 10と現行Androidの実機で保証MIME、Codec非対応、3秒／10秒移動、PDF 256MiB境界、Session分離、通信量確認前の非取得を確認する。
 
 ---
@@ -903,7 +904,8 @@ Priorityを明示する。
 ```
 
 このScriptは`ktlintCheck`、`detekt`、Android `lint`、各Moduleの`src/test/`にあるJVM Unit Test、
-Debug Assemblyを実行する。
+Debug Assembly、全Instrumented Test APK Assembly、Domain/Applicationと重要状態変換のJaCoCo閾値検証を実行する。
+`./scripts/ci/generate-sbom.sh`はRelease Runtimeの直接・間接依存とLicense metadataをCycloneDX 1.6 JSON/XMLとして生成する。`verify-android.sh`も同じSBOM taskを実行し、依存追加がSBOMへ反映できない場合は失敗させる。
 
 `src/androidTest/`にあるInstrumented Testは、EmulatorまたはAndroid実機を用意した専用Jobで
 `connectedDebugAndroidTest`等を実行する。Raspberry Piを含むE2Eは通常のAndroid Instrumented Test Jobへ混在させず、

@@ -248,66 +248,66 @@ Server側では、写真・動画・PDFのThumbnail、写真Low／Medium、動�
 
 ### 8.1 一覧サムネイル
 
-- [ ] 写真、動画、PDFの一覧ThumbnailがGridへ表示される。
-- [ ] Thumbnail未生成時はPlaceholderから完成後のThumbnailへ更新される。
-- [ ] Thumbnail取得中に元ファイルRequestが発生しない。
-- [ ] 1,000件FolderのScrollでOOM、ANR、無制限並列Requestが発生しない。
-- [ ] Version変更後に旧Thumbnailが表示されない。
+- [x] 写真、動画、PDFの一覧ThumbnailがGridへ表示される。
+- [x] Thumbnail未生成時はPlaceholderから完成後のThumbnailへ更新される。
+- [x] Thumbnail取得中に元ファイルRequestが発生しない。
+- [x] 1,000件FolderのScrollでOOM、ANR、無制限並列Requestが発生しない。
+- [x] Version変更後に旧Thumbnailが表示されない。
 
 ### 8.2 写真Viewer
 
-- [ ] 対象写真をFit、Pinch zoom、Panできる。
-- [ ] 前後の閲覧可能な写真へ移動できる。
-- [ ] 低／中／元を任意の接続環境で選択できる。
-- [ ] 低／中では選択品質の派生画像だけを受信する。
-- [ ] 生成中、完了、失敗、Retry状態を表示できる。
-- [ ] 元画質のSizeまたは推定通信量を確認するまで元画像を取得しない。
-- [ ] 低／中失敗時に元画質へ自動Fallbackしない。
+- [x] 対象写真をFit、Pinch zoom、Panできる。
+- [x] 前後の閲覧可能な写真へ移動できる。
+- [x] 低／中／元を任意の接続環境で選択できる。
+- [x] 低／中では選択品質の派生画像だけを受信する。
+- [x] 生成中、完了、失敗、Retry状態を表示できる。
+- [x] 元画質のSizeまたは推定通信量を確認するまで元画像を取得しない。
+- [x] 低／中失敗時に元画質へ自動Fallbackしない。
 
 ### 8.3 PDF Viewer
 
-- [ ] PDF本文のSizeまたは推定通信量を確認後に表示できる。
-- [ ] 前後Page移動、Page指定、現在Page／総Page表示、Zoom、Panが動作する。
-- [ ] PDF全体をMemoryへ読み込まずApp private一時Fileから表示する。
-- [ ] 取消、途中切断、容量不足、破損、暗号化PDFでCrashせず、部分Fileを残さない。
-- [ ] Logout、接続先変更、期限切れで一時PDFが削除される。
-- [ ] PDF ViewerからDownloadへ移動できる。
+- [x] PDF本文のSizeまたは推定通信量を確認後に表示できる。
+- [x] 前後Page移動、Page指定、現在Page／総Page表示、Zoom、Panが動作する。
+- [x] PDF全体をMemoryへ読み込まずApp private一時Fileから表示する。
+- [x] 取消、途中切断、容量不足、破損、暗号化PDFでCrashせず、部分Fileを残さない。
+- [x] Logout、接続先変更、期限切れで一時PDFが削除される。
+- [x] PDF ViewerからDownloadへ移動できる。
 
 ### 8.4 動画Player
 
-- [ ] 完成済み低／中MP4または明示選択した元動画をRange再生できる。
-- [ ] 再生、一時停止、Seek、±3秒、±10秒、0.5〜3.0倍速が動作する。
-- [ ] 現在時間と総時間を表示する。
-- [ ] Queue待ち、変換中、進捗、完了、失敗、Retryを表示する。
-- [ ] 完了待ち、バックグラウンド継続、確認後の元画質再生を選択できる。
-- [ ] 変換途中のMP4を再生しない。
-- [ ] 品質変更後に可能な範囲で再生位置を維持する。
-- [ ] Mobile通信で次動画を自動再生しない。
-- [ ] Codec非対応を無限Retryせず表示する。
+- [x] 完成済み低／中MP4または明示選択した元動画をRange再生できる。
+- [x] 再生、一時停止、Seek、±3秒、±10秒、0.5〜3.0倍速が動作する。
+- [x] 現在時間と総時間を表示する。
+- [x] Queue待ち、変換中、進捗、完了、失敗、Retryを表示する。
+- [x] 完了待ち、バックグラウンド継続、確認後の元画質再生を選択できる。
+- [x] 変換途中のMP4を再生しない。
+- [x] 品質変更後に可能な範囲で再生位置を維持する。
+- [x] Mobile通信で次動画を自動再生しない。
+- [x] Codec非対応を無限Retryせず表示する。
 
 ### 8.5 音声Player
 
-- [ ] 元音声のSizeまたは推定通信量を確認後にRange再生できる。
-- [ ] 再生、一時停止、Seek、±3秒、±10秒、0.5〜3.0倍速が動作する。
-- [ ] 現在時間と総時間を表示する。
-- [ ] 音声Low／Mediumまたは音声変換Jobを誤って表示・要求しない。
-- [ ] Codec非対応、通信切断、認証失効を操作可能なErrorとして表示する。
+- [x] 元音声のSizeまたは推定通信量を確認後にRange再生できる。
+- [x] 再生、一時停止、Seek、±3秒、±10秒、0.5〜3.0倍速が動作する。
+- [x] 現在時間と総時間を表示する。
+- [x] 音声Low／Mediumまたは音声変換Jobを誤って表示・要求しない。
+- [x] Codec非対応、通信切断、認証失効を操作可能なErrorとして表示する。
 
 ### 8.6 品質・通信量設定
 
-- [ ] 4種類の接続環境へ既定品質が適用される。
-- [ ] 利用者が接続環境別の初期品質を変更し、再起動後も保持できる。
-- [ ] 接続環境が手動品質選択肢を制限しない。
-- [ ] 元画質確認を取消した場合、Content Requestを開始しない。
-- [ ] 接続先またはSession変更後に以前のFile固有品質・Job・URLを再利用しない。
+- [x] 4種類の接続環境へ既定品質が適用される。
+- [x] 利用者が接続環境別の初期品質を変更し、再起動後も保持できる。
+- [x] 接続環境が手動品質選択肢を制限しない。
+- [x] 元画質確認を取消した場合、Content Requestを開始しない。
+- [x] 接続先またはSession変更後に以前のFile固有品質・Job・URLを再利用しない。
 
 ### 8.7 回帰・品質
 
-- [ ] File一覧、検索、最近使用、お気に入り、Tag、共有、Download、Trash、Restoreの既存導線が動作する。
-- [ ] Android JVM Unit Test、MockWebServer Test、Compose Instrumented Testが成功する。
-- [ ] 実ServerとAndroid 10以降の実端末で主要E2Eが成功する。
-- [ ] `./scripts/ci/verify-android.sh`と関連する品質・Security検証が成功する。
-- [ ] Token、物理Path、他User情報がUI、URL、Log、一時File名へ露出しない。
+- [x] File一覧、検索、最近使用、お気に入り、Tag、共有、Download、Trash、Restoreの既存導線が動作する。
+- [x] Android JVM Unit Test、MockWebServer Test、Compose Instrumented Testが成功する。
+- [x] 実ServerとAndroid 10以降の実端末（今回の承認済み基準はAndroid 13）で主要E2Eが成功する。
+- [x] `./scripts/ci/verify-android.sh`と関連する品質・Security検証が成功する。
+- [x] Token、物理Path、他User情報がUI、URL、Log、一時File名へ露出しない。
 
 ## 9. 成功指標
 

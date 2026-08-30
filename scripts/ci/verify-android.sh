@@ -32,9 +32,13 @@ fi
   :feature-connection:assembleDebugAndroidTest \
   :feature-files:assembleDebugAndroidTest \
   :feature-media:assembleDebugAndroidTest \
+  :feature-search:assembleDebugAndroidTest \
   :feature-settings:assembleDebugAndroidTest \
+  :feature-sharing:assembleDebugAndroidTest \
   :core-data:assembleDebugAndroidTest \
   testDebugUnitTest \
+  androidCoverageVerification \
+  :app:cyclonedxDirectBom \
   ktlintCheck \
   detekt \
   lint \
