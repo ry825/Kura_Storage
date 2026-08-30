@@ -308,11 +308,11 @@
   - UI修正記録（2026-08-30）: 初回Original確認取消後のLoading停滞、回転時の空画面、終了時のPause表示、`+10s`の縦長表示を修正し、Player操作5 Buttonが同じ48dp高であることを実機とCompose Testで確認した。
   - 詳細記録: `docs/testing/20260830-android-media-players-pr3.md`
 - [x] PR3に必要な正式文書とUI mockup対応を実装と同じ変更で更新する。
-- [ ] PR3を完了する。
-  - [ ] フェーズ3の全項目が`[x]`であることを確認する。
-  - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
-  - [ ] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
-  - [ ] Pull Request URLと検証結果をUserへ報告して停止する。
+- [x] PR3を完了する。
+  - [x] フェーズ3の全項目が`[x]`であることを確認する。
+  - [x] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
+  - [x] `steering`スキルのモード3-AでPR3完了記録を追記し、同じBranchへCommit・Pushする。
+  - [x] Pull Request URLと検証結果をUserへ報告して停止する。
 
 ---
 
@@ -403,13 +403,13 @@
 
 ### PR3: 動画・音声Playerと動画変換状態
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest／Build／静的解析／手動確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク、理由、代替実装: 未記録
-- 後続Pull Requestへの引継ぎ事項: 未記録
+- 完了日: 2026-08-30
+- Pull Request: [#36 Add authenticated Android video and audio players](https://github.com/ry825/Kura_Storage/pull/36)
+- 実施したTest／Build／静的解析／手動確認: `./scripts/ci/verify-android.sh`（965 tasks、JVM Unit Test、MockWebServer Test、ktlint、detekt、lint、Debug APK）、`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`が成功。OPPO CPH2333 / Android 13で`feature-media` Instrumented Test 12件と`core-data` Instrumented Test 6件が成功。署名済み非Debuggable Release `0.9.0-pr3-test`で動画Low／Medium／Original、音声Original、Range再生、Seek、速度、品質変更、回転、background／foreground、Replay、Wi-Fi切断／復帰、5つのPlayer操作Buttonが同じ48dp高であることを確認。GitHub必須CIはAndroid、Config、Security、Serverの4件が成功。
+- 計画と実装の差分: PR2で承認済みの端末範囲を継続し、現行Android 13実機を今回の受け入れ端末とした。利用可能なAndroid 10端末／EmulatorがないためAndroid 10は対象外とした。Cellular＋ZeroTierは端末のTunnel確立後もServer宛先が外部到達不能だったため、実Server再生ではなくfail-closed表示を確認し、Mobile Buffer／切断／Confirm／非自動再生は自動Testで補完した。
+- 実装中に追加したタスクと理由: 初回Original確認取消後のLoading停滞、回転時の空画面、再生終了時のPause表示、`+10s` Buttonの縦長表示を実機E2Eで検出し、Fallback品質、Activity回転処理、Replay操作、Player Buttonの等幅／48dp高と回帰Testを追加した。理由は実機で主要Player操作の受け入れ条件を満たすため。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: PR #36の`main`へのMergeと必須CI成功をPR4開始条件とする。PR4では統合E2E、性能／Resource／通信量、回帰／Security／Accessibilityを完了する。Android 10端末の確保とCellular＋ZeroTierからServerへの到達性は利用可能になった時点で再確認し、到達不能時も現在のfail-closed挙動を維持する。
 
 ### PR4: 統合E2E・性能・運用仕上げ
 
