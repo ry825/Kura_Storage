@@ -59,6 +59,7 @@ import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.ShareItem
 import com.kurastorage.core.model.ShareScope
 import com.kurastorage.core.model.UserRole
+import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.SupportedMediaMimeTypes
@@ -720,6 +721,44 @@ private fun KuraStorageApp(
             )
         }
         composable(
+            route = "${AppDestination.VIDEO_PLAYER.route}/{contextId}/{fileId}",
+            arguments =
+                listOf(
+                    navArgument("contextId") { type = NavType.StringType },
+                    navArgument("fileId") { type = NavType.StringType },
+                ),
+        ) { backStackEntry ->
+            val current = services ?: return@composable
+            val route = connected?.route ?: return@composable
+            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+            MediaPlayerRoute(
+                fileId = fileId,
+                kind = MediaKind.VIDEO,
+                current = current,
+                route = route,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = "${AppDestination.AUDIO_PLAYER.route}/{contextId}/{fileId}",
+            arguments =
+                listOf(
+                    navArgument("contextId") { type = NavType.StringType },
+                    navArgument("fileId") { type = NavType.StringType },
+                ),
+        ) { backStackEntry ->
+            val current = services ?: return@composable
+            val route = connected?.route ?: return@composable
+            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+            MediaPlayerRoute(
+                fileId = fileId,
+                kind = MediaKind.AUDIO,
+                current = current,
+                route = route,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
             route = "${AppDestination.SHARING_SETTINGS.route}/{shareId}/{targetEntryId}/{entryType}/{targetName}",
             arguments =
                 listOf(
@@ -957,7 +996,7 @@ private suspend fun downloadMedia(
     }
 }
 
-private fun mediaRoute(
+internal fun mediaRoute(
     entry: FileEntry,
     entries: List<FileEntry>,
     contexts: MediaNavigationContextStore,
@@ -981,6 +1020,12 @@ private fun mediaRoute(
                         },
                     )
                 "${AppDestination.PHOTO_VIEWER.route}/$contextId/${entry.id}"
+            } else if (SupportedMediaMimeTypes.isVideo(entry.mimeType)) {
+                val contextId = contexts.register(entries.filter { SupportedMediaMimeTypes.isVideo(it.mimeType) })
+                "${AppDestination.VIDEO_PLAYER.route}/$contextId/${entry.id}"
+            } else if (SupportedMediaMimeTypes.isAudio(entry.mimeType)) {
+                val contextId = contexts.register(entries.filter { SupportedMediaMimeTypes.isAudio(it.mimeType) })
+                "${AppDestination.AUDIO_PLAYER.route}/$contextId/${entry.id}"
             } else {
                 null
             }

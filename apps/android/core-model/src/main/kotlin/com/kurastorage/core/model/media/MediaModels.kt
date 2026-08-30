@@ -41,9 +41,38 @@ object SupportedMediaMimeTypes {
             "image/heif",
         )
 
+    private val video =
+        setOf(
+            "video/mp4",
+            "video/webm",
+            "video/quicktime",
+            "video/x-matroska",
+            "video/3gpp",
+            "video/3gpp2",
+            "video/mpeg",
+        )
+
+    private val audio =
+        setOf(
+            "audio/mpeg",
+            "audio/mp4",
+            "audio/aac",
+            "audio/ogg",
+            "audio/opus",
+            "audio/flac",
+            "audio/wav",
+            "audio/3gpp",
+            "audio/amr",
+            "audio/amr-wb",
+        )
+
     fun isPhoto(mimeType: String?): Boolean = normalize(mimeType) in photo
 
     fun isPdf(mimeType: String?): Boolean = normalize(mimeType) == "application/pdf"
+
+    fun isVideo(mimeType: String?): Boolean = normalize(mimeType) in video
+
+    fun isAudio(mimeType: String?): Boolean = normalize(mimeType) in audio
 
     private fun normalize(mimeType: String?): String? =
         mimeType

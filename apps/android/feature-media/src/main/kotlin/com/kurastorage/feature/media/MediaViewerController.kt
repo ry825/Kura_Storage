@@ -36,6 +36,7 @@ data class MediaViewerState(
     val networkContext: NetworkQualityContext,
     val loadState: MediaLoadState,
     val confirmation: TransferConfirmationPrompt? = null,
+    val canRetryGeneration: Boolean = false,
 )
 
 data class MediaRequestTicket(
@@ -87,7 +88,13 @@ class MediaViewerController(
         invalidateRequests()
         approvedPrompt = null
         activeJob = null
-        mutableState.value = current.copy(quality = quality, loadState = MediaLoadState.Idle, confirmation = null)
+        mutableState.value =
+            current.copy(
+                quality = quality,
+                loadState = MediaLoadState.Idle,
+                confirmation = null,
+                canRetryGeneration = false,
+            )
         prepareSelectedQuality(generation)
     }
 
@@ -96,6 +103,13 @@ class MediaViewerController(
         val prompt = checkNotNull(current.confirmation) { "No original transfer is awaiting confirmation" }
         approvedPrompt = prompt
         mutableState.value = current.copy(loadState = MediaLoadState.Loading, confirmation = null)
+    }
+
+    fun cancelOriginalConfirmation() {
+        val current = mutableState.value ?: return
+        if (current.confirmation == null) return
+        approvedPrompt = null
+        mutableState.value = current.copy(loadState = MediaLoadState.Idle, confirmation = null)
     }
 
     @Suppress("ReturnCount")
@@ -112,7 +126,11 @@ class MediaViewerController(
 
     fun contentReady(ticket: MediaRequestTicket) {
         if (!ticket.isCurrent()) return
-        mutableState.value = mutableState.value?.copy(loadState = MediaLoadState.Ready(ticket.source))
+        mutableState.value =
+            mutableState.value?.copy(
+                loadState = MediaLoadState.Ready(ticket.source),
+                canRetryGeneration = false,
+            )
     }
 
     fun contentGenerating(
@@ -122,7 +140,11 @@ class MediaViewerController(
         if (!ticket.isCurrent() || job.status != MediaJobStatus.GENERATING) return
         pollingJob?.cancel()
         activeJob = job
-        mutableState.value = mutableState.value?.copy(loadState = MediaLoadState.Generating(job))
+        mutableState.value =
+            mutableState.value?.copy(
+                loadState = MediaLoadState.Generating(job),
+                canRetryGeneration = false,
+            )
         pollingJob = scope.launch { poll(ticket, job) }
     }
 
@@ -132,7 +154,11 @@ class MediaViewerController(
     ) {
         if (!ticket.isCurrent()) return
         pollingJob?.cancel()
-        mutableState.value = mutableState.value?.copy(loadState = MediaLoadState.Failed(error))
+        mutableState.value =
+            mutableState.value?.copy(
+                loadState = MediaLoadState.Failed(error),
+                canRetryGeneration = false,
+            )
     }
 
     @Suppress("ReturnCount")
@@ -150,7 +176,11 @@ class MediaViewerController(
                 contentGenerating(ticket, retried)
             } else {
                 activeJob = retried
-                mutableState.value = current.copy(loadState = retried.toTerminalLoadState())
+                mutableState.value =
+                    current.copy(
+                        loadState = retried.toTerminalLoadState(),
+                        canRetryGeneration = retried.status == MediaJobStatus.FAILED && retried.retryable,
+                    )
             }
         } catch (error: KuraStorageException) {
             if (generation == expectedGeneration) fail(error)
@@ -205,9 +235,17 @@ class MediaViewerController(
             activeJob = snapshot
             when (snapshot.status) {
                 MediaJobStatus.GENERATING ->
-                    mutableState.value = mutableState.value?.copy(loadState = MediaLoadState.Generating(snapshot))
+                    mutableState.value =
+                        mutableState.value?.copy(
+                            loadState = MediaLoadState.Generating(snapshot),
+                            canRetryGeneration = false,
+                        )
                 MediaJobStatus.READY -> {
-                    mutableState.value = mutableState.value?.copy(loadState = MediaLoadState.Loading)
+                    mutableState.value =
+                        mutableState.value?.copy(
+                            loadState = MediaLoadState.Loading,
+                            canRetryGeneration = false,
+                        )
                     return
                 }
                 MediaJobStatus.FAILED,
@@ -215,7 +253,10 @@ class MediaViewerController(
                 MediaJobStatus.UNKNOWN,
                 -> {
                     mutableState.value =
-                        mutableState.value?.copy(loadState = MediaLoadState.Failed(MediaUiError.GENERATION_FAILED))
+                        mutableState.value?.copy(
+                            loadState = MediaLoadState.Failed(MediaUiError.GENERATION_FAILED),
+                            canRetryGeneration = snapshot.status == MediaJobStatus.FAILED && snapshot.retryable,
+                        )
                     return
                 }
             }
@@ -244,7 +285,11 @@ class MediaViewerController(
                     }
                 else -> MediaUiError.UNKNOWN
             }
-        mutableState.value = mutableState.value?.copy(loadState = MediaLoadState.Failed(uiError))
+        mutableState.value =
+            mutableState.value?.copy(
+                loadState = MediaLoadState.Failed(uiError),
+                canRetryGeneration = false,
+            )
     }
 
     private fun MediaJobSnapshot.toTerminalLoadState(): MediaLoadState =

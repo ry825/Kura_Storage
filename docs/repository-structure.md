@@ -904,7 +904,7 @@ feature-files/
 
 `feature-media`と`feature-settings`もFeature間を直接依存させない。`feature-files`、`feature-search`、`feature-sharing`はFile IDと閲覧ContextをApp callbackへ返し、`app`がMedia destinationへ遷移する。一覧Thumbnailは`app`が`feature-media`のComposableを`feature-files`のslotへ渡す。`feature-backup`はMVP後に必要となった時点で追加する。
 
-Android Media基盤と写真・PDF Viewerの配置は次のとおり。動画・音声Playerは、実際にFileを追加した時点でこの一覧へ反映する。
+Android Media基盤、写真・PDF Viewer、動画・音声Playerの配置は次のとおり。
 
 ```text
 core-model/src/main/kotlin/com/kurastorage/core/model/media/
@@ -916,7 +916,9 @@ core-network/src/main/kotlin/com/kurastorage/core/network/media/
 └── MediaContracts.kt
 core-data/src/main/kotlin/com/kurastorage/core/data/media/
 ├── KuraMediaFetcher.kt
+├── KuraMediaDataSource.kt
 ├── MediaContentDownloader.kt
+├── MediaRangeRequest.kt
 ├── MediaRepository.kt
 ├── QualityPreferenceStore.kt
 ├── NetworkQualityContextResolver.kt
@@ -934,13 +936,25 @@ feature-media/src/
 │   ├── PdfViewerScreen.kt
 │   └── PdfViewerViewModel.kt
 ├── main/kotlin/com/kurastorage/feature/media/thumbnail/FileThumbnail.kt
+├── main/kotlin/com/kurastorage/feature/media/player/
+│   ├── AndroidMediaPlayerController.kt
+│   ├── MediaPlayerScreen.kt
+│   ├── MediaPlayerViewModel.kt
+│   ├── MediaReadinessProbe.kt
+│   ├── MediaVideoSurface.kt
+│   └── PlayerCommandController.kt
 ├── test/kotlin/com/kurastorage/feature/media/MediaViewerControllerTest.kt
 ├── test/kotlin/com/kurastorage/feature/media/photo/PhotoViewerViewModelTest.kt
 ├── test/kotlin/com/kurastorage/feature/media/pdf/PdfViewerViewModelTest.kt
+├── test/kotlin/com/kurastorage/feature/media/player/
+│   ├── MediaPlayerViewModelTest.kt
+│   └── PlayerCommandControllerTest.kt
 ├── androidTest/kotlin/com/kurastorage/feature/media/MediaViewerScreenTest.kt
+├── androidTest/kotlin/com/kurastorage/feature/media/player/MediaPlayerScreenTest.kt
 └── androidTest/kotlin/com/kurastorage/feature/media/pdf/PdfDocumentControllerTest.kt
 app/src/main/kotlin/com/kurastorage/app/
 ├── MainActivity.kt
+├── MediaPlayerRoute.kt
 ├── MediaNavigationContextStore.kt
 └── ServiceContainer.kt
 feature-settings/src/

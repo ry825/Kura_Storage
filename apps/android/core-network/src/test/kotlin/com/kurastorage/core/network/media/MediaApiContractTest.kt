@@ -125,6 +125,24 @@ class MediaApiContractTest {
         }
 
     @Test
+    fun `partial content must match the requested start and bounded end`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(206)
+                    .setHeader("Content-Range", "bytes 11-20/100")
+                    .setBody("0123456789"),
+            )
+
+            val error =
+                runCatching {
+                    api.openContent("token", FILE_ID, MediaVariant.ORIGINAL, "bytes=10-19")
+                }.exceptionOrNull()
+
+            assertTrue(error is KuraStorageException.InvalidServerResponse)
+        }
+
+    @Test
     fun `unauthorized and API failures retain refresh and stable error semantics`() =
         runTest {
             server.enqueue(MockResponse().setResponseCode(401))

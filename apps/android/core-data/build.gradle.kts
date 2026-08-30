@@ -12,9 +12,11 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.coil.core)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.media3.datasource.okhttp)
     implementation(libs.okhttp)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.okhttp.mockwebserver)
 }

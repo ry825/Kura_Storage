@@ -102,6 +102,7 @@ class MediaViewerControllerTest {
             controller.contentGenerating(controller.requestTicket()!!, job(MediaJobStatus.GENERATING, retry = 1))
             advanceTimeBy(1_000)
             runCurrent()
+            assertTrue(controller.state.value?.canRetryGeneration == true)
 
             controller.retryGeneration()
 

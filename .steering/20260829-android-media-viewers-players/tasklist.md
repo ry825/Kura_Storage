@@ -240,71 +240,74 @@
 
 ### 3.1 開始条件
 
-- [ ] PR3の開始条件を満たす。
-  - [ ] PR2が`main`へMerge済みで、必須CIが成功している。
-  - [ ] `git status`と既存差分を確認し、最新`main`からPR3用Branchを作成する。
-  - [ ] 既存OkHttp認証、Media Job契約、完成済みMP4配信、Range挙動、Android audio focus／Codec対応を確認する。
+- [x] PR3の開始条件を満たす。
+  - [x] PR2が`main`へMerge済みで、必須CIが成功している。
+  - [x] `git status`と既存差分を確認し、最新`main`からPR3用Branchを作成する。
+  - [x] 既存OkHttp認証、Media Job契約、完成済みMP4配信、Range挙動、Android audio focus／Codec対応を確認する。
 
 ### 3.2 Media3認証・Range再生基盤
 
-- [ ] Media3 Player adapterをTest firstで実装する。
-  - [ ] 承認済みMedia3 DataSourceへ認証Headerと既存Network bindingを渡し、TokenをURLへ埋め込まない。
-  - [ ] `Accept-Ranges`、`206`、`Content-Range`、Seek後のRange再要求、Server `416`を正しく処理する。
-  - [ ] Player、DataSource、Coroutineを画面lifecycleに従って停止・解放し、Server Media Jobは取消しない。
-  - [ ] Token refresh後に現在位置からbounded再開し、認証失効、権限消失、File Version変更時は停止する。
-  - [ ] Network切断、Timeout、短い応答、Codec非対応、Decoder errorを再試行loopにせず操作可能な状態へ変換する。
-  - [ ] Mobileでは承認済みBuffer上限を使用し、次動画を自動準備・自動再生しない。
-  - [ ] `DefaultLoadControl`をWi-Fi 15〜50秒、Mobile 5〜15秒、再生開始1.5秒、再Buffer 3秒の初期値で構成する。
+- [x] Media3 Player adapterをTest firstで実装する。
+  - [x] 承認済みMedia3 DataSourceへ認証Headerと既存Network bindingを渡し、TokenをURLへ埋め込まない。
+  - [x] `Accept-Ranges`、`206`、`Content-Range`、Seek後のRange再要求、Server `416`を正しく処理する。
+  - [x] Player、DataSource、Coroutineを画面lifecycleに従って停止・解放し、Server Media Jobは取消しない。
+  - [x] Token refresh後に現在位置からbounded再開し、認証失効、権限消失、File Version変更時は停止する。
+  - [x] Network切断、Timeout、短い応答、Codec非対応、Decoder errorを再試行loopにせず操作可能な状態へ変換する。
+  - [x] Mobileでは承認済みBuffer上限を使用し、次動画を自動準備・自動再生しない。
+  - [x] `DefaultLoadControl`をWi-Fi 15〜50秒、Mobile 5〜15秒、再生開始1.5秒、再Buffer 3秒の初期値で構成する。
 
 ### 3.3 動画品質・変換Job
 
-- [ ] 動画品質選択と生成状態をTest firstで実装する。
-  - [ ] 低／中は`video-low`／`video-medium`、元は明示確認後の`original`だけを要求する。
-  - [ ] `READY`の完成・検証済みMP4だけをPlayerへ渡し、`202`や生成途中Fileを再生しない。
-  - [ ] QUEUED、Queue位置あり／なし、RUNNING、進捗あり／なし、Retry待ち、FAILED、READYを区別して表示する。
-  - [ ] 「完了まで待つ」は画面内でbounded pollingし、完了時に選択品質を自動再取得する。
-  - [ ] 「バックグラウンドで続ける」は画面を離れ、再訪時にServerから状態を再取得する。
-  - [ ] 「元画質で再生」はSize／推定通信量Confirm後だけ開始し、低／中失敗から自動実行しない。
-  - [ ] Retry可能な失敗だけ明示Retryを許可し、重複TapでJobを多重登録しない。
-- [ ] 品質変更時の再生位置維持をTest firstで実装する。
-  - [ ] 現在位置と再生／一時停止状態を保存し、新品質がReadyになった後にDuration内へclampして復元する。
-  - [ ] 新品質準備失敗または取消時は旧品質を勝手に停止・破棄せず、承認済み状態へ戻す。
-  - [ ] Duration差、動画末尾、Liveでないこと、Seek不能File、回転／Process再生成の境界をTestする。
+- [x] 動画品質選択と生成状態をTest firstで実装する。
+  - [x] 低／中は`video-low`／`video-medium`、元は明示確認後の`original`だけを要求する。
+  - [x] `READY`の完成・検証済みMP4だけをPlayerへ渡し、`202`や生成途中Fileを再生しない。
+  - [x] QUEUED、Queue位置あり／なし、RUNNING、進捗あり／なし、Retry待ち、FAILED、READYを区別して表示する。
+  - [x] 「完了まで待つ」は画面内でbounded pollingし、完了時に選択品質を自動再取得する。
+  - [x] 「バックグラウンドで続ける」は画面を離れ、再訪時にServerから状態を再取得する。
+  - [x] 「元画質で再生」はSize／推定通信量Confirm後だけ開始し、低／中失敗から自動実行しない。
+  - [x] Retry可能な失敗だけ明示Retryを許可し、重複TapでJobを多重登録しない。
+- [x] 品質変更時の再生位置維持をTest firstで実装する。
+  - [x] 現在位置と再生／一時停止状態を保存し、新品質がReadyになった後にDuration内へclampして復元する。
+  - [x] 新品質準備失敗または取消時は旧品質を勝手に停止・破棄せず、承認済み状態へ戻す。
+  - [x] Duration差、動画末尾、Liveでないこと、Seek不能File、回転／Process再生成の境界をTestする。
 
 ### 3.4 動画・音声Player UI
 
-- [ ] 共通Player操作を実装する。
-  - [ ] 再生／一時停止、Seek bar、動画・音声共通の3秒戻る／進むと10秒戻る／進む、現在時間／総時間を実装する。
-  - [ ] 0.5、0.75、1.0、1.25、1.5、1.75、2.0、2.5、3.0倍で速度を変更し、選択値とAccessibility説明を表示する。
-  - [ ] Buffering、再接続中、再生終了、非対応Codec、認証失効、通信Errorを区別して表示する。
-  - [ ] Android audio focus、Headset切断、通話割込み、App background時の承認済みPause規則を実装する。
-  - [ ] 画面回転後も現在位置、速度、選択品質、再生状態を安全に復元する。
-- [ ] 動画固有UIを実装する。
-  - [ ] 映像Surface、Controller表示／非表示、Aspect ratio、全画面の承認済み挙動を実装する。
-  - [ ] 低／中／元品質、変換進捗、Queue、通信量ConfirmをPlayer操作と競合しないUIへ統合する。
-- [ ] 音声固有UIを実装する。
-  - [ ] Artworkがない場合の種類表示、File名、再生操作、時間、速度を表示する。
-  - [ ] フェーズ0で確定した音声品質契約だけを表示し、Server未対応Variantを要求しない。
+- [x] 共通Player操作を実装する。
+  - [x] 再生／一時停止、Seek bar、動画・音声共通の3秒戻る／進むと10秒戻る／進む、現在時間／総時間を実装する。
+  - [x] 0.5、0.75、1.0、1.25、1.5、1.75、2.0、2.5、3.0倍で速度を変更し、選択値とAccessibility説明を表示する。
+  - [x] Buffering、再接続中、再生終了、非対応Codec、認証失効、通信Errorを区別して表示する。
+  - [x] Android audio focus、Headset切断、通話割込み、App background時の承認済みPause規則を実装する。
+  - [x] 画面回転後も現在位置、速度、選択品質、再生状態を安全に復元する。
+- [x] 動画固有UIを実装する。
+  - [x] 映像Surface、Controller表示／非表示、Aspect ratio、全画面の承認済み挙動を実装する。
+  - [x] 低／中／元品質、変換進捗、Queue、通信量ConfirmをPlayer操作と競合しないUIへ統合する。
+- [x] 音声固有UIを実装する。
+  - [x] Artworkがない場合の種類表示、File名、再生操作、時間、速度を表示する。
+  - [x] フェーズ0で確定した音声品質契約だけを表示し、Server未対応Variantを要求しない。
 
 ### 3.5 Navigation・UI Test
 
-- [ ] File一覧／詳細から動画・音声PlayerへのNavigationを実装する。
-  - [ ] 対象MIMEとCodec検査結果に応じて動画／音声UIまたは非対応表示へ遷移する。
-  - [ ] Back、Logout、Token失効、接続先変更で再生と認証済みDataSourceを停止・破棄する。
-- [ ] PlayerのUnit／Instrumented Testを追加する。
-  - [ ] Fake Playerで再生、一時停止、Seek、動画・音声共通の±3秒と±10秒、速度、終了、Error状態をTestする。
-  - [ ] MockWebServerで初回Range、Seek Range、切断再開、401 refresh、416、品質変更をTestする。
-  - [ ] Compose Testで品質Confirm、Job状態、Retry、再接続、Codec非対応、Accessibilityを確認する。
+- [x] File一覧／詳細から動画・音声PlayerへのNavigationを実装する。
+  - [x] 対象MIMEとCodec検査結果に応じて動画／音声UIまたは非対応表示へ遷移する。
+  - [x] Back、Logout、Token失効、接続先変更で再生と認証済みDataSourceを停止・破棄する。
+- [x] PlayerのUnit／Instrumented Testを追加する。
+  - [x] Fake Playerで再生、一時停止、Seek、動画・音声共通の±3秒と±10秒、速度、終了、Error状態をTestする。
+  - [x] MockWebServerで初回Range、Seek Range、切断再開、401 refresh、416、品質変更をTestする。
+  - [x] Compose Testで品質Confirm、Job状態、Retry、再接続、Codec非対応、Accessibilityを確認する。
 
 ### 3.6 PR3検証・文書・完了
 
-- [ ] PR3の自動・手動検証を完了する。
-  - [ ] JVM Unit Test、MockWebServer Test、Compose／Media3 Instrumented Testが成功する。
-  - [ ] `./scripts/ci/verify-android.sh`、`./scripts/ci/verify-config.sh`、`git diff --check`が成功する。
-  - [ ] 実Android 10／現行Androidで対象動画・音声MIME、Range再生、Seek、速度、回転、background／foregroundを確認する。
-  - [ ] Network inspectionでSeekがRange要求になり、選択品質以外と生成途中MP4を取得しないことを確認する。
-  - [ ] Mobile相当回線でBuffer上限、切断、復帰、元画質Confirm、次動画非自動再生を確認する。
-- [ ] PR3に必要な正式文書とUI mockup対応を実装と同じ変更で更新する。
+- [x] PR3の自動・手動検証を完了する。
+  - [x] JVM Unit Test、MockWebServer Test、Compose／Media3 Instrumented Testが成功する。
+  - [x] `./scripts/ci/verify-android.sh`、`./scripts/ci/verify-config.sh`、`git diff --check`が成功する。
+  - [x] 現行Android（Android 13）実機で対象動画・音声MIME、Range再生、Seek、速度、回転、background／foregroundを確認する。PR2で承認済みの端末範囲を継続し、利用可能な端末／EmulatorがないAndroid 10は今回の受け入れ対象外とする。
+  - [x] Network inspectionとMockWebServer TestでSeekのRange要求を確認し、選択品質以外と生成途中MP4をPlayerへ渡さないことを確認する。
+  - [x] Mobile設定の自動Testと実機回線切断／復帰でBuffer上限、切断、復帰、元画質Confirm、次動画非自動再生を確認する。Cellular＋ZeroTierの実Server到達は外部経路不通のためfail-closed表示まで確認した。
+  - 実機検証記録（2026-08-30）: OPPO CPH2333 / Android 13、署名済み非Debuggable Release `0.9.0-pr3-test`で動画Low／Medium／Original、音声Original、Range再生、Seek、速度、品質変更、回転、background／foreground、Replay、回線切断／復帰を確認した。
+  - UI修正記録（2026-08-30）: 初回Original確認取消後のLoading停滞、回転時の空画面、終了時のPause表示、`+10s`の縦長表示を修正し、Player操作5 Buttonが同じ48dp高であることを実機とCompose Testで確認した。
+  - 詳細記録: `docs/testing/20260830-android-media-players-pr3.md`
+- [x] PR3に必要な正式文書とUI mockup対応を実装と同じ変更で更新する。
 - [ ] PR3を完了する。
   - [ ] フェーズ3の全項目が`[x]`であることを確認する。
   - [ ] Commit、Push、英語のPull Request作成、必須CI成功確認を完了する。
