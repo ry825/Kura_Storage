@@ -124,7 +124,7 @@ public sealed class MediaJobRunnerTests
     {
         var fixture = new RunnerFixture
         {
-            GenerationDelay = TimeSpan.FromMilliseconds(1200),
+            WaitForGenerationCancellation = true,
             HeartbeatResult = false,
         };
 
@@ -162,7 +162,7 @@ public sealed class MediaJobRunnerTests
     {
         var fixture = new RunnerFixture
         {
-            GenerationDelay = TimeSpan.FromMilliseconds(1200),
+            WaitForGenerationCancellation = true,
             HeartbeatThrows = true,
         };
 
@@ -217,6 +217,8 @@ public sealed class MediaJobRunnerTests
         public CancellationTokenSource? Cancellation { get; init; }
 
         public TimeSpan GenerationDelay { get; init; }
+
+        public bool WaitForGenerationCancellation { get; init; }
 
         public bool HeartbeatResult { get; init; } = true;
 
@@ -285,6 +287,10 @@ public sealed class MediaJobRunnerTests
             if (GenerationDelay > TimeSpan.Zero)
             {
                 await Task.Delay(GenerationDelay, cancellationToken);
+            }
+            if (WaitForGenerationCancellation)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             }
 
             switch (InjectedFailure)
