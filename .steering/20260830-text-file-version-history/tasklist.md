@@ -214,10 +214,10 @@
   - [x] Owner／VIEWER／EDITOR、共有解除、LAN／ZeroTier、切断・再接続、Session失効を確認する。
   - [x] Raspberry Pi、PostgreSQL、実HDDでcrash recovery、version内容、Log非漏えいを確認する。
   - OPPO CPH2333（Android 13）と独立API clientの2台相当で、409差分、再読込、別名Upload、復元、3権限、共有／Device失効、`LOCAL_DIRECT`／`REMOTE_SECURE`を確認。fixtureはTrash／Purge後に6 Userを無効化し、DB／HDD／Serviceの残存・健全性を再検証した。
-- [ ] PR3と全体を完了する。
+- [x] PR3と全体を完了する。
 - [x] 正式文書、OpenAPI、test記録、repository structureを実績へ更新する。
-  - [ ] 全task、全PR記録の完了後だけモード3-Bで全体振り返りを記録する。
-  - [ ] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+  - [x] 全task、全PR記録の完了後だけモード3-Bで全体振り返りを記録する。
+  - [x] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -288,4 +288,15 @@
 
 ## 全体振り返り
 
-> 全タスク、全Pull Request、各完了記録が揃った後にだけモード3-Bで記録する。
+- 実装完了日: 2026-09-01
+- 完了したPull Request:
+  - [#38 Add file version persistence and recovery foundation](https://github.com/ry825/Kura_Storage/pull/38)
+  - [#39 Add text file version APIs](https://github.com/ry825/Kura_Storage/pull/39)
+  - [#40 Add Android text editor and version history UI](https://github.com/ry825/Kura_Storage/pull/40)
+- 全体の計画と実績の差分: 計画どおり3 PRに分割し、PR1でimmutableな過去内容と回復基盤、PR2でText／履歴／過去版本文／復元API、PR3でAndroid editor／履歴／競合／復元UIと実機E2Eを完成させた。利用者向け操作履歴は、Security Audit logとは異なる表示契約を守るため、承認済みの別Steeringとして分離した。物理端末2台の競合確認はOPPO物理端末1台と独立API clientの2台相当で実施し、実際の検証構成を記録した。
+- 主な設計変更と理由: 既存`fileVersion`をmetadata番号の更新からimmutable artifactと`file_version_records`による本文保持へ拡張し、mutation journalの段階と一体でcrash後に収束させた。Text更新・復元は`expectedVersion`必須の楽観ロックとoperationId冪等性を採用し、強制上書きを排除した。AndroidはFeature間直接依存を避け、Session／File／request generationを分離して古い非同期応答による画面上書きを防いだ。
+- 技術的な学び: Filesystem完了とDB確定の境界は、immutable artifact、journal metadata、lazy baselineを組み合わせることで再送と回復を同じversionへ収束できる。UIの競合処理では本文を保持したまま明示的な再読込・有界差分・別名保存を分けることが、データ保全と操作理解の両方に有効だった。exFAT上の直接変更はinotifyの低遅延通知を前提にできず、明示的rescanを確実な収束経路として維持する必要がある。
+- 品質・検証結果: PR1／PR2はServer、Config、Security、Deployment、Migration、回復・性能・API route契約を通過した。PR3はAndroid JVM 204件、Android 13実機Instrumented 65件、Text重要境界99.70%、Domain／Application 84.43%、署名済みRelease APK、LAN／ZeroTier／権限／Device失効／競合／復元E2Eを通過した。各PRのGitHub必須CIでAndroid、Config、Security、Serverがすべて成功した。
+- プロセス上の改善点: 競合、回復、外部変更、実機routeのfixtureを早期に固定すると、PRごとの境界検証と最終cleanupを再現しやすい。Android UIはUnit／contract／navigation／instrumented／Screenshot smokeを同じ状態遷移表へ対応付けることで、非同期raceと表示退行の切り分けが容易になった。物理E2Eでは作成したUser、Session、Device、FileOperation、HDD artifactを一覧化し、終了時のゼロ件検証まで手順化する。
+- 次回への改善提案: 利用者向け操作履歴では、表示eventとSecurity Audit eventの目的・保持・閲覧権限を先に契約化し、同じ操作から別eventを生成しても相互のschemaを流用しない。Filesystem監視の低遅延化を行う場合は、対象Filesystem、kernel watch上限、再起動時のwatch再構築、rescan fallbackを独立した性能・信頼性タスクとして評価する。
+- 未実装・技術的に不要になったタスク: 本SteeringのTask 11に未実装項目はない。PR3でのServer／OpenAPI追加とPR2での新規Migrationは、前段PRの確定済み契約・schemaで要件を満たすため不要となり、contract testとEF Core pending-model確認を代替検証とした。
