@@ -9,7 +9,8 @@ public sealed class FileOperationRecoveryService(
     IFileStore fileStore,
     IStorageGuard storageGuard,
     TrashPurgeService trashPurge,
-    ISystemClock clock)
+    ISystemClock clock,
+    FileVersionService? fileVersions = null)
 {
     public async Task RecoverAsync(CancellationToken cancellationToken)
     {
@@ -137,6 +138,27 @@ public sealed class FileOperationRecoveryService(
             {
                 operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
                 await repository.SaveChangesAsync(cancellationToken);
+                return;
+            }
+        }
+
+        if (operation.OperationType == FileOperationType.Upload && fileVersions is not null)
+        {
+            try
+            {
+                _ = await fileVersions.EnsureCurrentAsync(
+                    entry,
+                    FileVersionChangeKind.Upload,
+                    operation.Id,
+                    operation.OwnerUserId,
+                    operation.ActorDeviceId,
+                    cancellationToken,
+                    operation);
+            }
+            catch (IOException)
+            {
+                operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+                await repository.SaveChangesAsync(CancellationToken.None);
                 return;
             }
         }

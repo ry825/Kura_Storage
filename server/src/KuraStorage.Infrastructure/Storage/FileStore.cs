@@ -441,7 +441,10 @@ public sealed class FileStore(
                        segments[2] is "trash" or "derived";
         var derivativeTree = segments.Length >= 3 && segments[0] == derivativeRoot;
         var temporaryTree = segments.Length >= 2 && segments[0] == derivativeTemporaryRoot;
-        if (!userTree && !derivativeTree && !temporaryTree)
+        var versionTree = segments.Length == 3 && segments[0] == "versions" &&
+                          Guid.TryParseExact(segments[1], "N", out _) &&
+                          Guid.TryParseExact(segments[2], "N", out _);
+        if (!userTree && !derivativeTree && !temporaryTree && !versionTree)
         {
             throw new UnsafeStorageTreeException("The requested tree is a protected storage area.");
         }

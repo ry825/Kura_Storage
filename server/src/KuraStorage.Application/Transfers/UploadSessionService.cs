@@ -20,7 +20,8 @@ public sealed class UploadSessionService(
     ISystemClock clock,
     UploadSessionOptions options,
     UploadChunkLimiter limiter,
-    IAuthorizationService? authorizationService = null)
+    IAuthorizationService? authorizationService = null,
+    FileVersionService? fileVersions = null)
 {
     private static readonly Meter Meter = new("KuraStorage.Transfers");
     private static readonly Counter<long> SessionCounter = Meter.CreateCounter<long>("kurastorage.upload.sessions");
@@ -572,6 +573,28 @@ public sealed class UploadSessionService(
             session.ContentType,
             session.ExpectedSize,
             now);
+        try
+        {
+            if (fileVersions is not null)
+            {
+                _ = await fileVersions.EnsureCurrentAsync(
+                    entry,
+                    FileVersionChangeKind.Upload,
+                    operation.Id,
+                    actorUserId,
+                    deviceId,
+                    cancellationToken,
+                    operation);
+            }
+        }
+        catch (IOException)
+        {
+            session.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            await sessions.SaveChangesAsync(CancellationToken.None);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
         await using var transaction = await files.BeginTransactionAsync(cancellationToken);
         files.Add(entry);
         session.Complete(now);
@@ -710,11 +733,35 @@ public sealed class UploadSessionService(
             files.Add(existing);
         }
 
+        try
+        {
+            if (fileVersions is not null)
+            {
+                _ = await fileVersions.EnsureCurrentAsync(
+                    existing,
+                    FileVersionChangeKind.Upload,
+                    operation.Id,
+                    session.ActorUserId,
+                    session.DeviceId,
+                    cancellationToken,
+                    operation);
+            }
+        }
+        catch (IOException)
+        {
+            session.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            await sessions.SaveChangesAsync(CancellationToken.None);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
         var now = clock.UtcNow;
+        await using var transaction = await files.BeginTransactionAsync(cancellationToken);
         session.Complete(now);
         operation.Complete(now);
         files.Add(CreateAudit(session.ActorUserId, session.DeviceId, session.Id, "UPLOAD_SESSION_RECOVER", "SUCCESS", operation.RequestId ?? session.Id.ToString(), now));
         await sessions.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return FileResult<FileItem>.Success(FileService.Map(existing));
     }
 

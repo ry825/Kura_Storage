@@ -1,4 +1,5 @@
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Files;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Indexing;
 using System.Diagnostics;
@@ -12,7 +13,9 @@ public sealed class IndexScanService(
     IStorageGuard storageGuard,
     ISystemClock clock,
     IndexingOptions options,
-    IIndexScanObserver? observer = null) : IIndexScanService
+    IIndexScanObserver? observer = null,
+    IFileRepository? mutationRepository = null,
+    FileVersionService? fileVersions = null) : IIndexScanService
 {
     private static readonly Meter Meter = new("KuraStorage.Indexing");
     private static readonly Histogram<double> ScanDuration = Meter.CreateHistogram<double>(
@@ -215,14 +218,55 @@ public sealed class IndexScanService(
 
             if (mode == IndexScanMode.Apply)
             {
-                IndexReconciliationPrimitives.ApplyPresent(
-                    existing,
-                    observed.Size,
-                    observed.MimeType,
-                    observed.SourceModifiedAt,
-                    observed.SourceFileKey,
-                    clock.UtcNow,
-                    contentMayHaveChanged: contentChanged);
+                if (contentChanged && mutationRepository is not null && fileVersions is not null)
+                {
+                    await using var mutationLock = await mutationRepository.AcquireMutationLocksAsync(
+                        [existing.Id], cancellationToken);
+                    var locked = await catalog.FindEntryByIdAsync(existing.Id, cancellationToken);
+                    if (locked is null ||
+                        await catalog.HasIncompleteOperationAsync(
+                            existing.OwnerUserId, existing.Id, existing.RelativePath, cancellationToken))
+                    {
+                        run.RecordIsolated();
+                        return;
+                    }
+
+                    IndexReconciliationPrimitives.ApplyPresent(
+                        locked,
+                        observed.Size,
+                        observed.MimeType,
+                        observed.SourceModifiedAt,
+                        observed.SourceFileKey,
+                        clock.UtcNow,
+                        contentMayHaveChanged: true);
+                    try
+                    {
+                        _ = await fileVersions.EnsureCurrentAsync(
+                            locked,
+                            FileVersionChangeKind.ExternalChange,
+                            run.Id,
+                            null,
+                            null,
+                            cancellationToken);
+                    }
+                    catch
+                    {
+                        _ = await mutationRepository.ReloadAsync(locked, CancellationToken.None);
+                        throw;
+                    }
+                    await SaveBatchAsync(run, cancellationToken);
+                }
+                else
+                {
+                    IndexReconciliationPrimitives.ApplyPresent(
+                        existing,
+                        observed.Size,
+                        observed.MimeType,
+                        observed.SourceModifiedAt,
+                        observed.SourceFileKey,
+                        clock.UtcNow,
+                        contentMayHaveChanged: contentChanged);
+                }
             }
 
             return;
@@ -325,7 +369,24 @@ public sealed class IndexScanService(
                 observed.SourceFileKey,
                 clock.UtcNow,
                 contentMayHaveChanged: false);
-            catalog.Add(entry);
+            if (mutationRepository is not null && fileVersions is not null)
+            {
+                await using var mutationLock = await mutationRepository.AcquireMutationLocksAsync(
+                    [entry.Id], cancellationToken);
+                _ = await fileVersions.EnsureCurrentAsync(
+                    entry,
+                    FileVersionChangeKind.ExternalChange,
+                    run.Id,
+                    null,
+                    null,
+                    cancellationToken);
+                catalog.Add(entry);
+                await SaveBatchAsync(run, cancellationToken);
+            }
+            else
+            {
+                catalog.Add(entry);
+            }
             entriesByPath[new IndexPathKey(entry.OwnerUserId, entry.RelativePath)] = entry;
         }
     }

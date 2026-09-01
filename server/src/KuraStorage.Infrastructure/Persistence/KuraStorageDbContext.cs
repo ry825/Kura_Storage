@@ -25,6 +25,8 @@ public sealed class KuraStorageDbContext(DbContextOptions<KuraStorageDbContext> 
 
     public DbSet<FileEntry> FileEntries => Set<FileEntry>();
 
+    public DbSet<FileVersionRecord> FileVersionRecords => Set<FileVersionRecord>();
+
     public DbSet<RecentFile> RecentFiles => Set<RecentFile>();
 
     public DbSet<FavoriteEntry> FavoriteEntries => Set<FavoriteEntry>();

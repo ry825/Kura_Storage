@@ -1355,6 +1355,35 @@ JSON形式でjournaldへ出力する。
 
 監査ログは追記専用とし、通常のAPIから削除できない。
 
+### 18.2.1 テキスト内容バージョン基盤
+
+対応テキストの現在内容は従来どおりHDD上の管理Fileを正とし、過去版本文は同じ検証済みStorage root内の`versions`管理領域へ不変データとして保存する。PostgreSQLの`file_version_records`は本文の所有者ではなく、File ID、version、Size、SHA-256、内部相対Path、変更契機、Actor、作成日時の索引である。
+
+```mermaid
+flowchart LR
+    UseCase[Upload / Text edit / External change / Restore] --> Guard[Storage guard]
+    Guard --> Lock[File advisory lock]
+    Lock --> Journal[FileOperation journal]
+    Journal --> Temp[Bounded temporary write]
+    Temp --> Version[Immutable version publish]
+    Version --> Current[Atomic current-file replace]
+    Current --> Tx[DB transaction]
+    Tx --> Entry[FileEntry.fileVersion]
+    Tx --> Record[FileVersionRecord]
+```
+
+- `file_version_records`は`(file_entry_id, version)`を一意、`(file_entry_id, version DESC)`を一覧Indexとする。versionは1以上、Sizeは0〜1 MiB、SHA-256は64桁の小文字16進数とする。
+- 内部PathはServer生成のOwner ID、File ID、version、SHA-256だけから導出する。File名、MIME文字列、Client指定Pathを使用しない。
+- publishは同一内容への再送を許すが、既存Pathの内容が期待SHA-256と異なる場合は上書きせず回復必須とする。
+- File mutation lockの取得後にEntry、状態、認可、現在versionを再読込する。複数Lockは既存規則どおり導出key昇順で取得する。
+- Filesystem publish後にDBが失敗した場合、決定的なPathとjournalからroll-forwardする。完了応答済みrecordや本文を一時File cleanupの対象にしない。
+- 外部変更検出は1回の安定Snapshotで観測できた現在内容を保存する。監視イベントが合流した期間の中間内容を存在したものとして推測しない。
+- 完全削除では専用`IPermanentDeleteParticipant`が対象Rootと子孫File IDのversion directoryを列挙し、物理削除後の同一DB transactionでMetadataを削除する。別File IDのdirectoryやrecordへ作用しない。
+- MigrationはTableとIndexだけを追加し、HDDを走査しない。既存対応テキストは最初の履歴対応操作で現在の`fileVersion`をlazy baseline化する。
+- 一覧はMetadataだけをpage取得する。本文は最大1 MiBをbounded streamingし、複数版本文や30万FileEntryをMemoryへ展開しない。
+- 30万FileEntry、100万version recordでMigration、Index、一覧、Purgeを測定し、通常2秒以内を目標とする。
+- 本文、File名、内部／物理Pathを構造化Log、監査ログ、Metric label、例外へ含めない。
+
 ### 18.3 メトリクス
 
 - API要求数、エラー率、p50/p95/p99

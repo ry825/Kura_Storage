@@ -45,7 +45,20 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
             folder.Id,
             "private.txt",
             [1, 2, 3, 4],
-            Guid.NewGuid().ToString());
+            Guid.NewGuid().ToString(),
+            "text/plain");
+        var sibling = await UploadAsync(
+            client,
+            rootId,
+            "keep-version.txt",
+            Encoding.UTF8.GetBytes("keep"),
+            Guid.NewGuid().ToString(),
+            "text/plain");
+        await using (var beforePurge = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = beforePurge.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.Single(await database.FileVersionRecords.Where(record => record.FileEntryId == child.Id).ToListAsync());
+        }
         using (var trash = await client.DeleteAsync($"/api/v1/files/{folder.Id}"))
         {
             trash.EnsureSuccessStatusCode();
@@ -68,6 +81,8 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         {
             var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
             Assert.False(await database.FileEntries.AnyAsync(entry => entry.Id == folder.Id || entry.Id == child.Id));
+            Assert.False(await database.FileVersionRecords.AnyAsync(record => record.FileEntryId == child.Id));
+            var siblingVersion = await database.FileVersionRecords.SingleAsync(record => record.FileEntryId == sibling.Id);
             var operation = await database.FileOperations.SingleAsync(
                 candidate => candidate.FileEntryId == folder.Id && candidate.OperationType == FileOperationType.Purge);
             Assert.Equal(FileOperationStatus.Completed, operation.Status);
@@ -79,6 +94,14 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
             Assert.False(await store.ExistsAsync(
                 RelativeStoragePath.Create($"users/{operation.OwnerUserId:N}/trash/{folder.Id:N}"),
                 true,
+                CancellationToken.None));
+            Assert.False(await store.ExistsAsync(
+                RelativeStoragePath.Create($"versions/{operation.OwnerUserId:N}/{child.Id:N}"),
+                true,
+                CancellationToken.None));
+            Assert.True(await store.ExistsAsync(
+                RelativeStoragePath.Create(siblingVersion.ContentRelativePath),
+                false,
                 CancellationToken.None));
         }
 
@@ -221,9 +244,30 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
 
         var content = Encoding.UTF8.GetBytes("0123456789");
         var idempotencyKey = Guid.NewGuid().ToString();
-        var uploaded = await UploadAsync(client, folder.Id, "report.txt", content, idempotencyKey);
-        var repeated = await UploadAsync(client, folder.Id, "report.txt", content, idempotencyKey);
+        var uploaded = await UploadAsync(client, folder.Id, "report.txt", content, idempotencyKey, "text/plain");
+        var repeated = await UploadAsync(client, folder.Id, "report.txt", content, idempotencyKey, "text/plain");
         Assert.Equal(uploaded.Id, repeated.Id);
+
+        await using (var versionScope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = versionScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var version = await database.FileVersionRecords.SingleAsync(record => record.FileEntryId == uploaded.Id);
+            Assert.Equal(1, version.Version);
+            Assert.Equal(FileVersionChangeKind.Upload, version.ChangeKind);
+            Assert.Equal(content.Length, version.Size);
+            var operation = await database.FileOperations.SingleAsync(candidate =>
+                candidate.FileEntryId == uploaded.Id && candidate.OperationType == FileOperationType.Upload);
+            Assert.Equal(FileOperationStatus.Completed, operation.Status);
+            Assert.Equal(FileVersionPublishStage.Completed, operation.VersionPublishStage);
+            Assert.Equal(version.ContentRelativePath, operation.VersionContentRelativePath);
+            Assert.Equal(version.Sha256, operation.VersionSha256);
+            var store = versionScope.ServiceProvider.GetRequiredService<IFileStore>();
+            await using var body = await store.OpenReadAsync(
+                RelativeStoragePath.Create(version.ContentRelativePath), CancellationToken.None);
+            using var memory = new MemoryStream();
+            await body.CopyToAsync(memory);
+            Assert.Equal(content, memory.ToArray());
+        }
 
         using var changedPayload = await SendUploadAsync(
             client,
@@ -300,6 +344,11 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
 
         using var restore = await client.PostAsync($"/api/v1/files/{uploaded.Id}/restore", null);
         restore.EnsureSuccessStatusCode();
+        await using (var restoredVersionScope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = restoredVersionScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.Single(await database.FileVersionRecords.Where(record => record.FileEntryId == uploaded.Id).ToListAsync());
+        }
         using var trashAgain = await client.DeleteAsync($"/api/v1/files/{uploaded.Id}");
         trashAgain.EnsureSuccessStatusCode();
         _ = await UploadAsync(client, folder.Id, "report.txt", content, Guid.NewGuid().ToString());
@@ -426,6 +475,76 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
     }
 
     [Fact]
+    public async Task UploadRecovery_WhenCatalogExists_PublishesMissingVersionAndNeverCleansCompletedArtifact()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("version-recovery", "version-recovery-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var content = Encoding.UTF8.GetBytes("recover this version");
+        var operationId = Guid.NewGuid();
+        Guid fileId;
+        string versionPath;
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var store = scope.ServiceProvider.GetRequiredService<IFileStore>();
+            var root = await database.FileEntries.SingleAsync(entry => entry.Id == rootId);
+            fileId = Guid.NewGuid();
+            var target = RelativeStoragePath.Create(root.RelativePath).Append(FileName.Create("recover-version.txt"));
+            var temporary = await store.WriteUploadTempAsync(
+                root.OwnerUserId, operationId, new MemoryStream(content), content.Length, CancellationToken.None);
+            await store.MoveAsync(temporary.Path, target, false, CancellationToken.None);
+            var entry = FileEntry.CreateFile(
+                fileId, root.OwnerUserId, root.Id, FileName.Create("recover-version.txt"),
+                target, "text/plain", content.Length, DateTimeOffset.UtcNow);
+            var operation = new FileOperation(
+                operationId, root.OwnerUserId, FileOperationType.Upload, fileId,
+                Guid.NewGuid().ToString(), temporary.Path.Value, target.Value, content.Length,
+                temporary.Sha256, DateTimeOffset.UtcNow);
+            operation.MarkFilesystemDone(DateTimeOffset.UtcNow);
+            database.FileEntries.Add(entry);
+            database.FileOperations.Add(operation);
+            await database.SaveChangesAsync();
+        }
+
+        await using (var recovery = fixture.Factory.Services.CreateAsyncScope())
+        {
+            await recovery.ServiceProvider.GetRequiredService<FileOperationRecoveryService>()
+                .RecoverAsync(CancellationToken.None);
+        }
+
+        await using (var verify = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = verify.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var record = await database.FileVersionRecords.SingleAsync(candidate => candidate.FileEntryId == fileId);
+            versionPath = record.ContentRelativePath;
+            var operation = await database.FileOperations.SingleAsync(candidate => candidate.Id == operationId);
+            Assert.Equal(FileOperationStatus.Completed, operation.Status);
+            Assert.Equal(FileVersionPublishStage.Completed, operation.VersionPublishStage);
+            Assert.Equal(versionPath, operation.VersionContentRelativePath);
+        }
+
+        await using (var repeatedRecovery = fixture.Factory.Services.CreateAsyncScope())
+        {
+            await repeatedRecovery.ServiceProvider.GetRequiredService<FileOperationRecoveryService>()
+                .RecoverAsync(CancellationToken.None);
+        }
+
+        await using (var finalVerify = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = finalVerify.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.Single(await database.FileVersionRecords.Where(record => record.FileEntryId == fileId).ToListAsync());
+            var store = finalVerify.ServiceProvider.GetRequiredService<IFileStore>();
+            await using var stream = await store.OpenReadAsync(
+                RelativeStoragePath.Create(versionPath), CancellationToken.None);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            Assert.Equal(content, memory.ToArray());
+        }
+    }
+
+    [Fact]
     public async Task Upload_WhenSizeOrChecksumDoesNotMatch_RejectsAndAllowsSafeWholeFileRetry()
     {
         var authenticated = await fixture.CreateAuthenticatedClientAsync("upload-user", "upload-password");
@@ -487,7 +606,8 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
             child.Id,
             "before.txt",
             bytes,
-            Guid.NewGuid().ToString());
+            Guid.NewGuid().ToString(),
+            "text/plain");
 
         using var renameFile = await client.PatchAsJsonAsync(
             $"/api/v1/files/{file.Id}",
@@ -532,6 +652,12 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         Assert.EndsWith("/Destination/RenamedFolder/Child/after.txt", entries[file.Id].RelativePath, StringComparison.Ordinal);
         Assert.Equal(file.FileVersion, entries[file.Id].FileVersion);
         Assert.Equal(bytes.Length, entries[file.Id].Size);
+        var versions = await database.FileVersionRecords
+            .Where(record => record.FileEntryId == file.Id)
+            .ToListAsync();
+        var version = Assert.Single(versions);
+        Assert.DoesNotContain("before.txt", version.ContentRelativePath, StringComparison.Ordinal);
+        Assert.DoesNotContain("after.txt", version.ContentRelativePath, StringComparison.Ordinal);
 
         var audits = await database.AuditLogs
             .Where(log => log.TargetId == file.Id.ToString() || log.TargetId == folder.Id.ToString())
@@ -1427,9 +1553,10 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         Guid parentId,
         string name,
         byte[] content,
-        string idempotencyKey)
+        string idempotencyKey,
+        string? contentType = null)
     {
-        using var response = await SendUploadAsync(client, parentId, name, content, idempotencyKey);
+        using var response = await SendUploadAsync(client, parentId, name, content, idempotencyKey, contentType);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<TestFileItem>())!;
     }
@@ -1439,7 +1566,8 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         Guid parentId,
         string name,
         byte[] content,
-        string idempotencyKey)
+        string idempotencyKey,
+        string? contentType = null)
     {
         return await SendUploadWithMetadataAsync(
             client,
@@ -1448,7 +1576,8 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
             content,
             content.Length,
             Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant(),
-            idempotencyKey);
+            idempotencyKey,
+            contentType);
     }
 
     private static async Task<HttpResponseMessage> SendUploadWithMetadataAsync(
@@ -1458,7 +1587,8 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         byte[] content,
         long declaredSize,
         string? sha256,
-        string idempotencyKey)
+        string idempotencyKey,
+        string? contentType = null)
     {
         using var multipart = new MultipartFormDataContent();
         multipart.Add(new StringContent(parentId.ToString()), "destinationFolderId");
@@ -1469,7 +1599,12 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
             multipart.Add(new StringContent(sha256), "sha256");
         }
 
-        multipart.Add(new ByteArrayContent(content), "file", name);
+        var fileContent = new ByteArrayContent(content);
+        if (contentType is not null)
+        {
+            fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+        }
+        multipart.Add(fileContent, "file", name);
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/files/upload")
         {
             Content = multipart,
