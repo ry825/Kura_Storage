@@ -889,6 +889,16 @@ Androidは`feature-media`、`feature-settings`と既存Core Moduleを使用す�
 
 Android 13実機のREMOTE_SECURE Original動画再生で、Player PSS 117,912 KiB、RSS 259,820 KiB、Frame median 13 ms、p95 53 msを観測した。通信切断は自動再試行ループに入らず、再接続後のOriginal取得で再度確認を必要とした。現行のBuffer、Cache、Bitmap、PDF一時容量の初期値は維持する。詳細は`docs/testing/20260830-android-media-integration-pr4.md`を参照する。
 
+### 11.4.2 Androidテキスト編集・version履歴
+
+Androidは`core-model`の対応MIME・Text／version Model、`core-network`のOpenAPI一致DTO／Retrofit境界、`core-data`のSession-scoped Repository、`feature-text`のEditor／History ViewModelとCompose画面を使用する。`feature-files`は`feature-text`へ依存せず、対応FileをApp callbackへ返し、`app`がNavigationとSession dependencyを組み立てる。
+
+- Text／version requestは既存`AuthenticatedRequestExecutor`を通し、401後は呼出元が作成した同じ`operationId`とPayloadを1回だけ再送する。
+- EditorとHistoryはrequest generationとCoroutine cancellationを併用し、旧Session、旧File、旧refresh、旧previewの結果を破棄する。Session再生成時はViewModel keyも変更する。
+- 保存前と復元前にFile詳細を再取得して権限を再評価する。未知Permission、未知source、未知mutation種別はfail-closedとし、履歴の未知change kindは操作を推測せず`Unknown change`と表示する。
+- Text本文は永続Disk cacheへ保存しない。Editorの`SavedStateHandle`はUTF-8で64 KiBまで、API本文は1 MiBまでとし、行比較は400行、1行512文字までに制限する。
+- 競合解決は最新再読込、表示用行比較、SAFで作成した別名Fileの既存Upload Session経由Uploadだけを提供する。force overwriteとClient側自動mergeは提供しない。
+
 ### 11.5 MVP後: 自動バックアップ
 
 1. AndroidがMediaStore/SAF差分をRoomへ記録する。

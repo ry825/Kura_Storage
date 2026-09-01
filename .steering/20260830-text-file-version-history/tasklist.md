@@ -178,44 +178,46 @@
 
 ### 3.1 Android基盤
 
-- [ ] PR3の開始条件を満たす。
-  - [ ] PR2が`main`へMerge済みで、最新`main`から短命Branchを作成する。
-  - [ ] Android module、Files／Sharing／Media、Navigation、Session、OpenAPI契約を確認する。
-- [ ] `core-model`／`core-network`／`core-data`をTest firstで拡張する。
-  - [ ] Text document、version item／page、change kind、conflict、restore resultを追加する。
-  - [ ] Retrofit契約とDTO mappingをOpenAPIへ一致させ、未知値をfail-closedにする。
-  - [ ] Repositoryで401 refresh、operationId再送、cancel、generation管理、Session分離を実装する。
+- [x] PR3の開始条件を満たす。
+  - [x] PR2が`main`へMerge済みで、最新`main`から短命Branchを作成する。
+  - [x] Android module、Files／Sharing／Media、Navigation、Session、OpenAPI契約を確認する。
+- [x] `core-model`／`core-network`／`core-data`をTest firstで拡張する。
+  - [x] Text document、version item／page、change kind、conflict、restore resultを追加する。
+  - [x] Retrofit契約とDTO mappingをOpenAPIへ一致させ、未知値をfail-closedにする。
+- [x] Repositoryで401 refresh、operationId再送、cancel、generation管理、Session分離を実装する。
 
 ### 3.2 `feature-text`
 
-- [ ] ModuleとNavigationを追加する。
-  - [ ] Build、dependency、unit／instrumented source set、assembly markerを追加する。
-  - [ ] File一覧／詳細から対応MIMEだけを開き、Feature間直接依存を作らない。
-- [ ] Text editorを実装する。
-  - [ ] Loading、view、edit、dirty、saving、saved、conflict、error stateをTDDで実装する。
-  - [ ] dirty離脱確認、SavedStateHandle上限、IME、accessibility、長文scrollを実装する。
-  - [ ] VIEWERはread-only、EDITOR以上は保存可能とし、権限変化を次要求へ反映する。
-  - [ ] 競合時の再読込、有界な行比較、別名Upload導線を実装し、強制上書きを提供しない。
-- [ ] version履歴・復元UIを実装する。
-  - [ ] Paging、Refresh、Empty、Error、version metadata、actor／external表示を実装する。
-  - [ ] 過去版previewと現在版との差分表示を実装する。
-  - [ ] Restore確認、expectedVersion競合、成功後再取得を実装する。
-  - [ ] 旧Session／旧File／旧requestが画面を上書きしない。
+- [x] ModuleとNavigationを追加する。
+  - [x] Build、dependency、unit／instrumented source set、assembly markerを追加する。
+  - [x] File一覧／詳細から対応MIMEだけを開き、Feature間直接依存を作らない。
+- [x] Text editorを実装する。
+  - [x] Loading、view、edit、dirty、saving、saved、conflict、error stateをTDDで実装する。
+  - [x] dirty離脱確認、SavedStateHandle上限、IME、accessibility、長文scrollを実装する。
+  - [x] VIEWERはread-only、EDITOR以上は保存可能とし、権限変化を次要求へ反映する。
+  - [x] 競合時の再読込、有界な行比較、別名Upload導線を実装し、強制上書きを提供しない。
+- [x] version履歴・復元UIを実装する。
+  - [x] Paging、Refresh、Empty、Error、version metadata、actor／external表示を実装する。
+  - [x] 過去版previewと現在版との差分表示を実装する。
+  - [x] Restore確認、expectedVersion競合、成功後再取得を実装する。
+  - [x] 旧Session／旧File／旧requestが画面を上書きしない。
 
 ### 3.3 Android検証・全体完了
 
-- [ ] Android Unit／Screenshot／Instrumented Testを完了する。
-  - [ ] MIME／UTF-8／size、dirty、process recreation、rotation、offline、401、409、403／404をTestする。
-  - [ ] history Paging、restore、shared permissions、unknown enum、accessibilityをTestする。
-  - [ ] `./scripts/ci/verify-android.sh`と`git diff --check`が成功する。
-- [ ] 実機E2Eを完了する。
-  - [ ] Android 13物理端末2台相当で同時編集競合、再読込、別名保存、復元を確認する。
-  - [ ] Owner／VIEWER／EDITOR、共有解除、LAN／ZeroTier、切断・再接続、Session失効を確認する。
-  - [ ] Raspberry Pi、PostgreSQL、実HDDでcrash recovery、version内容、Log非漏えいを確認する。
-- [ ] PR3と全体を完了する。
-  - [ ] 正式文書、OpenAPI、test記録、repository structureを実績へ更新する。
-  - [ ] 全task、全PR記録の完了後だけモード3-Bで全体振り返りを記録する。
-  - [ ] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+- [x] Android Unit／Screenshot／Instrumented Testを完了する。
+- [x] MIME／UTF-8／size、dirty、process recreation、rotation、offline、401、409、403／404をTestする。
+  - [x] history Paging、restore、shared permissions、unknown enum、accessibilityをTestする。
+  - [x] `./scripts/ci/verify-android.sh`と`git diff --check`が成功する。
+  - 2026-09-01実測: Android JVM 204件、Android 13実機Instrumented 65件（`feature-text` 6件、競合／履歴のScreenshot smokeを含む）が成功。Text重要境界337/338行（99.70%）、Domain／Application 3905/4625行（84.43%）を確認。
+- [x] 実機E2Eを完了する。
+- [x] Android 13物理端末2台相当で同時編集競合、再読込、別名保存、復元を確認する。
+  - [x] Owner／VIEWER／EDITOR、共有解除、LAN／ZeroTier、切断・再接続、Session失効を確認する。
+  - [x] Raspberry Pi、PostgreSQL、実HDDでcrash recovery、version内容、Log非漏えいを確認する。
+  - OPPO CPH2333（Android 13）と独立API clientの2台相当で、409差分、再読込、別名Upload、復元、3権限、共有／Device失効、`LOCAL_DIRECT`／`REMOTE_SECURE`を確認。fixtureはTrash／Purge後に6 Userを無効化し、DB／HDD／Serviceの残存・健全性を再検証した。
+- [x] PR3と全体を完了する。
+- [x] 正式文書、OpenAPI、test記録、repository structureを実績へ更新する。
+  - [x] 全task、全PR記録の完了後だけモード3-Bで全体振り返りを記録する。
+  - [x] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -264,6 +266,37 @@
 - 技術的に不要になったタスク・理由・代替実装: 新規Migrationは不要。PR1で追加済みのnullable journal列と`file_version_records`のみでPR2契約を表現でき、EF Core pending-model確認で未反映差分がないことを確認した。
 - 後続Pull Requestへの引継ぎ事項: PR #39の`main`へのMergeと必須CI成功をPR3開始条件とする。PR3ではOpenAPIのText／version契約を使用してAndroid editor、履歴、過去版preview／差分、復元UIと物理端末のLAN／ZeroTier E2Eを実装する。利用者向け操作履歴は別Steeringの表示契約として継続し、Auditと混在させない。
 
+### PR3: Androidテキストエディター・履歴UI・実機E2E
+
+- 完了日: 2026-09-01
+- Pull Request: [#40 Add Android text editor and version history UI](https://github.com/ry825/Kura_Storage/pull/40)
+- Commit: `cf94783 feat(android): add text editing and version history`
+- 実施したTest・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`: 成功（1118 task、Android JVM 204件）
+  - Android 13実機Instrumented Test: 65件成功（`feature-text` 6件、競合／履歴のScreenshot smokeを含む）
+  - Coverage: Text重要境界337/338行（99.70%）、Domain／Application 3905/4625行（84.43%）
+  - `git diff --check`: 成功
+  - 署名済み非debuggable Release APK `0.10.0-text-pr3-rc1`を生成し、署名、versionCode 15、v3／RSA-4096を確認
+  - OPPO CPH2333（Android 13）と独立API clientの2台相当で、Owner編集、rotation中のdirty draft、409競合、有界差分、最新版再読込、別名保存、履歴preview、復元を確認
+  - VIEWER read-only、EDITOR保存、共有解除、LAN切断／再接続、`LOCAL_DIRECT`／ZeroTier `REMOTE_SECURE`、Device失効を確認
+  - Raspberry Pi、PostgreSQL、実HDDでversion内容、crash recovery、外部変更rescan、Log非漏えい、fixture完全削除後のService／DB／HDD健全性を確認
+  - GitHub必須CI run `33514097745`: Android、Config、Security、Serverの全Job成功
+- 計画と実装の差分: 承認済みのAndroid editor、履歴、preview／差分、復元、競合導線を実装した。物理端末2台の同時操作は、OPPO物理端末1台と独立API clientを別Deviceとして使用する2台相当の構成で確認した。exFAT上の直接外部変更はinotifyだけでは20秒／30秒以内に収束しなかったため、低遅延検知を主張せず、明示的なAPPLY rescanでversion化される実動作を記録した。
+- 実装中に追加したタスクと理由: 競合／履歴画面のScreenshot smoke、初期読込／保存失敗時のdraft保持とretry、履歴重複読込防止、明示的なerror／有界diff表示、物理E2E fixtureのTrash／Purge・User／Session／Device無効化を追加した。理由はUI退行、非同期race、失敗時の入力喪失、検証データ残存を防ぐため。
+- 技術的に不要になったタスク・理由・代替実装: PR3でのServer／OpenAPI追加は不要。PR2で確定した5 endpointと契約をAndroidから利用し、PR3ではcontract testで一致を保護した。
+- 後続Pull Requestへの引継ぎ事項: 本SteeringのTask 11はPR #40のReview／Merge待ち。ユーザー向け操作履歴（Task 12）は別Steeringの表示契約として実装し、既存Security Audit logと混在させない。exFATの外部変更は明示的rescan経路を運用上の確実な収束手段とし、低遅延inotify最適化を行う場合は別途Filesystem／kernel条件を評価する。
+
 ## 全体振り返り
 
-> 全タスク、全Pull Request、各完了記録が揃った後にだけモード3-Bで記録する。
+- 実装完了日: 2026-09-01
+- 完了したPull Request:
+  - [#38 Add file version persistence and recovery foundation](https://github.com/ry825/Kura_Storage/pull/38)
+  - [#39 Add text file version APIs](https://github.com/ry825/Kura_Storage/pull/39)
+  - [#40 Add Android text editor and version history UI](https://github.com/ry825/Kura_Storage/pull/40)
+- 全体の計画と実績の差分: 計画どおり3 PRに分割し、PR1でimmutableな過去内容と回復基盤、PR2でText／履歴／過去版本文／復元API、PR3でAndroid editor／履歴／競合／復元UIと実機E2Eを完成させた。利用者向け操作履歴は、Security Audit logとは異なる表示契約を守るため、承認済みの別Steeringとして分離した。物理端末2台の競合確認はOPPO物理端末1台と独立API clientの2台相当で実施し、実際の検証構成を記録した。
+- 主な設計変更と理由: 既存`fileVersion`をmetadata番号の更新からimmutable artifactと`file_version_records`による本文保持へ拡張し、mutation journalの段階と一体でcrash後に収束させた。Text更新・復元は`expectedVersion`必須の楽観ロックとoperationId冪等性を採用し、強制上書きを排除した。AndroidはFeature間直接依存を避け、Session／File／request generationを分離して古い非同期応答による画面上書きを防いだ。
+- 技術的な学び: Filesystem完了とDB確定の境界は、immutable artifact、journal metadata、lazy baselineを組み合わせることで再送と回復を同じversionへ収束できる。UIの競合処理では本文を保持したまま明示的な再読込・有界差分・別名保存を分けることが、データ保全と操作理解の両方に有効だった。exFAT上の直接変更はinotifyの低遅延通知を前提にできず、明示的rescanを確実な収束経路として維持する必要がある。
+- 品質・検証結果: PR1／PR2はServer、Config、Security、Deployment、Migration、回復・性能・API route契約を通過した。PR3はAndroid JVM 204件、Android 13実機Instrumented 65件、Text重要境界99.70%、Domain／Application 84.43%、署名済みRelease APK、LAN／ZeroTier／権限／Device失効／競合／復元E2Eを通過した。各PRのGitHub必須CIでAndroid、Config、Security、Serverがすべて成功した。
+- プロセス上の改善点: 競合、回復、外部変更、実機routeのfixtureを早期に固定すると、PRごとの境界検証と最終cleanupを再現しやすい。Android UIはUnit／contract／navigation／instrumented／Screenshot smokeを同じ状態遷移表へ対応付けることで、非同期raceと表示退行の切り分けが容易になった。物理E2Eでは作成したUser、Session、Device、FileOperation、HDD artifactを一覧化し、終了時のゼロ件検証まで手順化する。
+- 次回への改善提案: 利用者向け操作履歴では、表示eventとSecurity Audit eventの目的・保持・閲覧権限を先に契約化し、同じ操作から別eventを生成しても相互のschemaを流用しない。Filesystem監視の低遅延化を行う場合は、対象Filesystem、kernel watch上限、再起動時のwatch再構築、rescan fallbackを独立した性能・信頼性タスクとして評価する。
+- 未実装・技術的に不要になったタスク: 本SteeringのTask 11に未実装項目はない。PR3でのServer／OpenAPI追加とPR2での新規Migrationは、前段PRの確定済み契約・schemaで要件を満たすため不要となり、contract testとEF Core pending-model確認を代替検証とした。

@@ -97,6 +97,65 @@ class KuraStorageApiContractTest {
         }
 
     @Test
+    fun `text read save history preview and restore use the OpenAPI contract`() =
+        runTest {
+            server.enqueue(jsonResponse(TEXT_DOCUMENT_RESPONSE))
+            server.enqueue(jsonResponse(TEXT_MUTATION_RESPONSE))
+            server.enqueue(jsonResponse(VERSION_PAGE_RESPONSE))
+            server.enqueue(jsonResponse(TEXT_DOCUMENT_RESPONSE))
+            server.enqueue(jsonResponse(RESTORE_RESPONSE))
+
+            api.getText("token", DEVICE_ID)
+            assertEquals("/api/v1/files/$DEVICE_ID/text", server.takeRequest().path)
+
+            api.saveText("token", DEVICE_ID, SaveTextRequestDto("updated", 4, IDEMPOTENCY_KEY))
+            val save = server.takeRequest()
+            assertEquals("PUT", save.method)
+            assertEquals("/api/v1/files/$DEVICE_ID/text", save.path)
+            assertEquals(
+                compactJson("""{"content":"updated","expectedVersion":4,"operationId":"$IDEMPOTENCY_KEY"}"""),
+                compactJson(save.body.readUtf8()),
+            )
+
+            api.listVersions("token", DEVICE_ID, 2, 50)
+            assertEquals("/api/v1/files/$DEVICE_ID/versions?page=2&pageSize=50", server.takeRequest().path)
+            api.getVersionText("token", DEVICE_ID, 3)
+            assertEquals("/api/v1/files/$DEVICE_ID/versions/3/text", server.takeRequest().path)
+            api.restoreVersion("token", DEVICE_ID, 3, RestoreTextVersionRequestDto(4, IDEMPOTENCY_KEY))
+            val restore = server.takeRequest()
+            assertEquals("POST", restore.method)
+            assertEquals("/api/v1/files/$DEVICE_ID/versions/3/restore", restore.path)
+        }
+
+    @Test
+    fun `text endpoints expose unauthorized and stable conflict errors`() =
+        runTest {
+            server.enqueue(MockResponse().setResponseCode(401))
+            assertEquals(NetworkCallResult.Unauthorized, api.getText("expired", DEVICE_ID))
+
+            server.enqueue(
+                MockResponse().setResponseCode(409).setHeader("Content-Type", "application/json").setBody(
+                    """{"code":"FILE_VERSION_CONFLICT","message":"failed","requestId":"text-conflict","details":{}}""",
+                ),
+            )
+            val conflict =
+                runCatching {
+                    api.saveText("token", DEVICE_ID, SaveTextRequestDto("updated", 3, IDEMPOTENCY_KEY))
+                }.exceptionOrNull() as KuraStorageException.Api
+            assertEquals(ErrorCode.FILE_VERSION_CONFLICT, conflict.error.code)
+
+            server.enqueue(
+                MockResponse().setResponseCode(409).setHeader("Content-Type", "application/json").setBody(
+                    """{"code":"FUTURE_TEXT_ERROR","message":"failed","requestId":"future","details":{}}""",
+                ),
+            )
+            val unknown =
+                runCatching { api.listVersions("token", DEVICE_ID, 1, 50) }.exceptionOrNull()
+                    as KuraStorageException.Api
+            assertEquals(ErrorCode.UNKNOWN, unknown.error.code)
+        }
+
+    @Test
     fun `rename and move use PATCH with exactly one OpenAPI request field`() =
         runTest {
             server.enqueue(jsonResponse(resource("file-entry-response.json")))
@@ -475,6 +534,15 @@ class KuraStorageApiContractTest {
         const val IDEMPOTENCY_KEY = "44444444-4444-4444-4444-444444444444"
         const val TIME = "2026-08-23T00:00:00Z"
         const val SHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        const val TEXT_DOCUMENT_RESPONSE =
+            """{"content":"hello","encoding":"UTF-8","fileVersion":4,"size":5,"sha256":"$SHA256"}"""
+        const val TEXT_MUTATION_RESPONSE =
+            """{"fileVersion":5,"size":7,"sha256":"$SHA256","changeKind":"TEXT_EDIT","createdAt":"$TIME"}"""
+        const val RESTORE_RESPONSE =
+            """{"fileVersion":6,"size":5,"sha256":"$SHA256","changeKind":"RESTORE","createdAt":"$TIME"}"""
+        const val VERSION_PAGE_RESPONSE =
+            """{"items":[{"version":4,"size":5,"sha256":"$SHA256","changeKind":"UPLOAD",""" +
+                """"actorDisplayName":"Ryo","createdAt":"$TIME"}],"page":2,"pageSize":50,"totalCount":51}"""
         const val UPLOAD_SESSION_RESPONSE =
             """
             {"id":"$DEVICE_ID","status":"ACTIVE","size":5,"receivedBytes":0,"nextOffset":0,

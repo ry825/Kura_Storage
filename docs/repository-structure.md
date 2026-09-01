@@ -132,6 +132,7 @@ kurastorage/
 │       ├── feature-auth/
 │       ├── feature-files/
 │       ├── feature-media/
+│       ├── feature-text/
 │       ├── feature-sharing/
 │       ├── feature-backup/
 │       ├── feature-settings/
@@ -907,11 +908,35 @@ feature-files/
 | `feature-sharing` | 所有・受信共有一覧、共有候補・Permission選択、Member追加・更新・解除、Share全体解除 |
 | `feature-search` | 権限対応検索、Tag Filter、ページング、最近使用、お気に入り一覧、Tag管理、Entry organization画面。結果選択はApp callbackで既存File画面へ接続 |
 | `feature-media` | 一覧Thumbnail、写真Viewer、PDF Viewer、動画・音声Player、Media Job状態、品質切替、通信量確認 |
+| `feature-text` | 対応テキストのread-only表示・編集、dirty／競合、行比較、version履歴・preview・復元 |
 | `feature-settings` | 接続環境別の写真・動画初期品質と通信量説明 |
 
 `feature-sharing`は`SharingScreens.kt`と`SharingViewModels.kt`を持ち、`core-model`の共有・権限Model、`core-network`の`SharingApi`、`core-data`の`SharingRepository`を利用する。共有Folderの閲覧と権限別File操作は`app`のNavigationから既存`feature-files`へ遷移して再利用し、Feature間を直接依存させない。`feature-search`も同じ境界を守り、`SearchScreens.kt`、`OrganizationScreens.kt`と対応ViewModelだけを保持する。`feature-files`のお気に入り・Tag actionはEntry IDだけをApp callbackへ返し、Appが`feature-search`のEntry organization画面へNavigationする。
 
-`feature-media`と`feature-settings`もFeature間を直接依存させない。`feature-files`、`feature-search`、`feature-sharing`はFile IDと閲覧ContextをApp callbackへ返し、`app`がMedia destinationへ遷移する。一覧Thumbnailは`app`が`feature-media`のComposableを`feature-files`のslotへ渡す。`feature-backup`はMVP後に必要となった時点で追加する。
+`feature-media`、`feature-text`、`feature-settings`もFeature間を直接依存させない。`feature-files`、`feature-search`、`feature-sharing`はFile IDと閲覧ContextをApp callbackへ返し、`app`がMediaまたはText destinationへ遷移する。一覧Thumbnailは`app`が`feature-media`のComposableを`feature-files`のslotへ渡す。`feature-backup`はMVP後に必要となった時点で追加する。
+
+Android Text／version機能の配置は次のとおり。
+
+```text
+core-model/src/main/kotlin/com/kurastorage/core/model/TextFileModels.kt
+core-network/src/main/kotlin/com/kurastorage/core/network/
+├── ApiContracts.kt
+└── KuraStorageApi.kt
+core-data/src/main/kotlin/com/kurastorage/core/data/TextFileRepository.kt
+feature-text/src/
+├── main/kotlin/com/kurastorage/feature/text/
+│   ├── AssemblyMarker.kt
+│   ├── BoundedLineDiff.kt
+│   ├── TextEditorViewModel.kt
+│   ├── TextScreens.kt
+│   └── VersionHistoryViewModel.kt
+├── test/kotlin/com/kurastorage/feature/text/
+└── androidTest/kotlin/com/kurastorage/feature/text/
+app/src/main/kotlin/com/kurastorage/app/
+├── MainActivity.kt
+├── ServiceContainer.kt
+└── ViewModelFactory.kt
+```
 
 Android Media基盤、写真・PDF Viewer、動画・音声Playerの配置は次のとおり。
 

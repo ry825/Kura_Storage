@@ -96,4 +96,6 @@ enum class AppDestination(
     PDF_VIEWER("media/pdf"),
     VIDEO_PLAYER("media/video"),
     AUDIO_PLAYER("media/audio"),
+    TEXT_EDITOR("text/editor"),
+    TEXT_HISTORY("text/history"),
 }

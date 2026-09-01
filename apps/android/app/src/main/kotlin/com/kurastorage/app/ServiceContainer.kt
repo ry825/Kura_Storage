@@ -13,6 +13,7 @@ import com.kurastorage.core.data.DefaultOrganizationRepository
 import com.kurastorage.core.data.DefaultRecentFileRepository
 import com.kurastorage.core.data.DefaultSearchRepository
 import com.kurastorage.core.data.DefaultSharingRepository
+import com.kurastorage.core.data.DefaultTextFileRepository
 import com.kurastorage.core.data.DefaultTransferRepository
 import com.kurastorage.core.data.media.AndroidNetworkTransportSource
 import com.kurastorage.core.data.media.DataStoreQualityPreferenceStore
@@ -115,8 +116,10 @@ class ServiceContainer(
             )
         val executor = AuthenticatedRequestExecutor(auth)
         return SessionServices(
+            sessionId = UUID.randomUUID().toString(),
             authentication = auth,
             files = DefaultFileRepository(api, executor),
+            textFiles = DefaultTextFileRepository(api, executor),
             sharing = DefaultSharingRepository(api, executor),
             search = DefaultSearchRepository(api, executor),
             recentFiles = DefaultRecentFileRepository(api, executor),
@@ -165,8 +168,10 @@ class ServiceContainer(
 }
 
 data class SessionServices(
+    val sessionId: String,
     val authentication: DefaultAuthenticationRepository,
     val files: DefaultFileRepository,
+    val textFiles: DefaultTextFileRepository,
     val sharing: DefaultSharingRepository,
     val search: DefaultSearchRepository,
     val recentFiles: DefaultRecentFileRepository,

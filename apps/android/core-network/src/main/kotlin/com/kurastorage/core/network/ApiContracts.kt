@@ -95,6 +95,55 @@ data class OwnerSummaryDto(
     val displayName: String,
 )
 
+@Serializable
+data class TextDocumentDto(
+    val content: String,
+    val encoding: String,
+    val fileVersion: Long,
+    val size: Long,
+    val sha256: String,
+)
+
+@Serializable
+data class SaveTextRequestDto(
+    val content: String,
+    val expectedVersion: Long,
+    val operationId: String,
+)
+
+@Serializable
+data class RestoreTextVersionRequestDto(
+    val expectedVersion: Long,
+    val operationId: String,
+)
+
+@Serializable
+data class TextMutationResultDto(
+    val fileVersion: Long,
+    val size: Long,
+    val sha256: String,
+    val changeKind: String,
+    val createdAt: String,
+)
+
+@Serializable
+data class FileVersionItemDto(
+    val version: Long,
+    val size: Long,
+    val sha256: String,
+    val changeKind: String,
+    val actorDisplayName: String,
+    val createdAt: String,
+)
+
+@Serializable
+data class FileVersionPageDto(
+    val items: List<FileVersionItemDto>,
+    val page: Int,
+    val pageSize: Int,
+    val totalCount: Long,
+)
+
 data class SearchRequestDto(
     val query: String? = null,
     val entryType: String? = null,

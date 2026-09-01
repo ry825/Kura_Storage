@@ -35,6 +35,7 @@ fi
   :feature-search:assembleDebugAndroidTest \
   :feature-settings:assembleDebugAndroidTest \
   :feature-sharing:assembleDebugAndroidTest \
+  :feature-text:assembleDebugAndroidTest \
   :core-data:assembleDebugAndroidTest \
   testDebugUnitTest \
   androidCoverageVerification \
