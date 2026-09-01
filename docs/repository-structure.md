@@ -91,7 +91,7 @@ Rename・Moveは現行のServer File機能を拡張し、Domainは`KuraStorage.D
 
 外部欠損の再確認と索引削除は`KuraStorage.Application/Files/MissingEntryService.cs`へ配置する。DB関連情報だけを消すConsumerは`IFileIndexDeletionParticipant`を実装し、物理完全削除用`IPermanentDeleteParticipant`へ混在させない。AndroidのProtocol 2 DTO・未知Status変換・Repository操作は既存`core-network`、`core-model`、`core-data`、表示と二重送信防止は`feature-files`へ配置する。
 
-対応テキストの内容バージョンは、Domain entityを`KuraStorage.Domain/Files/FileVersionRecord.cs`、Application境界を`Abstractions/FileVersionAbstractions.cs`、発行・baseline処理を`Files/FileVersionService.cs`へ配置する。EF Configuration、Repository、Purge participantは`Infrastructure/Persistence/`、immutable本文storeは`Infrastructure/Storage/FileVersionStore.cs`へ配置する。Migrationは既存`Persistence/Migrations/`、Domain／Application／PostgreSQL／Filesystem Testは既存Test Projectへ置き、新しいProjectやWorkerを追加しない。
+対応テキストの内容バージョンは、Domain entityを`KuraStorage.Domain/Files/FileVersionRecord.cs`、Application境界を`Abstractions/FileVersionAbstractions.cs`、発行・baseline処理を`Files/FileVersionService.cs`、Text API契約とUse Caseを`Files/TextFileContracts.cs`と`Files/TextFileService.cs`へ配置する。EF Configuration、Repository、Purge participantは`Infrastructure/Persistence/`、immutable本文storeは`Infrastructure/Storage/FileVersionStore.cs`へ配置する。Endpoint、JSON body上限、Text／versionレート制限は既存`KuraStorage.Api/Program.cs`、API契約は`contracts/openapi/kurastorage-api.yaml`へ配置する。Migrationは既存`Persistence/Migrations/`、Domain／Application／PostgreSQL／Filesystem／API Testは既存Test Projectへ置き、新しいProjectやWorkerを追加しない。
 
 ```text
 kurastorage/
@@ -411,6 +411,8 @@ KuraStorage.Application/
 │   │   ├── GetFile/
 │   │   └── ListFiles/
 │   ├── FileVersionService.cs
+│   ├── TextFileContracts.cs
+│   ├── TextFileService.cs
 │   └── Contracts/
 ├── Transfer/
 │   ├── Commands/

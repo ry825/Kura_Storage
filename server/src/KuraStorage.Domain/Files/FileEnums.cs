@@ -23,6 +23,8 @@ public enum FileOperationType
     Rename,
     Move,
     Purge,
+    TextEdit,
+    VersionRestore,
 }
 
 public enum FileOperationStatus

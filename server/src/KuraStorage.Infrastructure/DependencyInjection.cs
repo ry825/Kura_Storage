@@ -216,6 +216,7 @@ public static class DependencyInjection
             });
         services.AddScoped<FileOperationRecoveryService>();
         services.AddScoped<FileVersionService>();
+        services.AddScoped<TextFileService>();
         services.AddScoped<UploadSessionService>();
         services.AddScoped<UploadSessionRecoveryService>();
         services.AddScoped<UploadSessionCleanupService>();

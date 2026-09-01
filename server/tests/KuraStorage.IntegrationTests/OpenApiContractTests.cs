@@ -107,6 +107,19 @@ public sealed class OpenApiContractTests
         Assert.Contains("style: form", contract, StringComparison.Ordinal);
         Assert.Contains("uniqueItems: true", contract, StringComparison.Ordinal);
         Assert.Contains("TAG_NAME_CONFLICT", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: getFileText", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: saveFileText", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: listFileVersions", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: getFileVersionText", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: restoreFileVersion", contract, StringComparison.Ordinal);
+        Assert.Contains("SaveTextRequest:", contract, StringComparison.Ordinal);
+        Assert.Contains("TextDocument:", contract, StringComparison.Ordinal);
+        Assert.Contains("TextMutationResult:", contract, StringComparison.Ordinal);
+        Assert.Contains("FileVersionItem:", contract, StringComparison.Ordinal);
+        Assert.Contains("FileVersionPage:", contract, StringComparison.Ordinal);
+        Assert.Contains("FILE_VERSION_CONFLICT", contract, StringComparison.Ordinal);
+        Assert.Contains("TEXT_SIZE_LIMIT_EXCEEDED", contract, StringComparison.Ordinal);
+        Assert.Contains("maximum: 1048576", contract, StringComparison.Ordinal);
         Assert.Contains(
             "required: [deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, role]",
             contract,
@@ -115,5 +128,6 @@ public sealed class OpenApiContractTests
         Assert.DoesNotContain("ownerUserId:", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("relativePath:", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("temporaryRelativePath:", contract, StringComparison.Ordinal);
+        Assert.DoesNotContain("contentRelativePath:", contract, StringComparison.Ordinal);
     }
 }

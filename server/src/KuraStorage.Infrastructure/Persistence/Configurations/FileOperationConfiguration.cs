@@ -14,7 +14,7 @@ public sealed class FileOperationConfiguration : IEntityTypeConfiguration<FileOp
         builder.Property(operation => operation.OwnerUserId).HasColumnName("owner_user_id");
         builder.Property(operation => operation.OperationType)
             .HasColumnName("operation_type")
-            .HasConversion(value => value.ToString().ToUpperInvariant(), value => Enum.Parse<FileOperationType>(value, true))
+            .HasConversion(value => ToDatabase(value), value => FromDatabase(value))
             .HasMaxLength(32);
         builder.Property(operation => operation.IdempotencyKey).HasColumnName("idempotency_key").HasMaxLength(128);
         builder.Property(operation => operation.FileEntryId).HasColumnName("file_entry_id");
@@ -66,4 +66,18 @@ public sealed class FileOperationConfiguration : IEntityTypeConfiguration<FileOp
             .HasFilter("\"operation_type\" = 'PURGE' AND \"status\" IN ('PENDING', 'FILESYSTEM_DONE', 'RECOVERY_REQUIRED')")
             .HasDatabaseName("ux_file_operations_incomplete_purge_target");
     }
+
+    private static string ToDatabase(FileOperationType value) => value switch
+    {
+        FileOperationType.TextEdit => "TEXT_EDIT",
+        FileOperationType.VersionRestore => "VERSION_RESTORE",
+        _ => value.ToString().ToUpperInvariant(),
+    };
+
+    private static FileOperationType FromDatabase(string value) => value switch
+    {
+        "TEXT_EDIT" => FileOperationType.TextEdit,
+        "VERSION_RESTORE" => FileOperationType.VersionRestore,
+        _ => Enum.Parse<FileOperationType>(value, true),
+    };
 }

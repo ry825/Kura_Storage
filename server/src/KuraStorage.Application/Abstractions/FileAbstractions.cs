@@ -146,6 +146,12 @@ public interface IFileStore
         bool sourceIsDirectory,
         CancellationToken cancellationToken);
 
+    Task ReplaceAsync(
+        RelativeStoragePath source,
+        RelativeStoragePath target,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
     Task DeleteIfExistsAsync(RelativeStoragePath path, CancellationToken cancellationToken);
 
     Task DeleteTreeIfExistsAsync(RelativeStoragePath path, CancellationToken cancellationToken);

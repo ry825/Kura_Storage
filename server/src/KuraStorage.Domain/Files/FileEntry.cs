@@ -229,6 +229,33 @@ public sealed class FileEntry
         UpdatedAt = observedAt;
     }
 
+    public void ApplyManagedContentChange(
+        long size,
+        long expectedVersion,
+        DateTimeOffset changedAt)
+    {
+        if (EntryType != FileEntryType.File || ParentId is null || Status != FileEntryStatus.Active)
+        {
+            throw new InvalidFileOperationException("Only active managed files can change content.");
+        }
+
+        if (size < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(size));
+        }
+
+        if (expectedVersion < 1 || FileVersion != expectedVersion)
+        {
+            throw new InvalidFileOperationException("The expected file version does not match.");
+        }
+
+        FileVersion = checked(FileVersion + 1);
+        Size = size;
+        SourceModifiedAt = changedAt;
+        SourceObservedAt = changedAt;
+        UpdatedAt = changedAt;
+    }
+
     public void MarkMissingCandidate(Guid observationId, DateTimeOffset checkedAt)
     {
         if (observationId == Guid.Empty)

@@ -1862,7 +1862,9 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 {
   "content": "text content",
   "encoding": "UTF-8",
-  "fileVersion": 4
+  "fileVersion": 4,
+  "size": 12,
+  "sha256": "64-character-lowercase-hex"
 }
 ```
 
@@ -1871,11 +1873,12 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 ```json
 {
   "content": "updated content",
-  "expectedVersion": 4
+  "expectedVersion": 4,
+  "operationId": "b1cf0e84-e0cc-4af5-8123-0f57baf7eeec"
 }
 ```
 
-競合時は`409 FILE_VERSION_CONFLICT`を返す。
+`Content-Type: application/json`を必須とし、現在`EDITOR`以上を要求する。成功時は新しい`fileVersion`、Size、SHA-256、変更契機`TEXT_EDIT`、作成日時を返す。同じ`operationId`と同じPayloadの再送は同じ結果を返して重複versionを作らず、異なるPayloadでの再利用は`409 IDEMPOTENCY_CONFLICT`とする。現在versionが`expectedVersion`と異なる場合は`409 FILE_VERSION_CONFLICT`を返す。
 
 #### `GET /api/v1/files/{fileId}/versions?page={page}&pageSize={pageSize}`
 
@@ -1894,9 +1897,9 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 }
 ```
 
-現在`EDITOR`以上を要求する。成功時は指定版の内容を新しい現行versionとして発行し、復元前の現行版を保持する。同じ`operationId`の再送は重複versionを作らない。現在versionが`expectedVersion`と異なる場合は`409 FILE_VERSION_CONFLICT`を返す。
+`Content-Type: application/json`を必須とし、現在`EDITOR`以上を要求する。成功時は指定版の内容を新しい現行versionとして発行し、復元前の現行版を保持する。応答は新しい`fileVersion`、Size、SHA-256、変更契機`RESTORE`、作成日時を含む。同じ`operationId`の再送は重複versionを作らない。現在versionが`expectedVersion`と異なる場合は`409 FILE_VERSION_CONFLICT`を返す。
 
-すべてのText／version APIはFile本文、過去版本文、内部保存Path、物理PathをLog、監査ログ、Metric label、例外へ出力しない。
+すべてのText／version APIは要求ごとに現在の共有権限とDevice有効性を再評価し、File mutation lock中に状態とversionを再確認する。User単位で1分120要求に制限し、超過時は`429 RATE_LIMIT_EXCEEDED`を返す。File本文、過去版本文、内部保存Path、物理PathをLog、監査ログ、Metric label、例外へ出力しない。
 
 ### 8.8 アップロード
 
@@ -2695,11 +2698,19 @@ flowchart LR
 | `FILE_MISSING_CANDIDATE` | 409 | 内容操作を拒否し再確認へ収束 | ファイルを確認中です |
 | `FILE_MISSING` | 409 | 不存在の内容操作を拒否 | ファイルが見つかりません |
 | `FILE_STATE_CONFLICT` | 409 | 部分再発見・未完了操作との競合を拒否 | 一覧を更新してください |
+| `FILE_VERSION_CONFLICT` | 409 | 古いversionを前提とした編集・復元を拒否 | 最新の内容を確認して再試行してください |
+| `FILE_VERSION_NOT_FOUND` | 404 | 存在しない過去版を存在秘匿して拒否 | 過去版が見つかりません |
+| `FILE_VERSION_CORRUPT` | 409 | Size・SHA-256・本文検証に失敗した版を公開しない | 過去版を確認できませんでした |
 | `INDEX_CONFLICT` | 409 | 古い索引状態による更新を拒否 | 一覧を更新して再試行してください |
 | `RECOVERY_REQUIRED` | 409 | 対象を通常利用から隔離 | 操作結果を確認中です |
 | `IDEMPOTENCY_CONFLICT` | 409 | 異なるPayloadでのKey再利用拒否 | 転送を最初からやり直してください |
 | `UPLOAD_SIZE_MISMATCH` | 422 | 正式公開しない | ファイルサイズが一致しません |
 | `UPLOAD_CHECKSUM_MISMATCH` | 422 | 正式公開しない | ファイル内容を確認できませんでした |
+| `UNSUPPORTED_MEDIA_TYPE` | 415 | JSON以外の編集・復元要求を拒否 | 要求形式を確認してください |
+| `UNSUPPORTED_TEXT_TYPE` | 415 | 許可MIME以外の本文操作を拒否 | このファイル形式は編集できません |
+| `TEXT_ENCODING_INVALID` | 422 | UTF-8として不正な本文を拒否 | UTF-8のテキストを使用してください |
+| `TEXT_SIZE_LIMIT_EXCEEDED` | 413 | 1 MiBを超える本文を拒否 | 1 MiB以下のテキストを使用してください |
+| `RATE_LIMIT_EXCEEDED` | 429 | User単位のText／version要求を一時拒否 | 少し待って再試行してください |
 | `STORAGE_UNAVAILABLE` | 503 | File更新停止 | HDDを利用できません |
 | `STORAGE_CAPACITY_INSUFFICIENT` | 507 | Upload開始・確定拒否 | 保存先の空き容量が不足しています |
 
