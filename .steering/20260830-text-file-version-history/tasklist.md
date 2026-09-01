@@ -170,7 +170,7 @@
 - [x] API clientで2 User／2 Device競合、履歴、比較用取得、復元、失効、PurgeをLAN／ZeroTierで確認する。
   - Nginx Unix socketから信頼される`LOCAL_DIRECT`／`REMOTE_SECURE`の2 route契約を2 User／2 Device API clientで実行し、同時保存は1件だけ成功、共有／Device失効後は拒否、履歴／過去版／復元／対象限定PurgeをPostgreSQLと実Filesystemで確認。物理LAN／ZeroTier経路のAndroid実機E2Eは計画どおりPR3で行う。
 - [x] 正式文書とrepository structureを実装結果へ更新する。
-- [ ] Commit、Push、英語PR、必須CI、モード3-A完了記録、再Pushを完了して報告・停止する。
+- [x] Commit、Push、英語PR、必須CI、モード3-A完了記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -242,6 +242,27 @@
 - 実装中に追加したタスクと理由: 外部変更でversion公開が失敗した場合に追跡中`FileEntry`をreloadして未対応versionだけが後続Saveへ漏れない回帰保護、実Filesystemの途中切断・破損immutable artifact・容量不足・symlink、Upload復旧後の完了済みartifact保持Testを追加した。理由はcrash／storage境界をfail-closedに収束させるため。
 - 技術的に不要になったタスク・理由・代替実装: なし。
 - 後続Pull Requestへの引継ぎ事項: PR #38の`main`へのMergeと必須CI成功をPR2開始条件とする。PR2では本PRのlazy baseline、immutable store、version journal metadata、mutation lock、Purge participantを使用してText取得／保存、履歴、過去版本文取得、復元APIとOpenAPI契約を実装する。ユーザー向け操作履歴は別SteeringのPR1から開始し、セキュリティ監査ログとの表示契約を混在させない。
+
+### PR2: テキスト・履歴・復元Server API
+
+- 完了日: 2026-09-01
+- Pull Request: [#39 Add text file version APIs](https://github.com/ry825/Kura_Storage/pull/39)
+- Commit: `0521a0e feat(server): add text file version APIs`
+- 実施したTest・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-config.sh`: 成功
+  - `./scripts/ci/verify-server.sh`: 成功（Domain 103件、Application 306件、Integration／API 206件、Release build警告0）
+  - `./scripts/ci/verify-security.sh`: 成功
+  - `./scripts/ci/verify-deployment.sh`: 成功
+  - `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`: 成功
+  - EF Core pending-model確認、`git diff --check`: 成功
+  - Coverage: Text認可・競合・回復境界96.65%、Domain 91.03%、Application 86.15%
+  - 性能: 1 MiBの現行取得158.3 ms、保存75.1 ms、過去版取得45.1 ms、復元58.3 ms、すべて2秒以内
+  - API route契約: `LOCAL_DIRECT`／`REMOTE_SECURE`を2 User／2 Deviceで確認し、同時保存、履歴、過去版取得、復元、共有／Device失効、Purgeが成功
+  - GitHub必須CI: Android、Config、Security、Serverの全Job成功
+- 計画と実装の差分: 承認済みの5 endpointとServer境界どおりに実装し、Android UIと利用者向けActivityは追加しなかった。物理LAN／ZeroTierのAndroid実機E2EはPR3に保留し、PR2ではNginx Unix socketから信頼さる2 route契約をAPI Integration Testで確認した。
+- 実装中に追加したタスクと理由: User単位の1分120要求レート制限、JSON body上限、Filesystem完了後／DB確定前の直接再送時に既存version metadataをjournalへ補完する処理、本文／File名／Path／Token非漏えい回帰Testを追加した。理由はDoS境界、冪等再送、機密性を実行可能な契約で保護するため。
+- 技術的に不要になったタスク・理由・代替実装: 新規Migrationは不要。PR1で追加済みのnullable journal列と`file_version_records`のみでPR2契約を表現でき、EF Core pending-model確認で未反映差分がないことを確認した。
+- 後続Pull Requestへの引継ぎ事項: PR #39の`main`へのMergeと必須CI成功をPR3開始条件とする。PR3ではOpenAPIのText／version契約を使用してAndroid editor、履歴、過去版preview／差分、復元UIと物理端末のLAN／ZeroTier E2Eを実装する。利用者向け操作履歴は別Steeringの表示契約として継続し、Auditと混在させない。
 
 ## 全体振り返り
 
