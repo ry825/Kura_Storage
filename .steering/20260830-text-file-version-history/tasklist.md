@@ -266,6 +266,26 @@
 - 技術的に不要になったタスク・理由・代替実装: 新規Migrationは不要。PR1で追加済みのnullable journal列と`file_version_records`のみでPR2契約を表現でき、EF Core pending-model確認で未反映差分がないことを確認した。
 - 後続Pull Requestへの引継ぎ事項: PR #39の`main`へのMergeと必須CI成功をPR3開始条件とする。PR3ではOpenAPIのText／version契約を使用してAndroid editor、履歴、過去版preview／差分、復元UIと物理端末のLAN／ZeroTier E2Eを実装する。利用者向け操作履歴は別Steeringの表示契約として継続し、Auditと混在させない。
 
+### PR3: Androidテキストエディター・履歴UI・実機E2E
+
+- 完了日: 2026-09-01
+- Pull Request: [#40 Add Android text editor and version history UI](https://github.com/ry825/Kura_Storage/pull/40)
+- Commit: `cf94783 feat(android): add text editing and version history`
+- 実施したTest・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`: 成功（1118 task、Android JVM 204件）
+  - Android 13実機Instrumented Test: 65件成功（`feature-text` 6件、競合／履歴のScreenshot smokeを含む）
+  - Coverage: Text重要境界337/338行（99.70%）、Domain／Application 3905/4625行（84.43%）
+  - `git diff --check`: 成功
+  - 署名済み非debuggable Release APK `0.10.0-text-pr3-rc1`を生成し、署名、versionCode 15、v3／RSA-4096を確認
+  - OPPO CPH2333（Android 13）と独立API clientの2台相当で、Owner編集、rotation中のdirty draft、409競合、有界差分、最新版再読込、別名保存、履歴preview、復元を確認
+  - VIEWER read-only、EDITOR保存、共有解除、LAN切断／再接続、`LOCAL_DIRECT`／ZeroTier `REMOTE_SECURE`、Device失効を確認
+  - Raspberry Pi、PostgreSQL、実HDDでversion内容、crash recovery、外部変更rescan、Log非漏えい、fixture完全削除後のService／DB／HDD健全性を確認
+  - GitHub必須CI run `33514097745`: Android、Config、Security、Serverの全Job成功
+- 計画と実装の差分: 承認済みのAndroid editor、履歴、preview／差分、復元、競合導線を実装した。物理端末2台の同時操作は、OPPO物理端末1台と独立API clientを別Deviceとして使用する2台相当の構成で確認した。exFAT上の直接外部変更はinotifyだけでは20秒／30秒以内に収束しなかったため、低遅延検知を主張せず、明示的なAPPLY rescanでversion化される実動作を記録した。
+- 実装中に追加したタスクと理由: 競合／履歴画面のScreenshot smoke、初期読込／保存失敗時のdraft保持とretry、履歴重複読込防止、明示的なerror／有界diff表示、物理E2E fixtureのTrash／Purge・User／Session／Device無効化を追加した。理由はUI退行、非同期race、失敗時の入力喪失、検証データ残存を防ぐため。
+- 技術的に不要になったタスク・理由・代替実装: PR3でのServer／OpenAPI追加は不要。PR2で確定した5 endpointと契約をAndroidから利用し、PR3ではcontract testで一致を保護した。
+- 後続Pull Requestへの引継ぎ事項: 本SteeringのTask 11はPR #40のReview／Merge待ち。ユーザー向け操作履歴（Task 12）は別Steeringの表示契約として実装し、既存Security Audit logと混在させない。exFATの外部変更は明示的rescan経路を運用上の確実な収束手段とし、低遅延inotify最適化を行う場合は別途Filesystem／kernel条件を評価する。
+
 ## 全体振り返り
 
 > 全タスク、全Pull Request、各完了記録が揃った後にだけモード3-Bで記録する。
