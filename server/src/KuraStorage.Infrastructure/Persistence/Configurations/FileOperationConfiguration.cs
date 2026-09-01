@@ -25,6 +25,23 @@ public sealed class FileOperationConfiguration : IEntityTypeConfiguration<FileOp
         builder.Property(operation => operation.TargetRelativePath).HasColumnName("target_relative_path").HasMaxLength(2048);
         builder.Property(operation => operation.ExpectedSize).HasColumnName("expected_size");
         builder.Property(operation => operation.ExpectedSha256).HasColumnName("expected_sha256").HasMaxLength(64);
+        builder.Property(operation => operation.PreviousFileVersion).HasColumnName("previous_file_version");
+        builder.Property(operation => operation.ResultFileVersion).HasColumnName("result_file_version");
+        builder.Property(operation => operation.VersionTemporaryRelativePath)
+            .HasColumnName("version_temporary_relative_path")
+            .HasMaxLength(2048);
+        builder.Property(operation => operation.VersionContentRelativePath)
+            .HasColumnName("version_content_relative_path")
+            .HasMaxLength(2048);
+        builder.Property(operation => operation.VersionSha256)
+            .HasColumnName("version_sha256")
+            .HasMaxLength(64);
+        builder.Property(operation => operation.VersionPublishStage)
+            .HasColumnName("version_publish_stage")
+            .HasConversion(
+                value => value == null ? null : value.Value.ToString().ToUpperInvariant(),
+                value => value == null ? null : Enum.Parse<FileVersionPublishStage>(value, true))
+            .HasMaxLength(32);
         builder.Property(operation => operation.Status)
             .HasColumnName("status")
             .HasConversion(value => value.ToString().ToUpperInvariant(), value => Enum.Parse<FileOperationStatus>(value, true))

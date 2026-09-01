@@ -133,6 +133,7 @@ public static class DependencyInjection
                     serviceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString));
         services.AddScoped<IIdentityRepository, IdentityRepository>();
         services.AddScoped<IFileRepository, FileRepository>();
+        services.AddScoped<IFileVersionRepository, FileVersionRepository>();
         services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
         services.AddScoped<IAuthorizationRepository, AuthorizationRepository>();
         services.AddScoped<ISearchRepository, PostgreSqlSearchRepository>();
@@ -148,14 +149,19 @@ public static class DependencyInjection
         services.AddSingleton<IMediaGenerator, ExternalMediaGenerator>();
         services.AddScoped<SharingDeletionParticipant>();
         services.AddScoped<MediaDeletionParticipant>();
+        services.AddScoped<FileVersionDeletionParticipant>();
         services.AddScoped<IPermanentDeleteParticipant>(
             serviceProvider => serviceProvider.GetRequiredService<SharingDeletionParticipant>());
         services.AddScoped<IPermanentDeleteParticipant>(
             serviceProvider => serviceProvider.GetRequiredService<MediaDeletionParticipant>());
+        services.AddScoped<IPermanentDeleteParticipant>(
+            serviceProvider => serviceProvider.GetRequiredService<FileVersionDeletionParticipant>());
         services.AddScoped<IFileIndexDeletionParticipant>(
             serviceProvider => serviceProvider.GetRequiredService<SharingDeletionParticipant>());
         services.AddScoped<IFileIndexDeletionParticipant>(
             serviceProvider => serviceProvider.GetRequiredService<MediaDeletionParticipant>());
+        services.AddScoped<IFileIndexDeletionParticipant>(
+            serviceProvider => serviceProvider.GetRequiredService<FileVersionDeletionParticipant>());
         services.AddScoped<IIndexCatalogRepository, IndexCatalogRepository>();
         services.AddScoped<IIndexScanService, IndexScanService>();
         services.AddScoped<IIndexEventService, IndexEventService>();
@@ -209,6 +215,7 @@ public static class DependencyInjection
                 };
             });
         services.AddScoped<FileOperationRecoveryService>();
+        services.AddScoped<FileVersionService>();
         services.AddScoped<UploadSessionService>();
         services.AddScoped<UploadSessionRecoveryService>();
         services.AddScoped<UploadSessionCleanupService>();
@@ -231,6 +238,7 @@ public static class DependencyInjection
         services.AddSingleton<IManagedFileSystemSnapshotReader, ManagedFileSystemSnapshotReader>();
         services.AddSingleton<IIndexChangeWatcher, LinuxInotifyWatcher>();
         services.AddSingleton<IFileStore, FileStore>();
+        services.AddSingleton<IFileVersionStore, FileVersionStore>();
         services.AddSingleton<IDerivativeStore, DerivativeStore>();
         services.AddSingleton<IUploadSessionStore>(
             serviceProvider => (IUploadSessionStore)serviceProvider.GetRequiredService<IFileStore>());

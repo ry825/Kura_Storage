@@ -264,6 +264,12 @@ operation.MarkCompleted(clock.UtcNow);
 - `FileEntry`に`DELETED`状態を追加しない。完全削除は行削除として扱う。
 - 名前変更・移動だけで`fileVersion`を増加させない。
 - RenameはName・RelativePath・UpdatedAt、MoveはParentId・RelativePath・UpdatedAt、子孫はRelativePath・UpdatedAtだけを変更する。
+- 対応テキストの内容変更で`fileVersion`を増加させる処理は、同じFile mutation lock内で不変な`FileVersionRecord`と本文を発行し、現行内容、版番号、履歴のいずれかだけを成功状態にしない。
+- Migration適用前の対応テキストにversion recordがない場合は、最初の履歴対応操作で現在版をlazy baseline化する。Migration、起動処理、Admin CLIでHDD全件backfillを行わない。
+- version本文の内部PathはOwner ID、File ID、version、SHA-256等のServer生成値だけから導出し、File名、Client path、MIMEをPathへ連結しない。
+- version本文を公開後に書き換えない。同じ決定的PathへのretryではSHA-256とSizeを検証し、異なる内容を上書きせず回復必須として扱う。
+- File本文、編集本文、過去版本文、File名、version保存Path、物理Pathを構造化Log、監査ログ、Metric label、例外messageへ含めない。Testでも実利用者の本文をfixtureや失敗messageへ埋め込まない。
+- 完全削除は`IPermanentDeleteParticipant`を通じて対象File IDのversion directoryとMetadataだけを削除し、Storage root、`versions` root、Owner root等の広い再帰削除を組み立てない。
 
 ```csharp
 public sealed class FileEntry

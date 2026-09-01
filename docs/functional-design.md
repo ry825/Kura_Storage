@@ -418,6 +418,33 @@ interface FileEntry {
 - `DELETED`状態は定義しない。完全削除が完了した時点で`FileEntry`自体を削除し、共有、同期、Recent、派生データ等の関連レコードも同一の管理処理で削除する。
 - 削除イベントを保持する必要がある場合は、`FileEntry`ではなく追記専用の監査ログへ必要最小限の識別情報と結果だけを記録する。
 
+#### 対応テキストの内容バージョン
+
+```typescript
+type FileVersionChangeKind = "UPLOAD" | "TEXT_EDIT" | "EXTERNAL_CHANGE" | "RESTORE";
+
+interface FileVersionRecord {
+  id: string;
+  fileEntryId: string;
+  version: number;
+  size: number;
+  sha256: string;
+  contentRelativePath: string; // KuraStorage内部利用だけ。APIへ返さない
+  changeKind: FileVersionChangeKind;
+  actorUserId?: string;
+  actorDeviceId?: string;
+  createdAt: string;
+}
+```
+
+- 対象は、厳密なUTF-8として読める最大1 MiBの`ACTIVE`なFileで、MIMEが`text/plain`、`text/markdown`、`text/csv`、`application/json`、`application/xml`、`application/yaml`のいずれかであるものとする。
+- `(fileEntryId, version)`を一意とし、現行内容のrecordが存在する場合は`FileEntry.fileVersion`と同じversionを持つ。
+- Upload完了時はversion 1、アプリ内保存、外部内容変更、過去版復元時は現在値に1を加えたversionを作る。
+- 名前変更、移動、ゴミ箱移動、ゴミ箱からの復元ではrecordを作らない。
+- MetadataはPostgreSQL、本文は`versions/{ownerUserId}/{fileId}/{version}/{sha256}.bin`形式のKuraStorage管理領域へ不変データとして保存する。Client入力、File名、物理Pathを内部Path生成に使用しない。
+- Migration適用前から存在してrecordがない対応テキストは、最初の履歴対応操作時にFile mutation lock内で現行内容を検証し、現在の`fileVersion`番号でlazy baselineを作る。MigrationとAdmin CLIはHDD全件backfillを行わない。
+- `FileVersionRecord`はFileEntry完全削除前に専用削除participantでMetadataと本文を限定削除する。通常の利用者APIから個別変更・削除しない。
+
 ### 5.3 MVP後: 共有
 
 ```typescript
@@ -1580,6 +1607,10 @@ DB.fileVersion != expectedVersion
 
 更新処理は対象`fileId`のPostgreSQL advisory lockを取得してから現在Versionを再取得する。名前変更・移動・ゴミ箱操作も同じlockを使用し、複数IDを扱う場合はIDから導出したlock keyを昇順に取得する。同一ファイルへの並行更新を直列化し、一致する場合だけ一時ファイルへ保存して、atomic rename後に`fileVersion + 1`でDBを更新する。
 
+保存・復元では、現行版のbaselineを確保し、新版本文を一時Fileへ書き込んでUTF-8、Size、SHA-256、空き容量を検証する。操作ジャーナルは旧version、新version、一時Path、最終Path、SHA-256を持ち、本文のimmutable publish、現行Fileのatomic置換、`FileVersionRecord`と`FileEntry`更新を再実行可能にする。同じ`operationId`の再送は同じ結果へ収束し、重複versionを作らない。
+
+外部内容変更では、変更検出後の現在内容を新versionとして発行する。既存baselineがある場合は以前の本文を保持する。Feature導入前またはbaseline作成前に外部から失われた過去内容を推測・合成しない。
+
 ---
 
 ## 7.11 初回Device登録
@@ -1845,6 +1876,27 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 ```
 
 競合時は`409 FILE_VERSION_CONFLICT`を返す。
+
+#### `GET /api/v1/files/{fileId}/versions?page={page}&pageSize={pageSize}`
+
+版番号、Size、SHA-256、変更契機、変更者表示、作成日時をversion降順で返す。既定pageSizeは50、許容範囲は1〜100とする。本文と内部保存Pathは一覧へ含めない。
+
+#### `GET /api/v1/files/{fileId}/versions/{version}/text`
+
+指定した過去版の本文、encoding、version、Size、SHA-256を返す。現在の`VIEWER`以上を要求し、共有解除、非対応File、`TRASHED`、`MISSING*`、未完了操作、破損versionは存在秘匿または型付きErrorとして拒否する。
+
+#### `POST /api/v1/files/{fileId}/versions/{version}/restore`
+
+```json
+{
+  "expectedVersion": 7,
+  "operationId": "b1cf0e84-e0cc-4af5-8123-0f57baf7eeec"
+}
+```
+
+現在`EDITOR`以上を要求する。成功時は指定版の内容を新しい現行versionとして発行し、復元前の現行版を保持する。同じ`operationId`の再送は重複versionを作らない。現在versionが`expectedVersion`と異なる場合は`409 FILE_VERSION_CONFLICT`を返す。
+
+すべてのText／version APIはFile本文、過去版本文、内部保存Path、物理PathをLog、監査ログ、Metric label、例外へ出力しない。
 
 ### 8.8 アップロード
 

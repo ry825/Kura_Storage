@@ -1,4 +1,5 @@
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Files;
 using KuraStorage.Application.Indexing;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
@@ -40,22 +41,39 @@ public sealed class IndexScanPostgreSqlTests
             var files = Directory.CreateDirectory(
                 Path.Combine(storageRoot.FullName, "users", ownerId.ToString("N"), "files"));
             var nested = Directory.CreateDirectory(Path.Combine(files.FullName, "nested"));
-            await File.WriteAllTextAsync(Path.Combine(nested.FullName, "observed.txt"), "observed");
+            var observedPath = Path.Combine(nested.FullName, "observed.txt");
+            await File.WriteAllTextAsync(observedPath, "observed");
             var catalog = new IndexCatalogRepository(database);
+            var storageOptions = Options.Create(new StorageOptions
+            {
+                RootPath = storageRoot.FullName,
+                StorageId = "test",
+                MinimumFreeBytes = 1,
+                CapacityWarningFreeBytes = 1,
+            });
             var snapshot = new ManagedFileSystemSnapshotReader(
-                Options.Create(new StorageOptions { RootPath = storageRoot.FullName, StorageId = "test" }));
+                storageOptions);
             var clock = new MutableClock(now);
+            var guard = new AvailableGuard();
+            var versionService = new FileVersionService(
+                new FileVersionRepository(database),
+                new FileVersionStore(storageOptions),
+                new FileStore(storageOptions),
+                guard,
+                clock);
             var service = new IndexScanService(
                 catalog,
                 snapshot,
-                new AvailableGuard(),
+                guard,
                 clock,
                 new KuraStorage.Application.Indexing.IndexingOptions
                 {
                     BatchSize = 10,
                     MissingConfirmationDelayMinutes = 5,
                     StagingRetentionHours = 24,
-                });
+                },
+                mutationRepository: new FileRepository(database),
+                fileVersions: versionService);
 
             var dryRun = await service.RunAsync(
                 new IndexScanRequest(IndexScanTrigger.Admin, IndexScanMode.DryRun),
@@ -75,13 +93,31 @@ public sealed class IndexScanPostgreSqlTests
             Assert.Equal(3, await database.FileEntries.CountAsync());
             Assert.Equal(1, await database.IndexScanRuns.CountAsync());
             Assert.Equal(0, await database.IndexScanItems.CountAsync());
+            var indexedFile = await database.FileEntries.SingleAsync(entry => entry.Name == "observed.txt");
+            var firstVersion = await database.FileVersionRecords.SingleAsync(record => record.FileEntryId == indexedFile.Id);
+            Assert.Equal(1, firstVersion.Version);
+            Assert.Equal(FileVersionChangeKind.ExternalChange, firstVersion.ChangeKind);
 
-            File.Delete(Path.Combine(nested.FullName, "observed.txt"));
+            await File.WriteAllTextAsync(observedPath, "observed changed");
+            File.SetLastWriteTimeUtc(observedPath, DateTime.UtcNow.AddSeconds(2));
+            var changedScan = await service.RunAsync(
+                new IndexScanRequest(IndexScanTrigger.Admin, IndexScanMode.Apply),
+                CancellationToken.None);
+            Assert.Equal(1, changedScan.UpdatedCount);
+            await database.Entry(indexedFile).ReloadAsync();
+            Assert.Equal(2, indexedFile.FileVersion);
+            var versions = await database.FileVersionRecords
+                .Where(record => record.FileEntryId == indexedFile.Id)
+                .OrderBy(record => record.Version)
+                .Select(record => record.Version)
+                .ToArrayAsync();
+            Assert.Equal(new long[] { 1, 2 }, versions);
+
+            File.Delete(observedPath);
             var candidateScan = await service.RunAsync(
                 new IndexScanRequest(IndexScanTrigger.Admin, IndexScanMode.Apply),
                 CancellationToken.None);
             Assert.Equal(1, candidateScan.CandidateCount);
-            var indexedFile = await database.FileEntries.SingleAsync(entry => entry.Name == "observed.txt");
             Assert.Equal(FileEntryStatus.MissingCandidate, indexedFile.Status);
 
             clock.UtcNow = now.AddMinutes(6);

@@ -62,6 +62,18 @@ public sealed class FileOperation
 
     public string? ExpectedSha256 { get; private set; }
 
+    public long? PreviousFileVersion { get; private set; }
+
+    public long? ResultFileVersion { get; private set; }
+
+    public string? VersionTemporaryRelativePath { get; private set; }
+
+    public string? VersionContentRelativePath { get; private set; }
+
+    public string? VersionSha256 { get; private set; }
+
+    public FileVersionPublishStage? VersionPublishStage { get; private set; }
+
     public FileOperationStatus Status { get; private set; }
 
     public string? ErrorCode { get; private set; }
@@ -89,7 +101,48 @@ public sealed class FileOperation
         }
 
         Status = FileOperationStatus.Completed;
+        if (VersionPublishStage is not null)
+        {
+            VersionPublishStage = FileVersionPublishStage.Completed;
+        }
         ErrorCode = null;
+        UpdatedAt = now;
+    }
+
+    public void RecordPublishedVersion(
+        long? previousVersion,
+        long resultVersion,
+        string temporaryRelativePath,
+        string contentRelativePath,
+        string sha256,
+        DateTimeOffset now)
+    {
+        if (previousVersion is < 1 || resultVersion < 1 ||
+            previousVersion is not null && resultVersion <= previousVersion ||
+            string.IsNullOrWhiteSpace(temporaryRelativePath) ||
+            string.IsNullOrWhiteSpace(contentRelativePath) ||
+            sha256.Length != 64 || sha256.Any(character =>
+                character is not (>= '0' and <= '9') and not (>= 'a' and <= 'f')))
+        {
+            throw new ArgumentException("The published version metadata is invalid.");
+        }
+
+        if (ResultFileVersion is not null &&
+            (PreviousFileVersion != previousVersion ||
+             ResultFileVersion != resultVersion ||
+             !string.Equals(VersionTemporaryRelativePath, temporaryRelativePath, StringComparison.Ordinal) ||
+             !string.Equals(VersionContentRelativePath, contentRelativePath, StringComparison.Ordinal) ||
+             !string.Equals(VersionSha256, sha256, StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException("The operation already references another version artifact.");
+        }
+
+        PreviousFileVersion = previousVersion;
+        ResultFileVersion = resultVersion;
+        VersionTemporaryRelativePath = temporaryRelativePath;
+        VersionContentRelativePath = contentRelativePath;
+        VersionSha256 = sha256;
+        VersionPublishStage = FileVersionPublishStage.Published;
         UpdatedAt = now;
     }
 

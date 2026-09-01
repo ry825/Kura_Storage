@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Files;
 using KuraStorage.Domain.Files;
 
 namespace KuraStorage.Application.Indexing;
@@ -8,7 +9,9 @@ public sealed class IndexEventService(
     IIndexCatalogRepository catalog,
     IManagedFileSystemSnapshotReader snapshotReader,
     IStorageGuard storageGuard,
-    ISystemClock clock) : IIndexEventService
+    ISystemClock clock,
+    IFileRepository? mutationRepository = null,
+    FileVersionService? fileVersions = null) : IIndexEventService
 {
     private static readonly Meter Meter = new("KuraStorage.Indexing");
     private static readonly Counter<long> EventResults = Meter.CreateCounter<long>("kurastorage.index.event.results");
@@ -60,6 +63,10 @@ public sealed class IndexEventService(
         {
             return Record(IndexEventResult.RescanRequired, change.Kind);
         }
+        catch (IOException)
+        {
+            return Record(IndexEventResult.Deferred, change.Kind);
+        }
     }
 
     private async Task<IndexEventResult> ReconcilePresentAsync(
@@ -79,8 +86,46 @@ public sealed class IndexEventService(
                 return IndexEventResult.Deferred;
             }
 
-            ApplyObservation(existing, observed, change.ContentMayHaveChanged);
-            await catalog.SaveChangesAsync(cancellationToken);
+            if (mutationRepository is not null && fileVersions is not null)
+            {
+                await using var mutationLock = await mutationRepository.AcquireMutationLocksAsync(
+                    [existing.Id], cancellationToken);
+                existing = await catalog.FindEntryByPathAsync(
+                    observed.OwnerUserId, observed.RelativePath.Value, cancellationToken);
+                if (existing is null || existing.EntryType != observed.EntryType ||
+                    await HasIncompleteOperationAsync(existing, cancellationToken))
+                {
+                    return IndexEventResult.Deferred;
+                }
+
+                var previousVersion = existing.FileVersion;
+                ApplyObservation(existing, observed, change.ContentMayHaveChanged);
+                if (existing.FileVersion != previousVersion)
+                {
+                    try
+                    {
+                        _ = await fileVersions.EnsureCurrentAsync(
+                            existing,
+                            FileVersionChangeKind.ExternalChange,
+                            Guid.NewGuid(),
+                            null,
+                            null,
+                            cancellationToken);
+                    }
+                    catch (IOException)
+                    {
+                        _ = await mutationRepository.ReloadAsync(existing, CancellationToken.None);
+                        return IndexEventResult.Deferred;
+                    }
+                }
+
+                await catalog.SaveChangesAsync(cancellationToken);
+            }
+            else
+            {
+                ApplyObservation(existing, observed, change.ContentMayHaveChanged);
+                await catalog.SaveChangesAsync(cancellationToken);
+            }
             return IndexEventResult.Applied;
         }
 
@@ -120,6 +165,19 @@ public sealed class IndexEventService(
             observed.SourceFileKey,
             clock.UtcNow,
             contentChanged: false);
+        if (mutationRepository is not null && fileVersions is not null)
+        {
+            await using var mutationLock = await mutationRepository.AcquireMutationLocksAsync(
+                [entry.Id], cancellationToken);
+            _ = await fileVersions.EnsureCurrentAsync(
+                entry,
+                FileVersionChangeKind.ExternalChange,
+                Guid.NewGuid(),
+                null,
+                null,
+                cancellationToken);
+        }
+
         catalog.Add(entry);
         await catalog.SaveChangesAsync(cancellationToken);
         return IndexEventResult.Applied;

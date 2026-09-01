@@ -32,3 +32,18 @@ public enum FileOperationStatus
     Completed,
     RecoveryRequired,
 }
+
+public enum FileVersionPublishStage
+{
+    Temporary,
+    Published,
+    Completed,
+}
+
+public enum FileVersionChangeKind
+{
+    Upload,
+    TextEdit,
+    ExternalChange,
+    Restore,
+}

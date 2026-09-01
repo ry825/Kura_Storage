@@ -16,7 +16,8 @@ public sealed class FileService(
     IUserStorageProvisioner provisioner,
     ISystemClock clock,
     TrashPurgeOptions? purgeOptions = null,
-    IAuthorizationService? authorizationService = null)
+    IAuthorizationService? authorizationService = null,
+    FileVersionService? fileVersions = null)
 {
     private readonly int retentionDays = purgeOptions?.RetentionDays ?? 30;
     public async Task<FileResult<FilePage>> ListAsync(
@@ -657,6 +658,27 @@ public sealed class FileService(
             NormalizeContentType(command.ContentType),
             stored.Size,
             now);
+        try
+        {
+            if (fileVersions is not null)
+            {
+                _ = await fileVersions.EnsureCurrentAsync(
+                    entry,
+                    FileVersionChangeKind.Upload,
+                    operation.Id,
+                    command.ActorUserId,
+                    command.ActorDeviceId,
+                    cancellationToken,
+                    operation);
+            }
+        }
+        catch (IOException)
+        {
+            operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            await repository.SaveChangesAsync(CancellationToken.None);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
         var completedAt = clock.UtcNow;
         await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         repository.Add(entry);
