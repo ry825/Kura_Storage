@@ -104,9 +104,9 @@
     - 2026-09-01実測: seed 107,395 ms、履歴／baseline lookup p95 116.2 ms、対象Purge 3.8 ms、metadata relation 517,513,216 bytes。履歴・lookupともIndex planを確認。
   - [x] `./scripts/ci/verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`が成功する。
   - [x] `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`、Migration確認、`git diff --check`が成功する。
-- [ ] PR1を完了する。
+- [x] PR1を完了する。
   - [x] 差分をself-reviewし、API／Android先行実装、credential、実環境値、本文fixture混入がない。
-  - [ ] Commit、Push、英語PR、必須CI、モード3-A完了記録、再Pushを完了して報告・停止する。
+  - [x] Commit、Push、英語PR、必須CI、モード3-A完了記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -218,6 +218,26 @@
 ## 各Pull Request完了記録
 
 > Pull Request作成後にモード3-Aで追記する。後続PRが未完了でも、完了したPRの記録は行う。
+
+### PR1: ファイルバージョン永続化・回復基盤
+
+- 完了日: 2026-09-01
+- Pull Request: [#38 Add file version persistence and recovery foundation](https://github.com/ry825/Kura_Storage/pull/38)
+- Commit: `c50e913 feat(server): add file version persistence foundation`
+- 実施したTest・Build・静的解析:
+  - `./scripts/ci/verify-config.sh`: 成功
+  - `./scripts/ci/verify-server.sh`: 成功（Domain 101件、Application 246件、Integration 193件）
+  - `./scripts/ci/verify-security.sh`: 成功
+  - `./scripts/ci/verify-deployment.sh`: 成功
+  - `dotnet format server/KuraStorage.sln --verify-no-changes --no-restore`: 成功
+  - EF Core pending-model確認、PostgreSQL Migration Up／Down／再Up、`git diff --check`: 成功
+  - Coverage: `FileVersionRecord` 100%、`FileVersionService` 98.29%、`FileVersionStore` 95.32%、Domain全体80.03%、Application Unit＋Integration合算83.72%
+  - 性能: 30万FileEntry／100万versionで履歴・baseline lookup p95 116.2 ms、対象Purge 3.8 ms、metadata 517,513,216 bytes、Index plan使用を確認
+  - GitHub必須CI: Android、Config、Security、Serverの全Job成功
+- 計画と実装の差分: PR1の承認済み境界どおり、HTTP APIとAndroidを追加せず永続化・回復基盤までを実装した。`FileOperation`の既存operation kindと状態を維持し、旧／新version、temp／final path、checksum、version publish段階をnullable拡張として追加した。
+- 実装中に追加したタスクと理由: 外部変更でversion公開が失敗した場合に追跡中`FileEntry`をreloadして未対応versionだけが後続Saveへ漏れない回帰保護、実Filesystemの途中切断・破損immutable artifact・容量不足・symlink、Upload復旧後の完了済みartifact保持Testを追加した。理由はcrash／storage境界をfail-closedに収束させるため。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: PR #38の`main`へのMergeと必須CI成功をPR2開始条件とする。PR2では本PRのlazy baseline、immutable store、version journal metadata、mutation lock、Purge participantを使用してText取得／保存、履歴、過去版本文取得、復元APIとOpenAPI契約を実装する。ユーザー向け操作履歴は別SteeringのPR1から開始し、セキュリティ監査ログとの表示契約を混在させない。
 
 ## 全体振り返り
 
