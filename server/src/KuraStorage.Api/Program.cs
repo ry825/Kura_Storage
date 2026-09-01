@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using KuraStorage.Api;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
@@ -106,8 +107,66 @@ builder.Services.AddAuthorization(options =>
         .RequireAuthenticatedUser()
         .Build();
 });
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new ErrorResponse(
+                "RATE_LIMIT_EXCEEDED",
+                "The request could not be completed.",
+                context.HttpContext.TraceIdentifier,
+                new { }),
+            cancellationToken);
+    };
+    options.AddPolicy(
+        "TextVersions",
+        context => RateLimitPartition.GetFixedWindowLimiter(
+            context.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ??
+            context.Connection.RemoteIpAddress?.ToString() ??
+            "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 120,
+                QueueLimit = 0,
+                Window = TimeSpan.FromMinutes(1),
+            }));
+});
 
 var app = builder.Build();
+const long maximumTextJsonBodyBytes = (FileVersionRecord.MaximumContentBytes * 6) + (64 * 1024);
+app.Use(async (context, next) =>
+{
+    var isTextMutation =
+        (context.Request.Method == HttpMethods.Put &&
+         context.Request.Path.Value?.EndsWith("/text", StringComparison.Ordinal) == true) ||
+        (context.Request.Method == HttpMethods.Post &&
+         context.Request.Path.Value?.EndsWith("/restore", StringComparison.Ordinal) == true);
+    if (isTextMutation)
+    {
+        var bodySize = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (bodySize is { IsReadOnly: false })
+        {
+            bodySize.MaxRequestBodySize = maximumTextJsonBodyBytes;
+        }
+
+        if (context.Request.ContentLength > maximumTextJsonBodyBytes)
+        {
+            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            await context.Response.WriteAsJsonAsync(
+                new ErrorResponse(
+                    TextFileErrorCodes.TextSizeLimitExceeded,
+                    "The request could not be completed.",
+                    context.TraceIdentifier,
+                    new { }));
+            return;
+        }
+    }
+
+    await next(context);
+});
 app.UseExceptionHandler(exceptionHandlerApp =>
 {
     exceptionHandlerApp.Run(async context =>
@@ -125,6 +184,7 @@ app.UseExceptionHandler(exceptionHandlerApp =>
 app.UseMiddleware<RouteHeaderMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapGet(
         "/api/v1/system/health",
@@ -706,6 +766,158 @@ app.MapGet(
         return ToFileHttpResult(await files.GetAsync(userId, fileId, cancellationToken), context);
     });
 
+app.MapGet(
+    "/api/v1/files/{fileId:guid}/text",
+    async (
+        Guid fileId,
+        HttpContext context,
+        TextFileService textFiles,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToTextFileHttpResult(
+            await textFiles.GetAsync(userId, fileId, cancellationToken),
+            context);
+    })
+    .RequireRateLimiting("TextVersions");
+
+app.MapPut(
+    "/api/v1/files/{fileId:guid}/text",
+    async (
+        Guid fileId,
+        HttpContext context,
+        TextFileService textFiles,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (!context.Request.HasJsonContentType())
+        {
+            return Error(
+                StatusCodes.Status415UnsupportedMediaType,
+                TextFileErrorCodes.UnsupportedMediaType,
+                context);
+        }
+
+        var request = await ReadJsonAsync<SaveTextRequest>(context.Request, cancellationToken);
+        if (request is null || request.AdditionalProperties is { Count: > 0 })
+        {
+            return Error(StatusCodes.Status400BadRequest, TextFileErrorCodes.ValidationFailed, context);
+        }
+
+        return ToTextFileHttpResult(
+            await textFiles.SaveAsync(
+                new SaveTextFileCommand(
+                    userId,
+                    deviceId,
+                    fileId,
+                    request.Content,
+                    request.ExpectedVersion,
+                    request.OperationId,
+                    context.TraceIdentifier),
+                cancellationToken),
+            context);
+    })
+    .RequireRateLimiting("TextVersions");
+
+app.MapGet(
+    "/api/v1/files/{fileId:guid}/versions",
+    async (
+        Guid fileId,
+        [AsParameters] FileVersionsHttpQuery query,
+        HttpContext context,
+        TextFileService textFiles,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (!TryOptionalInt(query.Page, 1, out var page) ||
+            !TryOptionalInt(query.PageSize, 50, out var pageSize))
+        {
+            return Error(StatusCodes.Status400BadRequest, TextFileErrorCodes.ValidationFailed, context);
+        }
+
+        return ToTextFileHttpResult(
+            await textFiles.ListVersionsAsync(userId, fileId, page, pageSize, cancellationToken),
+            context);
+    })
+    .RequireRateLimiting("TextVersions");
+
+app.MapGet(
+    "/api/v1/files/{fileId:guid}/versions/{version:long}/text",
+    async (
+        Guid fileId,
+        long version,
+        HttpContext context,
+        TextFileService textFiles,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return ToTextFileHttpResult(
+            await textFiles.GetVersionTextAsync(userId, fileId, version, cancellationToken),
+            context);
+    })
+    .RequireRateLimiting("TextVersions");
+
+app.MapPost(
+    "/api/v1/files/{fileId:guid}/versions/{version:long}/restore",
+    async (
+        Guid fileId,
+        long version,
+        HttpContext context,
+        TextFileService textFiles,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (!context.Request.HasJsonContentType())
+        {
+            return Error(
+                StatusCodes.Status415UnsupportedMediaType,
+                TextFileErrorCodes.UnsupportedMediaType,
+                context);
+        }
+
+        var request = await ReadJsonAsync<RestoreTextVersionRequest>(context.Request, cancellationToken);
+        if (request is null || request.AdditionalProperties is { Count: > 0 })
+        {
+            return Error(StatusCodes.Status400BadRequest, TextFileErrorCodes.ValidationFailed, context);
+        }
+
+        return ToTextFileHttpResult(
+            await textFiles.RestoreAsync(
+                new RestoreTextVersionCommand(
+                    userId,
+                    deviceId,
+                    fileId,
+                    version,
+                    request.ExpectedVersion,
+                    request.OperationId,
+                    context.TraceIdentifier),
+                cancellationToken),
+            context);
+    })
+    .RequireRateLimiting("TextVersions");
+
 app.MapPost(
     "/api/v1/files/{fileId:guid}/missing/recheck",
     async (
@@ -1275,6 +1487,28 @@ static IResult ToFileHttpResult<T>(FileResult<T> result, HttpContext context)
     return Error(status, result.Failure.Code, context);
 }
 
+static IResult ToTextFileHttpResult<T>(TextFileResult<T> result, HttpContext context)
+{
+    if (result.IsSuccess)
+    {
+        return Results.Ok(result.Value);
+    }
+
+    var status = result.Failure!.Kind switch
+    {
+        TextFileFailureKind.BadRequest => StatusCodes.Status400BadRequest,
+        TextFileFailureKind.NotFound => StatusCodes.Status404NotFound,
+        TextFileFailureKind.Conflict => StatusCodes.Status409Conflict,
+        TextFileFailureKind.Unprocessable => StatusCodes.Status422UnprocessableEntity,
+        TextFileFailureKind.PayloadTooLarge => StatusCodes.Status413PayloadTooLarge,
+        TextFileFailureKind.UnsupportedMediaType => StatusCodes.Status415UnsupportedMediaType,
+        TextFileFailureKind.StorageUnavailable => StatusCodes.Status503ServiceUnavailable,
+        TextFileFailureKind.CapacityInsufficient => StatusCodes.Status507InsufficientStorage,
+        _ => StatusCodes.Status500InternalServerError,
+    };
+    return Error(status, result.Failure.Code, context);
+}
+
 static IResult ToSharingHttpResult<T>(SharingResult<T> result, HttpContext context)
 {
     if (result.IsSuccess)
@@ -1623,6 +1857,21 @@ static IResult Error(int status, string code, HttpContext context) =>
         new ErrorResponse(code, "The request could not be completed.", context.TraceIdentifier, new { }),
         statusCode: status);
 
+static async Task<T?> ReadJsonAsync<T>(HttpRequest request, CancellationToken cancellationToken)
+{
+    try
+    {
+        return await JsonSerializer.DeserializeAsync<T>(
+            request.Body,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web),
+            cancellationToken);
+    }
+    catch (JsonException)
+    {
+        return default;
+    }
+}
+
 public sealed record RegisterDeviceRequest(string? Username, string? Password, string? DeviceName);
 
 public sealed record LoginRequest(string? Username, string? Password, Guid DeviceId);
@@ -1666,6 +1915,12 @@ public sealed class RecentFilesHttpQuery
     public string? PageSize { get; init; }
 }
 
+public sealed class FileVersionsHttpQuery
+{
+    public string? Page { get; init; }
+    public string? PageSize { get; init; }
+}
+
 public sealed record CreateUploadSessionRequest(
     Guid DestinationFolderId,
     string? FileName,
@@ -1684,6 +1939,28 @@ public sealed class UpdateFileRequest
     public string? Name { get; init; }
 
     public Guid? ParentId { get; init; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? AdditionalProperties { get; init; }
+}
+
+public sealed class SaveTextRequest
+{
+    public string? Content { get; init; }
+
+    public long ExpectedVersion { get; init; }
+
+    public Guid OperationId { get; init; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? AdditionalProperties { get; init; }
+}
+
+public sealed class RestoreTextVersionRequest
+{
+    public long ExpectedVersion { get; init; }
+
+    public Guid OperationId { get; init; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? AdditionalProperties { get; init; }

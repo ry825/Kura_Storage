@@ -163,6 +163,25 @@ public sealed class FileStore(
         await Task.CompletedTask;
     }
 
+    public async Task ReplaceAsync(
+        RelativeStoragePath source,
+        RelativeStoragePath target,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var sourcePath = Resolve(source, true);
+        var targetPath = Resolve(target, true);
+        if (!File.Exists(sourcePath) || !File.Exists(targetPath))
+        {
+            throw new IOException("Both replacement files must exist.");
+        }
+
+        EnsureNoSymbolicLink(sourcePath);
+        EnsureNoSymbolicLink(targetPath);
+        File.Move(sourcePath, targetPath, overwrite: true);
+        await Task.CompletedTask;
+    }
+
     public async Task DeleteIfExistsAsync(RelativeStoragePath path, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

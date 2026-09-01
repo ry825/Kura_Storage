@@ -110,6 +110,49 @@ public sealed class FileStoreSecurityTests : IDisposable
     }
 
     [Fact]
+    public async Task Replace_AtomicallyOverwritesCurrentFileAndConsumesValidatedTemporaryFile()
+    {
+        Directory.CreateDirectory(directory);
+        var owner = Guid.NewGuid();
+        var operation = Guid.NewGuid();
+        var store = CreateStore();
+        await store.EnsureUserAreaAsync(owner, CancellationToken.None);
+        var currentPath = Path.Combine(directory, "users", owner.ToString("N"), "files", "note.txt");
+        await File.WriteAllTextAsync(currentPath, "before");
+        var replacement = await store.WriteUploadTempAsync(
+            owner,
+            operation,
+            new MemoryStream(System.Text.Encoding.UTF8.GetBytes("after")),
+            5,
+            CancellationToken.None);
+
+        await store.ReplaceAsync(
+            replacement.Path,
+            RelativeStoragePath.Create($"users/{owner:N}/files/note.txt"),
+            CancellationToken.None);
+
+        Assert.Equal("after", await File.ReadAllTextAsync(currentPath));
+        Assert.False(File.Exists(Path.Combine(
+            directory, "upload-temp", owner.ToString("N"), $"{operation:N}.upload")));
+    }
+
+    [Fact]
+    public async Task Replace_WhenTargetMissingOrSymlinkedFailsWithoutPublishing()
+    {
+        Directory.CreateDirectory(directory);
+        var owner = Guid.NewGuid();
+        var store = CreateStore();
+        await store.EnsureUserAreaAsync(owner, CancellationToken.None);
+        var replacement = await store.WriteUploadTempAsync(
+            owner, Guid.NewGuid(), new MemoryStream([1]), 1, CancellationToken.None);
+
+        await Assert.ThrowsAsync<IOException>(() => store.ReplaceAsync(
+            replacement.Path,
+            RelativeStoragePath.Create($"users/{owner:N}/files/missing.txt"),
+            CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Move_WhenTargetParentIsSymlink_RejectsStorageEscape()
     {
         Directory.CreateDirectory(directory);

@@ -221,6 +221,44 @@ public sealed class FileValueObjectTests
     }
 
     [Fact]
+    public void FileEntry_ManagedContentChangeChecksExpectedVersionAndIncrementsOnce()
+    {
+        var now = DateTimeOffset.Parse("2026-09-01T12:00:00Z");
+        var ownerId = Guid.NewGuid();
+        var entry = FileEntry.CreateFile(
+            Guid.NewGuid(), ownerId, Guid.NewGuid(), FileName.Create("item.txt"),
+            RelativeStoragePath.Create($"users/{ownerId:N}/files/item.txt"),
+            "text/plain", 4, now);
+
+        entry.ApplyManagedContentChange(9, expectedVersion: 1, now.AddMinutes(1));
+
+        Assert.Equal(2, entry.FileVersion);
+        Assert.Equal(9, entry.Size);
+        Assert.Equal(now.AddMinutes(1), entry.SourceModifiedAt);
+        Assert.Equal(now.AddMinutes(1), entry.SourceObservedAt);
+        Assert.Equal(now.AddMinutes(1), entry.UpdatedAt);
+    }
+
+    [Fact]
+    public void FileEntry_ManagedContentChangeRejectsStaleVersionInvalidSizeAndNonActiveEntry()
+    {
+        var now = DateTimeOffset.Parse("2026-09-01T12:00:00Z");
+        var ownerId = Guid.NewGuid();
+        var entry = FileEntry.CreateFile(
+            Guid.NewGuid(), ownerId, Guid.NewGuid(), FileName.Create("item.txt"),
+            RelativeStoragePath.Create($"users/{ownerId:N}/files/item.txt"),
+            "text/plain", 4, now);
+
+        Assert.Throws<InvalidFileOperationException>(() =>
+            entry.ApplyManagedContentChange(5, expectedVersion: 2, now));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            entry.ApplyManagedContentChange(-1, expectedVersion: 1, now));
+        entry.Trash(RelativeStoragePath.Create($"users/{ownerId:N}/trash/{entry.Id:N}/item.txt"), now);
+        Assert.Throws<InvalidFileOperationException>(() =>
+            entry.ApplyManagedContentChange(5, expectedVersion: 1, now));
+    }
+
+    [Fact]
     public void FileEntry_RootAndTrashedEntries_CannotBecomeMissingCandidates()
     {
         var now = DateTimeOffset.UtcNow;

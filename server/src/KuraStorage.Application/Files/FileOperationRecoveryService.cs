@@ -10,7 +10,9 @@ public sealed class FileOperationRecoveryService(
     IStorageGuard storageGuard,
     TrashPurgeService trashPurge,
     ISystemClock clock,
-    FileVersionService? fileVersions = null)
+    FileVersionService? fileVersions = null,
+    IFileVersionRepository? versions = null,
+    IFileVersionStore? versionStore = null)
 {
     public async Task RecoverAsync(CancellationToken cancellationToken)
     {
@@ -34,6 +36,12 @@ public sealed class FileOperationRecoveryService(
 
     private async Task RecoverOneAsync(FileOperation operation, CancellationToken cancellationToken)
     {
+        if (operation.OperationType is FileOperationType.TextEdit or FileOperationType.VersionRestore)
+        {
+            await RecoverTextMutationAsync(operation, cancellationToken);
+            return;
+        }
+
         if (operation.OperationType is FileOperationType.Rename or FileOperationType.Move)
         {
             await RecoverRelocationAsync(operation, cancellationToken);
@@ -165,6 +173,117 @@ public sealed class FileOperationRecoveryService(
 
         operation.Complete(clock.UtcNow);
         await repository.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task RecoverTextMutationAsync(
+        FileOperation operation,
+        CancellationToken cancellationToken)
+    {
+        if (versions is null ||
+            versionStore is null ||
+            operation.FileEntryId is not Guid entryId ||
+            operation.PreviousFileVersion is not long previousVersion ||
+            operation.ResultFileVersion is not long resultVersion ||
+            operation.ExpectedSize is not long expectedSize ||
+            operation.ExpectedSha256 is not string expectedSha256 ||
+            operation.TargetRelativePath is null)
+        {
+            await RequireRecoveryAsync(operation, cancellationToken);
+            return;
+        }
+
+        await using var mutationLock = await repository.AcquireMutationLocksAsync([entryId], cancellationToken);
+        var entry = await repository.FindByIdAsync(entryId, cancellationToken);
+        var record = await versions.FindAsync(entryId, resultVersion, cancellationToken);
+        if (entry is null ||
+            record is null ||
+            entry.OwnerUserId != operation.OwnerUserId ||
+            record.Size != expectedSize ||
+            !string.Equals(record.Sha256, expectedSha256, StringComparison.Ordinal) ||
+            !string.Equals(record.ContentRelativePath, operation.VersionContentRelativePath, StringComparison.Ordinal) ||
+            record.ChangeKind != (operation.OperationType == FileOperationType.TextEdit
+                ? FileVersionChangeKind.TextEdit
+                : FileVersionChangeKind.Restore))
+        {
+            await RequireRecoveryAsync(operation, cancellationToken);
+            return;
+        }
+
+        if (operation.Status == FileOperationStatus.RecoveryRequired)
+        {
+            operation.Retry(clock.UtcNow);
+            await repository.SaveChangesAsync(cancellationToken);
+        }
+
+        if (entry.FileVersion == resultVersion)
+        {
+            operation.Complete(clock.UtcNow);
+            await repository.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (entry.FileVersion != previousVersion || entry.Status != FileEntryStatus.Active)
+        {
+            await RequireRecoveryAsync(operation, cancellationToken);
+            return;
+        }
+
+        try
+        {
+            await using var content = await versionStore.OpenReadAsync(
+                RelativeStoragePath.Create(record.ContentRelativePath),
+                record.Size,
+                record.Sha256,
+                cancellationToken);
+            var replacement = await fileStore.WriteUploadTempAsync(
+                entry.OwnerUserId,
+                operation.Id,
+                content,
+                record.Size,
+                cancellationToken);
+            if (replacement.Size != record.Size ||
+                !string.Equals(replacement.Sha256, record.Sha256, StringComparison.Ordinal))
+            {
+                await RequireRecoveryAsync(operation, cancellationToken);
+                return;
+            }
+
+            await fileStore.ReplaceAsync(
+                replacement.Path,
+                RelativeStoragePath.Create(operation.TargetRelativePath),
+                cancellationToken);
+            if (operation.Status == FileOperationStatus.Pending)
+            {
+                operation.MarkFilesystemDone(clock.UtcNow);
+                await repository.SaveChangesAsync(cancellationToken);
+            }
+
+            var now = clock.UtcNow;
+            await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
+            entry.ApplyManagedContentChange(record.Size, previousVersion, now);
+            repository.Add(
+                new AuditLog(
+                    Guid.NewGuid(),
+                    record.ActorUserId,
+                    record.ActorDeviceId,
+                    null,
+                    operation.OperationType == FileOperationType.TextEdit
+                        ? "FILE_TEXT_EDIT"
+                        : "FILE_VERSION_RESTORE",
+                    "FILE_ENTRY",
+                    entry.Id.ToString(),
+                    "SUCCESS",
+                    operation.RequestId,
+                    now));
+            operation.Complete(now);
+            await repository.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is IOException or FilePersistenceConflictException)
+        {
+            await RequireRecoveryAsync(operation, CancellationToken.None);
+        }
     }
 
     private async Task RecoverRelocationAsync(

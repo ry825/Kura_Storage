@@ -1376,11 +1376,14 @@ flowchart LR
 - 内部PathはServer生成のOwner ID、File ID、version、SHA-256だけから導出する。File名、MIME文字列、Client指定Pathを使用しない。
 - publishは同一内容への再送を許すが、既存Pathの内容が期待SHA-256と異なる場合は上書きせず回復必須とする。
 - File mutation lockの取得後にEntry、状態、認可、現在versionを再読込する。複数Lockは既存規則どおり導出key昇順で取得する。
-- Filesystem publish後にDBが失敗した場合、決定的なPathとjournalからroll-forwardする。完了応答済みrecordや本文を一時File cleanupの対象にしない。
+- Text取得、編集、履歴、過去版取得、復元は`TextFileService`を共通境界とする。`VIEWER`以上の読取と`EDITOR`以上の変更を現在の共有状態から毎回判定し、Admin roleだけではFile権限を付与しない。
+- 編集と復元はClient生成`operationId`を`FileOperation`の冪等keyとして使用する。immutable version発行、現行Fileのatomic replace、`FileEntry.fileVersion`・監査ログ・journal完了のDB transactionという順序を維持する。
+- Filesystem publish後にDBが失敗した場合、決定的なPathとjournalから`TEXT_EDIT`または`VERSION_RESTORE`をroll-forwardする。再実行で既存version recordを検出した場合もjournalへ発行情報を補完し、完了応答済みrecordや本文を一時File cleanupの対象にしない。
 - 外部変更検出は1回の安定Snapshotで観測できた現在内容を保存する。監視イベントが合流した期間の中間内容を存在したものとして推測しない。
 - 完全削除では専用`IPermanentDeleteParticipant`が対象Rootと子孫File IDのversion directoryを列挙し、物理削除後の同一DB transactionでMetadataを削除する。別File IDのdirectoryやrecordへ作用しない。
 - MigrationはTableとIndexだけを追加し、HDDを走査しない。既存対応テキストは最初の履歴対応操作で現在の`fileVersion`をlazy baseline化する。
 - 一覧はMetadataだけをpage取得する。本文は最大1 MiBをbounded streamingし、複数版本文や30万FileEntryをMemoryへ展開しない。
+- API入口はJSON body上限を強制し、User IDをpartition keyとする固定Window（1分120要求）をText／version APIへ適用する。429応答にも本文、File名、保存Pathを含めない。
 - 30万FileEntry、100万version recordでMigration、Index、一覧、Purgeを測定し、通常2秒以内を目標とする。
 - 本文、File名、内部／物理Pathを構造化Log、監査ログ、Metric label、例外へ含めない。
 

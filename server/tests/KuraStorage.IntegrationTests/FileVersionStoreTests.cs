@@ -205,6 +205,52 @@ public sealed class FileVersionStoreTests : IAsyncLifetime
         Assert.False(Directory.Exists(Path.Combine(root, "version-temp")));
     }
 
+    [Fact]
+    public async Task OpenRead_ValidatesDeterministicPathSizeAndChecksumBeforeReturningContent()
+    {
+        var ownerId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var content = Encoding.UTF8.GetBytes("validated immutable content");
+        var store = CreateStore();
+        var published = await store.TryPublishAsync(
+            ownerId, fileId, 4, Guid.NewGuid(), new MemoryStream(content), content.Length, default);
+
+        await using var stream = await store.OpenReadAsync(
+            published!.Path,
+            published.Size,
+            published.Sha256,
+            default);
+        using var actual = new MemoryStream();
+        await stream.CopyToAsync(actual);
+        Assert.Equal(content, actual.ToArray());
+
+        await Assert.ThrowsAsync<FileVersionConsistencyException>(() => store.OpenReadAsync(
+            published.Path, published.Size + 1, published.Sha256, default));
+        await Assert.ThrowsAsync<FileVersionConsistencyException>(() => store.OpenReadAsync(
+            published.Path, published.Size, new string('a', 64), default));
+        await Assert.ThrowsAsync<FileVersionConsistencyException>(() => store.OpenReadAsync(
+            KuraStorage.Domain.Files.RelativeStoragePath.Create(
+                $"versions/{Guid.Empty:N}/{fileId:N}/4/{published.Sha256}.bin"),
+            published.Size,
+            published.Sha256,
+            default));
+    }
+
+    [Fact]
+    public async Task OpenRead_CorruptPublishedContentFailsClosed()
+    {
+        var ownerId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var content = Encoding.UTF8.GetBytes("before corruption");
+        var store = CreateStore();
+        var published = await store.TryPublishAsync(
+            ownerId, fileId, 1, Guid.NewGuid(), new MemoryStream(content), content.Length, default);
+        await File.WriteAllBytesAsync(Resolve(published!.Path.Value), Encoding.UTF8.GetBytes("after corruption!"));
+
+        await Assert.ThrowsAsync<FileVersionConsistencyException>(() => store.OpenReadAsync(
+            published.Path, published.Size, published.Sha256, default));
+    }
+
     private FileVersionStore CreateStore(long minimumFreeBytes = 1) => new(Options.Create(new StorageOptions
     {
         RootPath = root,

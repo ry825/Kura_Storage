@@ -265,6 +265,8 @@ operation.MarkCompleted(clock.UtcNow);
 - 名前変更・移動だけで`fileVersion`を増加させない。
 - RenameはName・RelativePath・UpdatedAt、MoveはParentId・RelativePath・UpdatedAt、子孫はRelativePath・UpdatedAtだけを変更する。
 - 対応テキストの内容変更で`fileVersion`を増加させる処理は、同じFile mutation lock内で不変な`FileVersionRecord`と本文を発行し、現行内容、版番号、履歴のいずれかだけを成功状態にしない。
+- Text編集と過去版復元は`expectedVersion`とClient生成`operationId`を必須とし、同一Payloadの再送だけを冪等成功させる。不一致な再利用、古いversion、未完了journalとの競合を種類付きErrorで拒否する。
+- Text／version APIは各要求で現在のDeviceと共有権限を再評価する。Admin roleをFile閲覧権限の代替にせず、他User所有と無権限は存在秘匿する。
 - Migration適用前の対応テキストにversion recordがない場合は、最初の履歴対応操作で現在版をlazy baseline化する。Migration、起動処理、Admin CLIでHDD全件backfillを行わない。
 - version本文の内部PathはOwner ID、File ID、version、SHA-256等のServer生成値だけから導出し、File名、Client path、MIMEをPathへ連結しない。
 - version本文を公開後に書き換えない。同じ決定的PathへのretryではSHA-256とSizeを検証し、異なる内容を上書きせず回復必須として扱う。

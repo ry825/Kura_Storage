@@ -114,58 +114,62 @@
 
 ### 2.1 作業開始・Application contract
 
-- [ ] PR2の開始条件を満たす。
-  - [ ] PR1が`main`へMerge済みで、最新`main`から短命Branchを作成する。
-  - [ ] Steering、version store、permission、mutation lock、OpenAPI、Activity連携点を確認する。
-- [ ] Text／version contractをTest firstで実装する。
-  - [ ] MIME、UTF-8、BOM、Rune／byte上限、content、expectedVersion、operationIdを検証する。
-  - [ ] history item、page、checksum、change kind、actor表示、restore resultを定義する。
-  - [ ] 未知enum、overflow、不正version／cursorをfail-closedにする。
+- [x] PR2の開始条件を満たす。
+  - [x] PR1が`main`へMerge済みで、最新`main`から短命Branchを作成する。（PR #38 Merge後の`8486cfc`から`feat/text-version-server-api`を作成）
+  - [x] Steering、version store、permission、mutation lock、OpenAPI、Activity連携点を確認する。（利用者向けActivityは別Steeringで追加し、本PRは既存Auditと将来の公開Application境界を分離）
+- [x] Text／version contractをTest firstで実装する。
+  - [x] MIME、UTF-8、BOM、Rune／byte上限、content、expectedVersion、operationIdを検証する。
+  - [x] history item、page、checksum、change kind、actor表示、restore resultを定義する。
+  - [x] 未知enum、overflow、不正version／cursorをfail-closedにする。
 
 ### 2.2 Text取得・保存
 
-- [ ] Text取得Use Caseを実装する。
-  - [ ] current permissionを再評価し、File／`ACTIVE`／未完了なしを確認してbounded streaming readする。
-  - [ ] UTF-8 strict decode、BOM除去、1 MiB、size／versionの整合を検証する。
-  - [ ] Owner／共有／Admin暗黙権限なし／存在秘匿をTestする。
-- [ ] Text保存Use Caseを実装する。
-  - [ ] advisory lock後に`EDITOR`以上、状態、`expectedVersion`、baselineを再確認する。
-  - [ ] temp writeから現行置換、新version record、FileEntry更新、Activity／Auditを回復可能に確定する。
-  - [ ] 同時保存、同時Move／Trash／Purge／外部変更、共有失効、operationId再送をTestする。
-  - [ ] 競合で現行内容と履歴を変更せず`FILE_VERSION_CONFLICT`を返す。
+- [x] Text取得Use Caseを実装する。
+  - [x] current permissionを再評価し、File／`ACTIVE`／未完了なしを確認してbounded streaming readする。
+  - [x] UTF-8 strict decode、BOM除去、1 MiB、size／versionの整合を検証する。
+  - [x] Owner／共有／Admin暗黙権限なし／存在秘匿をTestする。
+- [x] Text保存Use Caseを実装する。
+  - [x] advisory lock後に`EDITOR`以上、状態、`expectedVersion`、baselineを再確認する。
+  - [x] temp writeから現行置換、新version record、FileEntry更新、Activity／Auditを回復可能に確定する。（Auditを同一DB transactionへ記録し、利用者向けActivityは別Steeringの公開契約へ接続可能なApplication境界を維持）
+  - [x] 同時保存、同時Move／Trash／Purge／外部変更、共有失効、operationId再送をTestする。（外部変更はPR1回帰Testを継続し、PR2で2 User保存・Move・Trash・Purgeとの直列化を追加）
+  - [x] 競合で現行内容と履歴を変更せず`FILE_VERSION_CONFLICT`を返す。
 
 ### 2.3 履歴・復元
 
-- [ ] version一覧／本文取得を実装する。
-  - [ ] 現在権限をSQL／Application境界で再評価し、version降順のpageを返す。
-  - [ ] 本文取得でchecksum、size、File状態、権限を再検証する。
-  - [ ] N+1、全metadata materialize、HDD directory走査を行わない。
-  - [ ] Share失効、Move、Trash、MISSING、Purge、actor削除後の表示をTestする。
-- [ ] 復元Use Caseを実装する。
-  - [ ] `EDITOR`以上、`expectedVersion`、target version、現行状態をlock内で再確認する。
-  - [ ] target本文を新しい現行versionとして発行し、復元前versionを保持する。
-  - [ ] 同じ過去番号を再利用せず、change kindとactorを`RESTORE`で記録する。
-  - [ ] 同時復元／保存、破損過去版、容量不足、DB失敗、retryをTestする。
+- [x] version一覧／本文取得を実装する。
+  - [x] 現在権限をSQL／Application境界で再評価し、version降順のpageを返す。
+  - [x] 本文取得でchecksum、size、File状態、権限を再検証する。
+  - [x] N+1、全metadata materialize、HDD directory走査を行わない。
+  - [x] Share失効、Move、Trash、MISSING、Purge、actor削除後の表示をTestする。（非ACTIVE状態は共通存在秘匿、actor FK消失時は`Deleted user`へfail-closed）
+- [x] 復元Use Caseを実装する。
+  - [x] `EDITOR`以上、`expectedVersion`、target version、現行状態をlock内で再確認する。
+  - [x] target本文を新しい現行versionとして発行し、復元前versionを保持する。
+  - [x] 同じ過去番号を再利用せず、change kindとactorを`RESTORE`で記録する。
+  - [x] 同時復元／保存、破損過去版、容量不足、DB失敗、retryをTestする。
 
 ### 2.4 API・OpenAPI・Security
 
-- [ ] 5つのText／version endpointを実装する。
-  - [ ] Method、path、body、page、status、Error envelope、Request IDを設計と一致させる。
-  - [ ] body size limit、Content-Type、non-empty／unknown field、UUID、versionを検証する。
-  - [ ] 401、存在秘匿404、409、413、415、422相当、Storage／DB Errorを統一する。
-  - [ ] Rate limit、Cancellation、401 refresh後のoperationId再送を安全にする。
-- [ ] OpenAPIとContract Testを更新する。
-  - [ ] schema、example、上限、権限、冪等性、競合、restore意味を記載する。
-  - [ ] 本文、物理Path、内部storage key、他User内部IDを不要に返さない。
-- [ ] Log／security regressionを検証する。
-  - [ ] API、Nginx、DB、journal、Auditに本文、File名、物理Path、Tokenがない。
-  - [ ] 共有解除・Session／Device失効直後に履歴と本文を取得・更新できない。
+- [x] 5つのText／version endpointを実装する。
+  - [x] Method、path、body、page、status、Error envelope、Request IDを設計と一致させる。
+  - [x] body size limit、Content-Type、non-empty／unknown field、UUID、versionを検証する。
+  - [x] 401、存在秘匿404、409、413、415、422相当、Storage／DB Errorを統一する。
+  - [x] Rate limit、Cancellation、401 refresh後のoperationId再送を安全にする。
+- [x] OpenAPIとContract Testを更新する。
+  - [x] schema、example、上限、権限、冪等性、競合、restore意味を記載する。
+  - [x] 本文、物理Path、内部storage key、他User内部IDを不要に返さない。
+- [x] Log／security regressionを検証する。
+  - [x] API、Nginx、DB、journal、Auditに本文、File名、物理Path、Tokenがない。
+  - [x] 共有解除・Session／Device失効直後に履歴と本文を取得・更新できない。
 
 ### 2.5 PR2検証・完了
 
-- [ ] Unit／Integration／API Test、Coverage、性能、全Server CI、format、Migration、`git diff --check`を成功させる。
-- [ ] API clientで2 User／2 Device競合、履歴、比較用取得、復元、失効、PurgeをLAN／ZeroTierで確認する。
-- [ ] 正式文書とrepository structureを実装結果へ更新する。
+- [x] Unit／Integration／API Test、Coverage、性能、全Server CI、format、Migration、`git diff --check`を成功させる。
+  - 2026-09-01実測: Domain 103件、Application 306件、Integration／API 206件がRelease構成で成功。Text重要境界96.65%、Domain 91.03%、Application 86.15%のLine Coverageを確認。
+  - 1 MiB API実測は現行取得158.3 ms、保存75.1 ms、過去版取得45.1 ms、復元58.3 msで、すべて2秒以内。PR1の30万FileEntry／100万version metadataでのIndex planとp95 116.2 msも維持。
+  - `verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、`dotnet format`、EF Core pending-model確認、`git diff --check`が成功。
+- [x] API clientで2 User／2 Device競合、履歴、比較用取得、復元、失効、PurgeをLAN／ZeroTierで確認する。
+  - Nginx Unix socketから信頼される`LOCAL_DIRECT`／`REMOTE_SECURE`の2 route契約を2 User／2 Device API clientで実行し、同時保存は1件だけ成功、共有／Device失効後は拒否、履歴／過去版／復元／対象限定PurgeをPostgreSQLと実Filesystemで確認。物理LAN／ZeroTier経路のAndroid実機E2Eは計画どおりPR3で行う。
+- [x] 正式文書とrepository structureを実装結果へ更新する。
 - [ ] Commit、Push、英語PR、必須CI、モード3-A完了記録、再Pushを完了して報告・停止する。
 
 ---

@@ -172,6 +172,33 @@ public sealed class FileVersionStore(IOptions<StorageOptions> configuredOptions)
         }
     }
 
+    public async Task<Stream> OpenReadAsync(
+        RelativeStoragePath contentPath,
+        long expectedSize,
+        string expectedSha256,
+        CancellationToken cancellationToken)
+    {
+        if (expectedSize is < 0 or > FileVersionRecord.MaximumContentBytes ||
+            expectedSha256.Length != 64 ||
+            expectedSha256.Any(character =>
+                character is not (>= '0' and <= '9') and not (>= 'a' and <= 'f')) ||
+            !IsVersionContentPath(contentPath, expectedSha256))
+        {
+            throw new FileVersionConsistencyException();
+        }
+
+        var path = Resolve(contentPath, requireExisting: true);
+        await ValidateExistingAsync(path, expectedSize, expectedSha256, cancellationToken);
+        Stream stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            BufferSize,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        return stream;
+    }
+
     private async Task ValidateExistingAsync(
         string path,
         long expectedSize,
@@ -194,6 +221,20 @@ public sealed class FileVersionStore(IOptions<StorageOptions> configuredOptions)
         {
             throw new FileVersionConsistencyException();
         }
+    }
+
+    private static bool IsVersionContentPath(RelativeStoragePath path, string expectedSha256)
+    {
+        var segments = path.Value.Split('/');
+        return segments.Length == 5 &&
+               segments[0] == "versions" &&
+               Guid.TryParseExact(segments[1], "N", out var ownerId) &&
+               ownerId != Guid.Empty &&
+               Guid.TryParseExact(segments[2], "N", out var fileId) &&
+               fileId != Guid.Empty &&
+               long.TryParse(segments[3], out var version) &&
+               version >= 1 &&
+               string.Equals(segments[4], expectedSha256 + ".bin", StringComparison.Ordinal);
     }
 
     private string Resolve(RelativeStoragePath relativePath, bool requireExisting)

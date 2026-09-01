@@ -1050,6 +1050,154 @@ paths:
           $ref: "#/components/responses/Conflict"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /files/{fileId}/text:
+    parameters:
+      - $ref: "#/components/parameters/FileId"
+    get:
+      tags: [Files]
+      operationId: getFileText
+      summary: Read the current strict UTF-8 text and version metadata
+      description: Requires the current VIEWER permission or stronger. UTF-8 BOM is omitted from content; the physical content is limited to 1 MiB.
+      responses:
+        "200":
+          description: Current text and immutable-content integrity metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextDocument"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    put:
+      tags: [Files]
+      operationId: saveFileText
+      summary: Save strict UTF-8 text as a new immutable file version
+      description: Requires current EDITOR permission or stronger. expectedVersion prevents unconditional overwrite. Retrying the identical request with the same operationId returns the original result without creating another version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveTextRequest"
+            example:
+              content: "updated content"
+              expectedVersion: 4
+              operationId: b1cf0e84-e0cc-4af5-8123-0f57baf7eeec
+      responses:
+        "200":
+          description: New current version, or the original result of an idempotent retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextMutationResult"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        "507": { $ref: "#/components/responses/InsufficientStorage" }
+  /files/{fileId}/versions:
+    parameters:
+      - $ref: "#/components/parameters/FileId"
+    get:
+      tags: [Files]
+      operationId: listFileVersions
+      summary: List immutable version metadata newest first
+      description: Current VIEWER permission is reevaluated on every request. Content and internal storage paths are never included.
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Stable metadata page ordered by version descending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileVersionPage"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /files/{fileId}/versions/{version}/text:
+    parameters:
+      - $ref: "#/components/parameters/FileId"
+      - $ref: "#/components/parameters/FileVersion"
+    get:
+      tags: [Files]
+      operationId: getFileVersionText
+      summary: Read one immutable historical text version
+      description: Requires current VIEWER permission or stronger and verifies stored size and SHA-256 before returning content.
+      responses:
+        "200":
+          description: Historical text and integrity metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextDocument"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /files/{fileId}/versions/{version}/restore:
+    parameters:
+      - $ref: "#/components/parameters/FileId"
+      - $ref: "#/components/parameters/FileVersion"
+    post:
+      tags: [Files]
+      operationId: restoreFileVersion
+      summary: Publish a historical version as a new current version
+      description: Requires current EDITOR permission or stronger. The target version and the pre-restore current version remain immutable; version numbers are never reused. operationId makes authorization-refresh retries idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestoreTextVersionRequest"
+            example:
+              expectedVersion: 7
+              operationId: b1cf0e84-e0cc-4af5-8123-0f57baf7eeec
+      responses:
+        "200":
+          description: Newly published RESTORE version, or the original idempotent result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextMutationResult"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        "507": { $ref: "#/components/responses/InsufficientStorage" }
   /files/{fileId}/content:
     parameters:
       - $ref: "#/components/parameters/FileId"
@@ -1354,6 +1502,14 @@ components:
       schema:
         type: string
         format: uuid
+    FileVersion:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
     EntryId:
       name: entryId
       in: path
@@ -1447,6 +1603,12 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     UnprocessableEntity:
       description: A chunk or completed file failed checksum or length verification.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnsupportedMediaType:
+      description: The request content type or target file MIME is unsupported.
       content:
         application/json:
           schema:
@@ -1773,6 +1935,127 @@ components:
         parentId:
           type: string
           format: uuid
+    SaveTextRequest:
+      type: object
+      additionalProperties: false
+      required: [content, expectedVersion, operationId]
+      properties:
+        content:
+          type: string
+          maxLength: 1048576
+          description: Strict Unicode text encoded and stored as BOM-less UTF-8. The encoded content must not exceed 1 MiB.
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        operationId:
+          type: string
+          format: uuid
+    RestoreTextVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, operationId]
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        operationId:
+          type: string
+          format: uuid
+    TextDocument:
+      type: object
+      additionalProperties: false
+      required: [content, encoding, fileVersion, size, sha256]
+      properties:
+        content:
+          type: string
+          maxLength: 1048576
+        encoding:
+          type: string
+          const: UTF-8
+        fileVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1048576
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+    TextMutationResult:
+      type: object
+      additionalProperties: false
+      required: [fileVersion, size, sha256, changeKind, createdAt]
+      properties:
+        fileVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1048576
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        changeKind:
+          type: string
+          enum: [TEXT_EDIT, RESTORE]
+        createdAt:
+          type: string
+          format: date-time
+    FileVersionItem:
+      type: object
+      additionalProperties: false
+      required: [version, size, sha256, changeKind, actorDisplayName, createdAt]
+      properties:
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1048576
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        changeKind:
+          type: string
+          enum: [UPLOAD, TEXT_EDIT, EXTERNAL_CHANGE, RESTORE]
+        actorDisplayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Current actor display name, External change, or Deleted user.
+        createdAt:
+          type: string
+          format: date-time
+    FileVersionPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, totalCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileVersionItem"
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        totalCount:
+          type: integer
+          minimum: 0
     SharePermission:
       type: string
       enum: [VIEWER, CONTRIBUTOR, EDITOR, MANAGER]
@@ -2231,6 +2514,15 @@ components:
         - STORAGE_UNAVAILABLE
         - STORAGE_CAPACITY_INSUFFICIENT
         - FILE_NOT_FOUND
+        - FILE_VERSION_NOT_FOUND
+        - FILE_VERSION_CONFLICT
+        - FILE_VERSION_CORRUPT
+        - FILE_STATE_CONFLICT
+        - UNSUPPORTED_TEXT_TYPE
+        - UNSUPPORTED_MEDIA_TYPE
+        - TEXT_ENCODING_INVALID
+        - TEXT_SIZE_LIMIT_EXCEEDED
+        - RATE_LIMIT_EXCEEDED
         - FILE_NAME_CONFLICT
         - FILE_MOVE_CYCLE
         - FILE_OPERATION_NOT_ALLOWED
