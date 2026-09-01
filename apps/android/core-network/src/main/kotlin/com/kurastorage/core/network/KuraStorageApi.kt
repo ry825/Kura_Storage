@@ -130,6 +130,39 @@ interface AdminStorageApi {
     suspend fun getAdminStorage(accessToken: String): NetworkCallResult<AdminStorageStatusDto>
 }
 
+interface TextFileApi {
+    suspend fun getText(
+        accessToken: String,
+        fileId: String,
+    ): NetworkCallResult<TextDocumentDto>
+
+    suspend fun saveText(
+        accessToken: String,
+        fileId: String,
+        request: SaveTextRequestDto,
+    ): NetworkCallResult<TextMutationResultDto>
+
+    suspend fun listVersions(
+        accessToken: String,
+        fileId: String,
+        page: Int,
+        pageSize: Int,
+    ): NetworkCallResult<FileVersionPageDto>
+
+    suspend fun getVersionText(
+        accessToken: String,
+        fileId: String,
+        version: Long,
+    ): NetworkCallResult<TextDocumentDto>
+
+    suspend fun restoreVersion(
+        accessToken: String,
+        fileId: String,
+        version: Long,
+        request: RestoreTextVersionRequestDto,
+    ): NetworkCallResult<TextMutationResultDto>
+}
+
 interface UploadSessionApi {
     suspend fun createUploadSession(
         accessToken: String,
@@ -454,6 +487,42 @@ private interface KuraStorageService {
         @Path("fileId") fileId: String,
     ): Response<FileEntryDto>
 
+    @GET("files/{fileId}/text")
+    suspend fun getText(
+        @Header("Authorization") authorization: String,
+        @Path("fileId") fileId: String,
+    ): Response<TextDocumentDto>
+
+    @PUT("files/{fileId}/text")
+    suspend fun saveText(
+        @Header("Authorization") authorization: String,
+        @Path("fileId") fileId: String,
+        @Body request: SaveTextRequestDto,
+    ): Response<TextMutationResultDto>
+
+    @GET("files/{fileId}/versions")
+    suspend fun listVersions(
+        @Header("Authorization") authorization: String,
+        @Path("fileId") fileId: String,
+        @Query("page") page: Int,
+        @Query("pageSize") pageSize: Int,
+    ): Response<FileVersionPageDto>
+
+    @GET("files/{fileId}/versions/{version}/text")
+    suspend fun getVersionText(
+        @Header("Authorization") authorization: String,
+        @Path("fileId") fileId: String,
+        @Path("version") version: Long,
+    ): Response<TextDocumentDto>
+
+    @POST("files/{fileId}/versions/{version}/restore")
+    suspend fun restoreVersion(
+        @Header("Authorization") authorization: String,
+        @Path("fileId") fileId: String,
+        @Path("version") version: Long,
+        @Body request: RestoreTextVersionRequestDto,
+    ): Response<TextMutationResultDto>
+
     @POST("folders")
     suspend fun createFolder(
         @Header("Authorization") authorization: String,
@@ -573,6 +642,7 @@ class KuraStorageApi(
     private val json: Json = Json { ignoreUnknownKeys = false },
 ) : AuthenticationApi,
     FileApi,
+    TextFileApi,
     AdminStorageApi,
     UploadSessionApi,
     SharingApi,
@@ -738,6 +808,37 @@ class KuraStorageApi(
         accessToken: String,
         fileId: String,
     ) = executeAuthenticated { service.getFile(bearer(accessToken), fileId) }
+
+    override suspend fun getText(
+        accessToken: String,
+        fileId: String,
+    ) = executeAuthenticated { service.getText(bearer(accessToken), fileId) }
+
+    override suspend fun saveText(
+        accessToken: String,
+        fileId: String,
+        request: SaveTextRequestDto,
+    ) = executeAuthenticated { service.saveText(bearer(accessToken), fileId, request) }
+
+    override suspend fun listVersions(
+        accessToken: String,
+        fileId: String,
+        page: Int,
+        pageSize: Int,
+    ) = executeAuthenticated { service.listVersions(bearer(accessToken), fileId, page, pageSize) }
+
+    override suspend fun getVersionText(
+        accessToken: String,
+        fileId: String,
+        version: Long,
+    ) = executeAuthenticated { service.getVersionText(bearer(accessToken), fileId, version) }
+
+    override suspend fun restoreVersion(
+        accessToken: String,
+        fileId: String,
+        version: Long,
+        request: RestoreTextVersionRequestDto,
+    ) = executeAuthenticated { service.restoreVersion(bearer(accessToken), fileId, version, request) }
 
     override suspend fun createFolder(
         accessToken: String,

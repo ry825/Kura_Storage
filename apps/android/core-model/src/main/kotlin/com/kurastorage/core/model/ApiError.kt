@@ -43,8 +43,16 @@ enum class ErrorCode {
     UPLOAD_SESSION_COMPLETED,
     CHUNK_SIZE_LIMIT_EXCEEDED,
     FILE_SIZE_LIMIT_EXCEEDED,
+    TEXT_SIZE_LIMIT_EXCEEDED,
     CHUNK_CHECKSUM_MISMATCH,
     UPLOAD_LIMIT_REACHED,
+    UNSUPPORTED_MEDIA_TYPE,
+    UNSUPPORTED_TEXT_TYPE,
+    TEXT_ENCODING_INVALID,
+    FILE_VERSION_CONFLICT,
+    FILE_VERSION_NOT_FOUND,
+    FILE_VERSION_CORRUPT,
+    RATE_LIMIT_EXCEEDED,
     INTERNAL_ERROR,
     UNKNOWN,
 }
@@ -90,12 +98,14 @@ data class ApiError(
                 ErrorCode.UPLOAD_SESSION_EXPIRED,
                 ErrorCode.UPLOAD_SESSION_CANCELLED,
                 ErrorCode.UPLOAD_SESSION_COMPLETED,
+                ErrorCode.FILE_VERSION_CONFLICT,
                 -> ErrorCategory.CONFLICT
                 ErrorCode.FILE_NOT_FOUND,
                 ErrorCode.SHARE_NOT_FOUND,
                 ErrorCode.SHARE_MEMBER_NOT_FOUND,
                 ErrorCode.TAG_NOT_FOUND,
                 ErrorCode.UPLOAD_SESSION_NOT_FOUND,
+                ErrorCode.FILE_VERSION_NOT_FOUND,
                 -> ErrorCategory.AUTHORIZATION
                 ErrorCode.AUTHENTICATION_REQUIRED,
                 ErrorCode.DEVICE_REVOKED,
@@ -114,13 +124,22 @@ data class ApiError(
                 ErrorCode.UPLOAD_CHECKSUM_MISMATCH,
                 ErrorCode.CHUNK_SIZE_LIMIT_EXCEEDED,
                 ErrorCode.FILE_SIZE_LIMIT_EXCEEDED,
+                ErrorCode.TEXT_SIZE_LIMIT_EXCEEDED,
                 ErrorCode.CHUNK_CHECKSUM_MISMATCH,
+                ErrorCode.UNSUPPORTED_MEDIA_TYPE,
+                ErrorCode.UNSUPPORTED_TEXT_TYPE,
+                ErrorCode.TEXT_ENCODING_INVALID,
                 -> ErrorCategory.VALIDATION
                 else -> ErrorCategory.UNKNOWN
             }
 
     val canRetry: Boolean
-        get() = statusCode == null || statusCode >= SERVER_ERROR_STATUS || code == ErrorCode.UPLOAD_LIMIT_REACHED
+        get() =
+            statusCode == null ||
+                statusCode >= SERVER_ERROR_STATUS ||
+                code == ErrorCode.UPLOAD_LIMIT_REACHED ||
+                code == ErrorCode.RATE_LIMIT_EXCEEDED ||
+                code == ErrorCode.FILE_VERSION_CORRUPT
 
     private companion object {
         const val SERVER_ERROR_STATUS = 500

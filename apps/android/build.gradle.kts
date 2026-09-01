@@ -66,6 +66,7 @@ val coverageModules =
         ":feature-search",
         ":feature-settings",
         ":feature-sharing",
+        ":feature-text",
     )
 
 val coverageExecutionData =
@@ -132,6 +133,14 @@ val criticalMediaStateExcludes =
         // Transport-only request DTO; it does not perform a state transition.
         "com/kurastorage/core/model/media/MediaOpenRequest*.*",
     )
+val criticalTextStateIncludes =
+    listOf(
+        "com/kurastorage/core/model/TextFileModels*.*",
+        "com/kurastorage/core/data/TextFileRepository*.*",
+        "com/kurastorage/feature/text/BoundedLineDiff*.*",
+        "com/kurastorage/feature/text/TextEditorViewModel*.*",
+        "com/kurastorage/feature/text/VersionHistoryViewModel*.*",
+    )
 
 fun registerCoverageReport(
     taskName: String,
@@ -185,6 +194,8 @@ val domainApplicationCoverage =
     registerCoverageReport("androidDomainApplicationCoverage", domainApplicationIncludes, domainApplicationExcludes)
 val criticalMediaStateCoverage =
     registerCoverageReport("androidCriticalMediaStateCoverage", criticalMediaStateIncludes, criticalMediaStateExcludes)
+val criticalTextStateCoverage =
+    registerCoverageReport("androidCriticalTextStateCoverage", criticalTextStateIncludes)
 val domainApplicationCoverageVerification =
     registerCoverageVerification(
         "androidDomainApplicationCoverageVerification",
@@ -201,9 +212,20 @@ val criticalMediaStateCoverageVerification =
         "0.95",
         criticalMediaStateExcludes,
     )
+val criticalTextStateCoverageVerification =
+    registerCoverageVerification(
+        "androidCriticalTextStateCoverageVerification",
+        criticalTextStateCoverage,
+        criticalTextStateIncludes,
+        "0.95",
+    )
 
 tasks.register("androidCoverageVerification") {
     group = "verification"
     description = "Runs all Android Domain/Application and critical-state coverage gates."
-    dependsOn(domainApplicationCoverageVerification, criticalMediaStateCoverageVerification)
+    dependsOn(
+        domainApplicationCoverageVerification,
+        criticalMediaStateCoverageVerification,
+        criticalTextStateCoverageVerification,
+    )
 }

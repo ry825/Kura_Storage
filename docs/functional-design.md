@@ -1611,6 +1611,10 @@ DB.fileVersion != expectedVersion
 
 外部内容変更では、変更検出後の現在内容を新versionとして発行する。既存baselineがある場合は以前の本文を保持する。Feature導入前またはbaseline作成前に外部から失われた過去内容を推測・合成しない。
 
+Androidは対応MIMEの`ACTIVE` FileだけをApp callbackからテキスト画面へ遷移させる。現在内容と取得時`fileVersion`をEditor stateとして保持し、保存前にFile詳細を再取得して現在の共有権限を確認する。`VIEWER`はread-only、`EDITOR`以上は編集・復元可能とし、409競合では強制上書きを提供せず、最新再読込、有界な行比較、別名Uploadから選択させる。下書きのprocess recreation保存はUTF-8で64 KiBまでの`SavedStateHandle`に限定し、それを超える場合は画面上で復元不能を明示する。
+
+履歴画面はMetadataを50件ずつpage取得し、過去版本文は選択中の1件だけを取得する。復元直前にもFile詳細と現在内容を再取得し、その時点の`fileVersion`を`expectedVersion`へ使用する。Session、File、refresh、previewのgenerationを分離し、cancel後に到着した旧応答で現在画面を上書きしない。
+
 ---
 
 ## 7.11 初回Device登録

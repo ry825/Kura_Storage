@@ -50,6 +50,7 @@ import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.PermissionSource
 import com.kurastorage.core.model.SharePermission
+import com.kurastorage.core.model.SupportedTextMimeTypes
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadState
 import com.kurastorage.core.model.filePermissionCapabilities
@@ -101,6 +102,7 @@ fun FileBrowserScreen(
     onShare: (FileEntry) -> Unit = {},
     onOrganization: (String) -> Unit = {},
     onOpenMedia: (FileEntry) -> Unit = {},
+    onOpenText: (FileEntry) -> Unit = {},
     thumbnail: @Composable (FileEntry, Modifier) -> Unit = { entry, modifier ->
         Box(modifier, contentAlignment = Alignment.Center) {
             Text(if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File")
@@ -310,6 +312,13 @@ fun FileBrowserScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (entry.isMediaPreview()) {
                                 TextButton(onClick = { onOpenMedia(entry) }) { Text("Open") }
+                            }
+                            if (
+                                entry.entryType == FileEntryType.FILE &&
+                                entry.status == FileEntryStatus.ACTIVE &&
+                                SupportedTextMimeTypes.isSupported(entry.mimeType)
+                            ) {
+                                TextButton(onClick = { onOpenText(entry) }) { Text("Open text") }
                             }
                             if (entry.entryType == FileEntryType.FILE && capabilities.canDownload) {
                                 TextButton(onClick = {

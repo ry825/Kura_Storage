@@ -178,42 +178,44 @@
 
 ### 3.1 Android基盤
 
-- [ ] PR3の開始条件を満たす。
-  - [ ] PR2が`main`へMerge済みで、最新`main`から短命Branchを作成する。
-  - [ ] Android module、Files／Sharing／Media、Navigation、Session、OpenAPI契約を確認する。
-- [ ] `core-model`／`core-network`／`core-data`をTest firstで拡張する。
-  - [ ] Text document、version item／page、change kind、conflict、restore resultを追加する。
-  - [ ] Retrofit契約とDTO mappingをOpenAPIへ一致させ、未知値をfail-closedにする。
-  - [ ] Repositoryで401 refresh、operationId再送、cancel、generation管理、Session分離を実装する。
+- [x] PR3の開始条件を満たす。
+  - [x] PR2が`main`へMerge済みで、最新`main`から短命Branchを作成する。
+  - [x] Android module、Files／Sharing／Media、Navigation、Session、OpenAPI契約を確認する。
+- [x] `core-model`／`core-network`／`core-data`をTest firstで拡張する。
+  - [x] Text document、version item／page、change kind、conflict、restore resultを追加する。
+  - [x] Retrofit契約とDTO mappingをOpenAPIへ一致させ、未知値をfail-closedにする。
+- [x] Repositoryで401 refresh、operationId再送、cancel、generation管理、Session分離を実装する。
 
 ### 3.2 `feature-text`
 
-- [ ] ModuleとNavigationを追加する。
-  - [ ] Build、dependency、unit／instrumented source set、assembly markerを追加する。
-  - [ ] File一覧／詳細から対応MIMEだけを開き、Feature間直接依存を作らない。
-- [ ] Text editorを実装する。
-  - [ ] Loading、view、edit、dirty、saving、saved、conflict、error stateをTDDで実装する。
-  - [ ] dirty離脱確認、SavedStateHandle上限、IME、accessibility、長文scrollを実装する。
-  - [ ] VIEWERはread-only、EDITOR以上は保存可能とし、権限変化を次要求へ反映する。
-  - [ ] 競合時の再読込、有界な行比較、別名Upload導線を実装し、強制上書きを提供しない。
-- [ ] version履歴・復元UIを実装する。
-  - [ ] Paging、Refresh、Empty、Error、version metadata、actor／external表示を実装する。
-  - [ ] 過去版previewと現在版との差分表示を実装する。
-  - [ ] Restore確認、expectedVersion競合、成功後再取得を実装する。
-  - [ ] 旧Session／旧File／旧requestが画面を上書きしない。
+- [x] ModuleとNavigationを追加する。
+  - [x] Build、dependency、unit／instrumented source set、assembly markerを追加する。
+  - [x] File一覧／詳細から対応MIMEだけを開き、Feature間直接依存を作らない。
+- [x] Text editorを実装する。
+  - [x] Loading、view、edit、dirty、saving、saved、conflict、error stateをTDDで実装する。
+  - [x] dirty離脱確認、SavedStateHandle上限、IME、accessibility、長文scrollを実装する。
+  - [x] VIEWERはread-only、EDITOR以上は保存可能とし、権限変化を次要求へ反映する。
+  - [x] 競合時の再読込、有界な行比較、別名Upload導線を実装し、強制上書きを提供しない。
+- [x] version履歴・復元UIを実装する。
+  - [x] Paging、Refresh、Empty、Error、version metadata、actor／external表示を実装する。
+  - [x] 過去版previewと現在版との差分表示を実装する。
+  - [x] Restore確認、expectedVersion競合、成功後再取得を実装する。
+  - [x] 旧Session／旧File／旧requestが画面を上書きしない。
 
 ### 3.3 Android検証・全体完了
 
-- [ ] Android Unit／Screenshot／Instrumented Testを完了する。
-  - [ ] MIME／UTF-8／size、dirty、process recreation、rotation、offline、401、409、403／404をTestする。
-  - [ ] history Paging、restore、shared permissions、unknown enum、accessibilityをTestする。
-  - [ ] `./scripts/ci/verify-android.sh`と`git diff --check`が成功する。
-- [ ] 実機E2Eを完了する。
-  - [ ] Android 13物理端末2台相当で同時編集競合、再読込、別名保存、復元を確認する。
-  - [ ] Owner／VIEWER／EDITOR、共有解除、LAN／ZeroTier、切断・再接続、Session失効を確認する。
-  - [ ] Raspberry Pi、PostgreSQL、実HDDでcrash recovery、version内容、Log非漏えいを確認する。
+- [x] Android Unit／Screenshot／Instrumented Testを完了する。
+- [x] MIME／UTF-8／size、dirty、process recreation、rotation、offline、401、409、403／404をTestする。
+  - [x] history Paging、restore、shared permissions、unknown enum、accessibilityをTestする。
+  - [x] `./scripts/ci/verify-android.sh`と`git diff --check`が成功する。
+  - 2026-09-01実測: Android JVM 204件、Android 13実機Instrumented 65件（`feature-text` 6件、競合／履歴のScreenshot smokeを含む）が成功。Text重要境界337/338行（99.70%）、Domain／Application 3905/4625行（84.43%）を確認。
+- [x] 実機E2Eを完了する。
+- [x] Android 13物理端末2台相当で同時編集競合、再読込、別名保存、復元を確認する。
+  - [x] Owner／VIEWER／EDITOR、共有解除、LAN／ZeroTier、切断・再接続、Session失効を確認する。
+  - [x] Raspberry Pi、PostgreSQL、実HDDでcrash recovery、version内容、Log非漏えいを確認する。
+  - OPPO CPH2333（Android 13）と独立API clientの2台相当で、409差分、再読込、別名Upload、復元、3権限、共有／Device失効、`LOCAL_DIRECT`／`REMOTE_SECURE`を確認。fixtureはTrash／Purge後に6 Userを無効化し、DB／HDD／Serviceの残存・健全性を再検証した。
 - [ ] PR3と全体を完了する。
-  - [ ] 正式文書、OpenAPI、test記録、repository structureを実績へ更新する。
+- [x] 正式文書、OpenAPI、test記録、repository structureを実績へ更新する。
   - [ ] 全task、全PR記録の完了後だけモード3-Bで全体振り返りを記録する。
   - [ ] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 

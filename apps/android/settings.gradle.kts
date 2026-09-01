@@ -30,5 +30,6 @@ include(
     ":feature-sharing",
     ":feature-search",
     ":feature-media",
+    ":feature-text",
     ":feature-settings",
 )

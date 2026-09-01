@@ -91,6 +91,7 @@ dependencies {
     implementation(project(":feature-sharing"))
     implementation(project(":feature-search"))
     implementation(project(":feature-media"))
+    implementation(project(":feature-text"))
     implementation(project(":feature-settings"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

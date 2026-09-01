@@ -6,6 +6,7 @@
     "CyclomaticComplexMethod",
     "MaxLineLength",
     "TooGenericExceptionCaught",
+    "TooManyFunctions",
 )
 
 package com.kurastorage.app
@@ -58,6 +59,8 @@ import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.ShareItem
 import com.kurastorage.core.model.ShareScope
+import com.kurastorage.core.model.SupportedTextMimeTypes
+import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
@@ -97,6 +100,10 @@ import com.kurastorage.feature.sharing.SharingListViewModel
 import com.kurastorage.feature.sharing.SharingScreen
 import com.kurastorage.feature.sharing.SharingSettingsScreen
 import com.kurastorage.feature.sharing.SharingSettingsViewModel
+import com.kurastorage.feature.text.TextEditorScreen
+import com.kurastorage.feature.text.TextEditorViewModel
+import com.kurastorage.feature.text.VersionHistoryScreen
+import com.kurastorage.feature.text.VersionHistoryViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -321,6 +328,7 @@ private fun KuraStorageApp(
                 onOpenMedia = { entry, entries ->
                     mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
                 },
+                onOpenText = { entry -> textRoute(entry)?.let(navController::navigate) != null },
                 requestedDetailsId = mediaContexts.requestedDetailsId,
                 onDetailsConsumed = mediaContexts::consumeDetails,
             )
@@ -578,8 +586,113 @@ private fun KuraStorageApp(
                 onOpenMedia = { entry, entries ->
                     mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
                 },
+                onOpenText = { entry -> textRoute(entry)?.let(navController::navigate) != null },
                 requestedDetailsId = mediaContexts.requestedDetailsId,
                 onDetailsConsumed = mediaContexts::consumeDetails,
+            )
+        }
+        composable(
+            route = "${AppDestination.TEXT_EDITOR.route}/{fileId}",
+            arguments = listOf(navArgument("fileId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val current = services ?: return@composable
+            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val scope = rememberCoroutineScope()
+            val textViewModel: TextEditorViewModel =
+                viewModel(
+                    key = textEditorViewModelKey(fileId, current.sessionId),
+                    factory =
+                        savedStateViewModelFactory { handle ->
+                            TextEditorViewModel(fileId, current.files, current.textFiles, handle)
+                        },
+                )
+            val state by textViewModel.state.collectAsStateWithLifecycle()
+            var copyRequest by remember { mutableStateOf<TextCopyRequest?>(null) }
+            val copyLauncher =
+                rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+                    val request = copyRequest
+                    if (uri == null || request == null) {
+                        copyRequest = null
+                        return@rememberLauncherForActivityResult
+                    }
+                    scope.launch {
+                        runCatching {
+                            val bytes = request.content.toByteArray(Charsets.UTF_8)
+                            withContext(Dispatchers.IO) {
+                                checkNotNull(context.contentResolver.openOutputStream(uri, "w")).use { it.write(bytes) }
+                            }
+                            val operation =
+                                current.transfers.newUpload(
+                                    uri.toString(),
+                                    request.parentId,
+                                    request.name,
+                                    bytes.size.toLong(),
+                                    request.mimeType,
+                                )
+                            current.transfers.upload(operation).collect { event ->
+                                when (event) {
+                                    is TransferEvent.UploadCompleted ->
+                                        Toast.makeText(context, "Copy uploaded", Toast.LENGTH_SHORT).show()
+                                    is TransferEvent.Failed ->
+                                        Toast.makeText(context, "Copy upload failed", Toast.LENGTH_LONG).show()
+                                    else -> Unit
+                                }
+                            }
+                        }.onFailure {
+                            Toast.makeText(context, "Copy upload failed", Toast.LENGTH_LONG).show()
+                        }
+                        copyRequest = null
+                    }
+                }
+            TextEditorScreen(
+                state = state,
+                onBack = { navController.popBackStack() },
+                onRequestExit = textViewModel::requestExit,
+                onDismissDiscard = textViewModel::dismissDiscardConfirmation,
+                onDiscard = textViewModel::discardChanges,
+                onBeginEdit = textViewModel::beginEditing,
+                onDraftChange = textViewModel::updateDraft,
+                onSave = textViewModel::save,
+                onReloadConflict = textViewModel::reloadAfterConflict,
+                onSaveAsCopy = { content ->
+                    val file = state.file
+                    val parentId = file?.parentId
+                    if (file == null || parentId == null) {
+                        Toast.makeText(context, "Destination folder is unavailable", Toast.LENGTH_LONG).show()
+                    } else {
+                        val extension = file.name.substringAfterLast('.', "txt")
+                        val baseName = file.name.substringBeforeLast('.', file.name)
+                        copyRequest = TextCopyRequest(content, parentId, "$baseName-copy.$extension", file.mimeType ?: "text/plain")
+                        copyLauncher.launch(copyRequest?.name ?: "text-copy.txt")
+                    }
+                },
+                onHistory = { navController.navigate("${AppDestination.TEXT_HISTORY.route}/$fileId") },
+                onReload = textViewModel::load,
+            )
+        }
+        composable(
+            route = "${AppDestination.TEXT_HISTORY.route}/{fileId}",
+            arguments = listOf(navArgument("fileId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val current = services ?: return@composable
+            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+            val historyViewModel: VersionHistoryViewModel =
+                viewModel(
+                    key = "text-history-$fileId-${current.sessionId}",
+                    factory = simpleViewModelFactory { VersionHistoryViewModel(fileId, current.files, current.textFiles) },
+                )
+            val state by historyViewModel.state.collectAsStateWithLifecycle()
+            VersionHistoryScreen(
+                state = state,
+                onBack = { navController.popBackStack() },
+                onRefresh = historyViewModel::refresh,
+                onLoadMore = historyViewModel::loadMore,
+                onPreview = historyViewModel::preview,
+                onDismissPreview = historyViewModel::dismissPreview,
+                onRequestRestore = historyViewModel::requestRestore,
+                onDismissRestore = historyViewModel::dismissRestore,
+                onConfirmRestore = historyViewModel::confirmRestore,
             )
         }
         composable(
@@ -811,6 +924,7 @@ private fun FileRoute(
     onOrganization: (String) -> Unit,
     media: MediaSessionScope?,
     onOpenMedia: (FileEntry, List<FileEntry>) -> Boolean = { _, _ -> false },
+    onOpenText: (FileEntry) -> Boolean = { false },
     requestedDetailsId: String? = null,
     onDetailsConsumed: () -> Unit = {},
 ) {
@@ -858,7 +972,7 @@ private fun FileRoute(
         state = state,
         trashMode = trashMode,
         onOpen = { entry ->
-            if (!onOpenMedia(entry, state.entries)) viewModel.open(entry)
+            if (!onOpenText(entry) && !onOpenMedia(entry, state.entries)) viewModel.open(entry)
         },
         onShowDetails = viewModel::select,
         onBack = { if (!viewModel.back()) onExit() },
@@ -904,6 +1018,9 @@ private fun FileRoute(
         onOrganization = onOrganization,
         onOpenMedia = { entry ->
             if (onOpenMedia(entry, state.entries)) viewModel.dismissDetail()
+        },
+        onOpenText = { entry ->
+            if (onOpenText(entry)) viewModel.dismissDetail()
         },
         thumbnail = { entry, modifier ->
             if (media == null) {
@@ -1031,6 +1148,29 @@ internal fun mediaRoute(
             }
     }
 }
+
+internal fun textRoute(entry: FileEntry): String? {
+    if (
+        entry.entryType != FileEntryType.FILE ||
+        entry.status != com.kurastorage.core.model.FileEntryStatus.ACTIVE ||
+        !SupportedTextMimeTypes.isSupported(entry.mimeType)
+    ) {
+        return null
+    }
+    return "${AppDestination.TEXT_EDITOR.route}/${entry.id}"
+}
+
+internal fun textEditorViewModelKey(
+    fileId: String,
+    sessionId: String,
+): String = "text-editor-$fileId-$sessionId"
+
+private data class TextCopyRequest(
+    val content: String,
+    val parentId: String,
+    val name: String,
+    val mimeType: String,
+)
 
 private suspend fun loadAllReceivedShares(repository: SharingRepository): List<ShareItem> {
     val result = mutableListOf<ShareItem>()
