@@ -6,6 +6,7 @@ import coil3.ImageLoader
 import com.kurastorage.core.data.AndroidContentStreamProvider
 import com.kurastorage.core.data.AuthenticatedRequestExecutor
 import com.kurastorage.core.data.DataStoreCredentialMetadataStore
+import com.kurastorage.core.data.DefaultActivityRepository
 import com.kurastorage.core.data.DefaultAdminStorageRepository
 import com.kurastorage.core.data.DefaultAuthenticationRepository
 import com.kurastorage.core.data.DefaultFileRepository
@@ -125,6 +126,7 @@ class ServiceContainer(
             recentFiles = DefaultRecentFileRepository(api, executor),
             organization = DefaultOrganizationRepository(api, executor),
             adminStorage = DefaultAdminStorageRepository(api, executor, auth),
+            activity = DefaultActivityRepository(api, executor),
             transfers =
                 DefaultTransferRepository(
                     api,
@@ -177,6 +179,7 @@ data class SessionServices(
     val recentFiles: DefaultRecentFileRepository,
     val organization: DefaultOrganizationRepository,
     val adminStorage: DefaultAdminStorageRepository,
+    val activity: DefaultActivityRepository,
     val transfers: DefaultTransferRepository,
     val qualityPreferences: QualityPreferenceStore,
     val media: MediaSessionScope,

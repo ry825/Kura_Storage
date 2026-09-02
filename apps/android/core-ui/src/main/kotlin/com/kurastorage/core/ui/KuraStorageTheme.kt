@@ -88,6 +88,7 @@ enum class AppDestination(
     SHARING_SETTINGS("sharing-settings"),
     SEARCH("search"),
     RECENT_FILES("recent-files"),
+    ACTIVITY("activity"),
     FAVORITES("favorites"),
     TAGS("tags"),
     ENTRY_ORGANIZATION("entry-organization"),
