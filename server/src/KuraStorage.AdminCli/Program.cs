@@ -1,6 +1,7 @@
 using KuraStorage.Application.Identity;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Indexing;
+using KuraStorage.Application.Activity;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Indexing;
@@ -21,6 +22,9 @@ Usage:
   kurastorage-admin device list <user-id>
   kurastorage-admin device revoke <user-id> <device-id>
   kurastorage-admin index rescan [--dry-run]
+  kurastorage-admin activity search [--actor-user <id-or-username>] [--owner-user <id-or-username>]
+      [--type <UPLOAD|MOVE|EDIT|SHARE|DELETE>] [--from <UTC>] [--to <UTC>]
+      [--file-id <id>] [--limit <1-1000>] [--cursor <token>] [--json]
   kurastorage-admin help
 
 Passwords are accepted only from standard input and are never accepted as command arguments.
@@ -43,6 +47,12 @@ if (!string.IsNullOrWhiteSpace(secretsDirectory))
 builder.Services.AddKuraStorageInfrastructure(builder.Configuration);
 using var host = builder.Build();
 await using var scope = host.Services.CreateAsyncScope();
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, eventArgs) =>
+{
+    eventArgs.Cancel = true;
+    cancellation.Cancel();
+};
 
 try
 {
@@ -57,6 +67,8 @@ try
             await RevokeDeviceAsync(scope.ServiceProvider, userId, deviceId),
         ["index", "rescan"] => await RescanIndexAsync(scope.ServiceProvider, dryRun: false),
         ["index", "rescan", "--dry-run"] => await RescanIndexAsync(scope.ServiceProvider, dryRun: true),
+        ["activity", "search", .. var activityArgs] =>
+            await SearchActivitiesAsync(scope.ServiceProvider, activityArgs, cancellation.Token),
         _ => UnknownCommand(),
     };
 }
@@ -79,6 +91,11 @@ catch (Exception exception) when (exception is ArgumentException or FormatExcept
 {
     Console.Error.WriteLine(exception.Message);
     return 2;
+}
+catch (OperationCanceledException)
+{
+    Console.Error.WriteLine("Activity search cancelled.");
+    return 130;
 }
 
 static async Task<int> MigrateAsync(IServiceProvider services)
@@ -183,6 +200,38 @@ static async Task<int> RescanIndexAsync(IServiceProvider services, bool dryRun)
     Console.WriteLine($"isolated={summary.IsolatedCount}");
     Console.WriteLine($"errors={summary.ErrorCount}");
     return summary.Status == IndexScanStatus.Completed ? 0 : 1;
+}
+
+static async Task<int> SearchActivitiesAsync(
+    IServiceProvider services,
+    IReadOnlyList<string> args,
+    CancellationToken cancellationToken)
+{
+    if (!AdminActivityCommandParser.TryParse(args, out var command))
+    {
+        Console.Error.WriteLine("Activity search failed: INVALID_ACTIVITY_REQUEST");
+        return 2;
+    }
+
+    var result = await services.GetRequiredService<AdminActivityService>().SearchAsync(
+        command!.Request,
+        Environment.UserName,
+        cancellationToken);
+    if (!result.IsSuccess)
+    {
+        Console.Error.WriteLine($"Activity search failed: {result.Failure!.Code}");
+        return 2;
+    }
+
+    try
+    {
+        AdminActivityOutput.Write(result.Value!, command.Json, Console.Out, cancellationToken);
+        return 0;
+    }
+    catch (IOException)
+    {
+        return 1;
+    }
 }
 
 static string StatusText(IndexScanStatus status) => status switch

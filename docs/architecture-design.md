@@ -1417,6 +1417,7 @@ flowchart LR
 - ActivityはActor／Device／Target／Owner snapshotと、typeごとに制約したMove、Edit、Share、Delete、Upload detailだけを持つ。自由形式JSON、File本文、物理Path、Request ID、OS User、Tokenを持たない。
 - `actor_user_id`、`owner_user_id`、`target_entry_id`は削除可能な参照として扱い、User無効化やFile完全削除でActivityをcascade削除しない。表示はsnapshotだけでも成立させる。
 - 主要Indexは`(actor_user_id, occurred_at DESC, id DESC)`、`(owner_user_id, occurred_at DESC, id DESC)`、`(target_entry_id, occurred_at DESC, id DESC)`、`(activity_type, occurred_at DESC, id DESC)`とする。
+- type指定のない最新順keysetとAdmin無filter検索は`(occurred_at DESC, id DESC)`Indexから走査し、必要件数に達するまでSQL内で現在認可を判定する。
 - 一般利用者QueryはSecurity ContextのUserだけを入力とし、Actor本人、現在のOwner／直接・継承Share、Purge済みsnapshot ownerをSQL段階で和集合にする。Admin roleを暗黙の閲覧権限にしない。
 - Admin横断検索はRaspberry PiローカルCLI専用Application／Repository境界に置き、通常HTTP APIへ公開しない。検索実行は条件分類と件数だけをSecurity Auditへ記録する。
 - 100万Activityでkeyset pagination、認可Query、限定Admin filter、Index容量、insert overheadを測定し、通常2秒以内を目標とする。

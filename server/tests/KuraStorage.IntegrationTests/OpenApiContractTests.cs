@@ -33,6 +33,7 @@ public sealed class OpenApiContractTests
             "  /shares/{shareId}:",
             "  /shares/{shareId}/members/{userId}:",
             "  /search:",
+            "  /activities:",
             "  /recent-files:",
             "  /recent-files/{fileId}:",
             "  /favorites:",
@@ -93,6 +94,10 @@ public sealed class OpenApiContractTests
         Assert.Contains("enum: [ACTIVE, MISSING_CANDIDATE, MISSING]", contract, StringComparison.Ordinal);
         Assert.Contains("INVALID_SEARCH_QUERY", contract, StringComparison.Ordinal);
         Assert.Contains("INVALID_SEARCH_FILTER", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: listActivities", contract, StringComparison.Ordinal);
+        Assert.Contains("ActivityItem:", contract, StringComparison.Ordinal);
+        Assert.Contains("ActivityPage:", contract, StringComparison.Ordinal);
+        Assert.Contains("INVALID_ACTIVITY_REQUEST", contract, StringComparison.Ordinal);
         Assert.Contains("operationId: listRecentFiles", contract, StringComparison.Ordinal);
         Assert.Contains("operationId: recordRecentFile", contract, StringComparison.Ordinal);
         Assert.Contains("RecentFileItem:", contract, StringComparison.Ordinal);

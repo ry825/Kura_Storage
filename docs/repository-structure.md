@@ -479,6 +479,7 @@ Login/
 - `Shared/`へ業務機能を置かない。
 - Media基盤のQueueとStorage契約は、現行のApplication構造に合わせて`Abstractions/MediaAbstractions.cs`へまとめる。生成Use CaseとHTTP Contractは後続PRで追加する。
 - UserActivityのfactoryと記録境界は`Application/Activity/`と`Abstractions/ActivityAbstractions.cs`へ置く。一般利用者QueryとAdmin Queryのinterfaceを分離し、Security Audit repositoryを参照させない。
+- UserActivityの一般／Admin検索contract、cursor codec、validationは`Application/Activity/ActivityQueryContracts.cs`、`ActivityCursorCodec.cs`、`ActivityQueryService.cs`、`AdminActivityCommandParser.cs`へ置く。PostgreSQL実装は一般検索を`Infrastructure/Persistence/Queries/PostgreSqlUserActivityQueryRepository.cs`、管理検索を`PostgreSqlUserActivityAdminQueryRepository.cs`へ分離し、別interfaceでDIする。通常HTTP Endpointは一般Queryだけ、`KuraStorage.AdminCli`はAdmin Queryだけを呼ぶ。
 
 ---
 

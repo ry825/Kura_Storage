@@ -108,48 +108,48 @@
 
 ### 2.1 作業開始・Query contract
 
-- [ ] PR2の開始条件を満たす。
-  - [ ] PR1が`main`へMerge済みで、最新`main`から短命Branchを作成する。
-  - [ ] Search／Recent permission CTE、Admin CLI、OpenAPI、safe Log patternを確認する。
-- [ ] Activity response／filter／cursorをTest firstで定義する。
-  - [ ] 公開type、occurredAt、actor／target snapshot、許可detailだけを含める。
-  - [ ] pageSize、type filter、opaque cursor、未知enum、破損cursorを検証する。
-  - [ ] 内部Audit ID、Device ID、Request ID、OS User、物理Path、result codeを含めない。
+- [x] PR2の開始条件を満たす。
+  - [x] PR1が`main`へMerge済みで、最新`main`から短命Branchを作成する。（PR #41 Merge後の`267f27e`から`feat/user-activity-query`を作成）
+  - [x] Search／Recent permission CTE、Admin CLI、OpenAPI、safe Log patternを確認する。
+- [x] Activity response／filter／cursorをTest firstで定義する。
+  - [x] 公開type、occurredAt、actor／target snapshot、許可detailだけを含める。
+  - [x] pageSize、type filter、opaque cursor、未知enum、破損cursorを検証する。
+  - [x] 内部Audit ID、Device ID、Request ID、OS User、物理Path、result codeを含めない。
 
 ### 2.2 利用者向け認可Query・API
 
-- [ ] permission-aware activity queryを実装する。
-  - [ ] Actor本人、現在閲覧可能target、Purge済みのactor／snapshot ownerをSQL段階で和集合にする。
-  - [ ] Owner、直接／継承Share、複数経路、深度64、Admin暗黙権限なしを既存規則と一致させる。
-  - [ ] Share解除、permission変更、Move、Trash、Restore、Purgeを次要求へ反映する。
-  - [ ] `occurred_at DESC, id DESC`のkeyset paginationとtype filterを実装する。
-  - [ ] page後filter、offset、N+1、HDD走査、全件materializeを行わない。
-- [ ] `GET /api/v1/activities`を実装する。
-  - [ ] Security Context以外のUser／Owner入力を受けず、認証、Rate Limit、Request ID、Error envelopeを適用する。
-  - [ ] cursor／page／typeの正常・境界・不正、401、Session／Device失効をTestする。
-  - [ ] OpenAPI schema、example、pagination、visibility note、全Errorを追加しContract Testを成功させる。
+- [x] permission-aware activity queryを実装する。
+  - [x] Actor本人、現在閲覧可能target、Purge済みのactor／snapshot ownerをSQL段階で和集合にする。
+  - [x] Owner、直接／継承Share、複数経路、深度64、Admin暗黙権限なしを既存規則と一致させる。
+  - [x] Share解除、permission変更、Move、Trash、Restore、Purgeを次要求へ反映する。
+  - [x] `occurred_at DESC, id DESC`のkeyset paginationとtype filterを実装する。
+  - [x] page後filter、offset、N+1、HDD走査、全件materializeを行わない。
+- [x] `GET /api/v1/activities`を実装する。
+  - [x] Security Context以外のUser／Owner入力を受けず、認証、Rate Limit、Request ID、Error envelopeを適用する。
+  - [x] cursor／page／typeの正常・境界・不正、401、Session／Device失効をTestする。（Session／Device失効は全認証Endpoint共通のJWT event検証で保護）
+  - [x] OpenAPI schema、example、pagination、visibility note、全Errorを追加しContract Testを成功させる。
 
 ### 2.3 Admin CLI検索
 
-- [ ] Admin activity search Application queryを実装する。
-  - [ ] actor、owner、type、UTC期間、file ID、limit、cursorを組合せ可能にする。
-  - [ ] 既定100／最大1000、期間最大365日、決定的keyset順を検証する。
-  - [ ] CLI query repositoryを一般API repositoryと分離する。
-- [ ] `KuraStorage-admin activity search`を実装する。
-  - [ ] 端末tableと`--json`、next cursor、empty、invalid、cancelを実装する。
-  - [ ] User selectorの曖昧性、UTC parsing、出力escape、pipe時の終了codeをTestする。
-  - [ ] 検索実行をAuditへ記録し、条件の秘密値／結果内容を通常Logへ残さない。
-  - [ ] CLIからUserActivityの更新・削除を提供しない。
+- [x] Admin activity search Application queryを実装する。
+  - [x] actor、owner、type、UTC期間、file ID、limit、cursorを組合せ可能にする。
+  - [x] 既定100／最大1000、期間最大365日、決定的keyset順を検証する。
+  - [x] CLI query repositoryを一般API repositoryと分離する。
+- [x] `KuraStorage-admin activity search`を実装する。
+  - [x] 端末tableと`--json`、next cursor、empty、invalid、cancelを実装する。
+  - [x] User selectorの曖昧性、UTC parsing、出力escape、pipe時の終了codeをTestする。（User selectorはunique usernameまたはUUIDだけを受理し、曖昧な表示名を受けない）
+  - [x] 検索実行をAuditへ記録し、条件の秘密値／結果内容を通常Logへ残さない。
+  - [x] CLIからUserActivityの更新・削除を提供しない。
 
 ### 2.4 性能・Security・PR2完了
 
-- [ ] 100万Activity性能資材と結果を追加する。
-  - [ ] 10 User、所有／共有／失効／Purge、全typeを含む匿名seedを用意する。
-  - [ ] 利用者先頭／後続page、type filter、admin各filterを`EXPLAIN ANALYZE BUFFERS`で確認する。
-  - [ ] p50／p95、CPU／Memory、Index size、insert overheadを記録し通常2秒以内を満たす。
-- [ ] API clientとCLIでUser A/B、共有解除、Move、Trash、Purge、Admin filter、Log非漏えいを確認する。
-- [ ] 全Server Test、Coverage、CI、format、Migration、OpenAPI、`git diff --check`を成功させる。
-- [ ] 正式文書、Admin CLI usage、repository structure、testing記録を実績へ更新する。
+- [x] 100万Activity性能資材と結果を追加する。
+  - [x] 10 User、所有／共有／失効／Purge、全typeを含む匿名seedを用意する。
+  - [x] 利用者先頭／後続page、type filter、admin各filterを`EXPLAIN ANALYZE BUFFERS`で確認する。
+  - [x] p50／p95、CPU／Memory、Index size、insert overheadを記録し通常2秒以内を満たす。（最大p50 241.1ms、最大p95 269.1ms）
+- [x] API clientとCLIでUser A/B、共有解除、Move、Trash、Purge、Admin filter、Log非漏えいを確認する。
+- [x] 全Server Test、Coverage、CI、format、Migration、OpenAPI、`git diff --check`を成功させる。
+- [x] 正式文書、Admin CLI usage、repository structure、testing記録を実績へ更新する。
 - [ ] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---

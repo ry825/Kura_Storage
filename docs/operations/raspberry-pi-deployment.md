@@ -253,6 +253,27 @@ disable indexing, remove only the reviewed `indexing.conf` drop-in, run
 `KURASTORAGE_Indexing__Enabled`; the standard .NET configuration provider reads
 the unprefixed `Indexing__Enabled` key.
 
+User activity investigations must also run from the selected release directory
+and remain local to the Raspberry Pi. Use UTC `Z` timestamps and bounded keyset
+pages; do not redirect results into a broadly readable file:
+
+```bash
+cd /opt/kurastorage/current
+sudo -u kurastorage-api env \
+  DOTNET_ENVIRONMENT=Production \
+  KURASTORAGE_SECRETS_DIR=/etc/kurastorage/secrets \
+  ./KuraStorage.AdminCli activity search \
+    --actor-user MEMBER_USERNAME \
+    --from 2026-09-01T00:00:00Z \
+    --to 2026-09-02T00:00:00Z \
+    --limit 100
+```
+
+Use the printed `next_cursor` with `--cursor` for the following page, or
+`--json` for a structured page. The command records the filter categories and
+returned count in Security Audit, but not selector values, filenames, or result
+content. It never updates or deletes user activity.
+
 After deployment, confirm Health reports `protocolVersion: 2`. On Android,
 verify `MISSING_CANDIDATE` is shown as an item being checked, `MISSING` exposes
 recheck and index-only deletion, and an unknown status requests an app update.
