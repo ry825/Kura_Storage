@@ -100,7 +100,7 @@
   - [x] 同時要求、retry、rollback、Purge、User削除、File削除、snapshot sanitizeをTestする。
 - [x] `verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、format、Migration、`git diff --check`を成功させる。
 - [x] 差分をself-reviewし、一般API／Android／Admin CLIの先行実装、秘密情報、実環境値がない。
-- [ ] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+- [x] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -197,6 +197,30 @@
 ## 各Pull Request完了記録
 
 > Pull Request作成後にモード3-Aで追記する。後続PRが未完了でも、完了したPRの記録は行う。
+
+### PR1: UserActivity永続化・対象操作への記録統合
+
+- 完了日: 2026-09-02
+- Pull Request: [#41 Add user activity persistence and recording foundation](https://github.com/ry825/Kura_Storage/pull/41)
+- 実施した検証:
+  - `./scripts/ci/verify-server.sh`: Release Build警告0件、Domain 119件、Application 318件、Integration 208件の計645件成功。
+  - Coverlet: Domain／Application全体6,806／7,620行（89.32%）、新規Activity model／factory 293／296行（98.99%）。
+  - PostgreSQL 17: Migration Up／Down／再Up、制約、Index、`SET NULL` snapshot保持、既存Audit／File／Share保持、100万件capacity測定を成功。
+  - `dotnet ef migrations has-pending-model-changes`: 未反映Model変更なし。
+  - `verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`、format、`git diff --check`を成功。
+  - GitHub必須CI: Android、Config、Security、Serverの4件すべて成功。
+  - 手動確認: 差分scope、Audit分離、秘密情報／実環境値の非混入、一般API／Admin CLI／Android未実装を確認。
+- 計画と実装の差分:
+  - recovery時にもServer確定Actor snapshotを再構築できるよう、既存`FileOperation`へnullable `ActorUserId`を追加した。Migration前のjournalはnullableのまま安全に回復する。
+  - MoveとTrashの全体Regressionで顕在化した競合窓に対し、Trashが最新親を含む整列済みlock集合を一度再取得するよう補強した。記録対象や公開contractの変更はない。
+- 実装中に追加したタスクと理由:
+  - Upload／Move／Share／Delete／System Purgeの同一operationId再送をfactory単体Testへ追加し、全Activity typeの冪等収束と95%カバレッジ条件を直接保護した。
+  - 100万件測定値と制限環境での検証条件を`docs/testing/20260902-user-activity-pr1.md`へ記録した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項:
+  - PR1 Merge後に最新`main`からPR2 Branchを作成し、permission-aware keyset query、利用者API、ローカルAdmin CLI、OpenAPI、100万件query性能測定を実装する。
+  - PR1で一般HTTP Endpoint、Admin activity search、Android `feature-activity`は実装していない。
+  - 100万件でActivity relation合計729,178,112 bytes、論理Backup相当210,750,000 bytesを観測したため、PR2の認可Query計画と運用容量評価で基準値として使用する。
 
 ## 全体振り返り
 
