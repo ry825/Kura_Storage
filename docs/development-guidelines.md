@@ -468,11 +468,22 @@ sealed interface FileListUiState {
 - DAOは必要なQueryだけを公開する。
 - 長時間Transaction内でネットワークI/Oを行わない。
 - `LocalSyncItem`の状態遷移を1箇所へ集約する。
+- 自動Backupの行は検証済みServer identity、User、Deviceから導出した`accountScopeId`で必ず絞り込み、Logoutや接続先変更後の別Scopeへ再利用しない。
+- Queue claimは条件付き更新と期限付きleaseを同一Transactionで行う。期限切れleaseにUpload Session IDがある場合はServer状態の再照合待ちへ戻し、完了や新Session作成を推測しない。
+- Room Database、WAL、schema exportをAndroid Auto Backup／端末移行から除外する。DB破損・再構築時はSource再走査とServer Compareへ収束させ、Server Fileの削除や同一性推測を行わない。
 
 ### 5.7 MVP後: WorkManager
 
 - Backup Ruleごとに一意なWork名を使用する。
+- Work名はAccount ScopeとRule IDのhashから生成し、生のUser、Device、Host、URI、SSID、BSSID、File名を含めない。
 - Worker開始時にネットワークポリシーを再評価する。
+
+### 5.8 MVP後: 外部Wi-Fi情報
+
+- Android 10〜11では`ACCESS_FINE_LOCATION`、Android 12では`ACCESS_COARSE_LOCATION`と`ACCESS_FINE_LOCATION`、Android 13以降では両Location権限と`NEARBY_WIFI_DEVICES`を実行時に確認し、拒否、恒久拒否、Location無効、unknown SSID、情報非公開を実行不可へ変換する。
+- `ACCESS_WIFI_STATE`は接続中Wi-Fiの読取だけに使用し、scanやWi-Fi接続操作を行わない。`NEARBY_WIFI_DEVICES`は`neverForLocation`を宣言する。
+- SSID／BSSID一致は登録済み外部Wi-Fiの候補一致だけを表し、TLS、Host、Route、Server identity、User、Device、Session検証の代替にしない。
+- SSID、BSSID、Source URI、相対Path、File名、document keyをLog、Analytics、Crash report、通知、Metric labelへ出力しない。
 - モバイル通信、未登録Wi-Fi、外部Wi-FiでZeroTier未接続の場合は転送せず短時間で正常終了する。
 - 端末側削除をサーバー削除へ変換しない。
 - 大量転送だけForeground Workerと進捗通知を使用する。

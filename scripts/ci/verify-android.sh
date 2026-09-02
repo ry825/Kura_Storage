@@ -38,6 +38,8 @@ fi
   :feature-sharing:assembleDebugAndroidTest \
   :feature-text:assembleDebugAndroidTest \
   :core-data:assembleDebugAndroidTest \
+  :core-database:assembleDebugAndroidTest \
+  :feature-backup:assembleDebugAndroidTest \
   testDebugUnitTest \
   androidCoverageVerification \
   :app:cyclonedxDirectBom \

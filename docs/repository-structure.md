@@ -97,6 +97,8 @@ Rename・Moveは現行のServer File機能を拡張し、Domainは`KuraStorage.D
 
 Android自動バックアップのServer側は、`BackupReceipt`とValue Objectを`KuraStorage.Domain/Backup/`、Compare契約・検証・Use CaseとRepository境界を`KuraStorage.Application/Backup/`および`Abstractions/BackupAbstractions.cs`へ配置する。EF ConfigurationとRepositoryは`KuraStorage.Infrastructure/Persistence/`、Migrationは既存`Persistence/Migrations/`、CompareとUpload Session Endpointは既存`KuraStorage.Api/Program.cs`、HTTP契約は`contracts/openapi/kurastorage-api.yaml`へ置く。Backup確定は既存`Transfers/UploadSessionService.cs`のChunk・Storage Guard・FileOperation・mutation lock・Version発行を拡張し、別の転送ProjectやServer Workerを追加しない。Domain、Application、Migration、API、復旧のTestは既存Test ProjectのBackup対応Fileへ配置する。
 
+Android自動バックアップの端末内Domain modelは`core-model/backup/`、Room Entity／DAO／Database／状態遷移／Mapperは`core-database/backup/`、Rule・SAF権限・外部Wi-Fi PolicyのRepository実装は`core-data/backup/`、Use Caseと秘密値を含まないWork名契約は`feature-backup/`へ配置する。`feature-backup`はCore Moduleだけへ依存し、他Featureへ直接依存しない。Room schema exportは`core-database/schemas/`へ保存し、Room実機Testは同Moduleの`src/androidTest/`へ置く。
+
 ```text
 kurastorage/
 ├── .github/
@@ -799,16 +801,17 @@ core-data/src/main/kotlin/com/kurastorage/core/data/
 #### MVP後: `core-database/`
 
 ```text
-core-database/src/main/kotlin/com/kurastorage/core/database/
-├── KuraStorageDatabase.kt
-├── dao/
-├── entity/
-├── migration/
-├── mapper/
-└── transaction/
+core-database/
+├── schemas/
+└── src/main/kotlin/com/kurastorage/core/database/backup/
+    ├── KuraBackupDatabase.kt
+    ├── BackupDaos.kt
+    ├── BackupEntities.kt
+    ├── BackupEntityMapper.kt
+    └── LocalSyncStateMachine.kt
 ```
 
-- Room Database、DAO、Entity、Migrationを置く。
+- Room Database、DAO、Entity、schema export、Migration、DB境界の状態遷移と型付きMapperを置く。
 - 秘密情報を保存しない。
 
 #### `core-security/`

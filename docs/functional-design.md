@@ -701,6 +701,8 @@ interface ExternalWifiPolicy {
 }
 ```
 
+実装上は`lifecycleState`と`waitReason`を分離する。Lifecycleは`DISCOVERED`、`PENDING`、`COMPARING`、`READY_TO_UPLOAD`、`UPLOADING`、`COMPLETED`、`FAILED`、`LOCAL_MISSING`を取り、接続、許可Wi-Fi、Battery、充電、認証、HDD、Source権限、Server再照合の待機理由は別列へ保存する。Account Scope、Rule、端末文書の一意制約と、Account Scope内のRemote File参照一意制約でQueueを収束させる。
+
 `ExternalWifiPolicy`は、ZeroTier経由の自動バックアップを明示的に許可する外部Wi-Fiだけを保存する。`LOCAL_DIRECT`はWi-Fi登録情報ではなく、管理者設定の同一IPサブネット、非ZeroTier経路の実到達性、TLS証明書・ホスト名検証から自動判定する。
 
 #### サーバー側

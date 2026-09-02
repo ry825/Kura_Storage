@@ -118,51 +118,51 @@
 
 ### 2.1 開始条件・Module構成
 
-- [ ] PR2の開始条件を満たす。
-  - [ ] PR1が`main`へMerge済みで、最新`main`から短命Branchを作成する。
-  - [ ] `core-data`、DataStore、ConnectionCoordinator、Network binding、Session scope、Settings画面の既存patternを確認する。
-- [ ] Android正式文書とModule構成を更新する。
-  - [ ] `core-database`と`feature-backup`を正式構成へ追加し、Feature間直接依存を作らない。
-  - [ ] Room、WorkManager、Wi-Fi情報取得に必要な依存と権限を最小限追加し、SBOMと権限目的を文書化する。
-  - [ ] Room DBをAndroid Auto Backup／端末移行対象外にし、秘密情報を保存しない。
+- [x] PR2の開始条件を満たす。
+  - [x] PR1が`main`へMerge済みで、最新`main`から短命Branchを作成する。
+  - [x] `core-data`、DataStore、ConnectionCoordinator、Network binding、Session scope、Settings画面の既存patternを確認する。
+- [x] Android正式文書とModule構成を更新する。
+  - [x] `core-database`と`feature-backup`を正式構成へ追加し、Feature間直接依存を作らない。
+  - [x] Room、WorkManager、Wi-Fi情報取得に必要な依存と権限を最小限追加し、SBOMと権限目的を文書化する。
+  - [x] Room DBをAndroid Auto Backup／端末移行対象外にし、秘密情報を保存しない。
 
 ### 2.2 Room Schema・Migration
 
-- [ ] `core-database`をTest firstで実装する。
-  - [ ] `LocalBackupRule`、`LocalSyncItem`、`ExternalWifiPolicy`、MediaStore generation／走査checkpointのEntityと型付きMapperを追加する。
-  - [ ] Rule、local document、状態、retry、時刻、Remote File参照の一意性とIndexを定義する。
-  - [ ] `PENDING`、`UPLOADING`、`COMPLETED`、`FAILED`、`LOCAL_MISSING`、認証待ち、接続待ちの許可遷移をtransactionで保護する。
-  - [ ] DAOはBatch upsert、claim、lease回復、状態件数、失敗履歴、Rule削除／無効化を原子的に扱う。
-- [ ] Room MigrationとDatabase lifecycleを実装する。
-  - [ ] 初期Schema、Migration Test、exported schema、Downgrade時の破壊的移行禁止を確認する。
-  - [ ] Process終了後の`UPLOADING` lease回復、Session／接続先変更時の隔離、Logout時のUser別状態処理を確定する。
-  - [ ] Local DB破損時はServer File削除や重複推測を行わず、再走査・Server Compareへ安全に収束する。
+- [x] `core-database`をTest firstで実装する。
+  - [x] `LocalBackupRule`、`LocalSyncItem`、`ExternalWifiPolicy`、MediaStore generation／走査checkpointのEntityと型付きMapperを追加する。
+  - [x] Rule、local document、状態、retry、時刻、Remote File参照の一意性とIndexを定義する。
+  - [x] `PENDING`、`UPLOADING`、`COMPLETED`、`FAILED`、`LOCAL_MISSING`、認証待ち、接続待ちの許可遷移をtransactionで保護する。
+  - [x] DAOはBatch upsert、claim、lease回復、状態件数、失敗履歴、Rule削除／無効化を原子的に扱う。
+- [x] Room MigrationとDatabase lifecycleを実装する。
+  - [x] 初期Schema、Migration Test、exported schema、Downgrade時の破壊的移行禁止を確認する。
+  - [x] Process終了後の`UPLOADING` lease回復、Session／接続先変更時の隔離、Logout時のUser別状態処理を確定する。
+  - [x] Local DB破損時はServer File削除や重複推測を行わず、再走査・Server Compareへ安全に収束する。
 
 ### 2.3 バックアップルール管理
 
-- [ ] Rule repository／Use Caseを実装する。
-  - [ ] SAF Tree URIのpersistable read permission、表示名、Server Folder ID、有効状態、Network mode、最低Battery、初回充電条件を保存する。
-  - [ ] 保存先FolderをServerへ再照会し、作成権限、Trash／Missing状態、共有解除、Session変更を検証する。
-  - [ ] Rule作成・編集・無効化・削除で既存Server Fileを削除せず、保留Queueの扱いを承認済み設計どおりにする。
-  - [ ] Source permission喪失、Tree移動、Folder消失を明示状態にし、再選択できるようにする。
+- [x] Rule repository／Use Caseを実装する。
+  - [x] SAF Tree URIのpersistable read permission、表示名、Server Folder ID、有効状態、Network mode、最低Battery、初回充電条件を保存する。
+  - [x] 保存先FolderをServerへ再照会し、作成権限、Trash／Missing状態、共有解除、Session変更を検証する。
+  - [x] Rule作成・編集・無効化・削除で既存Server Fileを削除せず、保留Queueの扱いを承認済み設計どおりにする。
+  - [x] Source permission喪失、Tree移動、Folder消失を明示状態にし、再選択できるようにする。
 
 ### 2.4 外部Wi-Fiポリシー・権限
 
-- [ ] `ExternalWifiPolicy` repository／Use Caseを実装する。
-  - [ ] 現在接続中Wi-Fiだけを明示操作で登録し、表示名、SSID、任意BSSID制限、従量制扱い、有効状態を管理する。
-  - [ ] Android version別のWi-Fi情報取得権限とLocation／Nearby Wi-Fi条件を処理し、拒否・恒久拒否・取得不能をfail-closedにする。
-  - [ ] SSID／BSSIDの正規化、unknown SSID、randomized BSSID、重複登録、最大件数、長さを検証する。
-  - [ ] 従量制扱いまたは無効なWi-Fiを自動実行対象から除外する。
-- [ ] Wi-Fi情報と機密情報を保護する。
-  - [ ] SSID／BSSIDを通常Log、Analytics、Crash report、通知、Metric labelへ出さない。
-  - [ ] Wi-Fi一致をTLS、Host、Route、User／Device／Session認証の代替にしないTestを追加する。
+- [x] `ExternalWifiPolicy` repository／Use Caseを実装する。
+  - [x] 現在接続中Wi-Fiだけを明示操作で登録し、表示名、SSID、任意BSSID制限、従量制扱い、有効状態を管理する。
+  - [x] Android version別のWi-Fi情報取得権限とLocation／Nearby Wi-Fi条件を処理し、拒否・恒久拒否・取得不能をfail-closedにする。
+  - [x] SSID／BSSIDの正規化、unknown SSID、randomized BSSID、重複登録、最大件数、長さを検証する。
+  - [x] 従量制扱いまたは無効なWi-Fiを自動実行対象から除外する。
+- [x] Wi-Fi情報と機密情報を保護する。
+  - [x] SSID／BSSIDを通常Log、Analytics、Crash report、通知、Metric labelへ出さない。
+  - [x] Wi-Fi一致をTLS、Host、Route、User／Device／Session認証の代替にしないTestを追加する。
 
 ### 2.5 PR2検証・完了
 
-- [ ] JVM Unit TestとAndroid Instrumented TestでDAO、Migration、Process再生成、Rule、SAF permission、Wi-Fi権限・登録を確認する。
-- [ ] 重要Mapper／状態遷移95%以上、Android Domain／Application全体80%以上のCoverageを満たす。
-- [ ] `verify-android.sh`、connected Instrumented Test、SBOM、Lint、detekt、ktlint、`git diff --check`を成功させる。
-- [ ] Android Backup exclusion、Manifest権限、秘密情報・実環境値非混入、既存FeatureのSession分離をself-reviewする。
+- [x] JVM Unit TestとAndroid Instrumented TestでDAO、Migration、Process再生成、Rule、SAF permission、Wi-Fi権限・登録を確認する。
+- [x] 重要Mapper／状態遷移95%以上、Android Domain／Application全体80%以上のCoverageを満たす。
+- [x] `verify-android.sh`、connected Instrumented Test、SBOM、Lint、detekt、ktlint、`git diff --check`を成功させる。
+- [x] Android Backup exclusion、Manifest権限、秘密情報・実環境値非混入、既存FeatureのSession分離をself-reviewする。
 - [ ] Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
