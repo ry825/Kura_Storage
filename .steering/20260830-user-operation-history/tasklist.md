@@ -36,69 +36,70 @@
 
 ### 1.1 作業開始・正式文書
 
-- [ ] PR1の開始条件を満たす。
-  - [ ] フェーズ0が完了し、Upload／Move／Sharing／Trash／Purgeの先行PRが`main`へMerge済みである。
-  - [ ] `.steering/20260830-text-file-version-history/`のPR2が`main`へMerge済みで、Text Edit／Version Restoreの記録境界を利用できる。
-  - [ ] 最新`main`から短命Branchを作成し、`git status`、`AuditLog`、各Use Case、journal、transaction patternを確認する。
-- [ ] 永続文書を更新する。
-  - [ ] `docs/product-requirements.md`へ利用者履歴とSecurity Auditの境界、可視性、管理者検索を追加する。
-  - [ ] `docs/functional-design.md`へactivity type、snapshot、記録契機、no-op、保持、API概要を追加する。
-  - [ ] `docs/architecture-design.md`へ二重目的の分離、transaction、Schema、permission、Log保護、性能を追加する。
-  - [ ] `docs/repository-structure.md`と必要な`docs/development-guidelines.md`を更新する。
+- [x] PR1の開始条件を満たす。
+  - [x] フェーズ0が完了し、Upload／Move／Sharing／Trash／Purgeの先行PRが`main`へMerge済みである。
+  - [x] `.steering/20260830-text-file-version-history/`のPR2が`main`へMerge済みで、Text Edit／Version Restoreの記録境界を利用できる。
+  - [x] 最新`main`から短命Branchを作成し、`git status`、`AuditLog`、各Use Case、journal、transaction patternを確認する。（`7798289`から`feat/user-activity-foundation`を作成）
+- [x] 永続文書を更新する。
+  - [x] `docs/product-requirements.md`へ利用者履歴とSecurity Auditの境界、可視性、管理者検索を追加する。
+  - [x] `docs/functional-design.md`へactivity type、snapshot、記録契機、no-op、保持、API概要を追加する。
+  - [x] `docs/architecture-design.md`へ二重目的の分離、transaction、Schema、permission、Log保護、性能を追加する。
+  - [x] `docs/repository-structure.md`と必要な`docs/development-guidelines.md`を更新する。
 
 ### 1.2 Domain・Migration
 
-- [ ] `UserActivity`と型付きdetailをTest firstで実装する。
-  - [ ] ID、operationId、type、actor、target／owner snapshot、UTC日時、不変条件を定義する。
-  - [ ] Activity typeごとの必須／禁止detail組合せをfail-closedにする。
-  - [ ] snapshot長、NFC、control character、version／permission／delete kindを検証する。
-  - [ ] File本文、物理Path、Request ID、OS User、token、自由形式metadataをmodelに持たせない。
-- [ ] EF Core mappingとMigrationを実装する。
-  - [ ] `user_activities`、detail列／table、operationId unique、keyset／admin検索Indexを追加する。
-  - [ ] User／File削除でActivityをcascade削除せず、snapshotを維持する。
-  - [ ] Up／Down／再Up、既存Audit／File／Share保持、Model Snapshot、pending modelなしを実DBでTestする。
-  - [ ] 100万件でIndex容量、作成時間、insert overhead、Backup増加量を測定できるseedを追加する。
+- [x] `UserActivity`と型付きdetailをTest firstで実装する。
+  - [x] ID、operationId、type、actor、target／owner snapshot、UTC日時、不変条件を定義する。
+  - [x] Activity typeごとの必須／禁止detail組合せをfail-closedにする。
+  - [x] snapshot長、NFC、control character、version／permission／delete kindを検証する。
+  - [x] File本文、物理Path、Request ID、OS User、token、自由形式metadataをmodelに持たせない。
+- [x] EF Core mappingとMigrationを実装する。
+  - [x] `user_activities`、detail列／table、operationId unique、keyset／admin検索Indexを追加する。
+  - [x] User／File削除でActivityをcascade削除せず、snapshotを維持する。
+  - [x] Up／Down／再Up、既存Audit／File／Share保持、Model Snapshot、pending modelなしを実DBでTestする。
+  - [x] 100万件でIndex容量、作成時間、insert overhead、Backup増加量を測定できるseedを追加する。
+    - 2026-09-02実測: seed 128,398 ms、insert 75.6 µs／row、table 221,495,296 bytes、Index 507,682,816 bytes、合計729,178,112 bytes、論理Backup相当210,750,000 bytes。
 
 ### 1.3 記録factory・transaction統合
 
-- [ ] 共通Activity factory／repositoryを実装する。
-  - [ ] Actor／DeviceをSecurity Context、日時をServer clock、operationIdを既存request／journal境界から取得する。
-  - [ ] snapshotを状態変更前後の正しい時点で構築し、Client表示名入力を信用しない。
-  - [ ] unique operationIdでretryを1件へ収束し、no-opを記録しない。
-  - [ ] Activity永続化失敗で対象状態だけ成功しないtransaction／journal境界を実装する。
-- [ ] UploadとMoveへ統合する。
-  - [ ] Upload正式公開時だけ`UPLOAD`を記録し、中断sessionや重複completeで追加しない。
-  - [ ] 親変更成功時だけ`MOVE`を記録し、source／destination snapshotを保持する。
-  - [ ] Renameのみ、同一親no-op、競合、recovery retryをTestする。
-- [ ] Shareへ統合する。
-  - [ ] Create／permission update／revokeの実状態変更だけを`SHARE`として記録する。
-  - [ ] recipient、permission、action snapshotを必要最小限で保持する。
-  - [ ] 同値update、二重revoke、共有失効競合で重複しない。
-- [ ] Trash／Purgeへ統合する。
-  - [ ] Trash成功を`DELETE/TRASHED`、完全削除確定を`DELETE/PURGED`として別Activityにする。
-  - [ ] Purge前にFile／Owner snapshotを確保し、FileEntry削除後もActivityを保持する。
-  - [ ] 既存Purge Audit unique制約を維持し、ActivityとAuditの片側だけが成功しない。
-  - [ ] retention purge、manual purge、recovery retry、folder subtreeの粒度を承認済み契約どおりTestする。
-- [ ] Edit記録を統合する。
-  - [ ] テキスト保存／Version Restore Server PRがMerge済みであることを確認する。
-  - [ ] 新version確定時だけ`EDIT`を記録し、結果versionとedit kindを保持する。
-  - [ ] 409競合、同一operationId再送、保存rollbackでActivityを残さない。
+- [x] 共通Activity factory／repositoryを実装する。
+  - [x] Actor／DeviceをSecurity Context、日時をServer clock、operationIdを既存request／journal境界から取得する。
+  - [x] snapshotを状態変更前後の正しい時点で構築し、Client表示名入力を信用しない。
+  - [x] unique operationIdでretryを1件へ収束し、no-opを記録しない。
+  - [x] Activity永続化失敗で対象状態だけ成功しないtransaction／journal境界を実装する。
+- [x] UploadとMoveへ統合する。
+  - [x] Upload正式公開時だけ`UPLOAD`を記録し、中断sessionや重複completeで追加しない。
+  - [x] 親変更成功時だけ`MOVE`を記録し、source／destination snapshotを保持する。
+  - [x] Renameのみ、同一親no-op、競合、recovery retryをTestする。
+- [x] Shareへ統合する。
+  - [x] Create／permission update／revokeの実状態変更だけを`SHARE`として記録する。
+  - [x] recipient、permission、action snapshotを必要最小限で保持する。
+  - [x] 同値update、二重revoke、共有失効競合で重複しない。
+- [x] Trash／Purgeへ統合する。
+  - [x] Trash成功を`DELETE/TRASHED`、完全削除確定を`DELETE/PURGED`として別Activityにする。
+  - [x] Purge前にFile／Owner snapshotを確保し、FileEntry削除後もActivityを保持する。
+  - [x] 既存Purge Audit unique制約を維持し、ActivityとAuditの片側だけが成功しない。
+  - [x] retention purge、manual purge、recovery retry、folder subtreeの粒度を承認済み契約どおりTestする。
+- [x] Edit記録を統合する。
+  - [x] テキスト保存／Version Restore Server PRがMerge済みであることを確認する。
+  - [x] 新version確定時だけ`EDIT`を記録し、結果versionとedit kindを保持する。
+  - [x] 409競合、同一operationId再送、保存rollbackでActivityを残さない。
 
 ### 1.4 Audit分離・Regression
 
-- [ ] Security Auditとの分離を自動Testで保護する。
-  - [ ] Login失敗、Device、Session、CLI、Recovery等がUserActivityへ入らない。
-  - [ ] Share／Purge等は必要に応じ両tableへ入り、列・目的が混在しない。
-  - [ ] UserActivity API repositoryから`audit_logs`をqueryできない構造にする。
-  - [ ] Auditの追記専用、通常API削除不可、Purge成功一意制約を後退させない。
+- [x] Security Auditとの分離を自動Testで保護する。
+  - [x] Login失敗、Device、Session、CLI、Recovery等がUserActivityへ入らない。
+  - [x] Share／Purge等は必要に応じ両tableへ入り、列・目的が混在しない。
+  - [x] UserActivity API repositoryから`audit_logs`をqueryできない構造にする。
+  - [x] Auditの追記専用、通常API削除不可、Purge成功一意制約を後退させない。
 
 ### 1.5 PR1検証・完了
 
-- [ ] Domain／Application／PostgreSQL／journal recovery TestとCoverageを完了する。
-  - [ ] 新規記録・transaction境界95%以上、Domain／Application全体80%以上を満たす。
-  - [ ] 同時要求、retry、rollback、Purge、User削除、File削除、snapshot sanitizeをTestする。
-- [ ] `verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、format、Migration、`git diff --check`を成功させる。
-- [ ] 差分をself-reviewし、一般API／Android／Admin CLIの先行実装、秘密情報、実環境値がない。
+- [x] Domain／Application／PostgreSQL／journal recovery TestとCoverageを完了する。
+  - [x] 新規記録・transaction境界95%以上、Domain／Application全体80%以上を満たす。（新規Activity model／factory 98.99%、Domain／Application全体89.32%）
+  - [x] 同時要求、retry、rollback、Purge、User削除、File削除、snapshot sanitizeをTestする。
+- [x] `verify-config.sh`、`verify-server.sh`、`verify-security.sh`、`verify-deployment.sh`、format、Migration、`git diff --check`を成功させる。
+- [x] 差分をself-reviewし、一般API／Android／Admin CLIの先行実装、秘密情報、実環境値がない。
 - [ ] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---

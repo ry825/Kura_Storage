@@ -7,6 +7,7 @@ using KuraStorage.Application.Maintenance;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Sharing;
+using KuraStorage.Domain.Activity;
 using KuraStorage.Application.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -328,9 +329,21 @@ public sealed class SharingApiTests(PostgreSqlAuthFlowFixture fixture)
                     member.GetProperty("permission").GetString() == "EDITOR");
         }
 
+        using (var noOpUpdate = await manager.PutAsJsonAsync(
+            $"/api/v1/shares/{shareId}/members/{recipientId}",
+            new { permission = "EDITOR" }))
+        {
+            noOpUpdate.EnsureSuccessStatusCode();
+        }
+
         using (var remove = await manager.DeleteAsync($"/api/v1/shares/{shareId}/members/{recipientId}"))
         {
             Assert.Equal(HttpStatusCode.NoContent, remove.StatusCode);
+        }
+
+        using (var repeatedRemove = await manager.DeleteAsync($"/api/v1/shares/{shareId}/members/{recipientId}"))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, repeatedRemove.StatusCode);
         }
 
         using (var revoked = await recipient.GetAsync($"/api/v1/files/{childId}"))
@@ -348,6 +361,14 @@ public sealed class SharingApiTests(PostgreSqlAuthFlowFixture fixture)
         Assert.False(await database.Shares.AnyAsync(share => share.Id == shareId));
         Assert.Contains(await database.AuditLogs.ToListAsync(), audit =>
             audit.Action == "SHARE_DELETE" && audit.TargetId == shareId.ToString());
+        var folderActivities = await database.UserActivities
+            .Where(activity => activity.TargetEntryId == folderId && activity.ActivityType == UserActivityType.Share)
+            .ToListAsync();
+        Assert.Equal(5, folderActivities.Count);
+        Assert.Equal(2, folderActivities.Count(activity => activity.ShareAction == ActivityShareAction.Created));
+        Assert.Single(folderActivities, activity =>
+            activity.ShareAction == ActivityShareAction.Updated && activity.RecipientUserId == recipientId);
+        Assert.Equal(2, folderActivities.Count(activity => activity.ShareAction == ActivityShareAction.Revoked));
     }
 
     [Fact]

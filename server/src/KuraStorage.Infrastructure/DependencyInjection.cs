@@ -9,6 +9,7 @@ using KuraStorage.Application.Recent;
 using KuraStorage.Application.Organization;
 using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Transfers;
+using KuraStorage.Application.Activity;
 using KuraStorage.Infrastructure.Configuration;
 using KuraStorage.Infrastructure.Identity;
 using KuraStorage.Infrastructure.Indexing;
@@ -132,6 +133,7 @@ public static class DependencyInjection
                 options.UseNpgsql(
                     serviceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString));
         services.AddScoped<IIdentityRepository, IdentityRepository>();
+        services.AddScoped<IUserActivityRepository, UserActivityRepository>();
         services.AddScoped<IFileRepository, FileRepository>();
         services.AddScoped<IFileVersionRepository, FileVersionRepository>();
         services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
@@ -167,6 +169,7 @@ public static class DependencyInjection
         services.AddScoped<IIndexEventService, IndexEventService>();
         services.AddSingleton<IIndexScanObserver, IndexScanLogObserver>();
         services.AddScoped<IdentityService>();
+        services.AddScoped<UserActivityFactory>();
         services.AddScoped<FileService>();
         services.AddScoped<MissingEntryService>();
         services.AddScoped<TrashPurgeService>();

@@ -4,6 +4,8 @@ using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Sharing;
+using KuraStorage.Application.Activity;
+using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Sharing;
 
 namespace KuraStorage.Application.Files;
@@ -17,7 +19,8 @@ public sealed class FileService(
     ISystemClock clock,
     TrashPurgeOptions? purgeOptions = null,
     IAuthorizationService? authorizationService = null,
-    FileVersionService? fileVersions = null)
+    FileVersionService? fileVersions = null,
+    UserActivityFactory? activities = null)
 {
     private readonly int retentionDays = purgeOptions?.RetentionDays ?? 30;
     public async Task<FileResult<FilePage>> ListAsync(
@@ -580,7 +583,8 @@ public sealed class FileService(
             now,
             command.ActorDeviceId,
             command.RequestId,
-            "MULTIPART");
+            "MULTIPART",
+            command.ActorUserId);
         if (existingOperation is null)
         {
             repository.Add(operation);
@@ -682,6 +686,17 @@ public sealed class FileService(
         var completedAt = clock.UtcNow;
         await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         repository.Add(entry);
+        if (activities is not null)
+        {
+            await activities.AddUploadAsync(
+                operation.Id,
+                command.ActorUserId,
+                command.ActorDeviceId,
+                entry,
+                entry.FileVersion,
+                cancellationToken);
+        }
+
         repository.Add(CreateAudit(
             command.ActorUserId, command.ActorDeviceId, entry.Id,
             FileOperationType.Upload, "SUCCESS", command.RequestId, completedAt));
@@ -827,35 +842,15 @@ public sealed class FileService(
             return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
         }
 
-        var entry = await repository.FindByIdAsync(command.FileEntryId, cancellationToken);
-        if (entry is null || entry.Status != FileEntryStatus.Active || entry.ParentId is not Guid parentId)
+        var locked = await TryAcquireTrashMutationAsync(command, cancellationToken);
+        if (locked is null)
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
         }
 
-        var ownerUserId = entry.OwnerUserId;
-        var permission = await ResolvePermissionAsync(command.ActorUserId, entry, cancellationToken);
-        if (!permission.Allows(ShareOperation.Edit))
-        {
-            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
-        }
-
-        await using var mutationLock = await repository.AcquireMutationLocksAsync(
-            new[] { entry.Id, parentId }.Concat(OptionalId(permission.ShareTargetId)),
-            cancellationToken);
-        var entryExists = await repository.ReloadAsync(entry, cancellationToken);
-        if (!entryExists || entry.Status != FileEntryStatus.Active || entry.ParentId != parentId ||
-            entry.OwnerUserId != ownerUserId)
-        {
-            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
-        }
-
-        var lockedPermission = await ResolvePermissionAsync(command.ActorUserId, entry, cancellationToken);
-        if (!SamePermissionLockScope(permission, lockedPermission) ||
-            !lockedPermission.Allows(ShareOperation.Edit))
-        {
-            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
-        }
+        await using var mutationLock = locked.MutationLock;
+        var entry = locked.Entry;
+        var ownerUserId = locked.OwnerUserId;
 
         if (await IsBlockedAsync(ownerUserId, entry, cancellationToken))
         {
@@ -878,7 +873,8 @@ public sealed class FileService(
             now,
             command.ActorDeviceId,
             command.RequestId,
-            "USER");
+            "USER",
+            command.ActorUserId);
         repository.Add(operation);
         await repository.SaveChangesAsync(cancellationToken);
         var trashContainer = RelativeStoragePath.Create($"users/{ownerUserId:N}/trash/{entry.Id:N}");
@@ -896,6 +892,17 @@ public sealed class FileService(
         await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         entry.Trash(target, completedAt);
         ApplyDescendantPaths(descendants, source.Value, target.Value, true, completedAt);
+        if (activities is not null)
+        {
+            await activities.AddDeleteAsync(
+                operation.Id,
+                command.ActorUserId,
+                command.ActorDeviceId,
+                entry,
+                ActivityDeleteKind.Trashed,
+                cancellationToken);
+        }
+
         repository.Add(CreateAudit(
             command.ActorUserId, command.ActorDeviceId, entry.Id,
             FileOperationType.Trash, "SUCCESS", command.RequestId, completedAt));
@@ -1071,7 +1078,8 @@ public sealed class FileService(
             clock.UtcNow,
             actorDeviceId,
             requestId,
-            operationType.ToString().ToUpperInvariant());
+            operationType.ToString().ToUpperInvariant(),
+            actorUserId);
         repository.Add(operation);
         await repository.SaveChangesAsync(cancellationToken);
         try
@@ -1116,6 +1124,20 @@ public sealed class FileService(
             (directory
                 ? await repository.ListDescendantsAsync(entry.OwnerUserId, source.Value, cancellationToken)
                 : []);
+        FileEntry? activitySourceParent = null;
+        FileEntry? activityDestinationParent = null;
+        if (activities is not null && operationType == FileOperationType.Move)
+        {
+            activitySourceParent = entry.ParentId is Guid sourceParentId
+                ? await repository.FindByIdAsync(sourceParentId, cancellationToken)
+                : null;
+            activityDestinationParent = await repository.FindByIdAsync(targetParentId, cancellationToken);
+            if (activitySourceParent is null || activityDestinationParent is null)
+            {
+                return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+            }
+        }
+
         var now = clock.UtcNow;
         await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         if (operationType == FileOperationType.Rename)
@@ -1136,6 +1158,18 @@ public sealed class FileService(
                 RelativeStoragePath.Create(
                     target.Value + descendant.RelativePath[source.Value.Length..]),
                 now);
+        }
+
+        if (activities is not null && operationType == FileOperationType.Move)
+        {
+            await activities.AddMoveAsync(
+                operation.Id,
+                actorUserId,
+                actorDeviceId,
+                entry,
+                activitySourceParent!,
+                activityDestinationParent!,
+                cancellationToken);
         }
 
         repository.Add(
@@ -1299,10 +1333,77 @@ public sealed class FileService(
         }
     }
 
+    private async Task<TrashMutationContext?> TryAcquireTrashMutationAsync(
+        TrashFileCommand command,
+        CancellationToken cancellationToken)
+    {
+        const int maximumAttempts = 2;
+        for (var attempt = 0; attempt < maximumAttempts; attempt++)
+        {
+            var entry = await repository.FindByIdAsync(command.FileEntryId, cancellationToken);
+            if (entry is null || entry.Status != FileEntryStatus.Active || entry.ParentId is not Guid parentId)
+            {
+                return null;
+            }
+
+            var ownerUserId = entry.OwnerUserId;
+            var permission = await ResolvePermissionAsync(command.ActorUserId, entry, cancellationToken);
+            if (!permission.Allows(ShareOperation.Edit))
+            {
+                return null;
+            }
+
+            var mutationLock = await repository.AcquireMutationLocksAsync(
+                new[] { entry.Id, parentId }.Concat(OptionalId(permission.ShareTargetId)),
+                cancellationToken);
+            var keepLock = false;
+            try
+            {
+                var entryExists = await repository.ReloadAsync(entry, cancellationToken);
+                if (!entryExists || entry.Status != FileEntryStatus.Active || entry.ParentId is null ||
+                    entry.OwnerUserId != ownerUserId)
+                {
+                    return null;
+                }
+
+                if (entry.ParentId != parentId)
+                {
+                    // A move won the entry lock. Retry with the reloaded parent in the
+                    // sorted lock set so parent-folder mutations remain serialized.
+                    continue;
+                }
+
+                var lockedPermission = await ResolvePermissionAsync(command.ActorUserId, entry, cancellationToken);
+                if (!SamePermissionLockScope(permission, lockedPermission) ||
+                    !lockedPermission.Allows(ShareOperation.Edit))
+                {
+                    return null;
+                }
+
+                keepLock = true;
+                return new TrashMutationContext(entry, ownerUserId, mutationLock);
+            }
+            finally
+            {
+                if (!keepLock)
+                {
+                    await mutationLock.DisposeAsync();
+                }
+            }
+        }
+
+        return null;
+    }
+
     private static bool SamePermissionLockScope(
         EffectivePermission initial,
         EffectivePermission current) =>
         initial.ShareTargetId == current.ShareTargetId;
+
+    private sealed record TrashMutationContext(
+        FileEntry Entry,
+        Guid OwnerUserId,
+        IFileMutationLock MutationLock);
 
     private async Task<bool> StorageAvailableAsync(StorageIntent intent, CancellationToken cancellationToken) =>
         await storageGuard.InspectAsync(intent, cancellationToken) == StorageStatus.Available;

@@ -445,6 +445,53 @@ interface FileVersionRecord {
 - Migration適用前から存在してrecordがない対応テキストは、最初の履歴対応操作時にFile mutation lock内で現行内容を検証し、現在の`fileVersion`番号でlazy baselineを作る。MigrationとAdmin CLIはHDD全件backfillを行わない。
 - `FileVersionRecord`はFileEntry完全削除前に専用削除participantでMetadataと本文を限定削除する。通常の利用者APIから個別変更・削除しない。
 
+#### 利用者向け操作履歴
+
+`UserActivity`は製品UIで成功操作を説明するための追記専用モデルであり、認証・管理・復旧調査用の`AuditLog`とは別table・別contract・別queryとして扱う。同じ操作が両方の目的に該当する場合は、対象Application use caseが同じDB transaction内で個別のrecordを作る。
+
+```typescript
+type UserActivityType = "UPLOAD" | "MOVE" | "EDIT" | "SHARE" | "DELETE";
+type ActivityTargetType = "FILE" | "FOLDER";
+type ActivityDetailKind = "UPLOAD" | "MOVE" | "EDIT" | "SHARE" | "DELETE";
+
+interface UserActivity {
+  id: string;
+  operationId: string; // retryを1件へ収束させるServerまたはClient由来の操作ID
+  activityType: UserActivityType;
+  occurredAt: string;
+  actorUserId?: string;
+  actorDisplayName: string;
+  actorDeviceName?: string;
+  targetEntryId?: string;
+  targetType: ActivityTargetType;
+  targetName: string;
+  ownerUserId?: string;
+  ownerDisplayName: string;
+  parentEntryId?: string;
+  detailKind: ActivityDetailKind;
+  sourceParentId?: string;
+  sourceParentName?: string;
+  destinationParentId?: string;
+  destinationParentName?: string;
+  recipientUserId?: string;
+  recipientDisplayName?: string;
+  sharePermission?: "VIEWER" | "CONTRIBUTOR" | "EDITOR" | "MANAGER";
+  shareAction?: "CREATED" | "UPDATED" | "REVOKED";
+  resultingFileVersion?: number;
+  editKind?: "TEXT_SAVE" | "VERSION_RESTORE";
+  deleteKind?: "TRASHED" | "PURGED";
+}
+```
+
+- `operationId`を一意とし、同じ操作のretryやjournal recoveryでActivityを重複させない。状態が変わらないno-opと失敗操作は記録しない。
+- 表示snapshotは状態変更の正しい時点でServerのUser、Device、FileEntry、Folder、Shareから作る。Client指定表示名や自由形式JSONを保存しない。
+- Activity typeごとに許可するdetail列を固定し、別typeの列、File本文、物理Path、Request ID、OS User、Tokenを拒否する。
+- User／Fileへの参照は削除時にActivityをcascade削除しない。Purge後もActorまたは当時のOwner向けにTargetとOwnerの最小snapshotを保持する。
+- Uploadは正式公開、Moveは親変更、Editは新version確定、Shareは実状態変更、DeleteはTrash遷移とPurge確定を記録する。Rename、失敗要求、同値更新、二重解除は記録しない。
+- 利用者向け一覧はActor本人、現在閲覧可能なTarget、Purge済みTargetのsnapshot ownerをSQL段階で和集合にし、Application側のpage後filterを認可境界にしない。
+- `occurredAt DESC, id DESC`のkeyset paginationを使用する。Adminの横断検索はローカルCLI専用repositoryへ分離する。
+- 初回保持期間は無期限とし、一般APIとAdmin CLIにActivityの更新・削除を提供しない。
+
 ### 5.3 MVP後: 共有
 
 ```typescript

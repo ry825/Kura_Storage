@@ -1181,8 +1181,24 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 
 ### 7.12.4 操作履歴
 
-- 誰が、いつ、どの項目をアップロード、移動、編集、共有、削除したか確認できる
-- 管理者が履歴を検索できる
+**ユーザーストーリー**:
+利用者として、自分に関係する成功操作を理解するために、誰が、いつ、どの項目を操作したかを確認したい。管理者として、セキュリティ監査ログを一般利用者へ公開せず、運用調査に必要な範囲だけをローカルで検索したい。
+
+**受け入れ条件**
+
+- [ ] 利用者向け`UserActivity`を既存Security `AuditLog`とは別table・別契約・別queryとして保持する
+- [ ] Upload正式公開、親Folderが変わるMove、Text保存・Version Restore、Share作成・権限変更・解除、Trash・Purgeの成功状態変更だけを1件記録する
+- [ ] Rename、Download、View、Restore from trash、失敗要求、Validation／認可拒否、副作用のない冪等再送を記録しない
+- [ ] Activityと対象状態変更を同じDB transactionまたはFileOperation recovery境界で確定し、片方だけを成功状態にしない
+- [ ] Actor、Device、Target、Ownerと操作固有情報はServer確定値から型付きsnapshotとして作り、File本文、物理Path、Token、Request ID、OS User、自由形式metadataを保持しない
+- [ ] User無効化やFile完全削除でActivityをcascade削除せず、nullable参照と表示snapshotを無期限に保持する
+- [ ] 一般利用者はActor本人、または現在閲覧可能なTargetに関するActivityだけを新しい順で閲覧できる
+- [ ] Purge済みTargetのActivityはActorまたは当時のOwnerだけが必要最小限の削除snapshotを閲覧できる
+- [ ] 共有解除、権限変更、Move、Trash、Purge後の可視性を次の一覧要求で再評価し、`ADMIN` Roleだけでは全User履歴を閲覧できない
+- [ ] 管理者の全User横断検索はRaspberry PiローカルのAdmin CLIだけに提供し、Actor、Owner、種別、UTC期間、File IDを組み合わせて検索できる
+- [ ] Admin検索自体をSecurity Auditへ記録し、通常HTTP APIからAdmin検索、Security Audit、内部識別子、失敗Security eventへアクセスできない
+- [ ] 30万FileEntry・100万Activityで利用者一覧と限定Admin検索が通常2秒以内に完了する
+- [ ] Androidで履歴のPaging、Filter、Refresh、Empty、Errorと型付き操作詳細を表示できる
 
 **優先度**: P1（重要）
 

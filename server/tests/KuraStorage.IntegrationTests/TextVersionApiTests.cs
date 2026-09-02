@@ -8,6 +8,7 @@ using System.Text.Json;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Activity;
 using KuraStorage.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -120,6 +121,15 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
             audit.TargetId == fileId.ToString() && audit.Action == "FILE_TEXT_EDIT"));
         Assert.Equal(1, await database.AuditLogs.CountAsync(audit =>
             audit.TargetId == fileId.ToString() && audit.Action == "FILE_VERSION_RESTORE"));
+        var saveActivity = await database.UserActivities.SingleAsync(activity => activity.OperationId == saveOperation);
+        Assert.Equal(UserActivityType.Edit, saveActivity.ActivityType);
+        Assert.Equal(ActivityEditKind.TextSave, saveActivity.EditKind);
+        Assert.Equal(2, saveActivity.ResultingFileVersion);
+        var restoreActivity = await database.UserActivities.SingleAsync(activity => activity.OperationId == restoreOperation);
+        Assert.Equal(ActivityEditKind.VersionRestore, restoreActivity.EditKind);
+        Assert.Equal(3, restoreActivity.ResultingFileVersion);
+        Assert.Equal(2, await database.UserActivities.CountAsync(activity =>
+            activity.TargetEntryId == fileId && activity.ActivityType == UserActivityType.Edit));
         Assert.DoesNotContain(fixture.LogMessages, message => message.Contains("original sentinel", StringComparison.Ordinal));
         Assert.DoesNotContain(fixture.LogMessages, message => message.Contains("text-api-note.txt", StringComparison.Ordinal));
         Assert.DoesNotContain(fixture.LogMessages, message => message.Contains(fixture.StorageRootPath, StringComparison.Ordinal));

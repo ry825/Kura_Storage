@@ -1,4 +1,6 @@
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Activity;
+using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
@@ -10,7 +12,8 @@ public sealed class SharingService(
     IShareRepository repository,
     IAuthorizationService authorizationService,
     ISystemClock clock,
-    IFileRepository? files = null)
+    IFileRepository? files = null,
+    UserActivityFactory? activities = null)
 {
     public async Task<SharingResult<IReadOnlyList<ShareCandidate>>> ListCandidatesAsync(
         Guid actorUserId,
@@ -79,6 +82,22 @@ public sealed class SharingService(
 
         await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         repository.Add(share);
+        if (activities is not null)
+        {
+            foreach (var member in command.Members)
+            {
+                await activities.AddShareAsync(
+                    Guid.NewGuid(),
+                    command.ActorUserId,
+                    command.ActorDeviceId,
+                    target,
+                    member.UserId,
+                    member.Permission,
+                    ActivityShareAction.Created,
+                    cancellationToken);
+            }
+        }
+
         repository.Add(CreateAudit(command.ActorUserId, command.ActorDeviceId, "SHARE_CREATE", share.Id, command.RequestId, now));
         try
         {
@@ -187,13 +206,35 @@ public sealed class SharingService(
         }
 
         var now = clock.UtcNow;
-        if (share.Members.Any(member => member.UserId == command.MemberUserId))
+        var existingMember = share.Members.SingleOrDefault(member => member.UserId == command.MemberUserId);
+        var shareAction = existingMember is null
+            ? ActivityShareAction.Created
+            : ActivityShareAction.Updated;
+        if (existingMember is not null && existingMember.Permission == command.Permission)
+        {
+            return await LoadItemAsync(share.Id, command.ActorUserId, cancellationToken);
+        }
+
+        if (existingMember is not null)
         {
             share.SetMemberPermission(command.MemberUserId, command.Permission, now);
         }
         else
         {
             share.AddMember(command.MemberUserId, command.Permission, now);
+        }
+
+        if (activities is not null)
+        {
+            await activities.AddShareAsync(
+                Guid.NewGuid(),
+                command.ActorUserId,
+                command.ActorDeviceId,
+                target,
+                command.MemberUserId,
+                command.Permission,
+                shareAction,
+                cancellationToken);
         }
 
         var saved = await SaveMutationAsync(
@@ -243,12 +284,32 @@ public sealed class SharingService(
             return Fail<bool>(SharingErrorCodes.ShareMemberNotFound, SharingFailureKind.NotFound);
         }
 
+        var removedMember = share.Members.Single(member => member.UserId == command.MemberUserId);
+        var target = await repository.FindEntryAsync(share.TargetEntryId, cancellationToken);
+        if (!ValidShareTarget(target))
+        {
+            return Fail<bool>(SharingErrorCodes.ShareNotFound, SharingFailureKind.NotFound);
+        }
+
         var now = clock.UtcNow;
         var empty = share.RemoveMember(command.MemberUserId, now);
         await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         if (empty)
         {
             repository.Remove(share);
+        }
+
+        if (activities is not null)
+        {
+            await activities.AddShareAsync(
+                Guid.NewGuid(),
+                command.ActorUserId,
+                command.ActorDeviceId,
+                target!,
+                removedMember.UserId,
+                removedMember.Permission,
+                ActivityShareAction.Revoked,
+                cancellationToken);
         }
 
         repository.Add(CreateAudit(
@@ -293,9 +354,32 @@ public sealed class SharingService(
             return Fail<bool>(SharingErrorCodes.ShareNotFound, SharingFailureKind.NotFound);
         }
 
+        var target = await repository.FindEntryAsync(share.TargetEntryId, cancellationToken);
+        if (!ValidShareTarget(target))
+        {
+            return Fail<bool>(SharingErrorCodes.ShareNotFound, SharingFailureKind.NotFound);
+        }
+
+        var removedMembers = share.Members.ToArray();
         var now = clock.UtcNow;
         await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         repository.Remove(share);
+        if (activities is not null)
+        {
+            foreach (var member in removedMembers)
+            {
+                await activities.AddShareAsync(
+                    Guid.NewGuid(),
+                    command.ActorUserId,
+                    command.ActorDeviceId,
+                    target!,
+                    member.UserId,
+                    member.Permission,
+                    ActivityShareAction.Revoked,
+                    cancellationToken);
+            }
+        }
+
         repository.Add(CreateAudit(
             command.ActorUserId, command.ActorDeviceId, "SHARE_DELETE", share.Id, command.RequestId, now));
         try
