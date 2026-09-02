@@ -110,7 +110,7 @@
 - [x] 既存Upload／Search／Share／File state／Text version／User activityのRegression Testを成功させる。
 - [x] `verify-server.sh`、`verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`、format、Migration、OpenAPI、`git diff --check`を成功させる。
 - [x] Log／Metric／例外に端末文書Key、相対Path、ファイル名、物理Path、User入力、Tokenが漏れないことを確認する。
-- [ ] 差分をself-reviewし、Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+- [x] 差分をself-reviewし、Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -354,6 +354,30 @@
 ## 各Pull Request完了記録
 
 > 各Pull Request作成後にsteeringモード3-Aで追記する。後続Pull Requestに未完了タスクが残っていても、完了したPull Requestの記録は行う。
+
+### PR1: Server側BackupReceipt・比較・Upload確定
+
+- 完了日: 2026-09-02
+- Pull Request: [#44 Add server-side Android automatic backup receipts](https://github.com/ry825/Kura_Storage/pull/44)
+- 実施したテスト、ビルド、静的解析、手動確認:
+  - `./scripts/ci/verify-server.sh`でRelease build警告0、Domain 130件、Application 336件、PostgreSQL統合224件、合計690件の成功を確認した。
+  - Coverlet統合結果はDomain／Application全体7,644/8,544行（89.47%）、新規Backup Domain／Application 241/246行（97.97%）であった。
+  - `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`dotnet format --verify-no-changes`、OpenAPI Contract Test、EF Core pending model確認、`git diff --check`が成功した。
+  - MigrationのUp／Down／再Up、既存行保持、一意制約、Device失効時保持、File Purge時CascadeをPostgreSQL 17 Testcontainersで確認した。
+  - 実一時Storageを使い、NEW／CHANGED、重複complete、取消、Version競合、共有Owner、転送中権限低下、filesystem-done recovery、Text version履歴、既存関連情報保持をAPI統合Testで確認した。別途の手動操作はなし。
+  - GitHub ActionsのAndroid、Config、Security、Server必須Checkがすべて成功した。
+- 計画と実装の差分:
+  - Compareの認可を保存先FolderだけでなくReceiptのRemote Fileへの現在の編集権限までBatch再評価し、権限喪失時はRemote File ID／Versionを返さない`BLOCKED_CURRENT_STATE`へ強化した。
+  - Steering設計内の旧Upload Session表記を既存の`/api/v1/upload-sessions`へ訂正し、Compare判定名をOpenAPI実装と一致させた。
+- 実装中に追加したタスクと追加理由:
+  - CHANGED対象が対応Text MIMEの場合も既存のimmutable version履歴を維持するため、検証済み内容を次Versionへ発行する処理と回帰Testを追加した。
+  - 自己レビューで検出した共有権限失効後のRemote File情報露出、CompareとUploadのFile size上限差、`BackupUpdate`のDB表記を修正し、それぞれ回帰Testまたは統合Testで確認した。
+  - Backup用`relativePath`追加に合わせ、物理Storage path非公開を維持しながら論理相対Pathを許可するOpenAPI Contract Testへ更新した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項:
+  - PR2は#44が`main`へMergeされ必須CIが成功した後に最新`main`から開始する。
+  - AndroidはUser／Device／OwnerをBackup payloadへ含めず、Compareの`NEW`／`CHANGED`だけを既存Upload Sessionの`backup` contextへ渡す。`BLOCKED_CURRENT_STATE`ではRemote Fileを推測せずUser操作待ちにする。
+  - 端末側削除、Rule削除、候補省略からServer File／Receiptを削除するAPIは追加しない。
 
 ## 全体振り返り
 
