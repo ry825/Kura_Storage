@@ -131,7 +131,10 @@ public sealed class OpenApiContractTests
             StringComparison.Ordinal);
         Assert.Contains("enum: [ADMIN, MEMBER]", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("ownerUserId:", contract, StringComparison.Ordinal);
-        Assert.DoesNotContain("relativePath:", contract, StringComparison.Ordinal);
+        Assert.Contains("BackupCompareCandidate:", contract, StringComparison.Ordinal);
+        Assert.Contains("BackupUploadContext:", contract, StringComparison.Ordinal);
+        Assert.Contains("relativePath:", contract, StringComparison.Ordinal);
+        Assert.Contains("never a raw URI or physical path", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("temporaryRelativePath:", contract, StringComparison.Ordinal);
         Assert.DoesNotContain("contentRelativePath:", contract, StringComparison.Ordinal);
     }

@@ -95,6 +95,8 @@ Rename・Moveは現行のServer File機能を拡張し、Domainは`KuraStorage.D
 
 利用者向け操作履歴は、Domain entityと型付きdetailを`KuraStorage.Domain/Activity/`、作成factoryとApplication境界を`KuraStorage.Application/Activity/`および`Abstractions/ActivityAbstractions.cs`へ配置する。対象操作への記録は既存のFiles、Transfers、Sharing Use Caseから同じtransactionへ参加させる。EF Configurationと記録Repositoryは`Infrastructure/Persistence/`、後続の利用者・Admin Queryは相互に分離して`Infrastructure/Persistence/Queries/`へ置く。Security `AuditLog`のDomain、table、queryを流用せず、新しいProjectやWorkerは追加しない。
 
+Android自動バックアップのServer側は、`BackupReceipt`とValue Objectを`KuraStorage.Domain/Backup/`、Compare契約・検証・Use CaseとRepository境界を`KuraStorage.Application/Backup/`および`Abstractions/BackupAbstractions.cs`へ配置する。EF ConfigurationとRepositoryは`KuraStorage.Infrastructure/Persistence/`、Migrationは既存`Persistence/Migrations/`、CompareとUpload Session Endpointは既存`KuraStorage.Api/Program.cs`、HTTP契約は`contracts/openapi/kurastorage-api.yaml`へ置く。Backup確定は既存`Transfers/UploadSessionService.cs`のChunk・Storage Guard・FileOperation・mutation lock・Version発行を拡張し、別の転送ProjectやServer Workerを追加しない。Domain、Application、Migration、API、復旧のTestは既存Test ProjectのBackup対応Fileへ配置する。
+
 ```text
 kurastorage/
 ├── .github/

@@ -1,5 +1,6 @@
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Activity;
+using KuraStorage.Domain.Backup;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Indexing;
@@ -25,6 +26,8 @@ public sealed class KuraStorageDbContext(DbContextOptions<KuraStorageDbContext> 
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     public DbSet<UserActivity> UserActivities => Set<UserActivity>();
+
+    public DbSet<BackupReceipt> BackupReceipts => Set<BackupReceipt>();
 
     public DbSet<FileEntry> FileEntries => Set<FileEntry>();
 

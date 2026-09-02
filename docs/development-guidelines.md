@@ -61,6 +61,11 @@
 - 認可結果は要求内にだけ保持し、共有変更をまたぐ長期Cacheを使用しない。HDD更新を伴う操作はLock取得後に対象状態、Owner、権限を再読込・再認可してから変更する。
 - Moveは対象Entry、source親Folder、target親Folderのすべてに`EDITOR`以上を要求し、同一Owner Tree内だけを許可する。Fileへの`CONTRIBUTOR`共有とAdmin Roleによる暗黙の他User File権限を禁止する。
 - 共有認可TestはOwner、直接、継承、複数経路の最強、同強度Tie-break、未共有、Trash・未完了操作の隔離、共有解除・権限変更との競合を必須とする。
+- Backup APIのUserとDeviceはAccess TokenとServer側Sessionから導出し、Client指定のUser、Device、Owner、Remote File、完了時刻を認可やReceipt確定の根拠にしない。
+- `BackupReceipt`は`(user_id, device_id, local_document_key)`のDB一意制約で収束させる。`localDocumentKey`、相対Path、File名をLog、Metric label、例外detailへ出力しない。
+- Backup Compareは読取り処理とし、省略候補や端末削除からFileEntry・Receiptの削除を推測しない。Request件数、各文字列、総metadata量、重複Keyを境界で検証する。
+- Backup付きUploadはCompare結果を権限根拠にせず、Session開始と完了の両方でFolder権限、File状態、期待Version、Device、Sessionを再検証する。同じ端末文書の保留SessionはDB一意制約で1件へ収束させる。
+- `NEW`のFileEntry公開と`CHANGED`のatomic replaceは、FileOperation、Version、UserActivity、Receiptを同じ確定境界へ参加させる。取消、未完了、Checksum失敗でReceiptを進めず、通信結果不明の再送でFileやVersionを増やさない。
 
 ---
 

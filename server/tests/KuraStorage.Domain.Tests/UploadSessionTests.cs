@@ -1,3 +1,4 @@
+using KuraStorage.Domain.Backup;
 using KuraStorage.Domain.Transfers;
 using Xunit;
 
@@ -106,6 +107,40 @@ public sealed class UploadSessionTests
         Assert.Equal(targetOwnerUserId, session.TargetOwnerUserId);
     }
 
+    [Fact]
+    public void Constructor_PersistsImmutableBackupContextAndIncludesItInIdempotencyMetadata()
+    {
+        var backup = new BackupUploadContext(
+            new BackupDocumentMetadata(
+                Guid.NewGuid().ToString("D"),
+                "Photos/file.jpg",
+                7,
+                Now,
+                new string('a', 64)),
+            BackupUploadDecision.New,
+            null,
+            null);
+        var session = Create(expectedSize: 7, backup: backup);
+
+        Assert.Equal(backup.LocalDocumentKey, session.BackupLocalDocumentKey);
+        Assert.True(session.SameMetadata(
+            session.DeviceId,
+            session.DestinationFolderId!.Value,
+            "file.bin",
+            "application/octet-stream",
+            7,
+            new string('a', 64),
+            backup));
+        Assert.False(session.SameMetadata(
+            session.DeviceId,
+            session.DestinationFolderId!.Value,
+            "file.bin",
+            "application/octet-stream",
+            7,
+            new string('a', 64),
+            null));
+    }
+
     private static UploadSession Create(
         Guid? actorUserId = null,
         Guid? targetOwnerUserId = null,
@@ -113,7 +148,8 @@ public sealed class UploadSessionTests
         Guid? destinationFolderId = null,
         long expectedSize = 1,
         DateTimeOffset? expiresAt = null,
-        DateTimeOffset? absoluteExpiresAt = null) =>
+        DateTimeOffset? absoluteExpiresAt = null,
+        BackupUploadContext? backup = null) =>
         new(
             Guid.NewGuid(),
             actorUserId ?? Guid.NewGuid(),
@@ -129,5 +165,6 @@ public sealed class UploadSessionTests
             $"upload-sessions/{Guid.NewGuid():N}.upload",
             Now,
             expiresAt ?? Now.AddHours(24),
-            absoluteExpiresAt ?? Now.AddDays(7));
+            absoluteExpiresAt ?? Now.AddDays(7),
+            backup);
 }

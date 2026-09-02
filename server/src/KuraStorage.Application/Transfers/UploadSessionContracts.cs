@@ -1,4 +1,5 @@
 using KuraStorage.Application.Files;
+using KuraStorage.Domain.Backup;
 
 namespace KuraStorage.Application.Transfers;
 
@@ -39,7 +40,16 @@ public sealed record CreateUploadSessionCommand(
     string? ContentType,
     string? Sha256,
     string IdempotencyKey,
-    string RequestId);
+    string RequestId,
+    BackupUploadRequest? Backup = null);
+
+public sealed record BackupUploadRequest(
+    string LocalDocumentKey,
+    string RelativePath,
+    DateTimeOffset ModifiedAt,
+    BackupUploadDecision Decision,
+    Guid? ExpectedRemoteFileId,
+    long? ExpectedRemoteFileVersion);
 
 public sealed record UploadChunkCommand(
     Guid ActorUserId,

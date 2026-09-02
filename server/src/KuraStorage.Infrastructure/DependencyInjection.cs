@@ -10,6 +10,7 @@ using KuraStorage.Application.Organization;
 using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Application.Activity;
+using KuraStorage.Application.Backup;
 using KuraStorage.Infrastructure.Configuration;
 using KuraStorage.Infrastructure.Identity;
 using KuraStorage.Infrastructure.Indexing;
@@ -141,6 +142,7 @@ public static class DependencyInjection
         services.AddScoped<IFileRepository, FileRepository>();
         services.AddScoped<IFileVersionRepository, FileVersionRepository>();
         services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
+        services.AddScoped<IBackupRepository, BackupRepository>();
         services.AddScoped<IAuthorizationRepository, AuthorizationRepository>();
         services.AddScoped<ISearchRepository, PostgreSqlSearchRepository>();
         services.AddScoped<IRecentFileRepository, PostgreSqlRecentFileRepository>();
@@ -227,6 +229,7 @@ public static class DependencyInjection
         services.AddScoped<FileVersionService>();
         services.AddScoped<TextFileService>();
         services.AddScoped<UploadSessionService>();
+        services.AddScoped<BackupCompareService>();
         services.AddScoped<UploadSessionRecoveryService>();
         services.AddScoped<UploadSessionCleanupService>();
         services.AddScoped<IAuthorizationService, AuthorizationService>();

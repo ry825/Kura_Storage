@@ -30,6 +30,7 @@ public enum ActivityEditKind
 {
     TextSave,
     VersionRestore,
+    BackupUpload,
 }
 
 public enum ActivityShareAction

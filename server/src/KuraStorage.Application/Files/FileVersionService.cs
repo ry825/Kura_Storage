@@ -157,6 +157,84 @@ public sealed class FileVersionService(
         return record;
     }
 
+    public async Task<FileVersionRecord?> PublishNextAsync(
+        FileEntry entry,
+        FileVersionChangeKind changeKind,
+        FileOperation operation,
+        Guid actorUserId,
+        Guid actorDeviceId,
+        Stream source,
+        long expectedSize,
+        string expectedSha256,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(operation);
+        if (!IsSupported(entry))
+        {
+            return null;
+        }
+
+        var nextVersion = checked(entry.FileVersion + 1);
+        var existing = await versions.FindAsync(entry.Id, nextVersion, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.Size != expectedSize ||
+                !string.Equals(existing.Sha256, expectedSha256, StringComparison.OrdinalIgnoreCase) ||
+                existing.ChangeKind != changeKind)
+            {
+                throw new FileVersionConsistencyException();
+            }
+
+            if (operation.ResultFileVersion is null)
+            {
+                operation.RecordPublishedVersion(
+                    entry.FileVersion,
+                    nextVersion,
+                    TemporaryPath(entry, nextVersion, operation.Id),
+                    existing.ContentRelativePath,
+                    existing.Sha256,
+                    clock.UtcNow);
+            }
+            return existing;
+        }
+
+        var published = await versionStore.TryPublishAsync(
+            entry.OwnerUserId,
+            entry.Id,
+            nextVersion,
+            operation.Id,
+            source,
+            expectedSize,
+            cancellationToken);
+        if (published is null || published.Size != expectedSize ||
+            !string.Equals(published.Sha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new FileVersionConsistencyException();
+        }
+
+        var record = new FileVersionRecord(
+            Guid.NewGuid(),
+            entry.Id,
+            nextVersion,
+            published.Size,
+            published.Sha256,
+            published.Path.Value,
+            changeKind,
+            actorUserId,
+            actorDeviceId,
+            clock.UtcNow);
+        versions.Add(record);
+        operation.RecordPublishedVersion(
+            entry.FileVersion,
+            nextVersion,
+            published.TemporaryPath.Value,
+            published.Path.Value,
+            published.Sha256,
+            clock.UtcNow);
+        return record;
+    }
+
     public static bool IsSupported(FileEntry entry) =>
         entry.EntryType == FileEntryType.File &&
         entry.Status == FileEntryStatus.Active &&
@@ -165,7 +243,10 @@ public sealed class FileVersionService(
         SupportedMimeTypes.Contains(entry.MimeType);
 
     private static string TemporaryPath(FileEntry entry, Guid operationId) =>
-        $"version-temp/{entry.OwnerUserId:N}/{entry.Id:N}/{entry.FileVersion}/{operationId:N}.part";
+        TemporaryPath(entry, entry.FileVersion, operationId);
+
+    private static string TemporaryPath(FileEntry entry, long version, Guid operationId) =>
+        $"version-temp/{entry.OwnerUserId:N}/{entry.Id:N}/{version}/{operationId:N}.part";
 }
 
 public sealed class FileVersionConsistencyException : IOException;

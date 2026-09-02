@@ -720,6 +720,8 @@ interface BackupReceipt {
 }
 ```
 
+`BackupReceipt`は`(userId, deviceId, localDocumentKey)`を一意にし、同じUserの別Deviceと端末文書Key空間を共有しない。UserとDeviceはAccess TokenとServer側Sessionから導出し、Client指定値をReceiptの認可根拠にしない。
+
 ### 5.7 MVP後: 最近使用したファイル
 
 ```typescript
@@ -2176,6 +2178,8 @@ BackupReceiptを進めない。同じ端末文書の並行Uploadは1件だけを
 
 端末側で候補が削除され、Compare Requestから省略されても、ServerのFileEntryやBackupReceiptを
 削除しない。Server側削除は通常の明示的なFile操作だけで行う。
+
+PR1でOpenAPIの`POST /api/v1/backup/compare`にRequest／Response、`NEW`・`CHANGED`・`ALREADY_UPLOADED`の分類、1 Request最大100件とmetadata上限、認証・権限・競合Errorを追加する。既存Upload Session開始Requestの`backup`に端末文書metadata、Compare判定、`CHANGED`の期待File ID／Versionを追加し、Chunk・状態照会・完了・取消Endpointは既存契約を再利用する。
 
 ---
 
