@@ -32,4 +32,5 @@ include(
     ":feature-media",
     ":feature-text",
     ":feature-settings",
+    ":feature-activity",
 )

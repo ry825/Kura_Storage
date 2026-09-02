@@ -252,6 +252,15 @@ interface SearchApi {
     ): NetworkCallResult<Unit>
 }
 
+interface ActivityApi {
+    suspend fun listActivities(
+        accessToken: String,
+        type: String?,
+        cursor: String?,
+        pageSize: Int,
+    ): NetworkCallResult<ActivityPageDto>
+}
+
 interface OrganizationApi {
     suspend fun listFavorites(
         accessToken: String,
@@ -309,6 +318,14 @@ interface OrganizationApi {
 private interface KuraStorageService {
     @GET("system/health")
     suspend fun health(): Response<SystemHealthDto>
+
+    @GET("activities")
+    suspend fun listActivities(
+        @Header("Authorization") authorization: String,
+        @Query("type") type: String?,
+        @Query("cursor") cursor: String?,
+        @Query("pageSize") pageSize: Int,
+    ): Response<ActivityPageDto>
 
     @GET("shares/candidates")
     suspend fun listShareCandidates(
@@ -647,6 +664,7 @@ class KuraStorageApi(
     UploadSessionApi,
     SharingApi,
     SearchApi,
+    ActivityApi,
     OrganizationApi {
     private val service =
         Retrofit
@@ -658,6 +676,13 @@ class KuraStorageApi(
             .create(KuraStorageService::class.java)
 
     suspend fun health(): SystemHealthDto = execute { service.health() }
+
+    override suspend fun listActivities(
+        accessToken: String,
+        type: String?,
+        cursor: String?,
+        pageSize: Int,
+    ) = executeAuthenticated { service.listActivities(bearer(accessToken), type, cursor, pageSize) }
 
     override suspend fun listCandidates(accessToken: String) = executeAuthenticated { shareCandidates(accessToken) }
 

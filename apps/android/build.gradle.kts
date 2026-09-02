@@ -60,6 +60,7 @@ val coverageModules =
         ":core-network",
         ":core-security",
         ":feature-auth",
+        ":feature-activity",
         ":feature-connection",
         ":feature-files",
         ":feature-media",

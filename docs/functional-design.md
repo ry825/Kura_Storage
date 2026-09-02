@@ -494,6 +494,8 @@ interface UserActivity {
 
 利用者APIは`GET /api/v1/activities?type=&cursor=&pageSize=`とし、`pageSize`は既定50・最大100とする。Cursorは時刻とIDを直接公開しないversion付きopaque tokenとし、破損・未知versionを拒否する。管理者検索は次のRaspberry PiローカルCLIに限定する。
 
+AndroidはHomeの`Activity`から履歴画面へ遷移し、全件またはUpload／Move／Edit／Share／Delete別にopaque cursorで追加読込する。各行はActor、Device snapshot、Target／Owner snapshot、ローカル日時と型付きdetailを表示する。`targetEntryId`が現在の応答に含まれる場合だけ既存File／Folder詳細へ遷移でき、Purge・権限失効後はsnapshot専用表示とする。未知typeはraw値や未知detailを表示せず、更新が必要な未対応操作としてfail-closedに表示する。Refresh／filter／Session変更では旧generationの応答とcursorを破棄する。
+
 ```bash
 sudo ./KuraStorage.AdminCli activity search \
   [--actor-user <id-or-username>] [--owner-user <id-or-username>] \

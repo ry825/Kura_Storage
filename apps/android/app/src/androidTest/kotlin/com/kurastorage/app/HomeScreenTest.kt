@@ -37,6 +37,7 @@ class HomeScreenTest {
         compose.onNodeWithText("Trash").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Search").assertIsDisplayed()
         compose.onNodeWithText("Recent files").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Activity").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Favorites").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Tags").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Media quality").performScrollTo().assertIsDisplayed()

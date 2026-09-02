@@ -56,6 +56,32 @@ data class ErrorResponseDto(
 )
 
 @Serializable
+data class ActivityItemDto(
+    val type: String,
+    val occurredAt: String,
+    val actorDisplayName: String,
+    val actorDeviceName: String? = null,
+    val targetEntryId: String? = null,
+    val targetType: String,
+    val targetName: String,
+    val ownerDisplayName: String,
+    val sourceParentName: String? = null,
+    val destinationParentName: String? = null,
+    val resultingFileVersion: Long? = null,
+    val editKind: String? = null,
+    val recipientDisplayName: String? = null,
+    val sharePermission: String? = null,
+    val shareAction: String? = null,
+    val deleteKind: String? = null,
+)
+
+@Serializable
+data class ActivityPageDto(
+    val items: List<ActivityItemDto>,
+    val nextCursor: String? = null,
+)
+
+@Serializable
 data class CreateFolderRequestDto(
     val parentId: String? = null,
     val name: String,

@@ -68,6 +68,8 @@ import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.core.ui.AppDestination
 import com.kurastorage.core.ui.KuraStorageTheme
+import com.kurastorage.feature.activity.ActivityScreen
+import com.kurastorage.feature.activity.ActivityViewModel
 import com.kurastorage.feature.auth.AuthScreen
 import com.kurastorage.feature.auth.AuthViewModel
 import com.kurastorage.feature.connection.ConnectionScreen
@@ -258,6 +260,7 @@ private fun KuraStorageApp(
                 onShared = { navController.navigate(AppDestination.SHARING.route) },
                 onSearch = { navController.navigate(AppDestination.SEARCH.route) },
                 onRecent = { navController.navigate(AppDestination.RECENT_FILES.route) },
+                onActivity = { navController.navigate(AppDestination.ACTIVITY.route) },
                 onFavorites = { navController.navigate(AppDestination.FAVORITES.route) },
                 onTags = { navController.navigate(AppDestination.TAGS.route) },
                 onTrash = { navController.navigate(AppDestination.TRASH.route) },
@@ -474,6 +477,29 @@ private fun KuraStorageApp(
                     recentViewModel.open(item) { id, type -> navController.navigate(entryRoute(id, type)) }
                 },
                 shareOptions = shareOptions,
+            )
+        }
+        composable(AppDestination.ACTIVITY.route) {
+            val current = services
+            if (current == null) {
+                navController.navigate(AppDestination.CONNECTION.route)
+                return@composable
+            }
+            val activityViewModel: ActivityViewModel =
+                viewModel(
+                    key = activityViewModelKey(current.sessionId),
+                    factory = simpleViewModelFactory { ActivityViewModel(current.activity) },
+                )
+            val state by activityViewModel.state.collectAsStateWithLifecycle()
+            ActivityScreen(
+                state = state,
+                onBack = { navController.popBackStack() },
+                onRefresh = activityViewModel::refresh,
+                onFilter = activityViewModel::selectFilter,
+                onLoadMore = activityViewModel::loadMore,
+                onOpenTarget = { item ->
+                    activityTargetRoute(item)?.let(navController::navigate)
+                },
             )
         }
         composable(AppDestination.FAVORITES.route) {
@@ -1051,6 +1077,7 @@ fun HomeScreen(
     onShared: () -> Unit = {},
     onSearch: () -> Unit = {},
     onRecent: () -> Unit = {},
+    onActivity: () -> Unit = {},
     onFavorites: () -> Unit = {},
     onTags: () -> Unit = {},
     onMediaSettings: () -> Unit = {},
@@ -1068,6 +1095,7 @@ fun HomeScreen(
         Button(onClick = onShared) { Text("Shared") }
         Button(onClick = onSearch) { Text("Search") }
         Button(onClick = onRecent) { Text("Recent files") }
+        Button(onClick = onActivity) { Text("Activity") }
         Button(onClick = onFavorites) { Text("Favorites") }
         Button(onClick = onTags) { Text("Tags") }
         Button(onClick = onMediaSettings) { Text("Media quality") }
@@ -1087,6 +1115,17 @@ private fun entryRoute(
     id: String,
     type: FileEntryType,
 ): String = "shared-entry/$id/${type.name}"
+
+internal fun activityTargetRoute(item: com.kurastorage.core.model.ActivityItem): String? {
+    val targetEntryId = item.targetEntryId
+    val type =
+        when (item.targetType) {
+            com.kurastorage.core.model.ActivityTargetType.FILE -> FileEntryType.FILE
+            com.kurastorage.core.model.ActivityTargetType.FOLDER -> FileEntryType.FOLDER
+            com.kurastorage.core.model.ActivityTargetType.UNKNOWN -> null
+        }
+    return if (targetEntryId != null && type != null) entryRoute(targetEntryId, type) else null
+}
 
 private fun organizationRoute(entryId: String): String = "${AppDestination.ENTRY_ORGANIZATION.route}/$entryId"
 
@@ -1164,6 +1203,8 @@ internal fun textEditorViewModelKey(
     fileId: String,
     sessionId: String,
 ): String = "text-editor-$fileId-$sessionId"
+
+internal fun activityViewModelKey(sessionId: String): String = "activity-$sessionId"
 
 private data class TextCopyRequest(
     val content: String,

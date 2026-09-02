@@ -29,6 +29,7 @@ fi
   :app:assembleDebug \
   :app:assembleDebugAndroidTest \
   :feature-auth:assembleDebugAndroidTest \
+  :feature-activity:assembleDebugAndroidTest \
   :feature-connection:assembleDebugAndroidTest \
   :feature-files:assembleDebugAndroidTest \
   :feature-media:assembleDebugAndroidTest \

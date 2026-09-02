@@ -1421,6 +1421,7 @@ flowchart LR
 - 一般利用者QueryはSecurity ContextのUserだけを入力とし、Actor本人、現在のOwner／直接・継承Share、Purge済みsnapshot ownerをSQL段階で和集合にする。Admin roleを暗黙の閲覧権限にしない。
 - Admin横断検索はRaspberry PiローカルCLI専用Application／Repository境界に置き、通常HTTP APIへ公開しない。検索実行は条件分類と件数だけをSecurity Auditへ記録する。
 - 100万Activityでkeyset pagination、認可Query、限定Admin filter、Index容量、insert overheadを測定し、通常2秒以内を目標とする。
+- Androidは`core-model`の型付きActivity model、`core-network`のOpenAPI一致DTO／Retrofit境界、`core-data`のSession-scoped cursor repository、`feature-activity`のViewModel／Compose画面に分離する。App NavigationはHomeから履歴へ接続し、Serverが現在アクセス可能と判定して`targetEntryId`を返した行だけ既存File／Folder画面へ渡す。filter、Refresh、Session切替では旧generationを破棄し、未知enumはraw値を保持・表示しない。
 
 ### 18.3 メトリクス
 

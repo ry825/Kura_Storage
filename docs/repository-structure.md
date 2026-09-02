@@ -699,7 +699,8 @@ app
 ├── feature-auth
 ├── feature-files
 ├── feature-sharing
-└── feature-search
+├── feature-search
+└── feature-activity
 
 feature-* ──> core-model / core-ui / 必要なcore-*
 core-network ──> core-model / core-security
@@ -756,6 +757,7 @@ core-model/src/main/kotlin/com/kurastorage/core/model/
 - Server DTOやRoom Entityではなく、Android内で共有するDomain Modelを置く。
 - Android SDK依存を可能な限り避ける。
 - Search共通metadataは`SearchModels.kt`、お気に入り・Tag・Entry organization stateとTag名Validationは`OrganizationModels.kt`へ置き、同じEntry metadataを重複定義しない。
+- 利用者向け操作履歴の型付きmodelと未知enumのfail-closed表現は`ActivityModels.kt`へ置く。
 
 #### `core-network/`
 
@@ -776,6 +778,7 @@ core-network/src/main/kotlin/com/kurastorage/core/network/
 - Feature固有Repository実装を置かない。
 - TLS検証無効化Codeを置かない。
 - お気に入り・Tag DTOは`ApiContracts.kt`、OpenAPIどおりの10 endpointとrepeated `tagId`は`KuraStorageApi.kt`の`OrganizationApi`へ置く。
+- 操作履歴DTOは`ApiContracts.kt`、`GET /activities`は`KuraStorageApi.kt`の`ActivityApi`へ置き、内部Audit列を追加しない。
 
 #### `core-data/`
 
@@ -918,10 +921,13 @@ feature-files/
 | `feature-media` | 一覧Thumbnail、写真Viewer、PDF Viewer、動画・音声Player、Media Job状態、品質切替、通信量確認 |
 | `feature-text` | 対応テキストのread-only表示・編集、dirty／競合、行比較、version履歴・preview・復元 |
 | `feature-settings` | 接続環境別の写真・動画初期品質と通信量説明 |
+| `feature-activity` | 利用者向け操作履歴、type filter、opaque cursorページング、Refresh、snapshot表示、アクセス可能Targetへの導線 |
 
 `feature-sharing`は`SharingScreens.kt`と`SharingViewModels.kt`を持ち、`core-model`の共有・権限Model、`core-network`の`SharingApi`、`core-data`の`SharingRepository`を利用する。共有Folderの閲覧と権限別File操作は`app`のNavigationから既存`feature-files`へ遷移して再利用し、Feature間を直接依存させない。`feature-search`も同じ境界を守り、`SearchScreens.kt`、`OrganizationScreens.kt`と対応ViewModelだけを保持する。`feature-files`のお気に入り・Tag actionはEntry IDだけをApp callbackへ返し、Appが`feature-search`のEntry organization画面へNavigationする。
 
 `feature-media`、`feature-text`、`feature-settings`もFeature間を直接依存させない。`feature-files`、`feature-search`、`feature-sharing`はFile IDと閲覧ContextをApp callbackへ返し、`app`がMediaまたはText destinationへ遷移する。一覧Thumbnailは`app`が`feature-media`のComposableを`feature-files`のslotへ渡す。`feature-backup`はMVP後に必要となった時点で追加する。
+
+`feature-activity`は`ActivityScreen.kt`と`ActivityViewModel.kt`だけを持ち、`core-data/ActivityRepository.kt`のSession-scoped pagerを利用する。Target選択時はFeature間で直接遷移せず、現在アクセス可能な`targetEntryId`と型だけをApp callbackへ返す。
 
 Android Text／version機能の配置は次のとおり。
 

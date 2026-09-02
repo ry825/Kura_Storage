@@ -158,37 +158,37 @@
 
 ### 3.1 Android contract・Repository
 
-- [ ] PR3の開始条件を満たす。
-  - [ ] PR2が`main`へMerge済みで、最新`main`から短命Branchを作成する。
-  - [ ] Home／Navigation、Files、Sharing、Session、Paging、OpenAPI契約を確認する。
-- [ ] `core-model`／`core-network`／`core-data`をTest firstで拡張する。
-  - [ ] Activity item、type、typed detail、page、cursorを追加し未知値をfail-closedにする。
-  - [ ] Retrofit method／query／DTO mappingをOpenAPIへ一致させる。
-  - [ ] Repositoryで401 refresh、cancel、generation、cursor重複、Session分離を実装する。
+- [x] PR3の開始条件を満たす。
+  - [x] PR2が`main`へMerge済みで、最新`main`から短命Branchを作成する。（PR #42 Merge後の`4976a18`から`feat/android-user-activity`を作成）
+  - [x] Home／Navigation、Files、Sharing、Session、Paging、OpenAPI契約を確認する。
+- [x] `core-model`／`core-network`／`core-data`をTest firstで拡張する。
+  - [x] Activity item、type、typed detail、page、cursorを追加し未知値をfail-closedにする。
+  - [x] Retrofit method／query／DTO mappingをOpenAPIへ一致させる。
+  - [x] Repositoryで401 refresh、cancel、generation、cursor重複、Session分離を実装する。
 
 ### 3.2 `feature-activity`
 
-- [ ] Module、Navigation、履歴画面を実装する。
-  - [ ] Build、dependency、unit／instrumented source set、assembly markerを追加する。
-  - [ ] HomeまたはProfileから履歴へ遷移し、Feature間直接依存を作らない。
-  - [ ] Loading、Empty、Success、Paging、Refresh、filter、Error、retryをTDDで実装する。
-  - [ ] Upload／Move／Edit／Share／Deleteを利用者向け文言とiconで区別する。
-  - [ ] snapshotと現在targetを混同せず、アクセス可能時だけFile詳細導線を表示する。
-  - [ ] unknown type、Purge済み、actor削除済み、権限失効を安全に表示する。
-  - [ ] TalkBack、font scale、locale、日時／名前の長文、tap target、contrastを確認する。
+- [x] Module、Navigation、履歴画面を実装する。
+  - [x] Build、dependency、unit／instrumented source set、assembly markerを追加する。
+  - [x] HomeまたはProfileから履歴へ遷移し、Feature間直接依存を作らない。
+  - [x] Loading、Empty、Success、Paging、Refresh、filter、Error、retryをTDDで実装する。
+  - [x] Upload／Move／Edit／Share／Deleteを利用者向け文言とiconで区別する。
+  - [x] snapshotと現在targetを混同せず、アクセス可能時だけFile詳細導線を表示する。
+  - [x] unknown type、Purge済み、actor削除済み、権限失効を安全に表示する。
+  - [x] TalkBack、font scale、locale、日時／名前の長文、tap target、contrastを確認する。
 
 ### 3.3 Android検証・全体完了
 
-- [ ] Unit／Screenshot／Instrumented Testを完了する。
-  - [ ] type mapping、Paging、filter、refresh、401、offline、unknown enum、Session切替をTestする。
-  - [ ] User A/Bで同じActivityの表示可否がServer結果どおり異なることをTestする。
-  - [ ] `./scripts/ci/verify-android.sh`と`git diff --check`が成功する。
-- [ ] 実機E2Eを完了する。
-  - [ ] Upload、Move、Edit、Share、Trash／Purgeを実行し順序・snapshot・重複なしを確認する。
-  - [ ] 共有解除、LAN／ZeroTier、切断、Token refresh、Device／Session失効を確認する。
-  - [ ] Raspberry PiのAdmin CLI検索とAudit記録、API／Nginx／DB Log非漏えいを確認する。
+- [x] Unit／Screenshot／Instrumented Testを完了する。
+  - [x] type mapping、Paging、filter、refresh、401、offline、unknown enum、Session切替をTestする。
+  - [x] User A/Bで同じActivityの表示可否がServer結果どおり異なることをTestする。
+  - [x] `./scripts/ci/verify-android.sh`と`git diff --check`が成功する。
+- [x] 実機E2Eを完了する。
+  - [x] Upload、Move、Edit、Share、Trash／Purgeを実行し順序・snapshot・重複なしを確認する。
+  - [x] 共有解除、LAN／ZeroTier、切断、Token refresh、Device／Session失効を確認する。
+  - [x] Raspberry PiのAdmin CLI検索とAudit記録、API／Nginx／DB Log非漏えいを確認する。
 - [ ] PR3と全体を完了する。
-  - [ ] 正式文書、OpenAPI、test記録、repository structureを実績へ更新する。
+  - [x] 正式文書、OpenAPI、test記録、repository structureを実績へ更新する。（OpenAPIはPR2の公開契約と一致し、PR3でServer変更なし）
   - [ ] 全task・全PR記録完了後だけモード3-Bで全体振り返りを記録する。
   - [ ] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
