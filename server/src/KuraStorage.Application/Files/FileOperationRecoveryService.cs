@@ -1,4 +1,6 @@
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Activity;
+using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 
@@ -12,7 +14,8 @@ public sealed class FileOperationRecoveryService(
     ISystemClock clock,
     FileVersionService? fileVersions = null,
     IFileVersionRepository? versions = null,
-    IFileVersionStore? versionStore = null)
+    IFileVersionStore? versionStore = null,
+    UserActivityFactory? activities = null)
 {
     public async Task RecoverAsync(CancellationToken cancellationToken)
     {
@@ -158,7 +161,7 @@ public sealed class FileOperationRecoveryService(
                     entry,
                     FileVersionChangeKind.Upload,
                     operation.Id,
-                    operation.OwnerUserId,
+                    operation.ActorUserId,
                     operation.ActorDeviceId,
                     cancellationToken,
                     operation);
@@ -169,6 +172,33 @@ public sealed class FileOperationRecoveryService(
                 await repository.SaveChangesAsync(CancellationToken.None);
                 return;
             }
+        }
+
+        if (activities is not null &&
+            operation.OperationType == FileOperationType.Upload &&
+            operation.ActorUserId is Guid uploadActorUserId &&
+            operation.ActorDeviceId is Guid uploadActorDeviceId)
+        {
+            await activities.AddUploadAsync(
+                operation.Id,
+                uploadActorUserId,
+                uploadActorDeviceId,
+                entry,
+                entry.FileVersion,
+                cancellationToken);
+        }
+        else if (activities is not null &&
+                 operation.OperationType == FileOperationType.Trash &&
+                 operation.ActorUserId is Guid trashActorUserId &&
+                 operation.ActorDeviceId is Guid trashActorDeviceId)
+        {
+            await activities.AddDeleteAsync(
+                operation.Id,
+                trashActorUserId,
+                trashActorDeviceId,
+                entry,
+                ActivityDeleteKind.Trashed,
+                cancellationToken);
         }
 
         operation.Complete(clock.UtcNow);
@@ -217,6 +247,22 @@ public sealed class FileOperationRecoveryService(
 
         if (entry.FileVersion == resultVersion)
         {
+            if (activities is not null &&
+                record.ActorUserId is Guid actorUserId &&
+                record.ActorDeviceId is Guid actorDeviceId)
+            {
+                await activities.AddEditAsync(
+                    operation.Id,
+                    actorUserId,
+                    actorDeviceId,
+                    entry,
+                    resultVersion,
+                    operation.OperationType == FileOperationType.TextEdit
+                        ? ActivityEditKind.TextSave
+                        : ActivityEditKind.VersionRestore,
+                    cancellationToken);
+            }
+
             operation.Complete(clock.UtcNow);
             await repository.SaveChangesAsync(cancellationToken);
             return;
@@ -261,6 +307,22 @@ public sealed class FileOperationRecoveryService(
             var now = clock.UtcNow;
             await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
             entry.ApplyManagedContentChange(record.Size, previousVersion, now);
+            if (activities is not null &&
+                record.ActorUserId is Guid actorUserId &&
+                record.ActorDeviceId is Guid actorDeviceId)
+            {
+                await activities.AddEditAsync(
+                    operation.Id,
+                    actorUserId,
+                    actorDeviceId,
+                    entry,
+                    resultVersion,
+                    operation.OperationType == FileOperationType.TextEdit
+                        ? ActivityEditKind.TextSave
+                        : ActivityEditKind.VersionRestore,
+                    cancellationToken);
+            }
+
             repository.Add(
                 new AuditLog(
                     Guid.NewGuid(),
@@ -367,6 +429,21 @@ public sealed class FileOperationRecoveryService(
         if (databaseAtTarget && !sourceExists && targetExists)
         {
             await using var completedTransaction = await repository.BeginTransactionAsync(cancellationToken);
+            if (activities is not null &&
+                operation.OperationType == FileOperationType.Move &&
+                operation.ActorUserId is Guid completedMoveActorUserId &&
+                operation.ActorDeviceId is Guid completedMoveActorDeviceId)
+            {
+                await activities.AddMoveAsync(
+                    operation.Id,
+                    completedMoveActorUserId,
+                    completedMoveActorDeviceId,
+                    entry,
+                    sourceParent!,
+                    targetParent!,
+                    cancellationToken);
+            }
+
             operation.Complete(clock.UtcNow);
             await repository.SaveChangesAsync(cancellationToken);
             await completedTransaction.CommitAsync(cancellationToken);
@@ -440,6 +517,21 @@ public sealed class FileOperationRecoveryService(
             descendant.RelocateDescendant(
                 ReplacePrefix(descendant.RelativePath, source.Value, target.Value),
                 now);
+        }
+
+        if (activities is not null &&
+            operation.OperationType == FileOperationType.Move &&
+            operation.ActorUserId is Guid moveActorUserId &&
+            operation.ActorDeviceId is Guid moveActorDeviceId)
+        {
+            await activities.AddMoveAsync(
+                operation.Id,
+                moveActorUserId,
+                moveActorDeviceId,
+                entry,
+                sourceParent!,
+                targetParent!,
+                cancellationToken);
         }
 
         repository.Add(

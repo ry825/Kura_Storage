@@ -1397,6 +1397,30 @@ flowchart LR
 - 30万FileEntry、100万version recordでMigration、Index、一覧、Purgeを測定し、通常2秒以内を目標とする。
 - 本文、File名、内部／物理Pathを構造化Log、監査ログ、Metric label、例外へ含めない。
 
+### 18.2.2 利用者向け操作履歴
+
+利用者向け`UserActivity`は製品UIの表示契約、`AuditLog`はSecurity・運用調査契約として、Domain model、PostgreSQL table、Repository、Queryを分離する。対象Use Caseから片方を非同期変換せず、必要な場合は同じtransactionで両recordを直接作る。
+
+```mermaid
+flowchart LR
+    UseCase[Upload / Move / Edit / Share / Delete] --> Lock[Mutation lock / journal]
+    Lock --> Tx[Same DB transaction]
+    Tx --> State[File / Share state]
+    Tx --> Activity[(user_activities)]
+    Tx --> Audit[(audit_logs)]
+    Activity --> UserQuery[Permission-aware user query]
+    Activity --> AdminQuery[Local admin query]
+    Audit --> Security[Security investigation]
+```
+
+- `user_activities.operation_id`を一意とし、FileOperation recoveryと冪等再送を同じ1件へ収束させる。no-op、rollback、失敗Security eventはActivityへ追加しない。
+- ActivityはActor／Device／Target／Owner snapshotと、typeごとに制約したMove、Edit、Share、Delete、Upload detailだけを持つ。自由形式JSON、File本文、物理Path、Request ID、OS User、Tokenを持たない。
+- `actor_user_id`、`owner_user_id`、`target_entry_id`は削除可能な参照として扱い、User無効化やFile完全削除でActivityをcascade削除しない。表示はsnapshotだけでも成立させる。
+- 主要Indexは`(actor_user_id, occurred_at DESC, id DESC)`、`(owner_user_id, occurred_at DESC, id DESC)`、`(target_entry_id, occurred_at DESC, id DESC)`、`(activity_type, occurred_at DESC, id DESC)`とする。
+- 一般利用者QueryはSecurity ContextのUserだけを入力とし、Actor本人、現在のOwner／直接・継承Share、Purge済みsnapshot ownerをSQL段階で和集合にする。Admin roleを暗黙の閲覧権限にしない。
+- Admin横断検索はRaspberry PiローカルCLI専用Application／Repository境界に置き、通常HTTP APIへ公開しない。検索実行は条件分類と件数だけをSecurity Auditへ記録する。
+- 100万Activityでkeyset pagination、認可Query、限定Admin filter、Index容量、insert overheadを測定し、通常2秒以内を目標とする。
+
 ### 18.3 メトリクス
 
 - API要求数、エラー率、p50/p95/p99

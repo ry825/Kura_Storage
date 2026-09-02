@@ -3,6 +3,8 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Activity;
+using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Sharing;
@@ -17,7 +19,8 @@ public sealed class TextFileService(
     IAuthorizationService authorization,
     FileVersionService fileVersions,
     IStorageGuard storageGuard,
-    ISystemClock clock)
+    ISystemClock clock,
+    UserActivityFactory? activities = null)
 {
     private const int BufferSize = 64 * 1024;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
@@ -267,7 +270,8 @@ public sealed class TextFileService(
                 contentSha256,
                 now,
                 command.ActorDeviceId,
-                command.RequestId);
+                command.RequestId,
+                actorUserId: command.ActorUserId);
             if (createdOperation)
             {
                 files.Add(operation);
@@ -363,6 +367,18 @@ public sealed class TextFileService(
 
             await using var transaction = await files.BeginTransactionAsync(cancellationToken);
             entry.ApplyManagedContentChange(content.LongLength, command.ExpectedVersion, now);
+            if (activities is not null)
+            {
+                await activities.AddEditAsync(
+                    operation.Id,
+                    command.ActorUserId,
+                    command.ActorDeviceId,
+                    entry,
+                    resultVersion.Version,
+                    ActivityEditKind.TextSave,
+                    cancellationToken);
+            }
+
             files.Add(new AuditLog(
                 Guid.NewGuid(),
                 command.ActorUserId,
@@ -556,7 +572,8 @@ public sealed class TextFileService(
                 now,
                 command.ActorDeviceId,
                 command.RequestId,
-                targetToken);
+                targetToken,
+                command.ActorUserId);
             if (createdOperation)
             {
                 files.Add(operation);
@@ -651,6 +668,18 @@ public sealed class TextFileService(
 
             await using var transaction = await files.BeginTransactionAsync(cancellationToken);
             entry.ApplyManagedContentChange(content.LongLength, command.ExpectedVersion, now);
+            if (activities is not null)
+            {
+                await activities.AddEditAsync(
+                    operation.Id,
+                    command.ActorUserId,
+                    command.ActorDeviceId,
+                    entry,
+                    resultVersion.Version,
+                    ActivityEditKind.VersionRestore,
+                    cancellationToken);
+            }
+
             files.Add(new AuditLog(
                 Guid.NewGuid(),
                 command.ActorUserId,

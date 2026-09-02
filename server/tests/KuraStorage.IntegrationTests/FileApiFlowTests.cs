@@ -11,6 +11,7 @@ using KuraStorage.Application.Identity;
 using KuraStorage.Application.Maintenance;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Audit;
+using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Maintenance;
 using KuraStorage.Infrastructure.Persistence;
@@ -86,6 +87,20 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
             var operation = await database.FileOperations.SingleAsync(
                 candidate => candidate.FileEntryId == folder.Id && candidate.OperationType == FileOperationType.Purge);
             Assert.Equal(FileOperationStatus.Completed, operation.Status);
+            var purgeActivity = await database.UserActivities.SingleAsync(
+                activity => activity.OperationId == operation.Id);
+            Assert.Equal(UserActivityType.Delete, purgeActivity.ActivityType);
+            Assert.Equal(ActivityDeleteKind.Purged, purgeActivity.DeleteKind);
+            Assert.Null(purgeActivity.TargetEntryId);
+            Assert.Equal("DeleteMe", purgeActivity.TargetName);
+            var trashOperation = await database.FileOperations.SingleAsync(
+                candidate => candidate.FileEntryId == folder.Id && candidate.OperationType == FileOperationType.Trash);
+            var trashActivity = await database.UserActivities.SingleAsync(
+                activity => activity.OperationId == trashOperation.Id);
+            Assert.Equal(ActivityDeleteKind.Trashed, trashActivity.DeleteKind);
+            Assert.Null(trashActivity.TargetEntryId);
+            Assert.Single(await database.UserActivities.Where(
+                activity => activity.TargetName == "private.txt" && activity.ActivityType == UserActivityType.Upload).ToListAsync());
             var audit = await database.AuditLogs.SingleAsync(
                 candidate => candidate.TargetId == folder.Id.ToString() && candidate.Action == "FILE_PURGE_MANUAL" && candidate.ResultCode == "SUCCESS");
             Assert.Equal(KuraStorage.Domain.Audit.AuditActorType.UserDevice, audit.ActorType);
@@ -159,6 +174,7 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
             var operation = await database.FileOperations.SingleAsync(
                 candidate => candidate.FileEntryId == file.Id && candidate.OperationType == FileOperationType.Purge);
             Assert.Equal(FileOperationStatus.FilesystemDone, operation.Status);
+            Assert.False(await database.UserActivities.AnyAsync(activity => activity.OperationId == operation.Id));
             database.AuditLogs.Remove(await database.AuditLogs.SingleAsync(audit => audit.Id == conflictingAuditId));
             await database.SaveChangesAsync();
         }
@@ -183,6 +199,13 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
                 await database.AuditLogs
                     .Where(audit => audit.TargetId == file.Id.ToString() && audit.Action == "FILE_PURGE_MANUAL" && audit.ResultCode == "SUCCESS")
                     .ToListAsync());
+            var purgeOperationId = await database.FileOperations
+                .Where(operation => operation.FileEntryId == file.Id && operation.OperationType == FileOperationType.Purge)
+                .Select(operation => operation.Id)
+                .SingleAsync();
+            Assert.Single(await database.UserActivities
+                .Where(activity => activity.OperationId == purgeOperationId && activity.DeleteKind == ActivityDeleteKind.Purged)
+                .ToListAsync());
         }
     }
 
@@ -221,6 +244,8 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
                 await database.AuditLogs
                     .Where(audit => audit.TargetId == file.Id.ToString() && audit.Action == "FILE_PURGE_MANUAL" && audit.ResultCode == "SUCCESS")
                     .ToListAsync());
+            Assert.Single(await database.UserActivities.Where(activity =>
+                activity.TargetName == "parallel.bin" && activity.DeleteKind == ActivityDeleteKind.Purged).ToListAsync());
         }
         else
         {
@@ -658,6 +683,13 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
         var version = Assert.Single(versions);
         Assert.DoesNotContain("before.txt", version.ContentRelativePath, StringComparison.Ordinal);
         Assert.DoesNotContain("after.txt", version.ContentRelativePath, StringComparison.Ordinal);
+
+        var moveActivity = await database.UserActivities.SingleAsync(activity =>
+            activity.TargetEntryId == folder.Id && activity.ActivityType == UserActivityType.Move);
+        Assert.Equal("Source", moveActivity.SourceParentName);
+        Assert.Equal("Destination", moveActivity.DestinationParentName);
+        Assert.False(await database.UserActivities.AnyAsync(activity =>
+            activity.TargetEntryId == file.Id && activity.ActivityType == UserActivityType.Move));
 
         var audits = await database.AuditLogs
             .Where(log => log.TargetId == file.Id.ToString() || log.TargetId == folder.Id.ToString())
@@ -1197,6 +1229,18 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
                     (audit.TargetId == older.Id.ToString() || audit.TargetId == boundary.Id.ToString()) &&
                     audit.Action == "FILE_PURGE_RETENTION" &&
                     audit.ResultCode == "SUCCESS"));
+            var retentionActivities = await database.UserActivities
+                .Where(activity =>
+                    (activity.TargetName == "older.bin" || activity.TargetName == "boundary.bin") &&
+                    activity.DeleteKind == ActivityDeleteKind.Purged)
+                .ToListAsync();
+            Assert.Equal(2, retentionActivities.Count);
+            Assert.All(retentionActivities, activity =>
+            {
+                Assert.Null(activity.ActorUserId);
+                Assert.Equal("System", activity.ActorDisplayName);
+                Assert.Null(activity.TargetEntryId);
+            });
         }
     }
 

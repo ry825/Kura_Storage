@@ -18,6 +18,7 @@ public sealed class FileOperationConfiguration : IEntityTypeConfiguration<FileOp
             .HasMaxLength(32);
         builder.Property(operation => operation.IdempotencyKey).HasColumnName("idempotency_key").HasMaxLength(128);
         builder.Property(operation => operation.FileEntryId).HasColumnName("file_entry_id");
+        builder.Property(operation => operation.ActorUserId).HasColumnName("actor_user_id");
         builder.Property(operation => operation.ActorDeviceId).HasColumnName("actor_device_id");
         builder.Property(operation => operation.RequestId).HasColumnName("request_id").HasMaxLength(128);
         builder.Property(operation => operation.Trigger).HasColumnName("trigger").HasMaxLength(32);
@@ -53,6 +54,10 @@ public sealed class FileOperationConfiguration : IEntityTypeConfiguration<FileOp
             .WithMany()
             .HasForeignKey(operation => operation.OwnerUserId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<KuraStorage.Domain.Identity.User>()
+            .WithMany()
+            .HasForeignKey(operation => operation.ActorUserId)
+            .OnDelete(DeleteBehavior.SetNull);
         builder.HasIndex(operation => operation.FileEntryId)
             .HasDatabaseName("ix_file_operations_file_entry_id");
         builder.HasIndex(operation => new { operation.OwnerUserId, operation.IdempotencyKey })

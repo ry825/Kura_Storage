@@ -93,6 +93,8 @@ Rename・Moveは現行のServer File機能を拡張し、Domainは`KuraStorage.D
 
 対応テキストの内容バージョンは、Domain entityを`KuraStorage.Domain/Files/FileVersionRecord.cs`、Application境界を`Abstractions/FileVersionAbstractions.cs`、発行・baseline処理を`Files/FileVersionService.cs`、Text API契約とUse Caseを`Files/TextFileContracts.cs`と`Files/TextFileService.cs`へ配置する。EF Configuration、Repository、Purge participantは`Infrastructure/Persistence/`、immutable本文storeは`Infrastructure/Storage/FileVersionStore.cs`へ配置する。Endpoint、JSON body上限、Text／versionレート制限は既存`KuraStorage.Api/Program.cs`、API契約は`contracts/openapi/kurastorage-api.yaml`へ配置する。Migrationは既存`Persistence/Migrations/`、Domain／Application／PostgreSQL／Filesystem／API Testは既存Test Projectへ置き、新しいProjectやWorkerを追加しない。
 
+利用者向け操作履歴は、Domain entityと型付きdetailを`KuraStorage.Domain/Activity/`、作成factoryとApplication境界を`KuraStorage.Application/Activity/`および`Abstractions/ActivityAbstractions.cs`へ配置する。対象操作への記録は既存のFiles、Transfers、Sharing Use Caseから同じtransactionへ参加させる。EF Configurationと記録Repositoryは`Infrastructure/Persistence/`、後続の利用者・Admin Queryは相互に分離して`Infrastructure/Persistence/Queries/`へ置く。Security `AuditLog`のDomain、table、queryを流用せず、新しいProjectやWorkerは追加しない。
+
 ```text
 kurastorage/
 ├── .github/
@@ -328,6 +330,9 @@ KuraStorage.Domain/
 ├── Audit/
 │   ├── Entities/
 │   └── Enums/
+├── Activity/
+│   ├── UserActivity.cs
+│   └── UserActivityDetails.cs
 └── KuraStorage.Domain.csproj
 ```
 
@@ -473,6 +478,7 @@ Login/
 - 自動清掃のBatch・Run制御は`Application/Maintenance/`、周期制御だけを`KuraStorage.Worker/Workers/TrashPurgeWorker.cs`へ置く。WorkerからDbContext、HDD絶対Path、HTTP Endpointを直接扱わない。
 - `Shared/`へ業務機能を置かない。
 - Media基盤のQueueとStorage契約は、現行のApplication構造に合わせて`Abstractions/MediaAbstractions.cs`へまとめる。生成Use CaseとHTTP Contractは後続PRで追加する。
+- UserActivityのfactoryと記録境界は`Application/Activity/`と`Abstractions/ActivityAbstractions.cs`へ置く。一般利用者QueryとAdmin Queryのinterfaceを分離し、Security Audit repositoryを参照させない。
 
 ---
 
@@ -493,6 +499,7 @@ KuraStorage.Infrastructure/
 │   │   ├── DeviceConfiguration.cs
 │   │   ├── FileEntryConfiguration.cs
 │   │   ├── FileVersionRecordConfiguration.cs
+│   │   ├── UserActivityConfiguration.cs
 │   │   └── MediaJobConfiguration.cs
 │   ├── Repositories/
 │   │   ├── UserRepository.cs

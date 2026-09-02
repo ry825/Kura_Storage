@@ -272,6 +272,9 @@ operation.MarkCompleted(clock.UtcNow);
 - version本文を公開後に書き換えない。同じ決定的PathへのretryではSHA-256とSizeを検証し、異なる内容を上書きせず回復必須として扱う。
 - File本文、編集本文、過去版本文、File名、version保存Path、物理Pathを構造化Log、監査ログ、Metric label、例外messageへ含めない。Testでも実利用者の本文をfixtureや失敗messageへ埋め込まない。
 - 完全削除は`IPermanentDeleteParticipant`を通じて対象File IDのversion directoryとMetadataだけを削除し、Storage root、`versions` root、Owner root等の広い再帰削除を組み立てない。
+- 利用者向け`UserActivity`とSecurity `AuditLog`を別Domain model・別table・別Repositoryとして保つ。一方から他方を生成せず、対象Use Caseが必要なrecordを同じtransactionへ追加する。
+- UserActivityは成功した実状態変更だけを記録し、`operationId`一意制約でretryを1件へ収束させる。no-op、rollback、Validation／認可拒否、失敗Security eventを記録しない。
+- UserActivityの表示名・対象名・操作detailはServer確定値から型付きsnapshotを作る。Client入力の表示名、自由形式JSON、File本文、物理Path、Request ID、OS User、Tokenを保存しない。
 
 ```csharp
 public sealed class FileEntry
@@ -375,6 +378,7 @@ logger.LogInformation($"token={refreshToken} path={absolutePath}");
 - 失敗理由はError Codeと例外を分けて記録する。
 - 同じ失敗を複数レイヤーで重複してErrorログへ記録しない。
 - 完全削除の監査にはAction、結果、Actor Type、User/DeviceまたはWorker、Target ID、requestId、時刻だけを保存し、ファイル名、Path、Size、内容、認証情報を含めない。
+- 利用者向けActivityへSecurity Auditの内部列や失敗理由を複製しない。Security AuditとActivityの両方が必要な成功操作は同じDB transactionで保存する。
 
 ### 4.11 パスワードハッシュ
 

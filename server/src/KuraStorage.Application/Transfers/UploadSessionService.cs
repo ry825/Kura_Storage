@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Sharing;
+using KuraStorage.Application.Activity;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Sharing;
@@ -21,7 +22,8 @@ public sealed class UploadSessionService(
     UploadSessionOptions options,
     UploadChunkLimiter limiter,
     IAuthorizationService? authorizationService = null,
-    FileVersionService? fileVersions = null)
+    FileVersionService? fileVersions = null,
+    UserActivityFactory? activities = null)
 {
     private static readonly Meter Meter = new("KuraStorage.Transfers");
     private static readonly Counter<long> SessionCounter = Meter.CreateCounter<long>("kurastorage.upload.sessions");
@@ -544,7 +546,8 @@ public sealed class UploadSessionService(
             clock.UtcNow,
             deviceId,
             requestId,
-            "UPLOAD_SESSION");
+            "UPLOAD_SESSION",
+            actorUserId);
         session.BeginCompletion(operation.Id, clock.UtcNow);
         files.Add(operation);
         await sessions.SaveChangesAsync(cancellationToken);
@@ -597,6 +600,17 @@ public sealed class UploadSessionService(
 
         await using var transaction = await files.BeginTransactionAsync(cancellationToken);
         files.Add(entry);
+        if (activities is not null)
+        {
+            await activities.AddUploadAsync(
+                operation.Id,
+                actorUserId,
+                deviceId,
+                entry,
+                entry.FileVersion,
+                cancellationToken);
+        }
+
         session.Complete(now);
         operation.Complete(now);
         files.Add(CreateAudit(actorUserId, deviceId, session.Id, "UPLOAD_SESSION_COMPLETE", "SUCCESS", requestId, now));
@@ -757,6 +771,17 @@ public sealed class UploadSessionService(
 
         var now = clock.UtcNow;
         await using var transaction = await files.BeginTransactionAsync(cancellationToken);
+        if (activities is not null)
+        {
+            await activities.AddUploadAsync(
+                operation.Id,
+                session.ActorUserId,
+                session.DeviceId,
+                existing,
+                existing.FileVersion,
+                cancellationToken);
+        }
+
         session.Complete(now);
         operation.Complete(now);
         files.Add(CreateAudit(session.ActorUserId, session.DeviceId, session.Id, "UPLOAD_SESSION_RECOVER", "SUCCESS", operation.RequestId ?? session.Id.ToString(), now));

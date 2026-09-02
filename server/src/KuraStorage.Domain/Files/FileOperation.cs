@@ -19,7 +19,8 @@ public sealed class FileOperation
         DateTimeOffset now,
         Guid? actorDeviceId = null,
         string? requestId = null,
-        string? trigger = null)
+        string? trigger = null,
+        Guid? actorUserId = null)
     {
         Id = id;
         OwnerUserId = ownerUserId;
@@ -31,6 +32,7 @@ public sealed class FileOperation
         ExpectedSize = expectedSize;
         ExpectedSha256 = expectedSha256;
         ActorDeviceId = actorDeviceId;
+        ActorUserId = actorUserId;
         RequestId = requestId;
         Trigger = trigger;
         Status = FileOperationStatus.Pending;
@@ -49,6 +51,8 @@ public sealed class FileOperation
     public Guid? FileEntryId { get; private set; }
 
     public Guid? ActorDeviceId { get; private set; }
+
+    public Guid? ActorUserId { get; private set; }
 
     public string? RequestId { get; private set; }
 

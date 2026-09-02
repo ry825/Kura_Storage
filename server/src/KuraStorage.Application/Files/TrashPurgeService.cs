@@ -1,4 +1,6 @@
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Activity;
+using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
 
@@ -10,7 +12,8 @@ public sealed class TrashPurgeService(
     IStorageGuard storageGuard,
     IEnumerable<IPermanentDeleteParticipant> participants,
     ISystemClock clock,
-    TrashPurgeOptions? purgeOptions = null)
+    TrashPurgeOptions? purgeOptions = null,
+    UserActivityFactory? activities = null)
 {
     private readonly int retentionDays = purgeOptions?.RetentionDays ?? 30;
 
@@ -115,7 +118,8 @@ public sealed class TrashPurgeService(
             clock.UtcNow,
             command.ActorDeviceId,
             command.RequestId,
-            command.Trigger.ToString().ToUpperInvariant());
+            command.Trigger.ToString().ToUpperInvariant(),
+            command.Trigger == PurgeTrigger.User ? command.OwnerUserId : null);
         repository.Add(operation);
         await repository.SaveChangesAsync(cancellationToken);
 
@@ -236,6 +240,28 @@ public sealed class TrashPurgeService(
         foreach (var participant in participants)
         {
             await participant.DeleteManagementDataAsync(target, cancellationToken);
+        }
+
+        if (activities is not null)
+        {
+            if (command.Trigger == PurgeTrigger.User)
+            {
+                await activities.AddDeleteAsync(
+                    operation.Id,
+                    command.OwnerUserId,
+                    command.ActorDeviceId!.Value,
+                    root,
+                    ActivityDeleteKind.Purged,
+                    cancellationToken);
+            }
+            else
+            {
+                await activities.AddSystemDeleteAsync(
+                    operation.Id,
+                    root,
+                    ActivityDeleteKind.Purged,
+                    cancellationToken);
+            }
         }
 
         repository.RemoveRange(descendants.OrderByDescending(item => item.RelativePath.Count(character => character == '/')));

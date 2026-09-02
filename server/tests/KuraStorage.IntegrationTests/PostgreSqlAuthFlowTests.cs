@@ -159,6 +159,10 @@ public sealed class PostgreSqlAuthFlowTests(PostgreSqlAuthFlowFixture fixture)
             fixture.LogMessages,
             message => forbiddenLogValues.Any(
                 value => message.Contains(value, StringComparison.Ordinal)));
+        await using var verificationScope = fixture.Factory.Services.CreateAsyncScope();
+        var database = verificationScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        Assert.NotEmpty(await database.AuditLogs.ToListAsync());
+        Assert.Empty(await database.UserActivities.ToListAsync());
     }
 
     private static async Task<HttpResponseMessage> SendJsonAsync(
