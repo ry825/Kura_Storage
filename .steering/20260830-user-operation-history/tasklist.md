@@ -187,10 +187,10 @@
   - [x] Upload、Move、Edit、Share、Trash／Purgeを実行し順序・snapshot・重複なしを確認する。
   - [x] 共有解除、LAN／ZeroTier、切断、Token refresh、Device／Session失効を確認する。
   - [x] Raspberry PiのAdmin CLI検索とAudit記録、API／Nginx／DB Log非漏えいを確認する。
-- [ ] PR3と全体を完了する。
+- [x] PR3と全体を完了する。
   - [x] 正式文書、OpenAPI、test記録、repository structureを実績へ更新する。（OpenAPIはPR2の公開契約と一致し、PR3でServer変更なし）
-  - [ ] 全task・全PR記録完了後だけモード3-Bで全体振り返りを記録する。
-  - [ ] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+  - [x] 全task・全PR記録完了後だけモード3-Bで全体振り返りを記録する。
+  - [x] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -248,6 +248,49 @@
   - Androidではunknown typeをfail-closedにし、snapshot表示と現在アクセス可能な`targetEntryId`による詳細導線を区別する。
   - PR2ではAndroid module、画面、実機E2Eを実装していない。全体振り返りはPR3完了後にだけ行う。
 
+### PR3: Android操作履歴UI・実機E2E
+
+- 完了日: 2026-09-02
+- Pull Request: [#43 Add Android user activity history](https://github.com/ry825/Kura_Storage/pull/43)
+- 実施した検証:
+  - `./scripts/ci/verify-android.sh`: app／全test APK assembly、Unit Test、coverage検証、SBOM、ktlint、detekt、lintの1,206 Gradle taskを成功。
+  - OPPO CPH2333（Android 13）: `ActivityScreenTest` 2件を成功し、全5 type／detail、Paging、filter、Refresh、Loading／Empty／Error／unknown、Purge snapshot、導線、font scale 2.0、screenshot、accessibility semanticsを確認。
+  - Production CA／署名付きversion code 16 APK: 署名fingerprint、non-debuggable、version、upgrade install、LAN外切断表示、ZeroTier到達、remote初回登録拒否を確認。
+  - Raspberry Pi実API: Upload、Move、Edit、Share作成／解除、Trash、Purgeの厳密な新しい順、snapshot、Move／Upload重複なし、page／filterを確認。
+  - User A／B／無関係User、共有解除後の再認可、LAN、ZeroTier health、切断／再起動回復、Token refresh、logout、Device失効を確認。
+  - Raspberry Pi Admin CLIの7件検索、`ACTIVITY_SEARCH` Audit、API／Worker／Nginx Log非漏えい、E2E合成データの限定cleanupとサービス／mount健全性を確認。
+  - Pre-deployのStorage／PostgreSQL対応Backup、checksum、archive list、restore structureを確認し、Backupは保持した。
+  - GitHub必須CI: Android、Config、Security、Serverの4件すべて成功。`git diff --check`と秘密情報／実環境値の非混入確認も成功。
+- 計画と実装の差分:
+  - 画面更新は追加依存を必要としない既存UI patternの明示的`Refresh` actionとして実装し、Steering設計の表現を実績へ合わせた。filter／Session変更を含むgeneration破棄契約は計画どおりである。
+  - 実機の現在地Wi-FiがPiのLAN subnetと異なるため、署名済みAPKではZeroTier health到達とlocal-only初回登録拒否までを確認した。認証済みUser A／Bと全操作は同じPiの実API、全画面状態は同じAndroid実機のinstrumentationで検証し、Credential制約を迂回しなかった。
+- 実装中に追加したタスクと理由:
+  - Session切替時のCompose ViewModel再利用を直接防ぐため、Session IDを含むActivity ViewModel keyと回帰Testを追加した。
+  - 画面lock中も再現可能に実機testを起動するtest-only Activity manifest、font scale 2.0とscreenshot captureを追加した。production manifestへの影響はない。
+  - E2Eの複数試行で生成した合成データをprefix・件数で限定して削除し、認証秘密と失敗stageを除去する最終cleanup検証を追加した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項:
+  - 本作業の後続Pull Requestはない。Review後にPR #43をMergeし、保持中のpre-deploy Backupは既存運用方針に従って管理する。
+
 ## 全体振り返り
 
-> 全タスク、全Pull Request、各完了記録が揃った後にだけモード3-Bで記録する。
+- 実装完了日: 2026-09-02
+- 全体の計画と実績の差分:
+  - 計画どおり、PR1で永続化とtransaction記録、PR2で認可Query／一般API／Admin CLI、PR3でAndroid UI／実機E2Eへ分割した。各PRは先行PR Merge後の最新`main`から開始し、Security Auditとの分離を維持した。
+  - 実装中にjournal recovery用nullable Actor、Trash lock再取得、100万件のglobal ordering Index、一般／Admin repository分割、Android Session keyを追加し、発見した整合性・性能・Session分離要件を正式設計とTestへ反映した。
+- 主な設計変更と理由:
+  - UserActivityをAuditLogからtable・model・repository・APIの全層で分離し、成功操作の同一transaction追記と現在権限のrequest時再評価を採用した。利用者表示とSecurity調査で保持・公開情報が異なるためである。
+  - `operationId`一意制約とjournal再利用でretryを収束し、Purge後は参照を外して型付きsnapshotだけを保持した。状態変更の欠落／重複防止と削除後説明を両立するためである。
+  - Androidは未知値をraw表示せず、DTOからtyped detailへ厳密変換し、現在target IDがある行だけ開ける構成にした。Server contract進化と権限失効時の安全性を優先した。
+- 技術的な学び:
+  - 100万件規模では個別filter Indexだけでなくglobal newest-first Indexがpermission-aware keyset走査に必要であり、実測Query planとp95の両方で確認する価値があった。
+  - 利用者履歴は記録時snapshotと閲覧時認可を分離することで、Rename／Move／Share解除／Purge後も説明の安定性と最小権限を同時に保てる。
+  - Androidのpaging generation、cursor停滞、Session ViewModel keyを別々に保護することで、非同期応答とUser切替による旧データ混入を防げる。
+- プロセス上の改善点:
+  - Deployment stagingの相対pathと同名Backup検査を事前確認できず、状態変更前に停止した試行が2回発生した。安全停止と対応Backup照合により本番データ影響はなかったが、preflightを先に独立実行すべきだった。
+  - E2E scriptの`jq`判定優先順位、再起動ready判定、health pathに検証script由来の失敗があった。製品障害とtest harness障害を切り分ける小さなprobeを先に通す必要がある。
+  - Android instrumented testは画面lock状態に依存したため、test-only host Activityでscreen-on条件を固定すると再現性が向上した。
+- 次回への改善提案:
+  - Release前にstaging hierarchy、Backup名、Migration集合、health URLをread-only preflightで検証する共通scriptを用意する。
+  - User A／B、Token／Device失効、service restart、log marker、限定cleanupを共通E2E harnessへまとめ、shell assertion自体のUnit Testまたはfixture testを追加する。
+  - 物理ネットワークが離れている場合の検証matrixをLAN登録、ZeroTier到達、認証済みAPI、実機UIへ明示分割し、開始時に各経路のsubnet／interface条件を記録する。

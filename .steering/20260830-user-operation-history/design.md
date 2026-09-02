@@ -55,7 +55,7 @@ User selectorは既存管理CLI規約に従い、曖昧名を拒否する。既�
 
 ## 6. Android設計
 
-`feature-activity`を追加し、`core-model`、`core-network`、`core-data`、`core-ui`へ契約を分離する。HomeまたはProfileから履歴一覧へNavigationし、type filter、Paging、pull-to-refresh、Empty、Loading、Error、行detailを提供する。
+`feature-activity`を追加し、`core-model`、`core-network`、`core-data`、`core-ui`へ契約を分離する。HomeまたはProfileから履歴一覧へNavigationし、type filter、Paging、明示的なRefresh操作、Empty、Loading、Error、行detailを提供する。
 
 未知Activity／detail enumはfail-closedな「未対応の操作」として機微なraw値を表示しない。対象が現在アクセス可能な場合だけ既存File詳細への導線を表示し、404／権限失効後はsnapshot表示だけに戻す。Session変更時に旧UserのPageを破棄する。
 
