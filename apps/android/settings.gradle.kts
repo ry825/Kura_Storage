@@ -22,6 +22,7 @@ include(
     ":core-model",
     ":core-network",
     ":core-data",
+    ":core-database",
     ":core-security",
     ":core-ui",
     ":feature-connection",
@@ -33,4 +34,5 @@ include(
     ":feature-text",
     ":feature-settings",
     ":feature-activity",
+    ":feature-backup",
 )

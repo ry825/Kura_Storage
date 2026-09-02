@@ -15,6 +15,7 @@ plugins {
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.serialization) apply false
+    alias(libs.plugins.ksp) apply false
     alias(libs.plugins.detekt)
     alias(libs.plugins.ktlint)
 }
@@ -56,10 +57,12 @@ val coverageModules =
     listOf(
         ":app",
         ":core-data",
+        ":core-database",
         ":core-model",
         ":core-network",
         ":core-security",
         ":feature-auth",
+        ":feature-backup",
         ":feature-activity",
         ":feature-connection",
         ":feature-files",
@@ -142,6 +145,14 @@ val criticalTextStateIncludes =
         "com/kurastorage/feature/text/TextEditorViewModel*.*",
         "com/kurastorage/feature/text/VersionHistoryViewModel*.*",
     )
+val criticalBackupStateIncludes =
+    listOf(
+        "com/kurastorage/core/model/backup/**",
+        "com/kurastorage/core/database/backup/**/*Mapper*.*",
+        "com/kurastorage/core/database/backup/**/*StateMachine*.*",
+        "com/kurastorage/core/data/backup/**/*Normalizer*.*",
+        "com/kurastorage/core/data/backup/**/*PermissionPolicy*.*",
+    )
 
 fun registerCoverageReport(
     taskName: String,
@@ -197,6 +208,8 @@ val criticalMediaStateCoverage =
     registerCoverageReport("androidCriticalMediaStateCoverage", criticalMediaStateIncludes, criticalMediaStateExcludes)
 val criticalTextStateCoverage =
     registerCoverageReport("androidCriticalTextStateCoverage", criticalTextStateIncludes)
+val criticalBackupStateCoverage =
+    registerCoverageReport("androidCriticalBackupStateCoverage", criticalBackupStateIncludes)
 val domainApplicationCoverageVerification =
     registerCoverageVerification(
         "androidDomainApplicationCoverageVerification",
@@ -220,6 +233,13 @@ val criticalTextStateCoverageVerification =
         criticalTextStateIncludes,
         "0.95",
     )
+val criticalBackupStateCoverageVerification =
+    registerCoverageVerification(
+        "androidCriticalBackupStateCoverageVerification",
+        criticalBackupStateCoverage,
+        criticalBackupStateIncludes,
+        "0.95",
+    )
 
 tasks.register("androidCoverageVerification") {
     group = "verification"
@@ -228,5 +248,6 @@ tasks.register("androidCoverageVerification") {
         domainApplicationCoverageVerification,
         criticalMediaStateCoverageVerification,
         criticalTextStateCoverageVerification,
+        criticalBackupStateCoverageVerification,
     )
 }

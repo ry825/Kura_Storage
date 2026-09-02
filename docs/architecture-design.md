@@ -36,6 +36,7 @@ Phase 1では、OSまたは別アプリが管理するZeroTierをリモート通
 - APIはNginxのUnix Socketからだけ受信し、非rootで動作する。
 - 基本MVPでは独立Workerを配置しないが、現在のPhase 1拡張では完全削除、Media生成、Media Cache清掃を行う`KuraStorage.Worker`を配置する。API内の期限付きHosted Serviceは、未完了Uploadの清掃と`FileOperation`の起動時・定期復旧を引き続き担当する。
 - AndroidはRoom、WorkManager、Media3、Coil、PDF LibraryをMVP依存へ追加しない。ファイルはSAFで手動選択・保存し、アプリ内Media表示は行わない。
+- Phase 1のAndroid自動バックアップ拡張では、端末内の永続状態を`core-database`のRoom 2.8.4へ隔離し、実行予約にWorkManager 2.11.2を使用する。DB、WAL、Schema情報はAndroid Auto Backupと端末移行から除外し、TokenやSource本文を保存しない。
 - DBのMVP TableはUser、Device、Refresh Session、Authentication Attempt、Audit Log、File Entry、File Operationに限定する。
 - UploadはStreaming Multipartを同一Filesystem上の一時ファイルへ書き、検証後にatomic renameする。Downloadは元ファイルのHTTP Range配信だけとする。
 - Trash、Restore、Rename、Moveは`FileOperation`でDB・HDD間の途中状態を管理し、同名競合では上書きしない。
@@ -320,8 +321,8 @@ Domain ───────────────────→ 外部ライ
 | Kotlin | 2.x系 | アプリ実装 | Android APIとCoroutineを型安全に扱える。 |
 | Jetpack Compose | BOMで固定 | UI | 単一方向データフローと状態別画面を実装しやすい。 |
 | Coroutines / Flow | Kotlin対応版 | 非同期処理、状態通知 | 接続、転送、変換進捗、Roomを一貫して扱える。 |
-| Room | MVP後 | 端末内DB | 自動Backup・Offline機能追加時に導入する。 |
-| WorkManager | MVP後 | 自動バックアップ | 自動Backup追加時に導入する。 |
+| Room | 2.8.4 | 端末内DB | 自動BackupのRule、差分索引、Queue、lease、Wi-Fi Policy、scan checkpointをAccount Scope別に保持する。 |
+| WorkManager | 2.11.2 | 自動バックアップ | 一意Workの実装は自動BackupのWorkManager連携段階で行い、PR2ではModule依存と安定したWork名契約を導入する。 |
 | Android Keystore | OS標準 | 秘密情報保護 | 取り出し不可鍵、StrongBox、AES-GCMを利用できる。 |
 | OkHttp | 安定版固定 | HTTPS、Range、アップロード | ネットワークへの明示バインド、Interceptor、ストリーミングを実装しやすい。 |
 | Retrofit 3 | 安定版固定 | 型付きAPIクライアント | API DTOとエラー変換を`core-network`へ集約し、OkHttpのNetwork bindingと組み合わせる。 |
@@ -468,7 +469,7 @@ Data Sources
 ├─ SecureCredentialStore
 ```
 
-Room、WorkManager、MediaStore差分取得はMVP後の自動Backup追加時に導入する。
+RoomとWorkManagerはMVP後のAndroid自動Backupで導入済みである。MediaStore／SAF差分取得とWorker実装は後続PRで追加する。
 
 
 ### 7.2 推奨モジュール構成
@@ -486,7 +487,7 @@ apps/android/
 └─ feature-files/
 ```
 
-`core-database`、`core-testing`、Media・Sharing・Backup・Settings Featureは、必要となるMVP後の変更で追加する。
+`core-database`と`feature-backup`はAndroid自動Backupで、Media・Sharing・Settings Featureは各MVP後変更で追加済みである。`core-testing`は必要になる変更まで追加しない。
 
 ### 7.3 状態管理
 

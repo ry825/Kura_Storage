@@ -82,8 +82,24 @@ for logging_config in \
 done
 
 if rg -n --glob '!**/build/**' --glob '!**/.gradle/**' \
-  '(androidx\.room|androidx\.work|pdfbox|barteksc)' apps/android; then
+  '(pdfbox|barteksc)' apps/android; then
   echo "MVP-excluded Android dependency found." >&2
+  exit 1
+fi
+
+if rg -n --glob '!**/build/**' --glob '!**/.gradle/**' --glob '!**/gradle.lockfile' \
+  --glob '!apps/android/core-database/**' \
+  --glob '!apps/android/gradle/libs.versions.toml' \
+  'androidx\.room' apps/android; then
+  echo "Room must remain isolated to the core-database module." >&2
+  exit 1
+fi
+
+if rg -n --glob '!**/build/**' --glob '!**/.gradle/**' --glob '!**/gradle.lockfile' \
+  --glob '!apps/android/feature-backup/**' \
+  --glob '!apps/android/gradle/libs.versions.toml' \
+  'androidx\.work' apps/android; then
+  echo "WorkManager must remain isolated to the feature-backup module." >&2
   exit 1
 fi
 
