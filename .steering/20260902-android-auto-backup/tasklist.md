@@ -163,7 +163,7 @@
 - [x] 重要Mapper／状態遷移95%以上、Android Domain／Application全体80%以上のCoverageを満たす。
 - [x] `verify-android.sh`、connected Instrumented Test、SBOM、Lint、detekt、ktlint、`git diff --check`を成功させる。
 - [x] Android Backup exclusion、Manifest権限、秘密情報・実環境値非混入、既存FeatureのSession分離をself-reviewする。
-- [ ] Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+- [x] Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -378,6 +378,32 @@
   - PR2は#44が`main`へMergeされ必須CIが成功した後に最新`main`から開始する。
   - AndroidはUser／Device／OwnerをBackup payloadへ含めず、Compareの`NEW`／`CHANGED`だけを既存Upload Sessionの`backup` contextへ渡す。`BLOCKED_CURRENT_STATE`ではRemote Fileを推測せずUser操作待ちにする。
   - 端末側削除、Rule削除、候補省略からServer File／Receiptを削除するAPIは追加しない。
+
+### PR2: Android Room・バックアップルール・外部Wi-Fiポリシー
+
+- 完了日: 2026-09-02
+- Pull Request: [#45 Add Android automatic backup foundation](https://github.com/ry825/Kura_Storage/pull/45)
+- 実施したテスト、ビルド、静的解析、手動確認:
+  - `./scripts/ci/verify-android.sh`で全JVM Unit Test、Coverage gate、CycloneDX SBOM、ktlint、detekt、Android Lint、Debug APK／AndroidTest APK assemblyの成功を確認した。
+  - 新規Backup JVM Test 27件が成功し、Backup重要箇所は309/314行（98.41%）、Android Domain／Application全体は4,413/5,258行（83.93%）であった。
+  - Android 13実機CPH2333で`:core-data:connectedDebugAndroidTest` 7件と`:core-database:connectedDebugAndroidTest` 4件、合計11件が成功し、権限fail-closed、Room初期Schema、一意制約、原子的claim、期限切れlease回復、Account隔離、cascade、close／reopenを確認した。
+  - Repository全体のconnected Testは既存App Compose suite実行時の実機sleepと、その後のADB切断により完走できなかった。変更対象2 Moduleのconnected TestとRepository全体のAndroidTest APK assemblyは成功済みである。
+  - `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`が成功し、GitHub ActionsのAndroid、Config、Security、Server必須Checkがすべて成功した。
+  - SBOMへRoom 2.8.4とWorkManager 2.11.2が含まれること、Room DB／WAL／共有MemoryがAndroid Backupと端末移行から除外されること、実SSID／BSSID・URI・Token・実環境値が差分とLog出力に含まれないことを確認した。
+- 計画と実装の差分:
+  - Wi-Fi Policy編集時にも作成時と同じAccount Scopeを必須化し、別AccountのPolicy IDを指定した更新を拒否する境界へ強化した。
+  - Android version別権限判定はNearby Wi-Fiだけでなく、対象OSでSSID／BSSID取得に必要なCoarse／Fine LocationとLocation serviceを個別に判定し、取得不能時はfail-closedにした。
+  - WorkManagerの実Worker／予約はPR4範囲のままとし、PR2では依存、Module境界、安定したhash済みWork名の契約までを実装した。
+- 実装中に追加したタスクと追加理由:
+  - 自己レビューで検出した別AccountへのWi-Fi Policy更新、正規化後のSSID／BSSID重複、BSSID形式不正を拒否するValidationと回帰Testを追加した。
+  - 状態件数、Scanner checkpoint、要求可能権限、追加状態遷移のCoverage不足を補うTestを追加し、重要箇所95%以上と全体80%以上を満たした。
+  - 旧MVP依存禁止を保持していた`verify-config.sh`を、Roomは`core-database`、WorkManagerは`feature-backup`へ限定するPhase 1境界に更新し、PDF系禁止依存の検査は維持した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項:
+  - PR3は#45が`main`へMergeされ必須CIが成功した後に最新`main`から開始する。
+  - Scannerは既存のAccount Scope、Rule、checkpoint、500件単位のRoom transaction、一意な`(ruleId, localDocumentKey)`へ収束させ、端末削除や候補省略からServer削除APIを呼ばない。
+  - MediaStore／SAFの走査が完走した場合だけcheckpointを進め、Provider例外、権限喪失、途中取消時は既存Server状態を推測せず後続再走査へ収束させる。
+  - PR4までWorkManager予約やNetwork Policyによる自動転送を先行実装せず、PR3は差分検出と永続Queue反映に限定する。
 
 ## 全体振り返り
 
