@@ -15,6 +15,7 @@ using KuraStorage.Application.Recent;
 using KuraStorage.Application.Organization;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Application.Identity;
+using KuraStorage.Application.Activity;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Sharing;
 using KuraStorage.Infrastructure;
@@ -122,6 +123,19 @@ builder.Services.AddRateLimiter(options =>
     };
     options.AddPolicy(
         "TextVersions",
+        context => RateLimitPartition.GetFixedWindowLimiter(
+            context.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ??
+            context.Connection.RemoteIpAddress?.ToString() ??
+            "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 120,
+                QueueLimit = 0,
+                Window = TimeSpan.FromMinutes(1),
+            }));
+    options.AddPolicy(
+        "Activities",
         context => RateLimitPartition.GetFixedWindowLimiter(
             context.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ??
             context.Connection.RemoteIpAddress?.ToString() ??
@@ -534,6 +548,34 @@ app.MapGet(
             await recentFiles.ListAsync(userId, page, pageSize, cancellationToken),
             context);
     });
+
+app.MapGet(
+    "/api/v1/activities",
+    async (
+        [AsParameters] ActivitiesHttpQuery query,
+        HttpContext context,
+        ActivityQueryService activities,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        if (!TryOptionalInt(query.PageSize, 50, out var pageSize))
+        {
+            return Error(StatusCodes.Status400BadRequest, ActivityQueryErrorCodes.InvalidRequest, context);
+        }
+
+        var result = await activities.ListAsync(
+            userId,
+            new ActivityListRequest(query.Type, query.Cursor, pageSize),
+            cancellationToken);
+        return result.IsSuccess
+            ? Results.Ok(result.Value)
+            : Error(StatusCodes.Status400BadRequest, result.Failure!.Code, context);
+    })
+    .RequireRateLimiting("Activities");
 
 app.MapPut(
     "/api/v1/recent-files/{fileId:guid}",
@@ -1912,6 +1954,13 @@ public sealed class SearchHttpQuery
 public sealed class RecentFilesHttpQuery
 {
     public string? Page { get; init; }
+    public string? PageSize { get; init; }
+}
+
+public sealed class ActivitiesHttpQuery
+{
+    public string? Type { get; init; }
+    public string? Cursor { get; init; }
     public string? PageSize { get; init; }
 }
 

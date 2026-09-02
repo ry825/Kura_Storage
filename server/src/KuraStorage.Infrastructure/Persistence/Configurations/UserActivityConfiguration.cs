@@ -136,6 +136,9 @@ public sealed class UserActivityConfiguration : IEntityTypeConfiguration<UserAct
         builder.HasIndex(activity => activity.OperationId)
             .IsUnique()
             .HasDatabaseName("ux_user_activities_operation_id");
+        builder.HasIndex(activity => new { activity.OccurredAt, activity.Id })
+            .IsDescending(true, true)
+            .HasDatabaseName("ix_user_activities_occurred_id");
         builder.HasIndex(activity => new { activity.ActorUserId, activity.OccurredAt, activity.Id })
             .IsDescending(false, true, true)
             .HasDatabaseName("ix_user_activities_actor_occurred_id");

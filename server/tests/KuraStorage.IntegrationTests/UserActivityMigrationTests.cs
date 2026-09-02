@@ -126,13 +126,14 @@ public sealed class UserActivityMigrationTests
             SELECT count(*) FROM pg_indexes
             WHERE indexname IN (
                 'ux_user_activities_operation_id',
+                'ix_user_activities_occurred_id',
                 'ix_user_activities_actor_occurred_id',
                 'ix_user_activities_owner_occurred_id',
                 'ix_user_activities_target_occurred_id',
                 'ix_user_activities_type_occurred_id');
             """,
             connection);
-        Assert.Equal(5L, await indexes.ExecuteScalarAsync());
+        Assert.Equal(6L, await indexes.ExecuteScalarAsync());
     }
 
     private static async Task AssertConstraintsAndSetNullAsync(string connectionString, SeededRows seeded)

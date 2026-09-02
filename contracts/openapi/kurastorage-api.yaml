@@ -12,6 +12,7 @@ tags:
   - name: Files
   - name: Sharing
   - name: Search
+  - name: Activities
   - name: Transfers
   - name: Media
   - name: Trash
@@ -522,6 +523,79 @@ paths:
                     details: {}
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /activities:
+    get:
+      tags: [Activities]
+      operationId: listActivities
+      summary: List user-visible successful activity
+      description: >-
+        Returns activity where the authenticated user is the actor, can currently read the
+        target through ownership or sharing, or owns a purged target snapshot. ADMIN role
+        does not grant implicit access. Visibility is re-evaluated on every request.
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UserActivityType"
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+          description: Opaque keyset cursor returned by the previous page.
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: A deterministic newest-first page of currently visible activity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityPage"
+              example:
+                items:
+                  - type: EDIT
+                    occurredAt: 2026-09-02T01:02:03Z
+                    actorDisplayName: Alex
+                    actorDeviceName: Phone
+                    targetEntryId: 00000000-0000-4000-8000-000000000001
+                    targetType: FILE
+                    targetName: notes.txt
+                    ownerDisplayName: Alex
+                    sourceParentName: null
+                    destinationParentName: null
+                    resultingFileVersion: 2
+                    editKind: TEXT_SAVE
+                    recipientDisplayName: null
+                    sharePermission: null
+                    shareAction: null
+                    deleteKind: null
+                nextCursor: null
+        "400":
+          description: The type, cursor, or page size is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: INVALID_ACTIVITY_REQUEST
+                message: The request could not be completed.
+                requestId: request-id
+                details: {}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/InternalServerError"
   /recent-files:
@@ -2322,6 +2396,83 @@ components:
         totalCount:
           type: integer
           minimum: 0
+    UserActivityType:
+      type: string
+      enum: [UPLOAD, MOVE, EDIT, SHARE, DELETE]
+    ActivityTargetType:
+      type: string
+      enum: [FILE, FOLDER]
+    ActivityItem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - occurredAt
+        - actorDisplayName
+        - targetType
+        - targetName
+        - ownerDisplayName
+      properties:
+        type:
+          $ref: "#/components/schemas/UserActivityType"
+        occurredAt:
+          type: string
+          format: date-time
+        actorDisplayName:
+          type: string
+          maxLength: 128
+        actorDeviceName:
+          type: [string, "null"]
+          maxLength: 128
+        targetEntryId:
+          type: [string, "null"]
+          format: uuid
+          description: Present only while the target exists and is currently accessible.
+        targetType:
+          $ref: "#/components/schemas/ActivityTargetType"
+        targetName:
+          type: string
+          maxLength: 255
+        ownerDisplayName:
+          type: string
+          maxLength: 128
+        sourceParentName:
+          type: [string, "null"]
+          maxLength: 255
+        destinationParentName:
+          type: [string, "null"]
+          maxLength: 255
+        resultingFileVersion:
+          type: [integer, "null"]
+          format: int64
+          minimum: 1
+        editKind:
+          type: [string, "null"]
+          enum: [TEXT_SAVE, VERSION_RESTORE, null]
+        recipientDisplayName:
+          type: [string, "null"]
+          maxLength: 128
+        sharePermission:
+          type: [string, "null"]
+          enum: [VIEWER, CONTRIBUTOR, EDITOR, MANAGER, null]
+        shareAction:
+          type: [string, "null"]
+          enum: [CREATED, UPDATED, REVOKED, null]
+        deleteKind:
+          type: [string, "null"]
+          enum: [TRASHED, PURGED, null]
+    ActivityPage:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityItem"
+        nextCursor:
+          type: [string, "null"]
+          maxLength: 128
     RecentFileItem:
       allOf:
         - $ref: "#/components/schemas/AccessibleEntryMetadata"

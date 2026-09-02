@@ -1,5 +1,6 @@
 using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Identity;
+using KuraStorage.Application.Activity;
 
 namespace KuraStorage.Application.Abstractions;
 
@@ -12,4 +13,21 @@ public interface IUserActivityRepository
     Task<UserActivity?> FindByOperationIdAsync(Guid operationId, CancellationToken cancellationToken);
 
     void Add(UserActivity activity);
+}
+
+public interface IUserActivityQueryRepository
+{
+    Task<IReadOnlyList<ActivityRecord>> ListAsync(
+        Guid actorUserId,
+        ActivityQueryFilter filter,
+        CancellationToken cancellationToken);
+}
+
+public interface IUserActivityAdminQueryRepository
+{
+    Task<IReadOnlyList<ActivityRecord>?> SearchAsync(
+        AdminActivitySearchFilter filter,
+        string actorOsUser,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken);
 }

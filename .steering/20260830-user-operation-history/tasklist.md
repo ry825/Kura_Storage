@@ -108,49 +108,49 @@
 
 ### 2.1 作業開始・Query contract
 
-- [ ] PR2の開始条件を満たす。
-  - [ ] PR1が`main`へMerge済みで、最新`main`から短命Branchを作成する。
-  - [ ] Search／Recent permission CTE、Admin CLI、OpenAPI、safe Log patternを確認する。
-- [ ] Activity response／filter／cursorをTest firstで定義する。
-  - [ ] 公開type、occurredAt、actor／target snapshot、許可detailだけを含める。
-  - [ ] pageSize、type filter、opaque cursor、未知enum、破損cursorを検証する。
-  - [ ] 内部Audit ID、Device ID、Request ID、OS User、物理Path、result codeを含めない。
+- [x] PR2の開始条件を満たす。
+  - [x] PR1が`main`へMerge済みで、最新`main`から短命Branchを作成する。（PR #41 Merge後の`267f27e`から`feat/user-activity-query`を作成）
+  - [x] Search／Recent permission CTE、Admin CLI、OpenAPI、safe Log patternを確認する。
+- [x] Activity response／filter／cursorをTest firstで定義する。
+  - [x] 公開type、occurredAt、actor／target snapshot、許可detailだけを含める。
+  - [x] pageSize、type filter、opaque cursor、未知enum、破損cursorを検証する。
+  - [x] 内部Audit ID、Device ID、Request ID、OS User、物理Path、result codeを含めない。
 
 ### 2.2 利用者向け認可Query・API
 
-- [ ] permission-aware activity queryを実装する。
-  - [ ] Actor本人、現在閲覧可能target、Purge済みのactor／snapshot ownerをSQL段階で和集合にする。
-  - [ ] Owner、直接／継承Share、複数経路、深度64、Admin暗黙権限なしを既存規則と一致させる。
-  - [ ] Share解除、permission変更、Move、Trash、Restore、Purgeを次要求へ反映する。
-  - [ ] `occurred_at DESC, id DESC`のkeyset paginationとtype filterを実装する。
-  - [ ] page後filter、offset、N+1、HDD走査、全件materializeを行わない。
-- [ ] `GET /api/v1/activities`を実装する。
-  - [ ] Security Context以外のUser／Owner入力を受けず、認証、Rate Limit、Request ID、Error envelopeを適用する。
-  - [ ] cursor／page／typeの正常・境界・不正、401、Session／Device失効をTestする。
-  - [ ] OpenAPI schema、example、pagination、visibility note、全Errorを追加しContract Testを成功させる。
+- [x] permission-aware activity queryを実装する。
+  - [x] Actor本人、現在閲覧可能target、Purge済みのactor／snapshot ownerをSQL段階で和集合にする。
+  - [x] Owner、直接／継承Share、複数経路、深度64、Admin暗黙権限なしを既存規則と一致させる。
+  - [x] Share解除、permission変更、Move、Trash、Restore、Purgeを次要求へ反映する。
+  - [x] `occurred_at DESC, id DESC`のkeyset paginationとtype filterを実装する。
+  - [x] page後filter、offset、N+1、HDD走査、全件materializeを行わない。
+- [x] `GET /api/v1/activities`を実装する。
+  - [x] Security Context以外のUser／Owner入力を受けず、認証、Rate Limit、Request ID、Error envelopeを適用する。
+  - [x] cursor／page／typeの正常・境界・不正、401、Session／Device失効をTestする。（Session／Device失効は全認証Endpoint共通のJWT event検証で保護）
+  - [x] OpenAPI schema、example、pagination、visibility note、全Errorを追加しContract Testを成功させる。
 
 ### 2.3 Admin CLI検索
 
-- [ ] Admin activity search Application queryを実装する。
-  - [ ] actor、owner、type、UTC期間、file ID、limit、cursorを組合せ可能にする。
-  - [ ] 既定100／最大1000、期間最大365日、決定的keyset順を検証する。
-  - [ ] CLI query repositoryを一般API repositoryと分離する。
-- [ ] `KuraStorage-admin activity search`を実装する。
-  - [ ] 端末tableと`--json`、next cursor、empty、invalid、cancelを実装する。
-  - [ ] User selectorの曖昧性、UTC parsing、出力escape、pipe時の終了codeをTestする。
-  - [ ] 検索実行をAuditへ記録し、条件の秘密値／結果内容を通常Logへ残さない。
-  - [ ] CLIからUserActivityの更新・削除を提供しない。
+- [x] Admin activity search Application queryを実装する。
+  - [x] actor、owner、type、UTC期間、file ID、limit、cursorを組合せ可能にする。
+  - [x] 既定100／最大1000、期間最大365日、決定的keyset順を検証する。
+  - [x] CLI query repositoryを一般API repositoryと分離する。
+- [x] `KuraStorage-admin activity search`を実装する。
+  - [x] 端末tableと`--json`、next cursor、empty、invalid、cancelを実装する。
+  - [x] User selectorの曖昧性、UTC parsing、出力escape、pipe時の終了codeをTestする。（User selectorはunique usernameまたはUUIDだけを受理し、曖昧な表示名を受けない）
+  - [x] 検索実行をAuditへ記録し、条件の秘密値／結果内容を通常Logへ残さない。
+  - [x] CLIからUserActivityの更新・削除を提供しない。
 
 ### 2.4 性能・Security・PR2完了
 
-- [ ] 100万Activity性能資材と結果を追加する。
-  - [ ] 10 User、所有／共有／失効／Purge、全typeを含む匿名seedを用意する。
-  - [ ] 利用者先頭／後続page、type filter、admin各filterを`EXPLAIN ANALYZE BUFFERS`で確認する。
-  - [ ] p50／p95、CPU／Memory、Index size、insert overheadを記録し通常2秒以内を満たす。
-- [ ] API clientとCLIでUser A/B、共有解除、Move、Trash、Purge、Admin filter、Log非漏えいを確認する。
-- [ ] 全Server Test、Coverage、CI、format、Migration、OpenAPI、`git diff --check`を成功させる。
-- [ ] 正式文書、Admin CLI usage、repository structure、testing記録を実績へ更新する。
-- [ ] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+- [x] 100万Activity性能資材と結果を追加する。
+  - [x] 10 User、所有／共有／失効／Purge、全typeを含む匿名seedを用意する。
+  - [x] 利用者先頭／後続page、type filter、admin各filterを`EXPLAIN ANALYZE BUFFERS`で確認する。
+  - [x] p50／p95、CPU／Memory、Index size、insert overheadを記録し通常2秒以内を満たす。（最大p50 241.1ms、最大p95 269.1ms）
+- [x] API clientとCLIでUser A/B、共有解除、Move、Trash、Purge、Admin filter、Log非漏えいを確認する。
+- [x] 全Server Test、Coverage、CI、format、Migration、OpenAPI、`git diff --check`を成功させる。
+- [x] 正式文書、Admin CLI usage、repository structure、testing記録を実績へ更新する。
+- [x] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -221,6 +221,32 @@
   - PR1 Merge後に最新`main`からPR2 Branchを作成し、permission-aware keyset query、利用者API、ローカルAdmin CLI、OpenAPI、100万件query性能測定を実装する。
   - PR1で一般HTTP Endpoint、Admin activity search、Android `feature-activity`は実装していない。
   - 100万件でActivity relation合計729,178,112 bytes、論理Backup相当210,750,000 bytesを観測したため、PR2の認可Query計画と運用容量評価で基準値として使用する。
+
+### PR2: 利用者向けAPI・管理者CLI検索
+
+- 完了日: 2026-09-02
+- Pull Request: [#42 Add user activity API and administrator search](https://github.com/ry825/Kura_Storage/pull/42)
+- 実施した検証:
+  - `./scripts/ci/verify-server.sh`: Release Build警告0件、Domain 119件、Application 332件、Integration 217件の計668件成功。
+  - Coverlet: Domain／Application全体89.53%、新規Application query各file 95%以上、PostgreSQL一般／Admin query repositoryはline 99.17%、branch 92.42%、method 100%。
+  - PostgreSQL 17: Migration Up／Down／再Up、全6 Index、既存制約・Audit・Share保持、permission-aware queryとAdmin Auditを成功。
+  - 10 User、30万FileEntry、100万Activityの匿名seedで利用者3経路とAdmin 4 filterを各10回測定し、最大p50 241.1ms、最大p95 269.1ms。全対象の`EXPLAIN ANALYZE BUFFERS`も成功。
+  - `dotnet ef migrations has-pending-model-changes`: 未反映Model変更なし。
+  - `verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`、format、OpenAPI Contract、`git diff --check`を成功。
+  - GitHub必須CI: Android、Config、Security、Serverの4件すべて成功。
+  - 手動確認: 公開responseの内部ID／OS User／物理Path非混入、User A/Bと共有解除／Move／Trash／Purgeの可視性、Admin CLIのfilter／出力／秘密情報非Log化を確認。
+- 計画と実装の差分:
+  - typeなしの一般／Admin検索を100万件で安定して最新順走査するため、当初のActor／Owner／Target／Type別Indexに`(occurred_at DESC, id DESC)`を追加し、正式設計とMigrationへ反映した。
+  - 一般Queryは全可視Activityを先にmaterializeせず、global Indexの最新順走査中に現在権限をSQL評価して必要件数で停止する構成にした。公開条件とkeyset順は計画どおりである。
+- 実装中に追加したタスクと理由:
+  - 一般APIと管理CLIの権限境界をクラス単位でも明示するため、PostgreSQL query実装を一般用とAdmin用の2 repositoryへ分割し、同じintegration suiteで再検証した。
+  - 権限失効後もActor本人へsnapshotを返しつつ、アクセス不能target IDを公開しない回帰Testを追加した。
+  - 実測条件を再現可能にするため、30万FileEntryを含むopt-in性能Testと`docs/testing/20260902-user-activity-pr2.md`を追加した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項:
+  - PR2 Merge後に最新`main`からPR3 Branchを作成し、OpenAPIの`ActivityPage`／opaque cursorを使用するAndroid data層と`feature-activity`を実装する。
+  - Androidではunknown typeをfail-closedにし、snapshot表示と現在アクセス可能な`targetEntryId`による詳細導線を区別する。
+  - PR2ではAndroid module、画面、実機E2Eを実装していない。全体振り返りはPR3完了後にだけ行う。
 
 ## 全体振り返り
 

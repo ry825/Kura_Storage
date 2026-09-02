@@ -134,6 +134,10 @@ public static class DependencyInjection
                     serviceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString));
         services.AddScoped<IIdentityRepository, IdentityRepository>();
         services.AddScoped<IUserActivityRepository, UserActivityRepository>();
+        services.AddScoped<PostgreSqlUserActivityQueryRepository>();
+        services.AddScoped<IUserActivityQueryRepository>(
+            serviceProvider => serviceProvider.GetRequiredService<PostgreSqlUserActivityQueryRepository>());
+        services.AddScoped<IUserActivityAdminQueryRepository, PostgreSqlUserActivityAdminQueryRepository>();
         services.AddScoped<IFileRepository, FileRepository>();
         services.AddScoped<IFileVersionRepository, FileVersionRepository>();
         services.AddScoped<IUploadSessionRepository, UploadSessionRepository>();
@@ -170,6 +174,8 @@ public static class DependencyInjection
         services.AddSingleton<IIndexScanObserver, IndexScanLogObserver>();
         services.AddScoped<IdentityService>();
         services.AddScoped<UserActivityFactory>();
+        services.AddScoped<ActivityQueryService>();
+        services.AddScoped<AdminActivityService>();
         services.AddScoped<FileService>();
         services.AddScoped<MissingEntryService>();
         services.AddScoped<TrashPurgeService>();

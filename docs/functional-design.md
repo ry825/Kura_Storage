@@ -492,6 +492,18 @@ interface UserActivity {
 - `occurredAt DESC, id DESC`のkeyset paginationを使用する。Adminの横断検索はローカルCLI専用repositoryへ分離する。
 - 初回保持期間は無期限とし、一般APIとAdmin CLIにActivityの更新・削除を提供しない。
 
+利用者APIは`GET /api/v1/activities?type=&cursor=&pageSize=`とし、`pageSize`は既定50・最大100とする。Cursorは時刻とIDを直接公開しないversion付きopaque tokenとし、破損・未知versionを拒否する。管理者検索は次のRaspberry PiローカルCLIに限定する。
+
+```bash
+sudo ./KuraStorage.AdminCli activity search \
+  [--actor-user <id-or-username>] [--owner-user <id-or-username>] \
+  [--type <UPLOAD|MOVE|EDIT|SHARE|DELETE>] \
+  [--from <UTC>] [--to <UTC>] [--file-id <uuid>] \
+  [--limit <1-1000>] [--cursor <opaque-token>] [--json]
+```
+
+UTCは`Z`付きISO 8601だけを受け付け、期間は最大365日、件数は既定100・最大1000とする。検索は`ACTIVITY_SEARCH`としてSecurity Auditに条件の分類と返却件数だけを記録し、User selector、File名、結果本文を通常Logへ出力しない。
+
 ### 5.3 MVP後: 共有
 
 ```typescript
