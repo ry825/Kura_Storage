@@ -150,7 +150,7 @@
 - [x] API clientとCLIでUser A/B、共有解除、Move、Trash、Purge、Admin filter、Log非漏えいを確認する。
 - [x] 全Server Test、Coverage、CI、format、Migration、OpenAPI、`git diff --check`を成功させる。
 - [x] 正式文書、Admin CLI usage、repository structure、testing記録を実績へ更新する。
-- [ ] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+- [x] Commit、Push、英語PR、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -221,6 +221,32 @@
   - PR1 Merge後に最新`main`からPR2 Branchを作成し、permission-aware keyset query、利用者API、ローカルAdmin CLI、OpenAPI、100万件query性能測定を実装する。
   - PR1で一般HTTP Endpoint、Admin activity search、Android `feature-activity`は実装していない。
   - 100万件でActivity relation合計729,178,112 bytes、論理Backup相当210,750,000 bytesを観測したため、PR2の認可Query計画と運用容量評価で基準値として使用する。
+
+### PR2: 利用者向けAPI・管理者CLI検索
+
+- 完了日: 2026-09-02
+- Pull Request: [#42 Add user activity API and administrator search](https://github.com/ry825/Kura_Storage/pull/42)
+- 実施した検証:
+  - `./scripts/ci/verify-server.sh`: Release Build警告0件、Domain 119件、Application 332件、Integration 217件の計668件成功。
+  - Coverlet: Domain／Application全体89.53%、新規Application query各file 95%以上、PostgreSQL一般／Admin query repositoryはline 99.17%、branch 92.42%、method 100%。
+  - PostgreSQL 17: Migration Up／Down／再Up、全6 Index、既存制約・Audit・Share保持、permission-aware queryとAdmin Auditを成功。
+  - 10 User、30万FileEntry、100万Activityの匿名seedで利用者3経路とAdmin 4 filterを各10回測定し、最大p50 241.1ms、最大p95 269.1ms。全対象の`EXPLAIN ANALYZE BUFFERS`も成功。
+  - `dotnet ef migrations has-pending-model-changes`: 未反映Model変更なし。
+  - `verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`、format、OpenAPI Contract、`git diff --check`を成功。
+  - GitHub必須CI: Android、Config、Security、Serverの4件すべて成功。
+  - 手動確認: 公開responseの内部ID／OS User／物理Path非混入、User A/Bと共有解除／Move／Trash／Purgeの可視性、Admin CLIのfilter／出力／秘密情報非Log化を確認。
+- 計画と実装の差分:
+  - typeなしの一般／Admin検索を100万件で安定して最新順走査するため、当初のActor／Owner／Target／Type別Indexに`(occurred_at DESC, id DESC)`を追加し、正式設計とMigrationへ反映した。
+  - 一般Queryは全可視Activityを先にmaterializeせず、global Indexの最新順走査中に現在権限をSQL評価して必要件数で停止する構成にした。公開条件とkeyset順は計画どおりである。
+- 実装中に追加したタスクと理由:
+  - 一般APIと管理CLIの権限境界をクラス単位でも明示するため、PostgreSQL query実装を一般用とAdmin用の2 repositoryへ分割し、同じintegration suiteで再検証した。
+  - 権限失効後もActor本人へsnapshotを返しつつ、アクセス不能target IDを公開しない回帰Testを追加した。
+  - 実測条件を再現可能にするため、30万FileEntryを含むopt-in性能Testと`docs/testing/20260902-user-activity-pr2.md`を追加した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項:
+  - PR2 Merge後に最新`main`からPR3 Branchを作成し、OpenAPIの`ActivityPage`／opaque cursorを使用するAndroid data層と`feature-activity`を実装する。
+  - Androidではunknown typeをfail-closedにし、snapshot表示と現在アクセス可能な`targetEntryId`による詳細導線を区別する。
+  - PR2ではAndroid module、画面、実機E2Eを実装していない。全体振り返りはPR3完了後にだけ行う。
 
 ## 全体振り返り
 
