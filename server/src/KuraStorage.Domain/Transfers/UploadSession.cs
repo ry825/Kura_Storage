@@ -1,3 +1,5 @@
+using KuraStorage.Domain.Backup;
+
 namespace KuraStorage.Domain.Transfers;
 
 public sealed class UploadSession
@@ -21,7 +23,8 @@ public sealed class UploadSession
         string temporaryRelativePath,
         DateTimeOffset now,
         DateTimeOffset expiresAt,
-        DateTimeOffset absoluteExpiresAt)
+        DateTimeOffset absoluteExpiresAt,
+        BackupUploadContext? backup = null)
     {
         if (id == Guid.Empty || actorUserId == Guid.Empty || targetOwnerUserId == Guid.Empty || deviceId == Guid.Empty ||
             destinationFolderId == Guid.Empty || fileEntryId == Guid.Empty || expectedSize < 0 ||
@@ -49,6 +52,13 @@ public sealed class UploadSession
         UpdatedAt = now;
         ExpiresAt = expiresAt;
         AbsoluteExpiresAt = absoluteExpiresAt;
+        BackupLocalDocumentKey = backup?.LocalDocumentKey;
+        BackupRelativePath = backup?.RelativePath;
+        BackupSourceModifiedAt = backup?.SourceModifiedAt;
+        BackupSourceChecksum = backup?.SourceChecksum;
+        BackupDecision = backup?.Decision;
+        BackupExpectedRemoteFileId = backup?.ExpectedRemoteFileId;
+        BackupExpectedRemoteFileVersion = backup?.ExpectedRemoteFileVersion;
     }
 
     public Guid Id { get; private set; }
@@ -101,6 +111,20 @@ public sealed class UploadSession
 
     public DateTimeOffset? CleanedAt { get; private set; }
 
+    public string? BackupLocalDocumentKey { get; private set; }
+
+    public string? BackupRelativePath { get; private set; }
+
+    public DateTimeOffset? BackupSourceModifiedAt { get; private set; }
+
+    public string? BackupSourceChecksum { get; private set; }
+
+    public BackupUploadDecision? BackupDecision { get; private set; }
+
+    public Guid? BackupExpectedRemoteFileId { get; private set; }
+
+    public long? BackupExpectedRemoteFileVersion { get; private set; }
+
     public bool IsExpiredAt(DateTimeOffset now) =>
         Status == UploadSessionStatus.Active && ExpiresAt <= now;
 
@@ -110,12 +134,27 @@ public sealed class UploadSession
         string fileName,
         string? contentType,
         long expectedSize,
-        string? expectedSha256) =>
+        string? expectedSha256,
+        BackupUploadContext? backup = null) =>
         DeviceId == deviceId && DestinationFolderId == destinationFolderId &&
         string.Equals(FileName, fileName, StringComparison.Ordinal) &&
         string.Equals(ContentType, contentType, StringComparison.OrdinalIgnoreCase) &&
         ExpectedSize == expectedSize &&
-        string.Equals(ExpectedSha256, expectedSha256, StringComparison.OrdinalIgnoreCase);
+        string.Equals(ExpectedSha256, expectedSha256, StringComparison.OrdinalIgnoreCase) &&
+        SameBackupContext(backup);
+
+    public BackupUploadContext? GetBackupContext() => BackupLocalDocumentKey is null
+        ? null
+        : new BackupUploadContext(
+            new BackupDocumentMetadata(
+                BackupLocalDocumentKey,
+                BackupRelativePath!,
+                ExpectedSize,
+                BackupSourceModifiedAt!.Value,
+                BackupSourceChecksum),
+            BackupDecision!.Value,
+            BackupExpectedRemoteFileId,
+            BackupExpectedRemoteFileVersion);
 
     public bool IsLastChunk(long offset, long length, string sha256) =>
         LastChunkOffset == offset && LastChunkLength == length &&
@@ -231,6 +270,18 @@ public sealed class UploadSession
         UpdatedAt = now;
     }
 
+    public void RetryCompletion(DateTimeOffset now)
+    {
+        if (Status != UploadSessionStatus.RecoveryRequired || FileOperationId is null)
+        {
+            throw new InvalidOperationException("Only a recoverable completing session can be retried.");
+        }
+
+        Status = UploadSessionStatus.Completing;
+        ErrorCode = null;
+        UpdatedAt = now;
+    }
+
     public void MarkCleaned(DateTimeOffset now)
     {
         if (Status is not (UploadSessionStatus.Cancelled or UploadSessionStatus.Expired))
@@ -244,4 +295,12 @@ public sealed class UploadSession
 
     private static DateTimeOffset Min(DateTimeOffset first, DateTimeOffset second) =>
         first <= second ? first : second;
+
+    private bool SameBackupContext(BackupUploadContext? backup)
+    {
+        var current = GetBackupContext();
+        return current is null
+            ? backup is null
+            : backup is not null && current == backup;
+    }
 }

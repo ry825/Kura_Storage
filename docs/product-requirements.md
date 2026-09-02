@@ -365,7 +365,7 @@ SSIDやBSSIDは`LOCAL_DIRECT`の判定条件に使用しない。異なるIPサ�
 - ローカル直接接続可能なWi-Fiでは、Android端末とKuraStorageサーバーが管理者設定の同一IPサブネットに属することを確認したうえで、ZeroTierを介さない基盤ネットワークへ通信をバインドし、TLS証明書・ホスト名検証とAPI到達確認が成功した場合に自動バックアップを許可する
 - 登録済み外部Wi-Fiでは、ZeroTier接続、TLS検証、User・Device・Session認証がすべて成功した場合に限り自動バックアップを許可する
 - 未登録Wi-Fiでは自動バックアップを実行しない
-- Wi-Fi名やBSSIDの一致は接続経路の判定条件に使用せず、同一IPサブネットの確認もユーザー認証やTLS検証の代替にしない
+- SSIDやBSSIDは、明示登録した外部Wi-Fiの自動バックアップ許可の照合にだけ使用する。サーバーの本人確認、`LOCAL_DIRECT`判定、ユーザー認証、TLS検証の代替にしない
 - 新規Android Device登録は`LOCAL_DIRECT`からの初回ログイン時だけ許可する
 - ZeroTier経由の新規Device登録要求は拒否する
 - ローカル直接接続とZeroTier接続の両方が利用可能な場合は、既定ではローカル直接接続を優先する

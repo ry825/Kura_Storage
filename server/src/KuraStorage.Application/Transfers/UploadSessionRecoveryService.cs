@@ -30,14 +30,14 @@ public sealed class UploadSessionRecoveryService(
         foreach (var candidate in candidates)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await using var sessionLock = await files.AcquireMutationLocksAsync([candidate.Id], cancellationToken);
             var session = await sessions.FindAsync(candidate.Id, cancellationToken);
             if (session is null)
             {
                 continue;
             }
 
-            if (session.Status == UploadSessionStatus.Completing)
+            if ((session.Status is UploadSessionStatus.Completing or UploadSessionStatus.RecoveryRequired) &&
+                session.FileOperationId is not null)
             {
                 var result = await uploadService.RecoverCompletingAsync(session, cancellationToken);
                 RecoveryCounter.Add(1, new KeyValuePair<string, object?>("result", result.IsSuccess ? "published" : "required"));
@@ -47,6 +47,9 @@ public sealed class UploadSessionRecoveryService(
                 }
                 continue;
             }
+
+            await using var sessionLock = await files.AcquireMutationLocksAsync([candidate.Id], cancellationToken);
+            await sessions.ReloadAsync(session, cancellationToken);
 
             if (session.Status != UploadSessionStatus.Active)
             {

@@ -5,7 +5,10 @@ using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Sharing;
 using KuraStorage.Application.Activity;
+using KuraStorage.Application.Backup;
+using KuraStorage.Domain.Backup;
 using KuraStorage.Domain.Audit;
+using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Sharing;
 using KuraStorage.Domain.Transfers;
@@ -23,7 +26,8 @@ public sealed class UploadSessionService(
     UploadChunkLimiter limiter,
     IAuthorizationService? authorizationService = null,
     FileVersionService? fileVersions = null,
-    UserActivityFactory? activities = null)
+    UserActivityFactory? activities = null,
+    IBackupRepository? backups = null)
 {
     private static readonly Meter Meter = new("KuraStorage.Transfers");
     private static readonly Counter<long> SessionCounter = Meter.CreateCounter<long>("kurastorage.upload.sessions");
@@ -37,6 +41,29 @@ public sealed class UploadSessionService(
         CreateUploadSessionCommand command,
         CancellationToken cancellationToken)
     {
+        BackupUploadContext? backupContext;
+        try
+        {
+            backupContext = command.Backup is null
+                ? null
+                : new BackupUploadContext(
+                    new BackupDocumentMetadata(
+                        command.Backup.LocalDocumentKey,
+                        command.Backup.RelativePath,
+                        command.Size,
+                        command.Backup.ModifiedAt,
+                        command.Sha256),
+                    command.Backup.Decision,
+                    command.Backup.ExpectedRemoteFileId,
+                    command.Backup.ExpectedRemoteFileVersion);
+        }
+        catch (ArgumentException)
+        {
+            return FileResult<CreatedUploadSession>.Fail(
+                FileErrorCodes.ValidationFailed,
+                FileFailureKind.BadRequest);
+        }
+
         if (!FileName.TryCreate(command.FileName, out var fileName) ||
             command.Size < 0 || command.Size > options.MaximumFileBytes ||
             !Guid.TryParse(command.IdempotencyKey, out _) || !ValidSha256(command.Sha256) ||
@@ -65,7 +92,8 @@ public sealed class UploadSessionService(
                     fileName!.Value,
                     normalizedContentType,
                     command.Size,
-                    normalizedSha))
+                    normalizedSha,
+                    backupContext))
             {
                 return FileResult<CreatedUploadSession>.Fail(
                     FileErrorCodes.IdempotencyConflict,
@@ -81,6 +109,14 @@ public sealed class UploadSessionService(
             return FileResult<CreatedUploadSession>.Fail(
                 FileErrorCodes.UploadSessionNotFound,
                 FileFailureKind.NotFound);
+        }
+
+        if (backupContext is not null &&
+            !await IsCurrentBackupDecisionAsync(command.ActorUserId, command.DeviceId, backupContext, cancellationToken))
+        {
+            return FileResult<CreatedUploadSession>.Fail(
+                BackupErrorCodes.VersionConflict,
+                FileFailureKind.Conflict);
         }
 
         if (await storageGuard.InspectAsync(StorageIntent.CreateOrUpdate, cancellationToken) != StorageStatus.Available)
@@ -144,7 +180,8 @@ public sealed class UploadSessionService(
                 FileFailureKind.Conflict);
         }
 
-        if (await files.FindActiveChildAsync(
+        if (backupContext?.Decision != BackupUploadDecision.Changed &&
+            await files.FindActiveChildAsync(
                 targetOwnerUserId,
                 command.DestinationFolderId,
                 fileName!.Value,
@@ -173,7 +210,7 @@ public sealed class UploadSessionService(
             targetOwnerUserId,
             command.DeviceId,
             command.DestinationFolderId,
-            Guid.NewGuid(),
+            backupContext?.ExpectedRemoteFileId ?? Guid.NewGuid(),
             command.IdempotencyKey,
             fileName.Value,
             normalizedContentType,
@@ -182,7 +219,8 @@ public sealed class UploadSessionService(
             $"upload-sessions/{command.ActorUserId:N}/{sessionId:N}.upload",
             now,
             now.AddHours(options.IdleExpirationHours),
-            now.AddHours(options.AbsoluteExpirationHours));
+            now.AddHours(options.AbsoluteExpirationHours),
+            backupContext);
         sessions.Add(session);
         files.Add(CreateAudit(command.ActorUserId, command.DeviceId, session.Id, "UPLOAD_SESSION_CREATE", "SUCCESS", command.RequestId, now));
         try
@@ -201,7 +239,8 @@ public sealed class UploadSessionService(
                     fileName.Value,
                     normalizedContentType,
                     command.Size,
-                    normalizedSha))
+                    normalizedSha,
+                    backupContext))
             {
                 return FileResult<CreatedUploadSession>.Success(
                     new CreatedUploadSession(await MapAsync(raced, cancellationToken), false));
@@ -411,6 +450,16 @@ public sealed class UploadSessionService(
             return FileResult<FileItem>.Fail(FileErrorCodes.UploadSessionNotFound, FileFailureKind.NotFound);
         }
 
+        if (initialSession.BackupDecision == BackupUploadDecision.Changed)
+        {
+            return await CompleteChangedBackupAsync(
+                actorUserId,
+                deviceId,
+                initialSession,
+                requestId,
+                cancellationToken);
+        }
+
         FileEntry? initialParent = null;
         EffectivePermission? initialPermission = null;
         if (initialSession.DestinationFolderId is Guid initialDestinationFolderId)
@@ -600,6 +649,21 @@ public sealed class UploadSessionService(
 
         await using var transaction = await files.BeginTransactionAsync(cancellationToken);
         files.Add(entry);
+        if (session.GetBackupContext() is { Decision: BackupUploadDecision.New } newBackup && backups is not null)
+        {
+            backups.Add(new BackupReceipt(
+                Guid.NewGuid(),
+                actorUserId,
+                deviceId,
+                newBackup.LocalDocumentKey,
+                entry.Id,
+                newBackup.RelativePath,
+                session.ExpectedSize,
+                newBackup.SourceModifiedAt,
+                newBackup.SourceChecksum,
+                entry.FileVersion,
+                now));
+        }
         if (activities is not null)
         {
             await activities.AddUploadAsync(
@@ -624,6 +688,205 @@ public sealed class UploadSessionService(
             return FileResult<FileItem>.Fail(FileErrorCodes.FileNameConflict, FileFailureKind.Conflict);
         }
 
+        SessionCounter.Add(1, new KeyValuePair<string, object?>("result", "completed"));
+        ActiveSessions.Add(-1);
+        return FileResult<FileItem>.Success(await MapFileAsync(actorUserId, entry, cancellationToken));
+    }
+
+    private async Task<FileResult<FileItem>> CompleteChangedBackupAsync(
+        Guid actorUserId,
+        Guid deviceId,
+        UploadSession initialSession,
+        string requestId,
+        CancellationToken cancellationToken)
+    {
+        if (backups is null || authorizationService is null ||
+            initialSession.BackupExpectedRemoteFileId is not Guid remoteFileId)
+        {
+            return FileResult<FileItem>.Fail(BackupErrorCodes.VersionConflict, FileFailureKind.Conflict);
+        }
+
+        var initialEntry = await files.FindByIdAsync(remoteFileId, cancellationToken);
+        var initialPermission = initialEntry is null
+            ? null
+            : await ResolvePermissionAsync(actorUserId, initialEntry, cancellationToken);
+        var lockIds = new List<Guid> { initialSession.Id, remoteFileId };
+        lockIds.AddRange(OptionalId(initialPermission?.ShareTargetId));
+        await using var mutationLock = await files.AcquireMutationLocksAsync(lockIds, cancellationToken);
+        await sessions.ReloadAsync(initialSession, cancellationToken);
+        var session = await FindAccessibleAsync(actorUserId, deviceId, initialSession.Id, cancellationToken);
+        if (session is null)
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.UploadSessionNotFound, FileFailureKind.NotFound);
+        }
+
+        if (session.Status == UploadSessionStatus.Completed)
+        {
+            var completed = await files.FindByIdAsync(remoteFileId, cancellationToken);
+            return completed is null
+                ? FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict)
+                : FileResult<FileItem>.Success(await MapFileAsync(actorUserId, completed, cancellationToken));
+        }
+
+        var stateFailure = await EnsureActiveAsync(session, cancellationToken);
+        if (stateFailure is not null)
+        {
+            return FileResult<FileItem>.Fail(stateFailure.Code, stateFailure.Kind);
+        }
+
+        if (session.ReceivedBytes != session.ExpectedSize)
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.UploadIncomplete, FileFailureKind.Conflict);
+        }
+
+        if (await storageGuard.InspectAsync(StorageIntent.CreateOrUpdate, cancellationToken) != StorageStatus.Available)
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
+        }
+
+        var source = RelativeStoragePath.Create(session.TemporaryRelativePath);
+        var temporary = await store.InspectAsync(source, cancellationToken);
+        if (!temporary.Exists && session.ExpectedSize == 0)
+        {
+            await store.TruncateAsync(source, 0, cancellationToken);
+            temporary = await store.InspectAsync(source, cancellationToken);
+        }
+
+        if (!temporary.Exists || temporary.Length != session.ExpectedSize)
+        {
+            session.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            await sessions.SaveChangesAsync(cancellationToken);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
+
+        if (session.ExpectedSha256 is not null)
+        {
+            var actual = await store.ComputeSha256Async(source, cancellationToken);
+            if (!FixedEquals(actual, session.ExpectedSha256))
+            {
+                await store.TruncateAsync(source, 0, CancellationToken.None);
+                session.ResetAfterChecksumFailure(clock.UtcNow, TimeSpan.FromHours(options.IdleExpirationHours));
+                await sessions.SaveChangesAsync(CancellationToken.None);
+                return FileResult<FileItem>.Fail(FileErrorCodes.UploadChecksumMismatch, FileFailureKind.Unprocessable);
+            }
+        }
+
+        var entry = initialEntry;
+        if (entry is null || !await files.ReloadAsync(entry, cancellationToken) ||
+            entry.EntryType != FileEntryType.File || entry.Status != FileEntryStatus.Active || entry.ParentId is null)
+        {
+            return FileResult<FileItem>.Fail(BackupErrorCodes.CurrentStateBlocked, FileFailureKind.Conflict);
+        }
+
+        var permission = await ResolvePermissionAsync(actorUserId, entry, cancellationToken);
+        if (initialPermission is null || !SamePermissionLockScope(initialPermission, permission) ||
+            !permission.Allows(ShareOperation.Edit))
+        {
+            return FileResult<FileItem>.Fail(FileErrorCodes.FileNotFound, FileFailureKind.NotFound);
+        }
+
+        var backup = session.GetBackupContext()!;
+        var receipt = await backups.FindReceiptAsync(actorUserId, deviceId, backup.LocalDocumentKey, cancellationToken);
+        if (receipt is null || receipt.RemoteFileId != entry.Id ||
+            receipt.RemoteFileVersion != backup.ExpectedRemoteFileVersion ||
+            entry.FileVersion != backup.ExpectedRemoteFileVersion || receipt.Matches(backup.Metadata) ||
+            await files.HasIncompleteOperationAsync(entry.OwnerUserId, entry.Id, entry.RelativePath, cancellationToken))
+        {
+            return FileResult<FileItem>.Fail(BackupErrorCodes.VersionConflict, FileFailureKind.Conflict);
+        }
+
+        var target = RelativeStoragePath.Create(entry.RelativePath);
+        var verifiedSha256 = session.ExpectedSha256 ?? await store.ComputeSha256Async(source, cancellationToken);
+        var now = clock.UtcNow;
+        var operation = new FileOperation(
+            Guid.NewGuid(),
+            entry.OwnerUserId,
+            FileOperationType.BackupUpdate,
+            entry.Id,
+            session.IdempotencyKey,
+            source.Value,
+            target.Value,
+            session.ExpectedSize,
+            verifiedSha256,
+            now,
+            deviceId,
+            requestId,
+            "BACKUP_UPLOAD",
+            actorUserId);
+        if (fileVersions is not null && FileVersionService.IsSupported(entry))
+        {
+            try
+            {
+                _ = await fileVersions.EnsureCurrentAsync(
+                    entry,
+                    FileVersionChangeKind.Upload,
+                    operation.Id,
+                    actorUserId: null,
+                    actorDeviceId: null,
+                    cancellationToken);
+                await using var versionSource = await fileStore.OpenReadAsync(source, cancellationToken);
+                _ = await fileVersions.PublishNextAsync(
+                    entry,
+                    FileVersionChangeKind.Upload,
+                    operation,
+                    actorUserId,
+                    deviceId,
+                    versionSource,
+                    session.ExpectedSize,
+                    verifiedSha256,
+                    cancellationToken);
+            }
+            catch (IOException)
+            {
+                return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+            }
+        }
+        session.BeginCompletion(operation.Id, now);
+        files.Add(operation);
+        await sessions.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await fileStore.ReplaceAsync(source, target, cancellationToken);
+        }
+        catch (IOException)
+        {
+            session.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            await sessions.SaveChangesAsync(CancellationToken.None);
+            return FileResult<FileItem>.Fail(FileErrorCodes.StorageUnavailable, FileFailureKind.StorageUnavailable);
+        }
+
+        operation.MarkFilesystemDone(clock.UtcNow);
+        await sessions.SaveChangesAsync(cancellationToken);
+        now = clock.UtcNow;
+        await using var transaction = await files.BeginTransactionAsync(cancellationToken);
+        entry.ApplyManagedContentChange(session.ExpectedSize, backup.ExpectedRemoteFileVersion!.Value, now);
+        receipt.UpdateCompletion(
+            entry.Id,
+            backup.RelativePath,
+            session.ExpectedSize,
+            backup.SourceModifiedAt,
+            backup.SourceChecksum,
+            entry.FileVersion,
+            now);
+        if (activities is not null)
+        {
+            await activities.AddEditAsync(
+                operation.Id,
+                actorUserId,
+                deviceId,
+                entry,
+                entry.FileVersion,
+                ActivityEditKind.BackupUpload,
+                cancellationToken);
+        }
+
+        session.Complete(now);
+        operation.Complete(now);
+        files.Add(CreateAudit(actorUserId, deviceId, session.Id, "BACKUP_UPLOAD_COMPLETE", "SUCCESS", requestId, now));
+        await sessions.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         SessionCounter.Add(1, new KeyValuePair<string, object?>("result", "completed"));
         ActiveSessions.Add(-1);
         return FileResult<FileItem>.Success(await MapFileAsync(actorUserId, entry, cancellationToken));
@@ -682,15 +945,28 @@ public sealed class UploadSessionService(
         UploadSession session,
         CancellationToken cancellationToken)
     {
-        if (session.Status != UploadSessionStatus.Completing || session.FileOperationId is null)
+        if (session.Status is not (UploadSessionStatus.Completing or UploadSessionStatus.RecoveryRequired) ||
+            session.FileOperationId is null)
         {
             return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
         }
+
+        var recoveryLockIds = new List<Guid> { session.Id };
+        recoveryLockIds.AddRange(OptionalId(session.DestinationFolderId));
+        recoveryLockIds.AddRange(OptionalId(session.BackupExpectedRemoteFileId));
+        await using var recoveryLock = await files.AcquireMutationLocksAsync(recoveryLockIds, cancellationToken);
+        await sessions.ReloadAsync(session, cancellationToken);
 
         var operation = await files.FindOperationAsync(
             session.TargetOwnerUserId,
             session.IdempotencyKey,
             cancellationToken);
+        if (session.BackupDecision == BackupUploadDecision.Changed)
+        {
+            return operation is null
+                ? FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict)
+                : await RecoverChangedBackupAsync(session, operation, cancellationToken);
+        }
         if (session.DestinationFolderId is not Guid destinationFolderId)
         {
             session.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
@@ -770,7 +1046,41 @@ public sealed class UploadSessionService(
         }
 
         var now = clock.UtcNow;
+        BackupReceipt? existingReceipt = null;
+        if (session.GetBackupContext() is { Decision: BackupUploadDecision.New } newBackup && backups is not null)
+        {
+            existingReceipt = await backups.FindReceiptAsync(
+                session.ActorUserId,
+                session.DeviceId,
+                newBackup.LocalDocumentKey,
+                cancellationToken);
+            if (existingReceipt is not null &&
+                (existingReceipt.RemoteFileId != existing.Id || !existingReceipt.Matches(newBackup.Metadata)))
+            {
+                session.RequireRecovery(FileErrorCodes.RecoveryRequired, now);
+                operation.RequireRecovery(FileErrorCodes.RecoveryRequired, now);
+                await sessions.SaveChangesAsync(CancellationToken.None);
+                return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+            }
+        }
+
         await using var transaction = await files.BeginTransactionAsync(cancellationToken);
+        if (session.GetBackupContext() is { Decision: BackupUploadDecision.New } pendingBackup &&
+            backups is not null && existingReceipt is null)
+        {
+            backups.Add(new BackupReceipt(
+                Guid.NewGuid(),
+                session.ActorUserId,
+                session.DeviceId,
+                pendingBackup.LocalDocumentKey,
+                existing.Id,
+                pendingBackup.RelativePath,
+                session.ExpectedSize,
+                pendingBackup.SourceModifiedAt,
+                pendingBackup.SourceChecksum,
+                existing.FileVersion,
+                now));
+        }
         if (activities is not null)
         {
             await activities.AddUploadAsync(
@@ -790,6 +1100,129 @@ public sealed class UploadSessionService(
         return FileResult<FileItem>.Success(FileService.Map(existing));
     }
 
+    private async Task<FileResult<FileItem>> RecoverChangedBackupAsync(
+        UploadSession session,
+        FileOperation operation,
+        CancellationToken cancellationToken)
+    {
+        if (backups is null || activities is null ||
+            session.BackupExpectedRemoteFileId is not Guid remoteFileId ||
+            session.GetBackupContext() is not { Decision: BackupUploadDecision.Changed } backup ||
+            operation.SourceRelativePath is null || operation.TargetRelativePath is null ||
+            operation.ExpectedSha256 is null)
+        {
+            return await RequireBackupRecoveryAsync(session, operation, cancellationToken);
+        }
+
+        var entry = await files.FindByIdAsync(remoteFileId, cancellationToken);
+        var receipt = await backups.FindReceiptAsync(
+            session.ActorUserId,
+            session.DeviceId,
+            backup.LocalDocumentKey,
+            cancellationToken);
+        if (entry is null || receipt is null || entry.Status != FileEntryStatus.Active ||
+            receipt.RemoteFileId != entry.Id)
+        {
+            return await RequireBackupRecoveryAsync(session, operation, cancellationToken);
+        }
+
+        if (session.Status == UploadSessionStatus.RecoveryRequired)
+        {
+            session.RetryCompletion(clock.UtcNow);
+        }
+        if (operation.Status == FileOperationStatus.RecoveryRequired)
+        {
+            operation.Retry(clock.UtcNow);
+        }
+
+        var source = RelativeStoragePath.Create(operation.SourceRelativePath);
+        var target = RelativeStoragePath.Create(operation.TargetRelativePath);
+        if (await fileStore.ExistsAsync(source, false, cancellationToken))
+        {
+            await fileStore.ReplaceAsync(source, target, cancellationToken);
+        }
+
+        if (!await fileStore.ExistsAsync(target, false, cancellationToken) ||
+            !FixedEquals(await ComputeFileSha256Async(target, cancellationToken), operation.ExpectedSha256))
+        {
+            return await RequireBackupRecoveryAsync(session, operation, cancellationToken);
+        }
+
+        if (operation.Status == FileOperationStatus.Pending)
+        {
+            operation.MarkFilesystemDone(clock.UtcNow);
+            await sessions.SaveChangesAsync(cancellationToken);
+        }
+
+        var expectedVersion = backup.ExpectedRemoteFileVersion!.Value;
+        var now = clock.UtcNow;
+        var requiresMetadataCompletion = entry.FileVersion == expectedVersion && receipt.RemoteFileVersion == expectedVersion;
+        if (!requiresMetadataCompletion &&
+            (entry.FileVersion != expectedVersion + 1 ||
+             receipt.RemoteFileVersion != entry.FileVersion || !receipt.Matches(backup.Metadata)))
+        {
+            return await RequireBackupRecoveryAsync(session, operation, cancellationToken);
+        }
+
+        await using var transaction = await files.BeginTransactionAsync(cancellationToken);
+        if (requiresMetadataCompletion)
+        {
+            entry.ApplyManagedContentChange(session.ExpectedSize, expectedVersion, now);
+            receipt.UpdateCompletion(
+                entry.Id,
+                backup.RelativePath,
+                session.ExpectedSize,
+                backup.SourceModifiedAt,
+                backup.SourceChecksum,
+                entry.FileVersion,
+                now);
+        }
+        await activities.AddEditAsync(
+            operation.Id,
+            session.ActorUserId,
+            session.DeviceId,
+            entry,
+            entry.FileVersion,
+            ActivityEditKind.BackupUpload,
+            cancellationToken);
+        session.Complete(now);
+        operation.Complete(now);
+        files.Add(CreateAudit(
+            session.ActorUserId,
+            session.DeviceId,
+            session.Id,
+            "BACKUP_UPLOAD_RECOVER",
+            "SUCCESS",
+            operation.RequestId ?? session.Id.ToString(),
+            now));
+        await sessions.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return FileResult<FileItem>.Success(await MapFileAsync(session.ActorUserId, entry, cancellationToken));
+    }
+
+    private async Task<FileResult<FileItem>> RequireBackupRecoveryAsync(
+        UploadSession session,
+        FileOperation operation,
+        CancellationToken cancellationToken)
+    {
+        if (session.Status != UploadSessionStatus.RecoveryRequired)
+        {
+            session.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+        }
+        operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+        await sessions.SaveChangesAsync(cancellationToken);
+        return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+    }
+
+    private async Task<string> ComputeFileSha256Async(
+        RelativeStoragePath path,
+        CancellationToken cancellationToken)
+    {
+        await using var content = await fileStore.OpenReadAsync(path, cancellationToken);
+        using var sha = SHA256.Create();
+        return Convert.ToHexString(await sha.ComputeHashAsync(content, cancellationToken)).ToLowerInvariant();
+    }
+
     private async Task<UploadSession?> FindAccessibleAsync(
         Guid actorUserId,
         Guid deviceId,
@@ -801,6 +1234,39 @@ public sealed class UploadSessionService(
                await sessions.IsDeviceActiveAsync(actorUserId, deviceId, cancellationToken)
             ? session
             : null;
+    }
+
+    private async Task<bool> IsCurrentBackupDecisionAsync(
+        Guid actorUserId,
+        Guid deviceId,
+        BackupUploadContext context,
+        CancellationToken cancellationToken)
+    {
+        if (backups is null || authorizationService is null)
+        {
+            return false;
+        }
+
+        var states = await backups.ListReceiptStatesAsync(
+            actorUserId,
+            deviceId,
+            [context.LocalDocumentKey],
+            cancellationToken);
+        if (!states.TryGetValue(context.LocalDocumentKey, out var state))
+        {
+            return context.Decision == BackupUploadDecision.New;
+        }
+
+        return context.Decision == BackupUploadDecision.Changed &&
+               state.RemoteFileStatus == FileEntryStatus.Active &&
+               state.Receipt.RemoteFileId == context.ExpectedRemoteFileId &&
+               state.RemoteFileVersion == context.ExpectedRemoteFileVersion &&
+               !state.Receipt.Matches(context.Metadata) &&
+               await authorizationService.AllowsAsync(
+                   actorUserId,
+                   state.Receipt.RemoteFileId,
+                   ShareOperation.Edit,
+                   cancellationToken);
     }
 
     private async Task<FileFailure?> EnsureActiveAsync(

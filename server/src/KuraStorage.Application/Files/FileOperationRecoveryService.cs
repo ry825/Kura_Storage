@@ -39,6 +39,13 @@ public sealed class FileOperationRecoveryService(
 
     private async Task RecoverOneAsync(FileOperation operation, CancellationToken cancellationToken)
     {
+        // Backup replacement recovery is coordinated with its UploadSession and Receipt.
+        // Completing it here would lose the authenticated device/document context.
+        if (operation.OperationType == FileOperationType.BackupUpdate)
+        {
+            return;
+        }
+
         if (operation.OperationType is FileOperationType.TextEdit or FileOperationType.VersionRestore)
         {
             await RecoverTextMutationAsync(operation, cancellationToken);

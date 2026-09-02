@@ -16,7 +16,9 @@ using KuraStorage.Application.Organization;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Application.Identity;
 using KuraStorage.Application.Activity;
+using KuraStorage.Application.Backup;
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Backup;
 using KuraStorage.Domain.Sharing;
 using KuraStorage.Infrastructure;
 using KuraStorage.Infrastructure.Configuration;
@@ -1091,6 +1093,49 @@ app.MapPost(
     });
 
 app.MapPost(
+    "/api/v1/backup/compare",
+    async (
+        BackupCompareRequest request,
+        HttpContext context,
+        BackupCompareService backup,
+        UploadSessionOptions uploadOptions,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId) ||
+            !TryClaimGuid(context.User, "device_id", out var deviceId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        var candidates = request.Items?.Select(item => new BackupCompareCandidate(
+            item.LocalDocumentKey ?? string.Empty,
+            item.RelativePath ?? string.Empty,
+            item.Size,
+            item.ModifiedAt,
+            item.Checksum)).ToArray() ?? [];
+        var result = await backup.CompareAsync(
+            new BackupCompareCommand(userId, deviceId, request.DestinationFolderId, candidates),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return TransferError(result.Failure!, context, uploadOptions);
+        }
+
+        return Results.Ok(new BackupCompareResponse(result.Value!.Items.Select(item => new BackupCompareResponseItem(
+            item.LocalDocumentKey,
+            item.Decision switch
+            {
+                BackupCompareDecision.New => "NEW",
+                BackupCompareDecision.Changed => "CHANGED",
+                BackupCompareDecision.AlreadyUploaded => "ALREADY_UPLOADED",
+                _ => "BLOCKED_CURRENT_STATE",
+            },
+            item.RemoteFileId,
+            item.ExpectedRemoteFileVersion,
+            item.ErrorCode)).ToArray()));
+    });
+
+app.MapPost(
     "/api/v1/upload-sessions",
     async (
         CreateUploadSessionRequest request,
@@ -1115,7 +1160,8 @@ app.MapPost(
                 request.ContentType,
                 request.Sha256,
                 context.Request.Headers["Idempotency-Key"].ToString(),
-                context.TraceIdentifier),
+                context.TraceIdentifier,
+                ParseBackupUpload(request.Backup)),
             cancellationToken);
         if (!result.IsSuccess)
         {
@@ -1738,6 +1784,28 @@ static bool TryTargetType(string? value, out FileEntryType? targetType)
     return true;
 }
 
+static BackupUploadRequest? ParseBackupUpload(BackupUploadRequestBody? request)
+{
+    if (request is null)
+    {
+        return null;
+    }
+
+    var decision = request.Decision?.ToUpperInvariant() switch
+    {
+        "NEW" => BackupUploadDecision.New,
+        "CHANGED" => BackupUploadDecision.Changed,
+        _ => (BackupUploadDecision)(-1),
+    };
+    return new BackupUploadRequest(
+        request.LocalDocumentKey ?? string.Empty,
+        request.RelativePath ?? string.Empty,
+        request.ModifiedAt,
+        decision,
+        request.ExpectedRemoteFileId,
+        request.ExpectedRemoteFileVersion);
+}
+
 static IResult TransferError(
     FileFailure failure,
     HttpContext context,
@@ -1975,7 +2043,36 @@ public sealed record CreateUploadSessionRequest(
     string? FileName,
     long Size,
     string? ContentType,
-    string? Sha256);
+    string? Sha256,
+    BackupUploadRequestBody? Backup = null);
+
+public sealed record BackupUploadRequestBody(
+    string? LocalDocumentKey,
+    string? RelativePath,
+    DateTimeOffset ModifiedAt,
+    string? Decision,
+    Guid? ExpectedRemoteFileId,
+    long? ExpectedRemoteFileVersion);
+
+public sealed record BackupCompareRequest(
+    Guid DestinationFolderId,
+    IReadOnlyList<BackupCompareRequestItem>? Items);
+
+public sealed record BackupCompareRequestItem(
+    string? LocalDocumentKey,
+    string? RelativePath,
+    long Size,
+    DateTimeOffset ModifiedAt,
+    string? Checksum);
+
+public sealed record BackupCompareResponse(IReadOnlyList<BackupCompareResponseItem> Items);
+
+public sealed record BackupCompareResponseItem(
+    string LocalDocumentKey,
+    string Decision,
+    Guid? RemoteFileId,
+    long? ExpectedRemoteFileVersion,
+    string? ErrorCode);
 
 public sealed record MediaAcceptedResponse(
     string Status,

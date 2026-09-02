@@ -76,6 +76,7 @@ public sealed class FileOperationConfiguration : IEntityTypeConfiguration<FileOp
     {
         FileOperationType.TextEdit => "TEXT_EDIT",
         FileOperationType.VersionRestore => "VERSION_RESTORE",
+        FileOperationType.BackupUpdate => "BACKUP_UPDATE",
         _ => value.ToString().ToUpperInvariant(),
     };
 
@@ -83,6 +84,7 @@ public sealed class FileOperationConfiguration : IEntityTypeConfiguration<FileOp
     {
         "TEXT_EDIT" => FileOperationType.TextEdit,
         "VERSION_RESTORE" => FileOperationType.VersionRestore,
+        "BACKUP_UPDATE" => FileOperationType.BackupUpdate,
         _ => Enum.Parse<FileOperationType>(value, true),
     };
 }

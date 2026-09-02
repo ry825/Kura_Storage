@@ -25,6 +25,7 @@ public enum FileOperationType
     Purge,
     TextEdit,
     VersionRestore,
+    BackupUpdate,
 }
 
 public enum FileOperationStatus

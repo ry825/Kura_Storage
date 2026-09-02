@@ -583,7 +583,7 @@ SSIDとBSSIDは外部Wi-Fiで自動バックアップを許可するポリシー
 | `media_jobs` | `(status, available_at, created_at, id)`、`derivative_id`、有効Jobの部分一意Index |
 | `refresh_sessions` | `token_hash`一意、`family_id`、`device_id`、現在Session行の部分一意Index |
 | `upload_sessions` | `(status, expires_at)`、`device_id` |
-| `backup_receipts` | `(device_id, local_document_key)`一意 |
+| `backup_receipts` | `(user_id, device_id, local_document_key)`一意、`remote_file_id`、比較用Index |
 | `audit_logs` | `occurred_at`、`event_type`、`user_id`、`device_id` |
 | `favorite_entries` | `(user_id, favorited_at DESC, entry_id)`、`entry_id` |
 | `tags` | `(user_id, name_key)`一意、`(user_id, name_key, id)` |
@@ -903,7 +903,7 @@ Androidは`core-model`の対応MIME・Text／version Model、`core-network`のOp
 
 1. AndroidがMediaStore/SAF差分をRoomへ記録する。
 2. NetworkPolicyEvaluatorが実行可否を判定する。
-3. `POST /backup/compare`でサーバー側Receiptと比較する。
+3. `POST /api/v1/backup/compare`でサーバー側Receiptと比較する。
 4. 必要な項目だけ、認証済みUser/Deviceと端末文書情報を関連付けた通常のUpload Sessionを作成する。
 5. チャンク送信し、中断時は受信済み範囲から再開する。
 6. 新規内容は新しいFileEntryへ公開し、変更内容は検証済み一時ファイルを既存FileEntryへatomic replaceする。

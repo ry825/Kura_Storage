@@ -1,4 +1,5 @@
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Backup;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Transfers;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,12 @@ public sealed class UploadSessionConfiguration : IEntityTypeConfiguration<Upload
                 table.HasCheckConstraint(
                     "ck_upload_sessions_expiration",
                     "\"expires_at\" <= \"absolute_expires_at\"");
+                table.HasCheckConstraint(
+                    "ck_upload_sessions_backup_context",
+                    "(\"backup_local_document_key\" IS NULL AND \"backup_relative_path\" IS NULL AND \"backup_source_modified_at\" IS NULL AND \"backup_source_checksum\" IS NULL AND \"backup_decision\" IS NULL AND \"backup_expected_remote_file_id\" IS NULL AND \"backup_expected_remote_file_version\" IS NULL) OR " +
+                    "(\"backup_local_document_key\" IS NOT NULL AND \"backup_relative_path\" IS NOT NULL AND \"backup_source_modified_at\" IS NOT NULL AND " +
+                    "((\"backup_decision\" = 'NEW' AND \"backup_expected_remote_file_id\" IS NULL AND \"backup_expected_remote_file_version\" IS NULL) OR " +
+                    "(\"backup_decision\" = 'CHANGED' AND \"backup_expected_remote_file_id\" IS NOT NULL AND \"backup_expected_remote_file_version\" >= 1)))");
             });
         builder.HasKey(session => session.Id);
         builder.Property(session => session.Id).HasColumnName("id");
@@ -50,6 +57,20 @@ public sealed class UploadSessionConfiguration : IEntityTypeConfiguration<Upload
         builder.Property(session => session.AbsoluteExpiresAt).HasColumnName("absolute_expires_at");
         builder.Property(session => session.CompletedAt).HasColumnName("completed_at");
         builder.Property(session => session.CleanedAt).HasColumnName("cleaned_at");
+        builder.Property(session => session.BackupLocalDocumentKey).HasColumnName("backup_local_document_key").HasMaxLength(36);
+        builder.Property(session => session.BackupRelativePath)
+            .HasColumnName("backup_relative_path")
+            .HasMaxLength(BackupDocumentMetadata.MaximumRelativePathLength);
+        builder.Property(session => session.BackupSourceModifiedAt).HasColumnName("backup_source_modified_at");
+        builder.Property(session => session.BackupSourceChecksum).HasColumnName("backup_source_checksum").HasMaxLength(64);
+        builder.Property(session => session.BackupDecision)
+            .HasColumnName("backup_decision")
+            .HasConversion(
+                value => value == null ? null : value.Value.ToString().ToUpperInvariant(),
+                value => value == null ? null : Enum.Parse<BackupUploadDecision>(value, true))
+            .HasMaxLength(16);
+        builder.Property(session => session.BackupExpectedRemoteFileId).HasColumnName("backup_expected_remote_file_id");
+        builder.Property(session => session.BackupExpectedRemoteFileVersion).HasColumnName("backup_expected_remote_file_version");
         builder.Property<uint>("xmin").IsRowVersion();
         builder.HasOne<User>()
             .WithMany()
@@ -80,5 +101,9 @@ public sealed class UploadSessionConfiguration : IEntityTypeConfiguration<Upload
             .HasDatabaseName("ix_upload_sessions_device_status");
         builder.HasIndex(session => new { session.ActorUserId, session.Status })
             .HasDatabaseName("ix_upload_sessions_actor_status");
+        builder.HasIndex(session => new { session.ActorUserId, session.DeviceId, session.BackupLocalDocumentKey })
+            .IsUnique()
+            .HasFilter("\"backup_local_document_key\" IS NOT NULL AND \"status\" IN ('ACTIVE', 'COMPLETING', 'RECOVERY_REQUIRED')")
+            .HasDatabaseName("ux_upload_sessions_active_backup_document");
     }
 }

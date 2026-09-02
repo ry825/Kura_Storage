@@ -14,6 +14,7 @@ tags:
   - name: Search
   - name: Activities
   - name: Transfers
+  - name: Backup
   - name: Media
   - name: Trash
   - name: Administration
@@ -887,6 +888,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /backup/compare:
+    post:
+      tags: [Backup]
+      operationId: compareBackupCandidates
+      summary: Classify authenticated-device backup candidates without mutating server state
+      description: User and device identity come from the access token and server session. Omitted candidates never delete files or receipts. Destination create permission, current file state, and remote-file edit permission are evaluated for every request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BackupCompareRequest"
+      responses:
+        "200":
+          description: One deterministic result for every input candidate in request order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupCompareResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /upload-sessions:
     post:
       tags: [Transfers]
@@ -1914,6 +1937,105 @@ components:
         sha256:
           type: [string, "null"]
           pattern: ^[A-Fa-f0-9]{64}$
+        backup:
+          oneOf:
+            - $ref: "#/components/schemas/BackupUploadContext"
+            - type: "null"
+    BackupUploadContext:
+      type: object
+      additionalProperties: false
+      required: [localDocumentKey, relativePath, modifiedAt, decision, expectedRemoteFileId, expectedRemoteFileVersion]
+      properties:
+        localDocumentKey:
+          type: string
+          format: uuid
+          description: Opaque UUID generated inside the authenticated user and device namespace; never a raw URI or physical path.
+        relativePath:
+          type: string
+          minLength: 1
+          maxLength: 2048
+        modifiedAt:
+          type: string
+          format: date-time
+        decision:
+          type: string
+          enum: [NEW, CHANGED]
+        expectedRemoteFileId:
+          type: [string, "null"]
+          format: uuid
+          description: Required only for CHANGED and revalidated against the server receipt.
+        expectedRemoteFileVersion:
+          type: [integer, "null"]
+          format: int64
+          minimum: 1
+          description: Required only for CHANGED and revalidated at session creation and completion.
+    BackupCompareRequest:
+      type: object
+      additionalProperties: false
+      required: [destinationFolderId, items]
+      properties:
+        destinationFolderId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/BackupCompareCandidate"
+    BackupCompareCandidate:
+      type: object
+      additionalProperties: false
+      required: [localDocumentKey, relativePath, size, modifiedAt, checksum]
+      properties:
+        localDocumentKey:
+          type: string
+          format: uuid
+        relativePath:
+          type: string
+          minLength: 1
+          maxLength: 2048
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1099511627776
+        modifiedAt:
+          type: string
+          format: date-time
+        checksum:
+          type: [string, "null"]
+          pattern: ^[A-Fa-f0-9]{64}$
+    BackupCompareResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/BackupCompareResult"
+    BackupCompareResult:
+      type: object
+      additionalProperties: false
+      required: [localDocumentKey, decision, remoteFileId, expectedRemoteFileVersion, errorCode]
+      properties:
+        localDocumentKey:
+          type: string
+          format: uuid
+        decision:
+          type: string
+          enum: [NEW, CHANGED, ALREADY_UPLOADED, BLOCKED_CURRENT_STATE]
+        remoteFileId:
+          type: [string, "null"]
+          format: uuid
+        expectedRemoteFileVersion:
+          type: [integer, "null"]
+          format: int64
+          minimum: 1
+        errorCode:
+          type: [string, "null"]
     UploadSession:
       type: object
       additionalProperties: false
@@ -2448,7 +2570,7 @@ components:
           minimum: 1
         editKind:
           type: [string, "null"]
-          enum: [TEXT_SAVE, VERSION_RESTORE, null]
+          enum: [TEXT_SAVE, VERSION_RESTORE, BACKUP_UPLOAD, null]
         recipientDisplayName:
           type: [string, "null"]
           maxLength: 128

@@ -178,6 +178,7 @@ public sealed class UserActivityConfiguration : IEntityTypeConfiguration<UserAct
     {
         ActivityEditKind.TextSave => "TEXT_SAVE",
         ActivityEditKind.VersionRestore => "VERSION_RESTORE",
+        ActivityEditKind.BackupUpload => "BACKUP_UPLOAD",
         _ => throw new ArgumentOutOfRangeException(nameof(value)),
     };
 
@@ -185,6 +186,7 @@ public sealed class UserActivityConfiguration : IEntityTypeConfiguration<UserAct
     {
         "TEXT_SAVE" => ActivityEditKind.TextSave,
         "VERSION_RESTORE" => ActivityEditKind.VersionRestore,
+        "BACKUP_UPLOAD" => ActivityEditKind.BackupUpload,
         _ => throw new ArgumentOutOfRangeException(nameof(value)),
     };
 
