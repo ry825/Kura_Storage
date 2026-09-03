@@ -272,7 +272,7 @@
 - [x] Network matrixの全組合せと転送中切替をUnit／Instrumented Testで確認する。
 - [x] API／Nginx停止、通信結果不明、offset競合、HDD unavailable、Device／Session失効、Source変更で破損・重複・無限retryがない。
 - [x] `verify-android.sh`、`verify-server.sh`、`verify-config.sh`、`verify-security.sh`、connected Instrumented Test、`git diff --check`を成功させる。
-- [ ] 正式文書とtesting記録を実績へ更新し、Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+- [x] 正式文書とtesting記録を実績へ更新し、Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -430,6 +430,31 @@
   - PR4は#46が`main`へMergeされ必須CIが成功した後に最新`main`から開始する。
   - Network Policy、WorkManager、一意Work chain、Server Compare、分割Upload、転送中接続再評価はPR4で実装し、PR3のScanner／Room Queue契約を再利用する。
   - 端末削除、Rule削除、候補省略からServer File／Receiptを削除せず、`LOCAL_MISSING`と再走査から一方向Backupへ収束させる。
+
+### PR4: Network Policy・WorkManager・分割Upload連携
+
+- 完了日: 2026-09-03
+- Pull Request: [#47 Implement Android automatic backup transfer orchestration](https://github.com/ry825/Kura_Storage/pull/47)
+- 実施したテスト、ビルド、静的解析、手動確認:
+  - `./scripts/ci/verify-android.sh`で全JVM Unit Test、Coverage gate、Debug APK／AndroidTest APK assembly、CycloneDX SBOM、ktlint、detekt、Android Lintが成功した。最終実行は5分21秒で完了した。
+  - Backup重要箇所は310/314行（98.73%）、Android Domain／Application全体は4,988/6,054行（82.39%）であった。
+  - Android 13／API 33実機CPH2333で`:core-database:connectedDebugAndroidTest` 9件、`:core-data:connectedDebugAndroidTest` 10件、`:feature-backup:connectedDebugAndroidTest` 2件、`:app:connectedDebugAndroidTest` 4件が成功した。App suiteの初回UI実行は端末固有の10秒sleep overrideで無効になったため、画面を維持して4/4件の成功を再確認した。
+  - Network matrix、転送中Policy切替、Compare応答不整合、Source変更、Remote競合、認証待ち、上限付きretry、Upload Session offset再開、一意Work、OS retry、Process再生成をJVM／Instrumented／MockWebServer Testで確認した。
+  - `./scripts/ci/verify-server.sh`でDomain 130件、Application 336件、PostgreSQL統合224件、合計690件が成功した。`./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`も成功した。
+  - GitHub ActionsのAndroid、Config、Security、Server必須Checkがすべて成功した。
+- 計画と実装の差分:
+  - Android 13でZeroTier VPNがactive networkになる場合も基盤Wi-Fiを判定できるよう、非VPN Wi-Fi networkを列挙してSSID／BSSID Policyへ渡し、Route、TLS、Server identity、明示bindingの検証は独立して維持した。
+  - Process再生成後のWorkerがActivity状態へ依存しないよう、Application所有のRuntime FactoryへRoom、接続判定、認証済みRemoteを再構築する構成にした。
+  - Android 13で`POST_NOTIFICATIONS`が拒否された大量転送はForeground開始を試みず、永続Queueを変更しないpermission-required結果として後続UIから説明可能にした。
+- 実装中に追加したタスクと追加理由:
+  - 未接続時にも保存済み資格情報とNetwork待ちを区別するため、Remote session生成とは独立したcredential存在確認をApplication runtimeへ追加した。
+  - App moduleへRoom依存を漏らさずApplicationからDBを再構築するため、`core-database`にRoom非依存の`BackupDatabaseAccess`境界を追加し、構成検証でModule分離を確認した。
+  - Server Compareの未知・重複・欠落key、別Remote File／VersionとUpload offset不整合をfail-closedにする回帰Testを追加した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項:
+  - PR5は#47が`main`へMergeされ必須CIが成功した後に最新`main`から開始する。
+  - 設定・進捗・履歴UIはPR4の状態集計、待機理由、通知権限要求、強制停止案内、一意Coordinatorを利用し、SSID／BSSIDや端末Pathを表示・記録しない。
+  - Android 13実機とRaspberry Pi実API／実HDDでNetwork切替、Process終了、再起動、API／DB再起動、HDD unmount／remountを検証し、PR5完了後だけモード3-Bの全体振り返りを行う。
 
 ## 全体振り返り
 

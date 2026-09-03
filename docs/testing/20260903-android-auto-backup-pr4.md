@@ -55,6 +55,8 @@ BSSIDs, tokens, or provider identifiers were read or recorded.
 - `./scripts/ci/verify-android.sh` passed Debug and AndroidTest APK assembly,
   all JVM tests, coverage verification, CycloneDX SBOM generation, ktlint,
   detekt, and Android Lint.
+- Backup-critical line coverage was 310/314 lines (98.73%). Android Domain
+  and Application line coverage was 4,988/6,054 lines (82.39%).
 - `./scripts/ci/verify-server.sh` passed 130 Domain, 336 Application, and 224
   Integration tests.
 - `./scripts/ci/verify-config.sh`, `./scripts/ci/verify-security.sh`, and
