@@ -1779,11 +1779,14 @@ API自体は応答できるがHDDを利用できない場合は`storage: UNAVAIL
 
 ```json
 {
+  "userId": "uuid",
   "deviceId": "uuid",
   "accessToken": "...",
   "refreshToken": "..."
 }
 ```
+
+`register-device`、`login`、`refresh`のToken応答は、Serverが認証した`userId`と`deviceId`を返す。AndroidはこれらとTLS検証済みServer identityから自動Backupの`accountScopeId`を導出し、異なるUser・Device・接続先のRoom状態を共有しない。この応答値はClientからServerへ送る認可入力ではなく、Serverは引き続きAccess TokenとServer側SessionからUser・Deviceを導出する。
 
 条件。
 
@@ -2688,15 +2691,11 @@ flowchart LR
 
 ## 11.8 MVP後: 自動バックアップ設定
 
-- 端末側フォルダ
-- サーバー側保存先
-- 有効・無効
-- ネットワークモード
-- 初回のみ充電中
-- 最低バッテリー残量
-- 端末削除をサーバーへ反映しない旨
-- 最終成功日時
-- 保留・失敗件数
+- Rule一覧・編集で、MediaStore種別またはSAF端末Folder、Server保存先、有効状態、Network mode、初回充電条件、最低Battery残量を管理する。
+- Server Folder pickerは個人Root「My files」または作成権限があるFolderを選択でき、保存時と各Compare時に現在の権限・状態を再検証する。SAF権限喪失またはServer保存先の無効化時は、Rule編集から再選択する。
+- 概要画面は最終成功日時、保留・Upload中・成功・失敗件数、Rule別件数、待機理由を文字とsemanticsで表示する。今すぐ実行、一時停止／再開、失敗retryは一意WorkとRoom transactionへ収束させる。
+- File別履歴は状態、匿名化した表示名、最終試行日時、retry回数、失敗理由と次操作を表示し、Source本文・物理Path・端末文書Keyは保存・表示・Log出力しない。完了・失敗履歴は90日または最新10,000件へ収める。
+- 端末削除をServerへ反映しない一方向Backupであり双方向同期ではないこと、強制停止後はアプリを再度開くまで予約実行できないことを常時説明する。
 
 ## 11.9 MVP後: 許可Wi-Fi設定
 
@@ -2709,7 +2708,7 @@ flowchart LR
 - 従量制扱い
 - 有効状態
 
-登録画面では現在接続中Wi-Fiを読み取り、ユーザーが登録確定する。Wi-Fi情報取得権限の目的を説明する。
+登録画面では現在接続中Wi-Fiを読み取り、別の確認Dialogでユーザーが登録を明示確定する。Wi-Fi情報取得権限の目的、拒否時のfail-closed、端末設定への導線を説明する。SSID／BSSIDはPolicy照合にだけ使用し、ZeroTier、TLS／Hostname、Server identity、User／Device／Session認証の代替にしない。
 
 ## 11.10 MVP後: 画質・通信量設定
 
@@ -2882,7 +2881,7 @@ TLS検証失敗と`REMOTE_SECURE`未到達は通信層の状態として扱う�
 
 ## 15. MVP後: Androidバックグラウンド実行設計
 
-本節は自動バックアップ追加時の設計でありMVPには適用しない。MVPのServer側バックグラウンド処理は、API内の期限付きHosted Serviceによる未完了Upload清掃と`FileOperation`復旧だけとする。
+本節はPhase 1のAndroid自動バックアップに適用する。Server側は既存のUpload Session清掃・`FileOperation`復旧・索引Workerを再利用し、Backup専用の常駐Workerを追加しない。
 
 ### 15.1 起動契機
 

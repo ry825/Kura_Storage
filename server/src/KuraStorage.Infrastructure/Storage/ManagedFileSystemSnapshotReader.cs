@@ -144,9 +144,14 @@ public sealed class ManagedFileSystemSnapshotReader(IOptions<StorageOptions> con
             isDirectory ? FileEntryType.Folder : FileEntryType.File,
             size,
             isDirectory ? null : MimeTypeFor(name.Value),
-            info.LastWriteTimeUtc,
+            TruncateToPostgreSqlPrecision(info.LastWriteTimeUtc),
             $"{stat.DeviceMajor:x8}:{stat.DeviceMinor:x8}:{stat.Inode:x16}");
     }
+
+    private static DateTimeOffset TruncateToPostgreSqlPrecision(DateTimeOffset value) =>
+        new(
+            value.Ticks - value.Ticks % TimeSpan.TicksPerMicrosecond,
+            value.Offset);
 
     private static ObservedStorageEntry Isolated(
         Guid ownerUserId,

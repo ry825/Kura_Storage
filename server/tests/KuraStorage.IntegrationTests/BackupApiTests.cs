@@ -5,6 +5,9 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using KuraStorage.Domain.Transfers;
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Indexing;
+using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -101,12 +104,20 @@ public sealed class BackupApiTests(PostgreSqlAuthFlowFixture fixture)
             Assert.Equal(changedContent, await download.Content.ReadAsByteArrayAsync());
         }
 
+        await using (var indexScope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            await indexScope.ServiceProvider.GetRequiredService<IIndexScanService>().RunAsync(
+                new IndexScanRequest(IndexScanTrigger.Admin, IndexScanMode.Apply),
+                CancellationToken.None);
+        }
+
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
         Assert.Single(await database.BackupReceipts.Where(receipt => receipt.LocalDocumentKey == documentKey).ToListAsync());
         var receipt = await database.BackupReceipts.SingleAsync(receipt => receipt.LocalDocumentKey == documentKey);
         Assert.Equal(fileId, receipt.RemoteFileId);
         Assert.Equal(2, receipt.RemoteFileVersion);
+        Assert.Equal(2, (await database.FileEntries.SingleAsync(entry => entry.Id == fileId)).FileVersion);
         Assert.Equal("Photos/renamed-locally.jpg", receipt.RelativePath);
         Assert.Single(await database.FileEntries.Where(entry => entry.Id == fileId).ToListAsync());
         Assert.True(await database.FavoriteEntries.AnyAsync(item => item.EntryId == fileId));
@@ -202,6 +213,10 @@ public sealed class BackupApiTests(PostgreSqlAuthFlowFixture fixture)
         {
             await scope.ServiceProvider.GetRequiredService<UploadSessionRecoveryService>()
                 .RecoverAsync(CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<IIndexScanService>()
+                .RunAsync(
+                    new IndexScanRequest(IndexScanTrigger.Admin, IndexScanMode.Apply),
+                    CancellationToken.None);
         }
 
         await using (var scope = fixture.Factory.Services.CreateAsyncScope())

@@ -11,11 +11,14 @@
 
 package com.kurastorage.app
 
+import android.Manifest
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.StrictMode
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -25,12 +28,18 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -52,16 +61,20 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.kurastorage.core.data.FileRepository
 import com.kurastorage.core.data.SharingRepository
 import com.kurastorage.core.data.media.MediaContentDownloader
 import com.kurastorage.core.model.ConnectionStatus
 import com.kurastorage.core.model.FileEntry
+import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.ShareItem
 import com.kurastorage.core.model.ShareScope
 import com.kurastorage.core.model.SupportedTextMimeTypes
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UserRole
+import com.kurastorage.core.model.backup.BackupSourceType
+import com.kurastorage.core.model.filePermissionCapabilities
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
 import com.kurastorage.core.model.media.MediaVariant
@@ -72,6 +85,15 @@ import com.kurastorage.feature.activity.ActivityScreen
 import com.kurastorage.feature.activity.ActivityViewModel
 import com.kurastorage.feature.auth.AuthScreen
 import com.kurastorage.feature.auth.AuthViewModel
+import com.kurastorage.feature.backup.BackupOverviewScreen
+import com.kurastorage.feature.backup.BackupOverviewViewModel
+import com.kurastorage.feature.backup.BackupRulesScreen
+import com.kurastorage.feature.backup.BackupRulesViewModel
+import com.kurastorage.feature.backup.BackupSettingsScreen
+import com.kurastorage.feature.backup.BackupWifiScreen
+import com.kurastorage.feature.backup.BackupWifiViewModel
+import com.kurastorage.feature.backup.SelectedBackupDestination
+import com.kurastorage.feature.backup.SelectedBackupSource
 import com.kurastorage.feature.connection.ConnectionScreen
 import com.kurastorage.feature.connection.ConnectionViewModel
 import com.kurastorage.feature.files.AdminStoragePanel
@@ -107,6 +129,7 @@ import com.kurastorage.feature.text.TextEditorViewModel
 import com.kurastorage.feature.text.VersionHistoryScreen
 import com.kurastorage.feature.text.VersionHistoryViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -156,6 +179,9 @@ private fun KuraStorageApp(
     val connectionState by connectionViewModel.state.collectAsStateWithLifecycle()
     var connected by remember { mutableStateOf<ConnectionStatus.Connected?>(null) }
     var services by remember { mutableStateOf<SessionServices?>(null) }
+    var backupUi by remember { mutableStateOf<BackupUiServices?>(null) }
+    var selectedBackupSource by remember { mutableStateOf<SelectedBackupSource?>(null) }
+    var selectedBackupDestination by remember { mutableStateOf<SelectedBackupDestination?>(null) }
     val mediaContexts = remember { MediaNavigationContextStore() }
 
     DisposableEffect(services) {
@@ -174,6 +200,19 @@ private fun KuraStorageApp(
         }
     }
 
+    LaunchedEffect(backupUi) {
+        val backup = backupUi ?: return@LaunchedEffect
+        val enabledRules =
+            backup.rules
+                .observe(backup.scope)
+                .first()
+                .filter { it.enabled }
+        backup.coordinator.onAppStarted(backup.scope, enabledRules.map { it.id })
+        enabledRules.filter { it.sourceType == BackupSourceType.SAF_TREE }.forEach {
+            backup.coordinator.scheduleSafPeriodic(backup.scope, it.id)
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = AppDestination.CONNECTION.route,
@@ -186,6 +225,7 @@ private fun KuraStorageApp(
                     if (connected?.route != state.route || services == null) {
                         services?.close()
                         mediaContexts.clear()
+                        backupUi = null
                         connected = state
                         services = container.sessionServices(state.route)
                     }
@@ -220,6 +260,7 @@ private fun KuraStorageApp(
                     }
                 },
                 onAuthenticated = {
+                    backupUi = container.backupUiServices(checkNotNull(services))
                     navController.navigate(AppDestination.HOME.route) {
                         popUpTo(AppDestination.AUTHENTICATION.route) { inclusive = true }
                     }
@@ -265,11 +306,13 @@ private fun KuraStorageApp(
                 onTags = { navController.navigate(AppDestination.TAGS.route) },
                 onTrash = { navController.navigate(AppDestination.TRASH.route) },
                 onMediaSettings = { navController.navigate(AppDestination.MEDIA_SETTINGS.route) },
+                onBackupSettings = { navController.navigate(AppDestination.BACKUP_SETTINGS.route) },
                 onLogout = {
                     logoutViewModel.logout {
                         services?.close()
                         mediaContexts.clear()
                         services = null
+                        backupUi = null
                         connected = null
                         navController.navigate(AppDestination.CONNECTION.route) {
                             popUpTo(0)
@@ -293,6 +336,114 @@ private fun KuraStorageApp(
             QualitySettingsScreen(
                 state = settingsState,
                 onSelect = settingsViewModel::update,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(AppDestination.BACKUP_SETTINGS.route) {
+            if (backupUi == null) {
+                navController.navigate(AppDestination.CONNECTION.route)
+                return@composable
+            }
+            BackupSettingsScreen(
+                onOverview = { navController.navigate(AppDestination.BACKUP_OVERVIEW.route) },
+                onRules = { navController.navigate(AppDestination.BACKUP_RULES.route) },
+                onWifi = { navController.navigate(AppDestination.BACKUP_WIFI.route) },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(AppDestination.BACKUP_OVERVIEW.route) {
+            val backup = backupUi ?: return@composable
+            val model: BackupOverviewViewModel =
+                viewModel(
+                    key = "backup-overview-${backup.scope.value}",
+                    factory =
+                        simpleViewModelFactory {
+                            BackupOverviewViewModel(backup.scope, backup.rules, backup.state, backup.coordinator)
+                        },
+                )
+            val state by model.state.collectAsStateWithLifecycle()
+            BackupOverviewScreen(
+                state = state,
+                onRunNow = model::runNow,
+                onPause = model::setPaused,
+                onRetry = { model.retry(it.id) },
+                onRetryAll = model::retryAllFailures,
+                onLoadMore = model::loadMore,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(AppDestination.BACKUP_RULES.route) {
+            val backup = backupUi ?: return@composable
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val model: BackupRulesViewModel =
+                viewModel(
+                    key = "backup-rules-${backup.scope.value}",
+                    factory = simpleViewModelFactory { BackupRulesViewModel(backup.scope, backup.rules) },
+                )
+            val state by model.state.collectAsStateWithLifecycle()
+            val safPicker =
+                rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+                    if (uri != null) {
+                        runCatching {
+                            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        selectedBackupSource = SelectedBackupSource(uri.toString(), uri.lastPathSegment ?: "Device folder")
+                    }
+                }
+            val mediaPermission =
+                rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    if (!granted) Toast.makeText(context, "Media permission is required for this backup source.", Toast.LENGTH_LONG).show()
+                }
+            BackupRulesScreen(
+                state = state,
+                selectedSource = selectedBackupSource,
+                selectedDestination = selectedBackupDestination,
+                onPickSafSource = { safPicker.launch(null) },
+                onPickDestination = { navController.navigate(AppDestination.BACKUP_DESTINATION.route) },
+                onRequestMediaPermission = { type -> mediaPermission.launch(mediaPermissionFor(type)) },
+                onSave = { input, existing, onSaved -> model.save(input, existing, onSaved) },
+                onToggle = model::setEnabled,
+                onDelete = { model.delete(it.id) },
+                onSelectionsConsumed = {
+                    selectedBackupSource = null
+                    selectedBackupDestination = null
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(AppDestination.BACKUP_WIFI.route) {
+            val backup = backupUi ?: return@composable
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val model: BackupWifiViewModel =
+                viewModel(
+                    key = "backup-wifi-${backup.scope.value}",
+                    factory = simpleViewModelFactory { BackupWifiViewModel(backup.scope, backup.wifi) },
+                )
+            val state by model.state.collectAsStateWithLifecycle()
+            val permissions =
+                rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { model.refreshCurrent() }
+            BackupWifiScreen(
+                state = state,
+                onRefresh = model::refreshCurrent,
+                onRequestPermission = { permissions.launch(it.toTypedArray()) },
+                onRegister = model::register,
+                onSave = model::save,
+                onDelete = model::delete,
+                onOpenAppSettings = {
+                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(AppDestination.BACKUP_DESTINATION.route) {
+            val current = services ?: return@composable
+            BackupDestinationPicker(
+                files = current.files,
+                sharing = current.sharing,
+                onSelected = {
+                    selectedBackupDestination = it
+                    navController.popBackStack()
+                },
                 onBack = { navController.popBackStack() },
             )
         }
@@ -1068,6 +1219,112 @@ private fun AdminStorageStateFor(viewModel: AdminStorageViewModel?): AdminStorag
 }
 
 @Composable
+private fun BackupDestinationPicker(
+    files: FileRepository,
+    sharing: SharingRepository,
+    onSelected: (SelectedBackupDestination) -> Unit,
+    onBack: () -> Unit,
+) {
+    var current by remember { mutableStateOf<FileEntry?>(null) }
+    var personalRootId by remember { mutableStateOf<String?>(null) }
+    var entries by remember { mutableStateOf<List<FileEntry>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val stack = remember { ArrayDeque<FileEntry?>().apply { addLast(null) } }
+    val scope = rememberCoroutineScope()
+
+    fun load(folder: FileEntry?) {
+        loading = true
+        error = null
+        if (folder == null) personalRootId = null
+        scope.launch {
+            runCatching {
+                val page = files.list(folder?.id, pageSize = 100)
+                val loaded =
+                    if (folder != null) {
+                        page.items
+                    } else {
+                        val sharedFolders =
+                            loadAllReceivedShares(sharing)
+                                .filter { it.entryType == FileEntryType.FOLDER }
+                                .mapNotNull { share -> runCatching { files.detail(share.targetEntryId) }.getOrNull() }
+                        (page.items + sharedFolders).distinctBy(FileEntry::id)
+                    }
+                page.parentId to loaded
+            }.onSuccess { (rootId, loaded) ->
+                current = folder
+                if (folder == null) personalRootId = rootId
+                entries = loaded.filter { it.entryType == FileEntryType.FOLDER && it.status == FileEntryStatus.ACTIVE }
+            }.onFailure {
+                if (folder == null) personalRootId = null
+                error = "Server folders could not be loaded."
+            }
+            loading = false
+        }
+    }
+    LaunchedEffect(Unit) { load(null) }
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Choose server folder", style = MaterialTheme.typography.headlineMedium)
+        Text(current?.name ?: "My files")
+        Text("Only a currently writable folder can be selected. Access is checked again when the rule is saved and each backup runs.")
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (loading) Text("Loading folders…")
+        LazyColumn(Modifier.weight(1f)) {
+            items(entries, key = { it.id }) { folder ->
+                OutlinedButton(
+                    onClick = {
+                        stack.addLast(folder)
+                        load(folder)
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 4.dp),
+                ) { Text(folder.name, maxLines = 2) }
+            }
+        }
+        if (current == null) {
+            Button(
+                onClick = {
+                    personalRootId?.let { onSelected(SelectedBackupDestination(it, "My files")) }
+                },
+                enabled = personalRootId != null && !loading,
+            ) { Text("Use My files") }
+        } else {
+            val folder = requireNotNull(current)
+            val writable = filePermissionCapabilities(folder.permission, folder.permissionSource).canCreate
+            Button(
+                onClick = { onSelected(SelectedBackupDestination(folder.id, folder.name)) },
+                enabled = writable && !loading,
+            ) { Text("Use this folder") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    if (stack.size > 1) {
+                        stack.removeLast()
+                        load(stack.last())
+                    } else {
+                        onBack()
+                    }
+                },
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("Back") }
+            OutlinedButton(onClick = { load(current) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Refresh") }
+        }
+    }
+}
+
+private fun mediaPermissionFor(sourceType: BackupSourceType): String =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        when (sourceType) {
+            BackupSourceType.MEDIA_IMAGES -> Manifest.permission.READ_MEDIA_IMAGES
+            BackupSourceType.MEDIA_VIDEOS -> Manifest.permission.READ_MEDIA_VIDEO
+            BackupSourceType.MEDIA_AUDIO -> Manifest.permission.READ_MEDIA_AUDIO
+            BackupSourceType.SAF_TREE -> error("SAF uses persistable document permission")
+        }
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+
+@Composable
 @Suppress("LongParameterList")
 fun HomeScreen(
     connection: ConnectionStatus.Connected?,
@@ -1081,6 +1338,7 @@ fun HomeScreen(
     onFavorites: () -> Unit = {},
     onTags: () -> Unit = {},
     onMediaSettings: () -> Unit = {},
+    onBackupSettings: () -> Unit = {},
     onTrash: () -> Unit,
     onLogout: () -> Unit,
 ) {
@@ -1099,6 +1357,7 @@ fun HomeScreen(
         Button(onClick = onFavorites) { Text("Favorites") }
         Button(onClick = onTags) { Text("Tags") }
         Button(onClick = onMediaSettings) { Text("Media quality") }
+        Button(onClick = onBackupSettings) { Text("Automatic backup") }
         Button(onClick = onTrash) { Text("Trash") }
         Button(onClick = onLogout) { Text("Log out") }
     }

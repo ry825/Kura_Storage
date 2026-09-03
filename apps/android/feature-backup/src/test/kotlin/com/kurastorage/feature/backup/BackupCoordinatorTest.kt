@@ -11,6 +11,14 @@ import java.util.UUID
 
 class BackupCoordinatorTest {
     @Test
+    fun largeBatchThresholdRequiresForegroundWithoutAlwaysOnService() {
+        assertFalse(BackupForegroundEstimate(99, 100L * 1024 * 1024 - 1).requiresForeground)
+        assertTrue(BackupForegroundEstimate(100, 1).requiresForeground)
+        assertTrue(BackupForegroundEstimate(1, 100L * 1024 * 1024).requiresForeground)
+        assertFalse(BackupBackgroundCapability().usesAlwaysOnForegroundService)
+    }
+
+    @Test
     fun allTriggersConvergeOnUniqueScanAndAccountTransferNames() {
         val enqueuer = RecordingEnqueuer()
         val coordinator = BackupCoordinator(enqueuer)

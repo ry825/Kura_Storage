@@ -109,6 +109,12 @@ interface BackupRuleRepository {
         enabled: Boolean,
     )
 
+    suspend fun setPaused(
+        accountScopeId: AccountScopeId,
+        ruleId: BackupRuleId,
+        paused: Boolean,
+    )
+
     suspend fun save(
         accountScopeId: AccountScopeId,
         rule: LocalBackupRule,
@@ -180,6 +186,22 @@ class RoomBackupRuleRepository(
         require(dao.setEnabled(ruleId.value, accountScopeId.value, enabled, Instant.now(clock).toEpochMilli()) == 1) {
             "Backup rule was not found in the active account scope"
         }
+    }
+
+    override suspend fun setPaused(
+        accountScopeId: AccountScopeId,
+        ruleId: BackupRuleId,
+        paused: Boolean,
+    ) {
+        val now = Instant.now(clock)
+        require(
+            dao.setPaused(
+                ruleId.value,
+                accountScopeId.value,
+                now.takeIf { paused }?.toEpochMilli(),
+                now.toEpochMilli(),
+            ) == 1,
+        ) { "Backup rule was not found in the active account scope" }
     }
 
     override suspend fun save(

@@ -16,6 +16,7 @@ data class CredentialMetadata(
     val refreshTokenExpiresAt: Instant,
     val username: String?,
     val role: UserRole = UserRole.MEMBER,
+    val userId: String = "00000000-0000-0000-0000-000000000000",
 )
 
 interface CredentialMetadataStore {
@@ -35,11 +36,13 @@ class DataStoreCredentialMetadataStore(
         val deviceId = values[DEVICE_ID]?.let(::DeviceId) ?: return null
         val expiresAt = values[REFRESH_EXPIRES_AT]?.let(Instant::parse) ?: return null
         val role = values[ROLE]?.let { runCatching { UserRole.valueOf(it) }.getOrNull() } ?: UserRole.MEMBER
-        return CredentialMetadata(deviceId, expiresAt, values[LAST_USERNAME], role)
+        val userId = values[USER_ID] ?: return null
+        return CredentialMetadata(deviceId, expiresAt, values[LAST_USERNAME], role, userId)
     }
 
     override suspend fun write(metadata: CredentialMetadata) {
         context.credentialDataStore.edit { values ->
+            values[USER_ID] = metadata.userId
             values[DEVICE_ID] = metadata.deviceId.value
             values[REFRESH_EXPIRES_AT] = metadata.refreshTokenExpiresAt.toString()
             metadata.username?.let { values[LAST_USERNAME] = it } ?: values.remove(LAST_USERNAME)
@@ -53,6 +56,7 @@ class DataStoreCredentialMetadataStore(
 
     private companion object {
         val DEVICE_ID = stringPreferencesKey("device_id")
+        val USER_ID = stringPreferencesKey("user_id")
         val REFRESH_EXPIRES_AT = stringPreferencesKey("refresh_token_expires_at")
         val LAST_USERNAME = stringPreferencesKey("last_username")
         val ROLE = stringPreferencesKey("role")

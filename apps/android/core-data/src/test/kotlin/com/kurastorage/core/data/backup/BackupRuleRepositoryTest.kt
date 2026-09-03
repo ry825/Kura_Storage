@@ -134,6 +134,17 @@ private class FakeRuleDao : BackupRuleDao {
         return 1
     }
 
+    override suspend fun setPaused(
+        id: String,
+        scopeId: String,
+        pausedAt: Long?,
+        updatedAt: Long,
+    ): Int {
+        val current = find(id, scopeId) ?: return 0
+        saved = current.copy(pausedAt = pausedAt, updatedAt = updatedAt)
+        return 1
+    }
+
     override suspend fun delete(rule: BackupRuleEntity) {
         if (saved == rule) saved = null
     }

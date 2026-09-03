@@ -25,6 +25,7 @@ import java.io.IOException
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import kotlin.system.measureTimeMillis
 
 @RunWith(AndroidJUnit4::class)
 class KuraBackupDatabaseTest {
@@ -287,6 +288,67 @@ class KuraBackupDatabaseTest {
         }
 
     @Test
+    fun pauseAndManualRetryAreScopeBoundAndResetRetryState() =
+        runBlocking {
+            val db = openMemoryDatabase()
+            val rule = rule()
+            db.backupRuleDao().upsert(rule)
+            val failed =
+                item(rule, "failed", null).copy(
+                    lifecycleState = "FAILED",
+                    waitReason = "NETWORK",
+                    failureReason = "RETRY_EXHAUSTED",
+                    retryCount = 10,
+                    nextAttemptAt = 99,
+                )
+            db.localSyncItemDao().upsertAll(listOf(failed))
+
+            assertEquals(1, db.backupRuleDao().setPaused(rule.id, rule.accountScopeId, 10, 10))
+            assertEquals(10L, db.backupRuleDao().find(rule.id, rule.accountScopeId)?.pausedAt)
+            assertEquals(0, db.backupRuleDao().setPaused(rule.id, "b".repeat(64), null, 20))
+
+            assertEquals(1, db.localSyncItemDao().retryFailed(failed.id, rule.accountScopeId))
+            val retried = requireNotNull(db.localSyncItemDao().find(failed.id, rule.accountScopeId))
+            assertEquals("PENDING", retried.lifecycleState)
+            assertEquals("NONE", retried.waitReason)
+            assertEquals("NONE", retried.failureReason)
+            assertEquals(0, retried.retryCount)
+            assertEquals(null, retried.nextAttemptAt)
+            assertEquals(0, db.localSyncItemDao().retryFailed(failed.id, rule.accountScopeId))
+
+            val secondFailed =
+                item(rule, "second-failed", null).copy(
+                    lifecycleState = "FAILED",
+                    failureReason = "RETRY_EXHAUSTED",
+                    retryCount = 10,
+                    lastAttemptAt = 20,
+                )
+            val otherRule = rule("b".repeat(64))
+            val otherFailed =
+                item(otherRule, "other-failed", null).copy(
+                    lifecycleState = "FAILED",
+                    failureReason = "RETRY_EXHAUSTED",
+                    retryCount = 10,
+                    lastAttemptAt = 30,
+                )
+            db.backupRuleDao().upsert(otherRule)
+            db.localSyncItemDao().upsertAll(listOf(secondFailed, otherFailed))
+
+            assertEquals(
+                "second-failed",
+                db
+                    .localSyncItemDao()
+                    .observeHistory(rule.accountScopeId, 1)
+                    .first()
+                    .single()
+                    .localDocumentKey,
+            )
+            assertEquals(1, db.localSyncItemDao().retryAllFailed(rule.accountScopeId))
+            assertEquals("PENDING", db.localSyncItemDao().find(secondFailed.id, rule.accountScopeId)?.lifecycleState)
+            assertEquals("FAILED", db.localSyncItemDao().find(otherFailed.id, otherRule.accountScopeId)?.lifecycleState)
+        }
+
+    @Test
     fun completedFullScanMarksOnlyUnobservedItemsMissingWithoutDeletingRemoteReferences() =
         runBlocking {
             val db = openMemoryDatabase()
@@ -353,6 +415,38 @@ class KuraBackupDatabaseTest {
                     .observeByScope(secondRule.accountScopeId)
                     .first()
                     .count { it.ruleId == secondRule.id },
+            )
+        }
+
+    @Test
+    fun tenThousandItemQueueUsesBoundedWritesAndMeasuredDiskSpace() =
+        runBlocking {
+            val db = openDiskDatabase()
+            val rule = rule()
+            db.backupRuleDao().upsert(rule)
+            val elapsedMillis =
+                measureTimeMillis {
+                    (0 until PERFORMANCE_ITEM_COUNT)
+                        .asSequence()
+                        .map { index -> item(rule, "anonymous-$index", null) }
+                        .chunked(PERFORMANCE_BATCH_SIZE)
+                        .forEach { batch -> db.localSyncItemDao().upsertAll(batch) }
+                }
+            assertEquals(
+                PERFORMANCE_ITEM_COUNT,
+                db
+                    .localSyncItemDao()
+                    .observeByScope(rule.accountScopeId)
+                    .first()
+                    .size,
+            )
+            db.close()
+            database = null
+            val databaseBytes = context.getDatabasePath(TEST_DATABASE).length()
+            assertTrue(databaseBytes in 1..MAXIMUM_PERFORMANCE_DATABASE_BYTES)
+            println(
+                "room-performance items=$PERFORMANCE_ITEM_COUNT batches=" +
+                    "${PERFORMANCE_ITEM_COUNT / PERFORMANCE_BATCH_SIZE} elapsedMs=$elapsedMillis bytes=$databaseBytes",
             )
         }
 
@@ -458,5 +552,8 @@ class KuraBackupDatabaseTest {
 
     private companion object {
         const val TEST_DATABASE = "backup-migration-test.db"
+        const val PERFORMANCE_ITEM_COUNT = 10_000
+        const val PERFORMANCE_BATCH_SIZE = 500
+        const val MAXIMUM_PERFORMANCE_DATABASE_BYTES = 16L * 1_024 * 1_024
     }
 }

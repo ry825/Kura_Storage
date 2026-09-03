@@ -913,6 +913,8 @@ Androidは`core-model`の対応MIME・Text／version Model、`core-network`のOp
 7. FileEntry、Upload Session、操作ジャーナル、BackupReceiptを同じDBトランザクションで確定する。
 8. Androidが保留キューを完了へ変更する。
 
+新規公開・atomic replace・その復旧のいずれも、物理File公開後に`IManagedFileSystemSnapshotReader.InspectAsync`で実Size、MIME、mtime、source file keyを読み取り、FileEntryと同じ完了transactionへ反映する。mtimeはPostgreSQLのマイクロ秒精度へ正規化し、直後の索引走査がKuraStorage自身の書込みを外部変更として再発行しないようにする。公開後の観測に失敗した場合は完了扱いにせず復旧必要状態に留める。
+
 端末側で消えた項目は、サーバーへ削除要求を送らない。
 保留中Backup Uploadは`userId`、認証済み`deviceId`、`localDocumentKey`ごとに1件へ制限し、
 完了Receiptも同じ組で一意にする。

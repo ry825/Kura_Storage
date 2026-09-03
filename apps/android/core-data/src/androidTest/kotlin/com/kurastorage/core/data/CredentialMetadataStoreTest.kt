@@ -23,10 +23,12 @@ class CredentialMetadataStoreTest {
                         refreshTokenExpiresAt = Instant.parse("2026-08-22T00:00:00Z"),
                         username = "family",
                         role = UserRole.ADMIN,
+                        userId = "22222222-2222-2222-2222-222222222222",
                     ),
                 )
 
                 assertEquals(UserRole.ADMIN, store.read()?.role)
+                assertEquals("22222222-2222-2222-2222-222222222222", store.read()?.userId)
                 store.clear()
                 assertNull(store.read())
             } finally {

@@ -1871,8 +1871,11 @@ components:
     TokenResponse:
       type: object
       additionalProperties: false
-      required: [deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, role]
+      required: [userId, deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, role]
       properties:
+        userId:
+          type: string
+          format: uuid
         deviceId:
           type: string
           format: uuid

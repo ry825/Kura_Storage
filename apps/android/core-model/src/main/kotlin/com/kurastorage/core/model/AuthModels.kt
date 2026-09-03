@@ -16,6 +16,7 @@ data class AuthSession(
     val accessTokenExpiresAt: Instant,
     val refreshTokenExpiresAt: Instant,
     val role: UserRole = UserRole.MEMBER,
+    val userId: String = "00000000-0000-0000-0000-000000000000",
 )
 
 data class StoredCredential(
@@ -24,6 +25,7 @@ data class StoredCredential(
     val refreshTokenExpiresAt: Instant,
     val username: String?,
     val role: UserRole = UserRole.MEMBER,
+    val userId: String = "00000000-0000-0000-0000-000000000000",
 )
 
 enum class AuthState {

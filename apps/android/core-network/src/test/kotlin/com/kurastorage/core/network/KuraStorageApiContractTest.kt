@@ -662,7 +662,7 @@ class KuraStorageApiContractTest {
             """
         const val TOKEN_RESPONSE =
             """
-            {"deviceId":"$DEVICE_ID","accessToken":"access-token","refreshToken":"$REFRESH_TOKEN",
+            {"userId":"11111111-2222-3333-4444-555555555555","deviceId":"$DEVICE_ID","accessToken":"access-token","refreshToken":"$REFRESH_TOKEN",
             "accessTokenExpiresAt":"2026-07-26T01:15:00Z","refreshTokenExpiresAt":"2026-07-27T01:00:00Z","role":"ADMIN"}
             """
     }

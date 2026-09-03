@@ -47,6 +47,7 @@ public sealed class ManagedFileSystemSnapshotReaderTests
             var file = Assert.Single(first, entry => entry.Name.Value == "before.txt");
             Assert.Equal("text/plain", file.MimeType);
             Assert.NotNull(file.SourceFileKey);
+            Assert.Equal(0, file.SourceModifiedAt.Ticks % TimeSpan.TicksPerMicrosecond);
 
             var renamedPath = Path.Combine(folder.FullName, "after.txt");
             File.Move(originalPath, renamedPath);

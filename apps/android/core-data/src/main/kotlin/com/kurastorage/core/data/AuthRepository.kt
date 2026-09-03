@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Clock
 import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 
 private const val HTTP_UNAUTHORIZED = 401
@@ -46,6 +47,10 @@ interface AuthenticationRepository {
     fun accessToken(): String?
 
     fun role(): UserRole? = null
+
+    fun userId(): String? = null
+
+    fun deviceId(): DeviceId? = null
 }
 
 @Suppress("TooManyFunctions")
@@ -73,6 +78,7 @@ class DefaultAuthenticationRepository(
                 null
             } ?: return null
         return StoredCredential(
+            userId = metadata.userId,
             deviceId = metadata.deviceId,
             refreshToken = refreshToken,
             refreshTokenExpiresAt = metadata.refreshTokenExpiresAt,
@@ -153,13 +159,19 @@ class DefaultAuthenticationRepository(
 
     override fun role(): UserRole? = session.get()?.role
 
+    override fun userId(): String? = session.get()?.userId
+
+    override fun deviceId(): DeviceId? = session.get()?.deviceId
+
     @Suppress("TooGenericExceptionCaught")
     private suspend fun persist(
         response: TokenResponseDto,
         username: String?,
     ): AuthSession {
+        UUID.fromString(response.userId)
         val authSession =
             AuthSession(
+                userId = response.userId,
                 deviceId = DeviceId(response.deviceId),
                 accessToken = response.accessToken,
                 refreshToken = response.refreshToken,
@@ -171,6 +183,7 @@ class DefaultAuthenticationRepository(
             tokenStore.write(authSession.refreshToken)
             metadataStore.write(
                 CredentialMetadata(
+                    userId = authSession.userId,
                     deviceId = authSession.deviceId,
                     refreshTokenExpiresAt = authSession.refreshTokenExpiresAt,
                     username = username,
