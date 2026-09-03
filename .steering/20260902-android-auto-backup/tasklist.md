@@ -344,9 +344,9 @@
   - [x] `verify-android.sh`、`verify-server.sh`、`verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`を成功させる。
   - [x] 全Unit／Integration／Instrumented／E2E、Coverage、Migration、OpenAPI、SBOM、format、Lint、静的解析、`git diff --check`を成功させる。
 - [x] 正式文書、OpenAPI、repository structure、運用・testing記録を最終実績へ更新する。
-- [ ] PR5を完了する。
+- [x] PR5を完了する。
   - [x] 差分をself-reviewし、無関係な変更、debug code、秘密情報、実環境値がない。
-  - [ ] Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+  - [x] Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 - [ ] PR5 Merge後に全体完了処理を行う。
   - [ ] 全Pull RequestがMergeされた後だけ、steeringモード3-Bで全体振り返りを記録する。
@@ -457,6 +457,35 @@
   - PR5は#47が`main`へMergeされ必須CIが成功した後に最新`main`から開始する。
   - 設定・進捗・履歴UIはPR4の状態集計、待機理由、通知権限要求、強制停止案内、一意Coordinatorを利用し、SSID／BSSIDや端末Pathを表示・記録しない。
   - Android 13実機とRaspberry Pi実API／実HDDでNetwork切替、Process終了、再起動、API／DB再起動、HDD unmount／remountを検証し、PR5完了後だけモード3-Bの全体振り返りを行う。
+
+### PR5: 設定・進捗・履歴UIと実機E2E・全体完了
+
+- 完了日: 2026-09-03
+- Pull Request: [#48 Complete Android automatic backup UI and end-to-end verification](https://github.com/ry825/Kura_Storage/pull/48)
+- 実施したテスト、ビルド、静的解析、手動確認:
+  - `./scripts/ci/verify-android.sh`で全JVM Unit Test、Coverage、CycloneDX SBOM、ktlint、detekt、Android Lint、Debug APK／AndroidTest APK assemblyが5分28秒で成功した。
+  - `./scripts/ci/verify-server.sh`でRelease build警告0、Domain 130件、Application 336件、PostgreSQL統合224件、合計690件が成功した。
+  - Android API 29とAPI 36の最終Connected suiteはそれぞれ34件が成功した。Android 13実機では31件に加え、実SAF treeから新規・変更・不変・端末削除の一方向Backupとforce-stop後の履歴保持を確認した。
+  - API 36 Emulatorでdeep Doze中に常時Serviceがないこと、復帰後にWorkManagerが継続可能なことを確認した。1万件走査／Room、100件・2GiB・20分Batch境界、Accessibility、dark mode、font scale 2.0を自動Testと計測で確認した。
+  - Raspberry Pi実API／実HDDでNEW／CHANGED／unchanged、Version・Receipt一致、冪等確定、HDD unmount時fail-closed、remount、Nginx／API／PostgreSQL再起動後の復旧、Compare／Upload性能を確認した。
+  - `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`dotnet format --verify-no-changes`、OpenAPI、Migration、release APK non-debuggable／v3署名、秘密情報scan、`git diff --check`が成功した。
+  - GitHub ActionsのAndroid、Config、Security、Server必須Checkがすべて成功した。
+- 計画と実装の差分:
+  - 履歴は全件をMemoryへ読んで表示だけ分割せず、Room query自体を最大10,001件の段階的Pagingにし、単一失敗項目と全失敗項目のretryをAccount Scope付き更新へ分離した。
+  - 2GiB上限を超える次FileでBatch全体が停止し続けないよう、先頭Fileは残りByte budget単位でChunk継続し、2件目以降だけ次Batchへ回す境界へ修正した。
+  - 実HDD検証でKuraStorage自身の書込み後にindex WorkerがFile versionだけを進める競合を検出したため、通常完了とrecovery完了の両方で実ファイルのsize、MIME、mtime、source keyを観測し、PostgreSQLのmicrosecond精度へ揃えた。
+  - Android 10に加えて現行Androidの最終差分を保証するためAPI 36 Emulatorを追加し、Connected suiteとdeep Dozeを確認した。
+- 実装中に追加したタスクと追加理由:
+  - Logout／User／Device／接続先変更時のRoom・Work・UI隔離に、認証済みUser IDが必要だったためToken応答契約へ`userId`を追加し、Client payloadの本人性には使用しない回帰Testを追加した。
+  - Rule削除がServer Fileを削除しないことを操作時にも明確にするため、確認DialogとCompose Testを追加した。
+  - 性能要件を端末DB実装まで確認するため、API 29でRoom 1万行の挿入時間とDB容量を追加計測した。
+  - 実HDD上のindex競合修正を保証するため、通常変更完了とfilesystem-done recovery後にapply-mode index scanを行うServer統合Testを追加した。
+  - detektのTest fixture引数上限を満たすため、転送Repository Testの構成値を`RepositoryOptions`へ集約した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項:
+  - #48をMergeした後にだけ、steeringモード3-Bで全体振り返りを記録する。Codexは本Pull RequestをMergeしない。
+  - 四つの匿名な旧rc1 E2E fixtureは修正前に発生したFile／Receipt version不一致を保持しており、検証では履歴改変を避けて更新・削除していない。rc3で作成したfixtureは一致を維持している。
+  - API 36確認用の一時AVDは検証後に完全削除済みであり、必要なら同一system imageから再作成する。
 
 ## 全体振り返り
 
