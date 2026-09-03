@@ -791,11 +791,16 @@ core-data/src/main/kotlin/com/kurastorage/core/data/
 ├── repository/
 ├── mapper/
 ├── transfer/
+├── backup/
+│   ├── AndroidBackupDocumentSources.kt
+│   ├── BackupScanCoordinator.kt
+│   └── RoomBackupScanStore.kt
 └── errors/
 ```
 
 - MVPで複数Featureが共有するRepository実装、DTO変換、Streaming Transfer調整を置く。
 - Room Entity、DAO、WorkManagerは置かない。永続Queueが必要になった時点でMVP後の`core-database`を追加する。
+- MVP後自動BackupのMediaStore／SAF Scanner、Rule単位Coordinator、Room境界Adapterは`backup/`へ置き、Room APIは直接参照しない。
 - Favorite Pager、Tag CRUD、Entry organization state、strict DTO mapping、通信結果不明時の再照会は`OrganizationRepository.kt`へ置く。
 
 #### MVP後: `core-database/`
@@ -808,6 +813,7 @@ core-database/
     ├── BackupDaos.kt
     ├── BackupEntities.kt
     ├── BackupEntityMapper.kt
+    ├── BackupScanPersistence.kt
     └── LocalSyncStateMachine.kt
 ```
 

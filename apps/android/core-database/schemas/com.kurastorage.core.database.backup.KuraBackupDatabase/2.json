@@ -1,0 +1,575 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "1824575df935259a5818889681c36c35",
+    "entities": [
+      {
+        "tableName": "backup_rules",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `account_scope_id` TEXT NOT NULL, `source_type` TEXT NOT NULL, `source_locator` TEXT NOT NULL, `display_name` TEXT NOT NULL, `remote_folder_id` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `network_mode` TEXT NOT NULL, `requires_charging_for_initial_run` INTEGER NOT NULL, `minimum_battery_percent` INTEGER NOT NULL, `initial_run_completed_at` INTEGER, `paused_at` INTEGER, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountScopeId",
+            "columnName": "account_scope_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "source_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceLocator",
+            "columnName": "source_locator",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteFolderId",
+            "columnName": "remote_folder_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "networkMode",
+            "columnName": "network_mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requiresChargingForInitialRun",
+            "columnName": "requires_charging_for_initial_run",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minimumBatteryPercent",
+            "columnName": "minimum_battery_percent",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "initialRunCompletedAt",
+            "columnName": "initial_run_completed_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "pausedAt",
+            "columnName": "paused_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_backup_rules_account_scope_id_enabled",
+            "unique": false,
+            "columnNames": [
+              "account_scope_id",
+              "enabled"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_backup_rules_account_scope_id_enabled` ON `${TABLE_NAME}` (`account_scope_id`, `enabled`)"
+          }
+        ]
+      },
+      {
+        "tableName": "local_sync_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `account_scope_id` TEXT NOT NULL, `rule_id` TEXT NOT NULL, `local_document_key` TEXT NOT NULL, `source_locator` TEXT NOT NULL, `relative_path` TEXT NOT NULL, `display_name` TEXT NOT NULL, `size` INTEGER NOT NULL, `modified_at` INTEGER NOT NULL, `checksum` TEXT, `source_fingerprint` TEXT NOT NULL, `remote_file_id` TEXT, `remote_file_version` INTEGER, `lifecycle_state` TEXT NOT NULL, `wait_reason` TEXT NOT NULL, `failure_reason` TEXT NOT NULL, `retry_count` INTEGER NOT NULL, `next_attempt_at` INTEGER, `lease_owner` TEXT, `lease_expires_at` INTEGER, `upload_session_id` TEXT, `idempotency_key` TEXT, `confirmed_offset` INTEGER NOT NULL, `first_seen_at` INTEGER NOT NULL, `last_seen_at` INTEGER NOT NULL, `last_attempt_at` INTEGER, `completed_at` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`rule_id`) REFERENCES `backup_rules`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountScopeId",
+            "columnName": "account_scope_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ruleId",
+            "columnName": "rule_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localDocumentKey",
+            "columnName": "local_document_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceLocator",
+            "columnName": "source_locator",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "relativePath",
+            "columnName": "relative_path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "size",
+            "columnName": "size",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modifiedAt",
+            "columnName": "modified_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "checksum",
+            "columnName": "checksum",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceFingerprint",
+            "columnName": "source_fingerprint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteFileId",
+            "columnName": "remote_file_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "remoteFileVersion",
+            "columnName": "remote_file_version",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lifecycleState",
+            "columnName": "lifecycle_state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "waitReason",
+            "columnName": "wait_reason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failureReason",
+            "columnName": "failure_reason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retryCount",
+            "columnName": "retry_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nextAttemptAt",
+            "columnName": "next_attempt_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "leaseOwner",
+            "columnName": "lease_owner",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "leaseExpiresAt",
+            "columnName": "lease_expires_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "uploadSessionId",
+            "columnName": "upload_session_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "idempotencyKey",
+            "columnName": "idempotency_key",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "confirmedOffset",
+            "columnName": "confirmed_offset",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSeenAt",
+            "columnName": "first_seen_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSeenAt",
+            "columnName": "last_seen_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAttemptAt",
+            "columnName": "last_attempt_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "completedAt",
+            "columnName": "completed_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_local_sync_items_rule_id",
+            "unique": false,
+            "columnNames": [
+              "rule_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_sync_items_rule_id` ON `${TABLE_NAME}` (`rule_id`)"
+          },
+          {
+            "name": "index_local_sync_items_account_scope_id_rule_id_local_document_key",
+            "unique": true,
+            "columnNames": [
+              "account_scope_id",
+              "rule_id",
+              "local_document_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_local_sync_items_account_scope_id_rule_id_local_document_key` ON `${TABLE_NAME}` (`account_scope_id`, `rule_id`, `local_document_key`)"
+          },
+          {
+            "name": "index_local_sync_items_account_scope_id_lifecycle_state_next_attempt_at_first_seen_at_id",
+            "unique": false,
+            "columnNames": [
+              "account_scope_id",
+              "lifecycle_state",
+              "next_attempt_at",
+              "first_seen_at",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_local_sync_items_account_scope_id_lifecycle_state_next_attempt_at_first_seen_at_id` ON `${TABLE_NAME}` (`account_scope_id`, `lifecycle_state`, `next_attempt_at`, `first_seen_at`, `id`)"
+          },
+          {
+            "name": "index_local_sync_items_account_scope_id_remote_file_id",
+            "unique": true,
+            "columnNames": [
+              "account_scope_id",
+              "remote_file_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_local_sync_items_account_scope_id_remote_file_id` ON `${TABLE_NAME}` (`account_scope_id`, `remote_file_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "backup_rules",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "rule_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "external_wifi_policies",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `account_scope_id` TEXT NOT NULL, `display_name` TEXT NOT NULL, `normalized_ssid` TEXT NOT NULL, `normalized_bssid` TEXT, `normalized_bssid_key` TEXT NOT NULL, `treat_as_metered` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountScopeId",
+            "columnName": "account_scope_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizedSsid",
+            "columnName": "normalized_ssid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizedBssid",
+            "columnName": "normalized_bssid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "normalizedBssidKey",
+            "columnName": "normalized_bssid_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "treatAsMetered",
+            "columnName": "treat_as_metered",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_external_wifi_policies_account_scope_id_normalized_ssid_normalized_bssid_key",
+            "unique": true,
+            "columnNames": [
+              "account_scope_id",
+              "normalized_ssid",
+              "normalized_bssid_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_external_wifi_policies_account_scope_id_normalized_ssid_normalized_bssid_key` ON `${TABLE_NAME}` (`account_scope_id`, `normalized_ssid`, `normalized_bssid_key`)"
+          },
+          {
+            "name": "index_external_wifi_policies_account_scope_id_enabled",
+            "unique": false,
+            "columnNames": [
+              "account_scope_id",
+              "enabled"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_external_wifi_policies_account_scope_id_enabled` ON `${TABLE_NAME}` (`account_scope_id`, `enabled`)"
+          }
+        ]
+      },
+      {
+        "tableName": "scan_checkpoints",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`rule_id` TEXT NOT NULL, `media_store_version` TEXT, `generation` INTEGER, `full_scan_token` TEXT, `last_completed_at` INTEGER, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`rule_id`), FOREIGN KEY(`rule_id`) REFERENCES `backup_rules`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "ruleId",
+            "columnName": "rule_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mediaStoreVersion",
+            "columnName": "media_store_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "generation",
+            "columnName": "generation",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fullScanToken",
+            "columnName": "full_scan_token",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastCompletedAt",
+            "columnName": "last_completed_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "rule_id"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "backup_rules",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "rule_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "source_identity_mappings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`rule_id` TEXT NOT NULL, `provider_key` TEXT NOT NULL, `identity_discriminator` TEXT NOT NULL, `local_document_key` TEXT NOT NULL, `first_seen_at` INTEGER NOT NULL, `last_seen_at` INTEGER NOT NULL, PRIMARY KEY(`rule_id`, `provider_key`), FOREIGN KEY(`rule_id`) REFERENCES `backup_rules`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "ruleId",
+            "columnName": "rule_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "providerKey",
+            "columnName": "provider_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "identityDiscriminator",
+            "columnName": "identity_discriminator",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localDocumentKey",
+            "columnName": "local_document_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSeenAt",
+            "columnName": "first_seen_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSeenAt",
+            "columnName": "last_seen_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "rule_id",
+            "provider_key"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_source_identity_mappings_rule_id",
+            "unique": false,
+            "columnNames": [
+              "rule_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_source_identity_mappings_rule_id` ON `${TABLE_NAME}` (`rule_id`)"
+          },
+          {
+            "name": "index_source_identity_mappings_rule_id_local_document_key",
+            "unique": true,
+            "columnNames": [
+              "rule_id",
+              "local_document_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_source_identity_mappings_rule_id_local_document_key` ON `${TABLE_NAME}` (`rule_id`, `local_document_key`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "backup_rules",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "rule_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1824575df935259a5818889681c36c35')"
+    ]
+  }
+}

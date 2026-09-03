@@ -163,7 +163,7 @@
 - [x] 重要Mapper／状態遷移95%以上、Android Domain／Application全体80%以上のCoverageを満たす。
 - [x] `verify-android.sh`、connected Instrumented Test、SBOM、Lint、detekt、ktlint、`git diff --check`を成功させる。
 - [x] Android Backup exclusion、Manifest権限、秘密情報・実環境値非混入、既存FeatureのSession分離をself-reviewする。
-- [ ] Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+- [x] Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -171,47 +171,47 @@
 
 ### 3.1 開始条件・差分契約
 
-- [ ] PR3の開始条件を満たす。
-  - [ ] PR2が`main`へMerge済みで、最新`main`から短命Branchを作成する。
-  - [ ] MediaStore、DocumentsContract、ContentResolver streaming、既存Upload Sourceの実装patternを確認する。
-- [ ] `localDocumentKey`の安定性とSource別の同一性契約を確定する。
-  - [ ] Raw URIや物理PathをServer識別子・Logへそのまま送らず、User／Device namespace内のopaque keyへ変換する。
-  - [ ] MediaStore ID再利用、SAF document ID変更、Rename／Move、更新日時精度、Provider差異の扱いをTest可能にする。
+- [x] PR3の開始条件を満たす。
+  - [x] PR2が`main`へMerge済みで、最新`main`から短命Branchを作成する。
+  - [x] MediaStore、DocumentsContract、ContentResolver streaming、既存Upload Sourceの実装patternを確認する。
+- [x] `localDocumentKey`の安定性とSource別の同一性契約を確定する。
+  - [x] Raw URIや物理PathをServer識別子・Logへそのまま送らず、User／Device namespace内のopaque keyへ変換する。
+  - [x] MediaStore ID再利用、SAF document ID変更、Rename／Move、更新日時精度、Provider差異の扱いをTest可能にする。
 
 ### 3.2 MediaStore差分検出
 
-- [ ] 写真・動画・音声のScannerをTest firstで実装する。
-  - [ ] Android version別にMediaStore generationと変更通知を利用し、Rule対象だけをStreaming列挙する。
-  - [ ] generationの初回、増分、rollback／reset、権限変更、削除、Provider例外を安全に扱う。
-  - [ ] Size・更新情報で候補を絞り、必要な候補だけContentResolverからChecksumを計算する。
-  - [ ] 変更通知のburstをdebounceし、同じ候補をRoom一意制約へ収束させる。
+- [x] 写真・動画・音声のScannerをTest firstで実装する。
+  - [x] Android version別にMediaStore generationと変更通知を利用し、Rule対象だけをStreaming列挙する。
+  - [x] generationの初回、増分、rollback／reset、権限変更、削除、Provider例外を安全に扱う。
+  - [x] Size・更新情報で候補を絞り、必要な候補だけContentResolverからChecksumを計算する。
+  - [x] 変更通知のburstをdebounceし、同じ候補をRoom一意制約へ収束させる。
 
 ### 3.3 SAF差分検出
 
-- [ ] 任意FolderのSAF ScannerをTest firstで実装する。
-  - [ ] Tree配下をStreaming走査し、相対Path、Size、更新日時を保存済み索引と比較する。
-  - [ ] 毎回全Fileをhashせず、metadata変更候補だけを必要時にStreaming SHA-256する。
-  - [ ] cycle、不正Provider応答、深すぎるTree、件数過多、読取拒否、途中取消、File消失を安全に扱う。
-  - [ ] 走査が完走した場合だけcheckpointを進め、中断・例外時は後続再走査で取りこぼしを回収する。
+- [x] 任意FolderのSAF ScannerをTest firstで実装する。
+  - [x] Tree配下をStreaming走査し、相対Path、Size、更新日時を保存済み索引と比較する。
+  - [x] 毎回全Fileをhashせず、metadata変更候補だけを必要時にStreaming SHA-256する。
+  - [x] cycle、不正Provider応答、深すぎるTree、件数過多、読取拒否、途中取消、File消失を安全に扱う。
+  - [x] 走査が完走した場合だけcheckpointを進め、中断・例外時は後続再走査で取りこぼしを回収する。
 
 ### 3.4 Queue反映・一方向性
 
-- [ ] Scanner結果をRoomへ原子的に反映する。
-  - [ ] 新規・変更候補を`PENDING`へupsertし、同一Rule／documentの重複Queueを作らない。
-  - [ ] 完了済みmetadataと同一なら再Uploadせず、Server Compareが必要な曖昧候補だけを保留する。
-  - [ ] 端末から消えた項目は`LOCAL_MISSING`にするだけで、Delete API、Trash API、Receipt削除を呼ばない。
-  - [ ] 再出現、変更中File、走査中削除、複数Rule重複、Rule無効化、Source permission喪失をTestする。
-- [ ] Scanner起動契機を実装する。
-  - [ ] アプリ起動、MediaStore変更、保留追加、許可接続到達、SAF 6時間定期確認、「今すぐバックアップ」から同じCoordinatorへ収束させる。
-  - [ ] 同時ScannerをRule単位で一意にし、二重走査・二重Checksum・二重Queueを防止する。
+- [x] Scanner結果をRoomへ原子的に反映する。
+  - [x] 新規・変更候補を`PENDING`へupsertし、同一Rule／documentの重複Queueを作らない。
+  - [x] 完了済みmetadataと同一なら再Uploadせず、Server Compareが必要な曖昧候補だけを保留する。
+  - [x] 端末から消えた項目は`LOCAL_MISSING`にするだけで、Delete API、Trash API、Receipt削除を呼ばない。
+  - [x] 再出現、変更中File、走査中削除、複数Rule重複、Rule無効化、Source permission喪失をTestする。
+- [x] Scanner起動契機を実装する。
+  - [x] アプリ起動、MediaStore変更、保留追加、許可接続到達、SAF 6時間定期確認、「今すぐバックアップ」から同じCoordinatorへ収束させる。
+  - [x] 同時ScannerをRule単位で一意にし、二重走査・二重Checksum・二重Queueを防止する。
 
 ### 3.5 PR3検証・完了
 
-- [ ] Fake ContentResolver／DocumentsProviderのUnit・Instrumented Testで増分、全再走査、取こぼし回収、権限喪失、取消、Process終了を確認する。
-- [ ] 1万件・大容量Fileを含む匿名fixtureで時間、Memory、読取Byte、hash件数、DB Batchを測定し、全件hashしないことを記録する。
-- [ ] 端末削除・候補省略でServer APIへ削除要求が一切送られないことをMockWebServerで確認する。
-- [ ] `verify-android.sh`、connected Instrumented Test、format、静的解析、`git diff --check`を成功させる。
-- [ ] 正式文書とtesting記録を実測へ更新し、Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+- [x] Fake ContentResolver／DocumentsProviderのUnit・Instrumented Testで増分、全再走査、取こぼし回収、権限喪失、取消、Process終了を確認する。
+- [x] 1万件・大容量Fileを含む匿名fixtureで時間、Memory、読取Byte、hash件数、DB Batchを測定し、全件hashしないことを記録する。
+- [x] 端末削除・候補省略でServer APIへ削除要求が一切送られないことをMockWebServerで確認する。
+- [x] `verify-android.sh`、connected Instrumented Test、format、静的解析、`git diff --check`を成功させる。
+- [x] 正式文書とtesting記録を実測へ更新し、Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
 
@@ -378,6 +378,58 @@
   - PR2は#44が`main`へMergeされ必須CIが成功した後に最新`main`から開始する。
   - AndroidはUser／Device／OwnerをBackup payloadへ含めず、Compareの`NEW`／`CHANGED`だけを既存Upload Sessionの`backup` contextへ渡す。`BLOCKED_CURRENT_STATE`ではRemote Fileを推測せずUser操作待ちにする。
   - 端末側削除、Rule削除、候補省略からServer File／Receiptを削除するAPIは追加しない。
+
+### PR2: Android Room・バックアップルール・外部Wi-Fiポリシー
+
+- 完了日: 2026-09-02
+- Pull Request: [#45 Add Android automatic backup foundation](https://github.com/ry825/Kura_Storage/pull/45)
+- 実施したテスト、ビルド、静的解析、手動確認:
+  - `./scripts/ci/verify-android.sh`で全JVM Unit Test、Coverage gate、CycloneDX SBOM、ktlint、detekt、Android Lint、Debug APK／AndroidTest APK assemblyの成功を確認した。
+  - 新規Backup JVM Test 27件が成功し、Backup重要箇所は309/314行（98.41%）、Android Domain／Application全体は4,413/5,258行（83.93%）であった。
+  - Android 13実機CPH2333で`:core-data:connectedDebugAndroidTest` 7件と`:core-database:connectedDebugAndroidTest` 4件、合計11件が成功し、権限fail-closed、Room初期Schema、一意制約、原子的claim、期限切れlease回復、Account隔離、cascade、close／reopenを確認した。
+  - Repository全体のconnected Testは既存App Compose suite実行時の実機sleepと、その後のADB切断により完走できなかった。変更対象2 Moduleのconnected TestとRepository全体のAndroidTest APK assemblyは成功済みである。
+  - `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`が成功し、GitHub ActionsのAndroid、Config、Security、Server必須Checkがすべて成功した。
+  - SBOMへRoom 2.8.4とWorkManager 2.11.2が含まれること、Room DB／WAL／共有MemoryがAndroid Backupと端末移行から除外されること、実SSID／BSSID・URI・Token・実環境値が差分とLog出力に含まれないことを確認した。
+- 計画と実装の差分:
+  - Wi-Fi Policy編集時にも作成時と同じAccount Scopeを必須化し、別AccountのPolicy IDを指定した更新を拒否する境界へ強化した。
+  - Android version別権限判定はNearby Wi-Fiだけでなく、対象OSでSSID／BSSID取得に必要なCoarse／Fine LocationとLocation serviceを個別に判定し、取得不能時はfail-closedにした。
+  - WorkManagerの実Worker／予約はPR4範囲のままとし、PR2では依存、Module境界、安定したhash済みWork名の契約までを実装した。
+- 実装中に追加したタスクと追加理由:
+  - 自己レビューで検出した別AccountへのWi-Fi Policy更新、正規化後のSSID／BSSID重複、BSSID形式不正を拒否するValidationと回帰Testを追加した。
+  - 状態件数、Scanner checkpoint、要求可能権限、追加状態遷移のCoverage不足を補うTestを追加し、重要箇所95%以上と全体80%以上を満たした。
+  - 旧MVP依存禁止を保持していた`verify-config.sh`を、Roomは`core-database`、WorkManagerは`feature-backup`へ限定するPhase 1境界に更新し、PDF系禁止依存の検査は維持した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項:
+  - PR3は#45が`main`へMergeされ必須CIが成功した後に最新`main`から開始する。
+  - Scannerは既存のAccount Scope、Rule、checkpoint、500件単位のRoom transaction、一意な`(ruleId, localDocumentKey)`へ収束させ、端末削除や候補省略からServer削除APIを呼ばない。
+  - MediaStore／SAFの走査が完走した場合だけcheckpointを進め、Provider例外、権限喪失、途中取消時は既存Server状態を推測せず後続再走査へ収束させる。
+  - PR4までWorkManager予約やNetwork Policyによる自動転送を先行実装せず、PR3は差分検出と永続Queue反映に限定する。
+
+### PR3: MediaStore・SAF差分検出と永続キュー
+
+- 完了日: 2026-09-03
+- Pull Request: [#46 Add Android backup source scanning and persistent queue](https://github.com/ry825/Kura_Storage/pull/46)
+- 実施したテスト、ビルド、静的解析、手動確認:
+  - `./scripts/ci/verify-android.sh`で全JVM Unit Test、Coverage gate、Debug APK／AndroidTest APK assembly、CycloneDX SBOM、ktlint、detekt、Android Lintが成功した。最終再実行は4分35秒で完了した。
+  - Backup重要箇所は310/314行（98.73%）、Android Domain／Application全体は4,581/5,488行（83.47%）であった。
+  - Android 13／API 33 AOSP ATDとAndroid 13実機CPH2333の両方で`:core-data:connectedDebugAndroidTest` 10件、`:core-database:connectedDebugAndroidTest` 7件がすべて成功した。
+  - 匿名1万件fixtureは189msで走査し、変更10件だけをhashした。読取量10MiB、DB相当Batch 20回（各500件）、計測command最大RSS 119,468KiB、MockWebServerの削除／Trash要求0件を確認した。
+  - `./scripts/ci/verify-security.sh`と`git diff --check`が成功し、GitHub ActionsのAndroid、Config、Security、Server必須Checkがすべて成功した。
+  - 差分に実URI、物理Path、資格情報、実環境値、Server削除／Trash／Receipt削除処理が含まれないことを確認した。
+- 計画と実装の差分:
+  - Connected Testは利用環境に合わせAndroid 13を正式な実機・Emulator gateとし、API 30以降のMediaStore generation経路を確認した。
+  - MediaStoreはAPI 29でgeneration列とselectionを使用しないversion-only fallbackを明示し、API 30以降だけgeneration増分条件を組み立てる実装へ強化した。
+  - Rule単位の同時Triggerは同じ`CompletableDeferred`へ収束させ、二重走査だけでなく二重Checksumと二重Room反映も防止した。
+- 実装中に追加したタスクと追加理由:
+  - 安定したopaque keyをProvider ID再利用から分離するため、Room schema 2へSource identity mappingを追加し、Migration、再open、Account隔離、一意制約のInstrumented Testを追加した。
+  - Full scan完了時の`LOCAL_MISSING`化とcheckpoint更新を同一Transactionへまとめ、Remote File参照保持と再出現時`PENDING`復帰の回帰Testを追加した。
+  - Android JUnit4で式本体が非`Unit`になるTestとRoomの`Long`値比較をAndroid 13 connected実行で検出し、型を明示した回帰Testへ修正した。
+- 技術的に不要になったタスク、理由、代替実装:
+  - API 29 EmulatorでのConnected Testは、対象環境がAndroid 13であるためPR3の正式gateには使用しなかった。Android 10互換分岐はversion-gated実装と自動テスト、全Android build gateで維持した。
+- 後続Pull Requestへの引継ぎ事項:
+  - PR4は#46が`main`へMergeされ必須CIが成功した後に最新`main`から開始する。
+  - Network Policy、WorkManager、一意Work chain、Server Compare、分割Upload、転送中接続再評価はPR4で実装し、PR3のScanner／Room Queue契約を再利用する。
+  - 端末削除、Rule削除、候補省略からServer File／Receiptを削除せず、`LOCAL_MISSING`と再走査から一方向Backupへ収束させる。
 
 ## 全体振り返り
 

@@ -1588,8 +1588,10 @@ SSID、BSSID、端末が保持する`deviceId`は接続経路の確定条件に�
 
 1. 前回保存したMediaStore generationを取得する。
 2. それ以降に追加・変更されたメディアを問い合わせる。
-3. 対象フォルダ・種類に該当する項目をRoomへ登録する。
-4. 削除された項目は`LOCAL_MISSING`にするが、サーバー削除要求は作成しない。
+3. metadataが一致する項目は保存済みChecksumを再利用し、変更候補だけContentResolverからStreaming SHA-256する。
+4. 対象項目を500件単位のRoom transactionで保留Queueへ収束させる。
+5. version変更、generation rollback、6時間ごとの取りこぼし確認は全件走査とし、完走した場合だけcheckpointを進める。
+6. 削除された項目は`LOCAL_MISSING`にするが、サーバー削除要求は作成しない。
 
 ### SAF任意フォルダ
 
@@ -1598,6 +1600,8 @@ SSID、BSSID、端末が保持する`deviceId`は接続経路の確定条件に�
 3. 新規・変更候補だけを保留キューへ追加する。
 4. サイズと更新日時が同じ場合は内容を読まない。
 5. 必要な候補だけチェックサムを計算する。
+6. DocumentsContractを使用し、cycleを検出し、深度64・100万項目をhard limitとする。
+7. 読取拒否、Provider例外、取消、File消失、上限到達時はcheckpointや未観測判定を進めない。
 
 ### Workerの実行単位
 

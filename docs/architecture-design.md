@@ -469,7 +469,7 @@ Data Sources
 ├─ SecureCredentialStore
 ```
 
-RoomとWorkManagerはMVP後のAndroid自動Backupで導入済みである。MediaStore／SAF差分取得とWorker実装は後続PRで追加する。
+RoomとWorkManagerはMVP後のAndroid自動Backupで導入済みである。MediaStore／SAF差分取得は`core-data`、安定したSource identity mappingと永続Queue反映は`core-database`へ導入済みである。Network Policyと転送Workerの実装は後続PRで追加する。
 
 
 ### 7.2 推奨モジュール構成
@@ -533,7 +533,9 @@ SSIDとBSSIDは外部Wi-Fiで自動バックアップを許可するポリシー
 ### 7.6 MVP後: 自動バックアップ実行モデル
 
 - MediaStore変更通知とgeneration差分を優先する。
+- MediaStore version変更、generation rollback、通知取りこぼし回復の定期確認では全件走査し、完走した場合だけcheckpointと`LOCAL_MISSING`を原子的に更新する。
 - SAFはアプリ起動時、許可ネットワーク到達時、定期Workerで走査する。
+- ScannerはRule単位の進行中実行を共有し、metadataが一致する項目の本文を開かず、変更候補だけをStreaming SHA-256する。
 - Roomへ保留キューを永続化する。
 - WorkManagerの一意なWork名で重複起動を防ぐ。
 - Worker開始後にネットワークポリシーを再評価する。
