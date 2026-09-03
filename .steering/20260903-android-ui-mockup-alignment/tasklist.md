@@ -88,9 +88,9 @@
   - [x] Android 13実機またはAPI 33 Emulatorで`:core-ui:connectedDebugAndroidTest`が成功する。
   - [x] ロゴ・Iconの権利、APK/SBOM、不要依存、大きなBitmap非混入を確認する。
   - [x] `docs/testing/YYYYMMDD-android-ui-pr1-foundation.md`に対応表、テスト、キャプチャ、意図的差分を記録する。
-- [ ] PR1を完了する。
+- [x] PR1を完了する。
   - [x] 差分をself-reviewし、無関係な変更、debug code、秘密情報、実環境値がない。
-  - [ ] Commit、Push、英語Pull Request、必須CI、steeringモード3-AのPR1完了記録、記録Commitの再Pushを完了して報告・停止する。
+  - [x] Commit、Push、英語Pull Request、必須CI、steeringモード3-AのPR1完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -583,7 +583,22 @@
 
 ### PR1: UI監査・Design system基盤
 
-未完了。
+- 完了日: 2026-09-03
+- Pull Request: [#49 Add Android UI design-system foundation](https://github.com/ry825/Kura_Storage/pull/49)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Debug/Release APK、AndroidTest APK、Coverage、CycloneDX SBOMを含む）。
+  - Android 13 / API 33 Emulatorで`:core-ui:connectedDebugAndroidTest`成功（5/5）。360dp、200%文字、Light/Dark、48dp操作領域、Heading、Content description、Selected/Error/Progress semantics、決定的Captureを確認した。
+  - `git diff --check`成功。ロゴとFile iconは第三者Assetを使わないCompose描画で、Bitmap非混入、追加依存がCompose UI test用途だけであることを確認した。
+  - GitHub必須CIのAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - Instrumented testの初回実行で、Theme fixtureが再composeされない問題とIcon buttonのSemantics領域が40dpになる問題を検出した。observable stateへの変更と明示的な48dp最小Sizeで修正し、同一PR内で再検証した。
+  - それ以外のPR1範囲、PR境界、正式文書との優先関係に差分はない。
+- 追加タスクと理由: 上記2件の検証時修正を追加した。受け入れ条件を満たすために必要であり、後続PRへの先送りはしていない。
+- 技術的に不要となったタスクと代替実装: なし。第三者Logo Assetの権利確認は、独自のCompose `Canvas`描画を採用し出典依存をなくす形で完了した。
+- 後続への引継ぎ:
+  - PR2〜PR9では本PRのTheme、共通Component、状態表示、Semantics helper、Logo/File type iconを各Featureへ適用する。
+  - 36画面監査で特定した不足Destination・契約は割当済みPRで解消し、PR10で物理端末、TalkBack、回転、200%文字、全画面Evidenceを最終確認する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告であり、SBOM生成と必須CIは成功している。
 
 ### PR2: App shell・Home・グローバルNavigation
 
