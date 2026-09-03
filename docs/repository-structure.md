@@ -97,7 +97,7 @@ Rename・Moveは現行のServer File機能を拡張し、Domainは`KuraStorage.D
 
 Android自動バックアップのServer側は、`BackupReceipt`とValue Objectを`KuraStorage.Domain/Backup/`、Compare契約・検証・Use CaseとRepository境界を`KuraStorage.Application/Backup/`および`Abstractions/BackupAbstractions.cs`へ配置する。EF ConfigurationとRepositoryは`KuraStorage.Infrastructure/Persistence/`、Migrationは既存`Persistence/Migrations/`、CompareとUpload Session Endpointは既存`KuraStorage.Api/Program.cs`、HTTP契約は`contracts/openapi/kurastorage-api.yaml`へ置く。Backup確定は既存`Transfers/UploadSessionService.cs`のChunk・Storage Guard・FileOperation・mutation lock・Version発行を拡張し、別の転送ProjectやServer Workerを追加しない。Domain、Application、Migration、API、復旧のTestは既存Test ProjectのBackup対応Fileへ配置する。
 
-Android自動バックアップの端末内Domain modelは`core-model/backup/`、Room Entity／DAO／Database／状態遷移／Mapperは`core-database/backup/`、Rule・SAF権限・外部Wi-Fi PolicyのRepository実装は`core-data/backup/`、Use Caseと秘密値を含まないWork名契約は`feature-backup/`へ配置する。`feature-backup`はCore Moduleだけへ依存し、他Featureへ直接依存しない。Room schema exportは`core-database/schemas/`へ保存し、Room実機Testは同Moduleの`src/androidTest/`へ置く。
+Android自動バックアップの端末内Domain modelは`core-model/backup/`、Room Entity／DAO／Database／状態遷移／Mapperは`core-database/backup/`、Rule・SAF権限・外部Wi-Fi Policy・Network Policy・Compare／Upload転送のRepository実装は`core-data/backup/`、Use Case・秘密値を含まないWork名契約・WorkManager Workerは`feature-backup/`へ配置する。プロセス再生成可能な実行時依存の構築は`app/`のApplication／ServiceContainer境界に置く。`feature-backup`はCore Moduleだけへ依存し、他Featureへ直接依存しない。Room schema exportは`core-database/schemas/`へ保存し、Room実機Testは同Moduleの`src/androidTest/`へ置く。
 
 ```text
 kurastorage/

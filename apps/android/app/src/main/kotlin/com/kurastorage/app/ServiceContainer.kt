@@ -16,6 +16,7 @@ import com.kurastorage.core.data.DefaultSearchRepository
 import com.kurastorage.core.data.DefaultSharingRepository
 import com.kurastorage.core.data.DefaultTextFileRepository
 import com.kurastorage.core.data.DefaultTransferRepository
+import com.kurastorage.core.data.backup.AuthenticatedBackupRemoteDataSource
 import com.kurastorage.core.data.media.AndroidNetworkTransportSource
 import com.kurastorage.core.data.media.DataStoreQualityPreferenceStore
 import com.kurastorage.core.data.media.DefaultMediaRepository
@@ -25,7 +26,10 @@ import com.kurastorage.core.data.media.NetworkQualityContextResolver
 import com.kurastorage.core.data.media.QualityPreferenceStore
 import com.kurastorage.core.data.media.TemporaryPdfStore
 import com.kurastorage.core.data.media.TransferConfirmationPolicy
+import com.kurastorage.core.database.backup.BackupDatabaseAccess
+import com.kurastorage.core.database.backup.createBackupDatabase
 import com.kurastorage.core.model.ConnectionRoute
+import com.kurastorage.core.model.backup.AccountScopeId
 import com.kurastorage.core.network.AndroidHealthProbe
 import com.kurastorage.core.network.AndroidLocalNetworkSource
 import com.kurastorage.core.network.ConnectionDetector
@@ -34,6 +38,7 @@ import com.kurastorage.core.network.KuraStorageApi
 import com.kurastorage.core.network.media.OkHttpMediaApi
 import com.kurastorage.core.security.AndroidKeystoreCredentialCipher
 import com.kurastorage.core.security.SharedPreferencesEncryptedTokenStore
+import com.kurastorage.feature.backup.BackupWorkerRuntime
 import com.kurastorage.feature.media.MediaImageLoaderFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +65,9 @@ class ServiceContainer(
         AndroidLocalNetworkSource(
             applicationContext.getSystemService(ConnectivityManager::class.java),
         )
+    private val backupDatabase: BackupDatabaseAccess by lazy {
+        createBackupDatabase(applicationContext)
+    }
     private val qualityPreferenceStore: QualityPreferenceStore =
         DataStoreQualityPreferenceStore(applicationContext)
     private val networkQualityContextResolver =
@@ -82,39 +90,39 @@ class ServiceContainer(
             localNetworkSource = localNetworkSource,
             healthProbe = AndroidHealthProbe(localNetworkSource, baseClient),
         )
+    private val backupRuntimeFactory by lazy {
+        AndroidBackupRuntimeFactory(
+            applicationContext,
+            backupDatabase,
+            applicationContext.getSystemService(ConnectivityManager::class.java),
+            localNetworkSource,
+            connectionDetector,
+            object : BackupSessionFactory {
+                override fun create(route: ConnectionRoute): BackupSessionServices = backupSessionServices(route)
+
+                override suspend fun hasStoredCredential(): Boolean =
+                    createAuthentication(createApi(ConnectionRoute.REMOTE_SECURE))
+                        .storedCredential() != null
+            },
+        )
+    }
+
+    fun backupRuntime(scope: AccountScopeId): BackupWorkerRuntime = backupRuntimeFactory.create(scope)
+
+    private fun backupSessionServices(route: ConnectionRoute): BackupSessionServices {
+        val api = createApi(route)
+        val auth = createAuthentication(api)
+        val executor = AuthenticatedRequestExecutor(auth)
+        return BackupSessionServices(
+            remote = AuthenticatedBackupRemoteDataSource(api, api, executor),
+            hasStoredCredential = { auth.storedCredential() != null },
+        )
+    }
 
     fun sessionServices(route: ConnectionRoute): SessionServices {
-        val address =
-            when (route) {
-                ConnectionRoute.LOCAL_DIRECT -> BuildConfig.LAN_API_ADDRESS
-                ConnectionRoute.REMOTE_SECURE -> BuildConfig.ZEROTIER_API_ADDRESS
-            }
-        val apiClient =
-            baseClient
-                .newBuilder()
-                .dns(FixedAddressDns(BuildConfig.API_HOSTNAME, address))
-                .readTimeout(Duration.ofMinutes(TRANSFER_TIMEOUT_MINUTES))
-                .callTimeout(Duration.ZERO)
-                .apply {
-                    if (route == ConnectionRoute.LOCAL_DIRECT) {
-                        socketFactory(localNetworkSource.refreshingSocketFactory())
-                    }
-                }.build()
-        val api =
-            KuraStorageApi(
-                baseUrl = "https://${BuildConfig.API_HOSTNAME}/api/v1",
-                client = apiClient,
-            )
-        val auth =
-            DefaultAuthenticationRepository(
-                api = api,
-                metadataStore = DataStoreCredentialMetadataStore(applicationContext),
-                tokenStore =
-                    SharedPreferencesEncryptedTokenStore(
-                        applicationContext,
-                        AndroidKeystoreCredentialCipher(),
-                    ),
-            )
+        val apiClient = createApiClient(route)
+        val api = KuraStorageApi("https://${BuildConfig.API_HOSTNAME}/api/v1", apiClient)
+        val auth = createAuthentication(api)
         val executor = AuthenticatedRequestExecutor(auth)
         return SessionServices(
             sessionId = UUID.randomUUID().toString(),
@@ -137,6 +145,38 @@ class ServiceContainer(
             media = createMediaSession(apiClient, executor),
         )
     }
+
+    private fun createApi(route: ConnectionRoute): KuraStorageApi =
+        KuraStorageApi("https://${BuildConfig.API_HOSTNAME}/api/v1", createApiClient(route))
+
+    private fun createApiClient(route: ConnectionRoute): OkHttpClient {
+        val address =
+            when (route) {
+                ConnectionRoute.LOCAL_DIRECT -> BuildConfig.LAN_API_ADDRESS
+                ConnectionRoute.REMOTE_SECURE -> BuildConfig.ZEROTIER_API_ADDRESS
+            }
+        return baseClient
+            .newBuilder()
+            .dns(FixedAddressDns(BuildConfig.API_HOSTNAME, address))
+            .readTimeout(Duration.ofMinutes(TRANSFER_TIMEOUT_MINUTES))
+            .callTimeout(Duration.ZERO)
+            .apply {
+                if (route == ConnectionRoute.LOCAL_DIRECT) {
+                    socketFactory(localNetworkSource.refreshingSocketFactory())
+                }
+            }.build()
+    }
+
+    private fun createAuthentication(api: KuraStorageApi) =
+        DefaultAuthenticationRepository(
+            api = api,
+            metadataStore = DataStoreCredentialMetadataStore(applicationContext),
+            tokenStore =
+                SharedPreferencesEncryptedTokenStore(
+                    applicationContext,
+                    AndroidKeystoreCredentialCipher(),
+                ),
+        )
 
     private fun createMediaSession(
         apiClient: OkHttpClient,

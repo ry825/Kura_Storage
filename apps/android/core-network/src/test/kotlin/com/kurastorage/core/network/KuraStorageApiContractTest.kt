@@ -336,6 +336,89 @@ class KuraStorageApiContractTest {
         }
 
     @Test
+    @Suppress("LongMethod")
+    fun `backup compare and upload context use the backup API contract`() =
+        runTest {
+            server.enqueue(
+                jsonResponse(
+                    """
+                    {"items":[{"localDocumentKey":"opaque-key","decision":"CHANGED",
+                    "remoteFileId":"$DEVICE_ID","expectedRemoteFileVersion":4,"errorCode":null}]}
+                    """.trimIndent(),
+                ),
+            )
+            server.enqueue(jsonResponse(UPLOAD_SESSION_RESPONSE).setResponseCode(201))
+
+            val compared =
+                api.compareBackup(
+                    "token",
+                    BackupCompareRequestDto(
+                        TARGET_PARENT_ID,
+                        listOf(
+                            BackupCompareCandidateDto(
+                                "opaque-key",
+                                "Camera/video.mp4",
+                                5,
+                                TIME,
+                                SHA256,
+                            ),
+                        ),
+                    ),
+                ) as NetworkCallResult.Success
+            val compare = server.takeRequest()
+            assertEquals("POST", compare.method)
+            assertEquals("/api/v1/backup/compare", compare.path)
+            assertEquals("Bearer token", compare.getHeader("Authorization"))
+            assertEquals(
+                compactJson(
+                    """
+                    {"destinationFolderId":"$TARGET_PARENT_ID","items":[{"localDocumentKey":"opaque-key",
+                    "relativePath":"Camera/video.mp4","size":5,"modifiedAt":"$TIME","checksum":"$SHA256"}]}
+                    """.trimIndent(),
+                ),
+                compactJson(compare.body.readUtf8()),
+            )
+            assertEquals(
+                "CHANGED",
+                compared.value.items
+                    .single()
+                    .decision,
+            )
+
+            api.createUploadSession(
+                "token",
+                IDEMPOTENCY_KEY,
+                CreateUploadSessionRequestDto(
+                    TARGET_PARENT_ID,
+                    "video.mp4",
+                    null,
+                    5,
+                    SHA256,
+                    BackupUploadContextDto(
+                        "opaque-key",
+                        "Camera/video.mp4",
+                        TIME,
+                        "CHANGED",
+                        DEVICE_ID,
+                        4,
+                    ),
+                ),
+            )
+            val create = server.takeRequest()
+            assertEquals(
+                compactJson(
+                    """
+                    {"destinationFolderId":"$TARGET_PARENT_ID","fileName":"video.mp4","size":5,
+                    "sha256":"$SHA256","backup":{"localDocumentKey":"opaque-key",
+                    "relativePath":"Camera/video.mp4","modifiedAt":"$TIME","decision":"CHANGED",
+                    "expectedRemoteFileId":"$DEVICE_ID","expectedRemoteFileVersion":4}}
+                    """.trimIndent(),
+                ),
+                compactJson(create.body.readUtf8()),
+            )
+        }
+
+    @Test
     fun `upload retry headers are preserved on structured error`() =
         runTest {
             server.enqueue(

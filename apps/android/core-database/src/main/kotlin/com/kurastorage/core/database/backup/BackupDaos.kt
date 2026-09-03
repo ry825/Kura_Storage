@@ -18,6 +18,9 @@ interface BackupRuleDao {
         scopeId: String,
     ): BackupRuleEntity?
 
+    @Query("SELECT * FROM backup_rules WHERE account_scope_id = :scopeId AND enabled = 1 ORDER BY created_at, id")
+    suspend fun enabledByScope(scopeId: String): List<BackupRuleEntity>
+
     @Upsert
     suspend fun upsert(rule: BackupRuleEntity)
 
@@ -164,6 +167,31 @@ interface LocalSyncItemDao {
     fun observeStateCounts(scopeId: String): Flow<List<BackupStateCountEntity>>
 
     @Query(
+        "SELECT rule_id, lifecycle_state, COUNT(*) AS count FROM local_sync_items " +
+            "WHERE account_scope_id = :scopeId GROUP BY rule_id, lifecycle_state",
+    )
+    fun observeRuleStateCounts(scopeId: String): Flow<List<BackupRuleStateCountEntity>>
+
+    @Query(
+        "SELECT MAX(completed_at) FROM local_sync_items WHERE account_scope_id = :scopeId " +
+            "AND lifecycle_state = 'COMPLETED'",
+    )
+    fun observeLastCompletedAt(scopeId: String): Flow<Long?>
+
+    @Query(
+        "SELECT wait_reason, COUNT(*) AS count FROM local_sync_items WHERE account_scope_id = :scopeId " +
+            "AND wait_reason != 'NONE' GROUP BY wait_reason",
+    )
+    fun observeWaitReasonCounts(scopeId: String): Flow<List<BackupWaitReasonCountEntity>>
+
+    @Query(
+        "SELECT COUNT(*) AS itemCount, COALESCE(SUM(size), 0) AS byteCount, " +
+            "COALESCE(MAX(size), 0) AS maximumItemBytes FROM local_sync_items " +
+            "WHERE account_scope_id = :scopeId AND lifecycle_state = 'PENDING'",
+    )
+    suspend fun pendingEstimate(scopeId: String): BackupPendingEstimateEntity
+
+    @Query(
         "SELECT * FROM local_sync_items WHERE account_scope_id = :scopeId AND lifecycle_state = 'FAILED' " +
             "ORDER BY last_attempt_at DESC, id LIMIT :limit",
     )
@@ -183,6 +211,20 @@ interface LocalSyncItemDao {
         scopeId: String,
         scanStartedAt: Long,
     ): Int
+
+    @Query(
+        "DELETE FROM local_sync_items WHERE account_scope_id = :scopeId " +
+            "AND lifecycle_state IN ('COMPLETED', 'FAILED') AND (" +
+            "COALESCE(completed_at, last_attempt_at, last_seen_at) < :cutoff OR id NOT IN (" +
+            "SELECT id FROM local_sync_items WHERE account_scope_id = :scopeId " +
+            "AND lifecycle_state IN ('COMPLETED', 'FAILED') " +
+            "ORDER BY COALESCE(completed_at, last_attempt_at, last_seen_at) DESC, id DESC LIMIT :retainCount))",
+    )
+    suspend fun cleanupHistory(
+        scopeId: String,
+        cutoff: Long,
+        retainCount: Int,
+    ): Int
 }
 
 private const val MAX_CLAIM_LIMIT = 100
@@ -194,6 +236,9 @@ interface ExternalWifiPolicyDao {
             "ORDER BY display_name COLLATE NOCASE, id",
     )
     fun observeByScope(scopeId: String): Flow<List<ExternalWifiPolicyEntity>>
+
+    @Query("SELECT * FROM external_wifi_policies WHERE account_scope_id = :scopeId ORDER BY created_at, id")
+    suspend fun listByScope(scopeId: String): List<ExternalWifiPolicyEntity>
 
     @Query("SELECT COUNT(*) FROM external_wifi_policies WHERE account_scope_id = :scopeId")
     suspend fun count(scopeId: String): Int

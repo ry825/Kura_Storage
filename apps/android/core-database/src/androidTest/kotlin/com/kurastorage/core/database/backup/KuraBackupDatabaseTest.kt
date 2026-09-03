@@ -11,6 +11,7 @@ import com.kurastorage.core.model.backup.BackupNetworkMode
 import com.kurastorage.core.model.backup.BackupRuleId
 import com.kurastorage.core.model.backup.BackupSourceType
 import com.kurastorage.core.model.backup.LocalBackupRule
+import com.kurastorage.core.model.backup.SyncLifecycleState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -21,6 +22,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.IOException
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
@@ -190,6 +192,98 @@ class KuraBackupDatabaseTest {
                     .first()
                     .size,
             )
+        }
+
+    @Test
+    fun transferSessionAndConfirmedOffsetSurviveDatabaseReopenAndExpiredLeaseRecovery() =
+        runBlocking {
+            val rule = rule()
+            val db = openDiskDatabase()
+            db.backupRuleDao().upsert(rule)
+            db.localSyncItemDao().upsertAll(listOf(item(rule, "resume", null)))
+            val persistence = BackupTransferPersistence(db)
+            val claimed =
+                persistence
+                    .claim(
+                        AccountScopeId(rule.accountScopeId),
+                        "worker",
+                        Instant.ofEpochMilli(10),
+                        Duration.ofMinutes(30),
+                        100,
+                    ).single()
+            persistence.store(
+                claimed.copy(
+                    lifecycleState = SyncLifecycleState.UPLOADING,
+                    uploadSessionId = "session-1",
+                    idempotencyKey = "operation-1",
+                    confirmedOffset = 64,
+                ),
+            )
+            db.close()
+            database = null
+
+            val reopened = openDiskDatabase()
+            val resumed =
+                requireNotNull(
+                    BackupTransferPersistence(reopened).find(
+                        AccountScopeId(rule.accountScopeId),
+                        claimed.id,
+                    ),
+                )
+            assertEquals("session-1", resumed.uploadSessionId)
+            assertEquals("operation-1", resumed.idempotencyKey)
+            assertEquals(64L, resumed.confirmedOffset)
+            assertEquals(1, reopened.localSyncItemDao().recoverExpiredLeases(Duration.ofHours(1).toMillis() + 11))
+            val recovered = requireNotNull(reopened.localSyncItemDao().find(claimed.id.value, rule.accountScopeId))
+            assertEquals("PENDING", recovered.lifecycleState)
+            assertEquals("SERVER_RECONCILIATION", recovered.waitReason)
+            assertEquals("session-1", recovered.uploadSessionId)
+            assertEquals(64L, recovered.confirmedOffset)
+        }
+
+    @Test
+    fun cleanupAndProgressQueriesRetainActionableQueueRows() =
+        runBlocking {
+            val db = openMemoryDatabase()
+            val rule = rule()
+            db.backupRuleDao().upsert(rule)
+            val oldCompleted =
+                item(rule, "completed", UUID.randomUUID().toString()).copy(
+                    lifecycleState = "COMPLETED",
+                    completedAt = 1,
+                )
+            val oldFailed =
+                item(rule, "failed", null).copy(
+                    lifecycleState = "FAILED",
+                    failureReason = "RETRY_EXHAUSTED",
+                    lastAttemptAt = 1,
+                )
+            val pending = item(rule, "pending", null).copy(waitReason = "NO_ALLOWED_CONNECTION")
+            val missing = item(rule, "missing", null).copy(lifecycleState = "LOCAL_MISSING")
+            db.localSyncItemDao().upsertAll(listOf(oldCompleted, oldFailed, pending, missing))
+
+            val stateCounts = db.localSyncItemDao().observeRuleStateCounts(rule.accountScopeId).first()
+            assertEquals(4, stateCounts.sumOf { it.count })
+            assertEquals(
+                1,
+                db
+                    .localSyncItemDao()
+                    .observeWaitReasonCounts(rule.accountScopeId)
+                    .first()
+                    .single()
+                    .count,
+            )
+            assertEquals(1L, db.localSyncItemDao().observeLastCompletedAt(rule.accountScopeId).first())
+
+            assertEquals(
+                2,
+                BackupTransferPersistence(db).cleanupHistory(
+                    AccountScopeId(rule.accountScopeId),
+                    Instant.parse("2026-09-03T00:00:00Z"),
+                ),
+            )
+            val retained = db.localSyncItemDao().observeByScope(rule.accountScopeId).first()
+            assertEquals(setOf("pending", "missing"), retained.map { it.localDocumentKey }.toSet())
         }
 
     @Test

@@ -219,59 +219,59 @@
 
 ### 4.1 開始条件・実行モデル
 
-- [ ] PR4の開始条件を満たす。
-  - [ ] PR3が`main`へMerge済みで、最新`main`から短命Branchを作成する。
-  - [ ] ConnectionCoordinator、AuthenticatedRequestExecutor、Upload Session再開、Network binding、Notificationの既存patternを確認する。
-- [ ] `BackupCoordinator`と`NetworkPolicyEvaluator`をTest firstで実装する。
-  - [ ] `LOCAL_DIRECT_ONLY`と`LOCAL_DIRECT_OR_ALLOWED_WIFI_ZEROTIER`を全接続状態から`AUTO_BACKUP_ALLOWED`、`MANUAL_ONLY`、`BLOCKED`へ変換する。
-  - [ ] 基盤Wi-Fi／Ethernet、Route、登録Wi-Fi、任意BSSID、従量制、TLS、Server identity、HDD、Battery、Charging、User／Device／Sessionを独立に評価する。
-  - [ ] Local DirectをSSIDに依存させず、非ZeroTier基盤Networkへの明示bindingとHTTPS healthで再確認する。
-  - [ ] Mobile＋ZeroTier、未登録Wi-Fi、登録済み外部Wi-Fi＋ZeroTierなし、権限なし、HDD unavailableを必ず拒否する。
+- [x] PR4の開始条件を満たす。
+  - [x] PR3が`main`へMerge済みで、最新`main`から短命Branchを作成する。
+  - [x] ConnectionCoordinator、AuthenticatedRequestExecutor、Upload Session再開、Network binding、Notificationの既存patternを確認する。
+- [x] `BackupCoordinator`と`NetworkPolicyEvaluator`をTest firstで実装する。
+  - [x] `LOCAL_DIRECT_ONLY`と`LOCAL_DIRECT_OR_ALLOWED_WIFI_ZEROTIER`を全接続状態から`AUTO_BACKUP_ALLOWED`、`MANUAL_ONLY`、`BLOCKED`へ変換する。
+  - [x] 基盤Wi-Fi／Ethernet、Route、登録Wi-Fi、任意BSSID、従量制、TLS、Server identity、HDD、Battery、Charging、User／Device／Sessionを独立に評価する。
+  - [x] Local DirectをSSIDに依存させず、非ZeroTier基盤Networkへの明示bindingとHTTPS healthで再確認する。
+  - [x] Mobile＋ZeroTier、未登録Wi-Fi、登録済み外部Wi-Fi＋ZeroTierなし、権限なし、HDD unavailableを必ず拒否する。
 
 ### 4.2 WorkManager予約・復旧
 
-- [ ] 一意なWork chainを実装する。
-  - [ ] Rule／User／接続先に安定した一意Work名を使い、同時enqueue、OS retry、Process終了、端末再起動で重複実行しない。
-  - [ ] WorkManagerの汎用Network制約に加えてWorker開始直後にNetwork Policyを再評価し、不許可時は短時間で安全に終了する。
-  - [ ] 保留Queue、MediaStore通知、SAF定期確認、アプリ起動、今すぐ実行を同じ一意chainへ収束させる。
-  - [ ] 強制停止中は実行不能であることをUI用状態へ公開し、常時Foreground Serviceを開始しない。
-- [ ] Batchと長時間処理を実装する。
-  - [ ] 最大100 File、合計2GB、20分のいずれかで区切り、残件を次Workerへ引き継ぐ。
-  - [ ] 大量転送だけForeground Worker＋進捗通知へ切り替え、通知権限拒否時のAndroid version別動作を安全に扱う。
-  - [ ] 初回大量バックアップの充電中条件と最低Batteryを実行前・Batch境界で再評価する。
+- [x] 一意なWork chainを実装する。
+  - [x] Rule／User／接続先に安定した一意Work名を使い、同時enqueue、OS retry、Process終了、端末再起動で重複実行しない。
+  - [x] WorkManagerの汎用Network制約に加えてWorker開始直後にNetwork Policyを再評価し、不許可時は短時間で安全に終了する。
+  - [x] 保留Queue、MediaStore通知、SAF定期確認、アプリ起動、今すぐ実行を同じ一意chainへ収束させる。
+  - [x] 強制停止中は実行不能であることをUI用状態へ公開し、常時Foreground Serviceを開始しない。
+- [x] Batchと長時間処理を実装する。
+  - [x] 最大100 File、合計2GB、20分のいずれかで区切り、残件を次Workerへ引き継ぐ。
+  - [x] 大量転送だけForeground Worker＋進捗通知へ切り替え、通知権限拒否時のAndroid version別動作を安全に扱う。
+  - [x] 初回大量バックアップの充電中条件と最低Batteryを実行前・Batch境界で再評価する。
 
 ### 4.3 Compare・Upload・状態遷移
 
-- [ ] Room候補をServer CompareへBatch送信し、結果をQueueへ反映する。
-  - [ ] `ALREADY_UPLOADED`を通信不要で完了へ、`NEW`／`CHANGED`だけをUploadへ進める。
-  - [ ] Server応答に未知Key、重複、欠落、未知reason、別Remote Fileがある場合はfail-closedにする。
-  - [ ] 401は既存Token refresh後に同じoperation／idempotency情報で1回だけ再送し、期限切れは認証待ちへ移行する。
-- [ ] 既存分割UploadをProcess境界対応で再利用する。
-  - [ ] Upload Session ID、Idempotency Key、offset、Source fingerprint、retry状態をRoomへ永続化する。
-  - [ ] 通信結果不明、429、一時503、API再起動、Network切断ではServer状態を再照会して確定offsetから再開する。
-  - [ ] Source変更・権限喪失・Session期限切れ・Device失効・Server競合を理由別の回復可能／要操作状態へ変換する。
-  - [ ] Worker停止・取消時にChunk途中を正式Fileとして公開せず、同じ端末文書の別Workerを並行送信しない。
-- [ ] 転送中もPolicyを再評価する。
-  - [ ] Wi-Fi→Mobile、Wi-Fi切替、ZeroTier切断、Route変更、HDD unavailable、Session失効でChunk境界から安全に一時停止する。
-  - [ ] 許可接続へ戻った後に永続QueueとServer offsetから再開し、完了済みFileを再送しない。
-  - [ ] 手動閲覧・手動UploadのMobile＋ZeroTier許可を後退させず、自動Backupだけを停止する。
+- [x] Room候補をServer CompareへBatch送信し、結果をQueueへ反映する。
+  - [x] `ALREADY_UPLOADED`を通信不要で完了へ、`NEW`／`CHANGED`だけをUploadへ進める。
+  - [x] Server応答に未知Key、重複、欠落、未知reason、別Remote Fileがある場合はfail-closedにする。
+  - [x] 401は既存Token refresh後に同じoperation／idempotency情報で1回だけ再送し、期限切れは認証待ちへ移行する。
+- [x] 既存分割UploadをProcess境界対応で再利用する。
+  - [x] Upload Session ID、Idempotency Key、offset、Source fingerprint、retry状態をRoomへ永続化する。
+  - [x] 通信結果不明、429、一時503、API再起動、Network切断ではServer状態を再照会して確定offsetから再開する。
+  - [x] Source変更・権限喪失・Session期限切れ・Device失効・Server競合を理由別の回復可能／要操作状態へ変換する。
+  - [x] Worker停止・取消時にChunk途中を正式Fileとして公開せず、同じ端末文書の別Workerを並行送信しない。
+- [x] 転送中もPolicyを再評価する。
+  - [x] Wi-Fi→Mobile、Wi-Fi切替、ZeroTier切断、Route変更、HDD unavailable、Session失効でChunk境界から安全に一時停止する。
+  - [x] 許可接続へ戻った後に永続QueueとServer offsetから再開し、完了済みFileを再送しない。
+  - [x] 手動閲覧・手動UploadのMobile＋ZeroTier許可を後退させず、自動Backupだけを停止する。
 
 ### 4.4 進捗・履歴・可観測性データ
 
-- [ ] Rule別・全体の状態集計を提供する。
-  - [ ] 最終成功日時、保留、Upload中、成功、失敗、接続待ち、認証待ちの件数をRoom transactionから一貫して取得する。
-  - [ ] File別の失敗reason、retry回数、最終試行日時、完了履歴をUserが説明可能な範囲で保持する。
-  - [ ] 保持上限とcleanupを実装し、未完了QueueやServer Receipt対応を誤って削除しない。
-- [ ] 低CardinalityのServer／Android可観測性を実装する。
-  - [ ] Backup成功・失敗・待機理由、Batch件数・Byte、処理時間、retryを記録する。
-  - [ ] SSID、BSSID、端末Path、相対Path、ファイル名、document key、Token、User入力をLog／Metric label／通知へ含めない。
+- [x] Rule別・全体の状態集計を提供する。
+  - [x] 最終成功日時、保留、Upload中、成功、失敗、接続待ち、認証待ちの件数をRoom transactionから一貫して取得する。
+  - [x] File別の失敗reason、retry回数、最終試行日時、完了履歴をUserが説明可能な範囲で保持する。
+  - [x] 保持上限とcleanupを実装し、未完了QueueやServer Receipt対応を誤って削除しない。
+- [x] 低CardinalityのServer／Android可観測性を実装する。
+  - [x] Backup成功・失敗・待機理由、Batch件数・Byte、処理時間、retryを記録する。
+  - [x] SSID、BSSID、端末Path、相対Path、ファイル名、document key、Token、User入力をLog／Metric label／通知へ含めない。
 
 ### 4.5 PR4検証・完了
 
-- [ ] WorkManager Test Driver／Room／MockWebServerで一意Work、OS retry、Process再生成、端末再起動相当、Batch継続、認証待ちを確認する。
-- [ ] Network matrixの全組合せと転送中切替をUnit／Instrumented Testで確認する。
-- [ ] API／Nginx停止、通信結果不明、offset競合、HDD unavailable、Device／Session失効、Source変更で破損・重複・無限retryがない。
-- [ ] `verify-android.sh`、`verify-server.sh`、`verify-config.sh`、`verify-security.sh`、connected Instrumented Test、`git diff --check`を成功させる。
+- [x] WorkManager Test Driver／Room／MockWebServerで一意Work、OS retry、Process再生成、端末再起動相当、Batch継続、認証待ちを確認する。
+- [x] Network matrixの全組合せと転送中切替をUnit／Instrumented Testで確認する。
+- [x] API／Nginx停止、通信結果不明、offset競合、HDD unavailable、Device／Session失効、Source変更で破損・重複・無限retryがない。
+- [x] `verify-android.sh`、`verify-server.sh`、`verify-config.sh`、`verify-security.sh`、connected Instrumented Test、`git diff --check`を成功させる。
 - [ ] 正式文書とtesting記録を実績へ更新し、Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---

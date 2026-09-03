@@ -194,6 +194,13 @@ interface UploadSessionApi {
     ): NetworkCallResult<Unit>
 }
 
+interface BackupApi {
+    suspend fun compareBackup(
+        accessToken: String,
+        request: BackupCompareRequestDto,
+    ): NetworkCallResult<BackupCompareResponseDto>
+}
+
 interface SharingApi {
     suspend fun listCandidates(accessToken: String): NetworkCallResult<List<ShareCandidateDto>>
 
@@ -603,6 +610,12 @@ private interface KuraStorageService {
         @Body request: CreateUploadSessionRequestDto,
     ): Response<UploadSessionDto>
 
+    @POST("backup/compare")
+    suspend fun compareBackup(
+        @Header("Authorization") authorization: String,
+        @Body request: BackupCompareRequestDto,
+    ): Response<BackupCompareResponseDto>
+
     @GET("upload-sessions/{sessionId}")
     suspend fun getUploadSession(
         @Header("Authorization") authorization: String,
@@ -662,6 +675,7 @@ class KuraStorageApi(
     TextFileApi,
     AdminStorageApi,
     UploadSessionApi,
+    BackupApi,
     SharingApi,
     SearchApi,
     ActivityApi,
@@ -918,6 +932,11 @@ class KuraStorageApi(
         idempotencyKey: String,
         request: CreateUploadSessionRequestDto,
     ) = executeAuthenticated { service.createUploadSession(bearer(accessToken), idempotencyKey, request) }
+
+    override suspend fun compareBackup(
+        accessToken: String,
+        request: BackupCompareRequestDto,
+    ) = executeAuthenticated { service.compareBackup(bearer(accessToken), request) }
 
     override suspend fun getUploadSession(
         accessToken: String,

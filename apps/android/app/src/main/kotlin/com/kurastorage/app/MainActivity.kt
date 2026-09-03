@@ -119,7 +119,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         if (BuildConfig.DEBUG) enableStrictMode()
         super.onCreate(savedInstanceState)
-        container = ServiceContainer(this)
+        container = (application as KuraStorageApplication).container
         setContent {
             KuraStorageTheme {
                 KuraStorageApp(container, connectionViewModel)

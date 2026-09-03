@@ -369,6 +369,46 @@ data class CreateUploadSessionRequestDto(
     val contentType: String? = null,
     val size: Long,
     val sha256: String? = null,
+    val backup: BackupUploadContextDto? = null,
+)
+
+@Serializable
+data class BackupUploadContextDto(
+    val localDocumentKey: String,
+    val relativePath: String,
+    val modifiedAt: String,
+    val decision: String,
+    val expectedRemoteFileId: String? = null,
+    val expectedRemoteFileVersion: Long? = null,
+)
+
+@Serializable
+data class BackupCompareRequestDto(
+    val destinationFolderId: String,
+    val items: List<BackupCompareCandidateDto>,
+)
+
+@Serializable
+data class BackupCompareCandidateDto(
+    val localDocumentKey: String,
+    val relativePath: String,
+    val size: Long,
+    val modifiedAt: String,
+    val checksum: String? = null,
+)
+
+@Serializable
+data class BackupCompareResponseDto(
+    val items: List<BackupCompareResultDto>,
+)
+
+@Serializable
+data class BackupCompareResultDto(
+    val localDocumentKey: String,
+    val decision: String,
+    val remoteFileId: String? = null,
+    val expectedRemoteFileVersion: Long? = null,
+    val errorCode: String? = null,
 )
 
 @Serializable
