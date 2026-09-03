@@ -51,6 +51,16 @@ interface LocalSyncItemDao {
         scopeId: String,
     ): LocalSyncItemEntity?
 
+    @Query(
+        "SELECT * FROM local_sync_items WHERE rule_id = :ruleId AND account_scope_id = :scopeId " +
+            "AND local_document_key = :localDocumentKey",
+    )
+    suspend fun findByDocumentKey(
+        ruleId: String,
+        scopeId: String,
+        localDocumentKey: String,
+    ): LocalSyncItemEntity?
+
     @Upsert
     suspend fun upsertAll(items: List<LocalSyncItemEntity>)
 
@@ -161,6 +171,18 @@ interface LocalSyncItemDao {
         scopeId: String,
         limit: Int,
     ): List<LocalSyncItemEntity>
+
+    @Query(
+        "UPDATE local_sync_items SET lifecycle_state = 'LOCAL_MISSING', wait_reason = 'NONE', " +
+            "failure_reason = 'NONE', lease_owner = NULL, lease_expires_at = NULL " +
+            "WHERE rule_id = :ruleId AND account_scope_id = :scopeId AND last_seen_at < :scanStartedAt " +
+            "AND lifecycle_state != 'LOCAL_MISSING'",
+    )
+    suspend fun markMissingNotSeenSince(
+        ruleId: String,
+        scopeId: String,
+        scanStartedAt: Long,
+    ): Int
 }
 
 private const val MAX_CLAIM_LIMIT = 100
@@ -209,4 +231,16 @@ interface ScanCheckpointDao {
 
     @Upsert
     suspend fun upsert(checkpoint: ScanCheckpointEntity)
+}
+
+@Dao
+interface SourceIdentityMappingDao {
+    @Query("SELECT * FROM source_identity_mappings WHERE rule_id = :ruleId AND provider_key = :providerKey")
+    suspend fun find(
+        ruleId: String,
+        providerKey: String,
+    ): SourceIdentityMappingEntity?
+
+    @Upsert
+    suspend fun upsert(mapping: SourceIdentityMappingEntity)
 }

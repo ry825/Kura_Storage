@@ -117,6 +117,31 @@ data class ScanCheckpointEntity(
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
 
+@Entity(
+    tableName = "source_identity_mappings",
+    primaryKeys = ["rule_id", "provider_key"],
+    foreignKeys = [
+        ForeignKey(
+            entity = BackupRuleEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["rule_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index(value = ["rule_id"]),
+        Index(value = ["rule_id", "local_document_key"], unique = true),
+    ],
+)
+data class SourceIdentityMappingEntity(
+    @ColumnInfo(name = "rule_id") val ruleId: String,
+    @ColumnInfo(name = "provider_key") val providerKey: String,
+    @ColumnInfo(name = "identity_discriminator") val identityDiscriminator: String,
+    @ColumnInfo(name = "local_document_key") val localDocumentKey: String,
+    @ColumnInfo(name = "first_seen_at") val firstSeenAt: Long,
+    @ColumnInfo(name = "last_seen_at") val lastSeenAt: Long,
+)
+
 data class BackupStateCountEntity(
     @ColumnInfo(name = "lifecycle_state") val lifecycleState: String,
     val count: Int,

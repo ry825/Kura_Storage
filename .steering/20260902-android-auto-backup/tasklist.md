@@ -171,46 +171,46 @@
 
 ### 3.1 開始条件・差分契約
 
-- [ ] PR3の開始条件を満たす。
-  - [ ] PR2が`main`へMerge済みで、最新`main`から短命Branchを作成する。
-  - [ ] MediaStore、DocumentsContract、ContentResolver streaming、既存Upload Sourceの実装patternを確認する。
-- [ ] `localDocumentKey`の安定性とSource別の同一性契約を確定する。
-  - [ ] Raw URIや物理PathをServer識別子・Logへそのまま送らず、User／Device namespace内のopaque keyへ変換する。
-  - [ ] MediaStore ID再利用、SAF document ID変更、Rename／Move、更新日時精度、Provider差異の扱いをTest可能にする。
+- [x] PR3の開始条件を満たす。
+  - [x] PR2が`main`へMerge済みで、最新`main`から短命Branchを作成する。
+  - [x] MediaStore、DocumentsContract、ContentResolver streaming、既存Upload Sourceの実装patternを確認する。
+- [x] `localDocumentKey`の安定性とSource別の同一性契約を確定する。
+  - [x] Raw URIや物理PathをServer識別子・Logへそのまま送らず、User／Device namespace内のopaque keyへ変換する。
+  - [x] MediaStore ID再利用、SAF document ID変更、Rename／Move、更新日時精度、Provider差異の扱いをTest可能にする。
 
 ### 3.2 MediaStore差分検出
 
-- [ ] 写真・動画・音声のScannerをTest firstで実装する。
-  - [ ] Android version別にMediaStore generationと変更通知を利用し、Rule対象だけをStreaming列挙する。
-  - [ ] generationの初回、増分、rollback／reset、権限変更、削除、Provider例外を安全に扱う。
-  - [ ] Size・更新情報で候補を絞り、必要な候補だけContentResolverからChecksumを計算する。
-  - [ ] 変更通知のburstをdebounceし、同じ候補をRoom一意制約へ収束させる。
+- [x] 写真・動画・音声のScannerをTest firstで実装する。
+  - [x] Android version別にMediaStore generationと変更通知を利用し、Rule対象だけをStreaming列挙する。
+  - [x] generationの初回、増分、rollback／reset、権限変更、削除、Provider例外を安全に扱う。
+  - [x] Size・更新情報で候補を絞り、必要な候補だけContentResolverからChecksumを計算する。
+  - [x] 変更通知のburstをdebounceし、同じ候補をRoom一意制約へ収束させる。
 
 ### 3.3 SAF差分検出
 
-- [ ] 任意FolderのSAF ScannerをTest firstで実装する。
-  - [ ] Tree配下をStreaming走査し、相対Path、Size、更新日時を保存済み索引と比較する。
-  - [ ] 毎回全Fileをhashせず、metadata変更候補だけを必要時にStreaming SHA-256する。
-  - [ ] cycle、不正Provider応答、深すぎるTree、件数過多、読取拒否、途中取消、File消失を安全に扱う。
-  - [ ] 走査が完走した場合だけcheckpointを進め、中断・例外時は後続再走査で取りこぼしを回収する。
+- [x] 任意FolderのSAF ScannerをTest firstで実装する。
+  - [x] Tree配下をStreaming走査し、相対Path、Size、更新日時を保存済み索引と比較する。
+  - [x] 毎回全Fileをhashせず、metadata変更候補だけを必要時にStreaming SHA-256する。
+  - [x] cycle、不正Provider応答、深すぎるTree、件数過多、読取拒否、途中取消、File消失を安全に扱う。
+  - [x] 走査が完走した場合だけcheckpointを進め、中断・例外時は後続再走査で取りこぼしを回収する。
 
 ### 3.4 Queue反映・一方向性
 
-- [ ] Scanner結果をRoomへ原子的に反映する。
-  - [ ] 新規・変更候補を`PENDING`へupsertし、同一Rule／documentの重複Queueを作らない。
-  - [ ] 完了済みmetadataと同一なら再Uploadせず、Server Compareが必要な曖昧候補だけを保留する。
-  - [ ] 端末から消えた項目は`LOCAL_MISSING`にするだけで、Delete API、Trash API、Receipt削除を呼ばない。
-  - [ ] 再出現、変更中File、走査中削除、複数Rule重複、Rule無効化、Source permission喪失をTestする。
-- [ ] Scanner起動契機を実装する。
-  - [ ] アプリ起動、MediaStore変更、保留追加、許可接続到達、SAF 6時間定期確認、「今すぐバックアップ」から同じCoordinatorへ収束させる。
-  - [ ] 同時ScannerをRule単位で一意にし、二重走査・二重Checksum・二重Queueを防止する。
+- [x] Scanner結果をRoomへ原子的に反映する。
+  - [x] 新規・変更候補を`PENDING`へupsertし、同一Rule／documentの重複Queueを作らない。
+  - [x] 完了済みmetadataと同一なら再Uploadせず、Server Compareが必要な曖昧候補だけを保留する。
+  - [x] 端末から消えた項目は`LOCAL_MISSING`にするだけで、Delete API、Trash API、Receipt削除を呼ばない。
+  - [x] 再出現、変更中File、走査中削除、複数Rule重複、Rule無効化、Source permission喪失をTestする。
+- [x] Scanner起動契機を実装する。
+  - [x] アプリ起動、MediaStore変更、保留追加、許可接続到達、SAF 6時間定期確認、「今すぐバックアップ」から同じCoordinatorへ収束させる。
+  - [x] 同時ScannerをRule単位で一意にし、二重走査・二重Checksum・二重Queueを防止する。
 
 ### 3.5 PR3検証・完了
 
-- [ ] Fake ContentResolver／DocumentsProviderのUnit・Instrumented Testで増分、全再走査、取こぼし回収、権限喪失、取消、Process終了を確認する。
-- [ ] 1万件・大容量Fileを含む匿名fixtureで時間、Memory、読取Byte、hash件数、DB Batchを測定し、全件hashしないことを記録する。
-- [ ] 端末削除・候補省略でServer APIへ削除要求が一切送られないことをMockWebServerで確認する。
-- [ ] `verify-android.sh`、connected Instrumented Test、format、静的解析、`git diff --check`を成功させる。
+- [x] Fake ContentResolver／DocumentsProviderのUnit・Instrumented Testで増分、全再走査、取こぼし回収、権限喪失、取消、Process終了を確認する。
+- [x] 1万件・大容量Fileを含む匿名fixtureで時間、Memory、読取Byte、hash件数、DB Batchを測定し、全件hashしないことを記録する。
+- [x] 端末削除・候補省略でServer APIへ削除要求が一切送られないことをMockWebServerで確認する。
+- [x] `verify-android.sh`、connected Instrumented Test、format、静的解析、`git diff --check`を成功させる。
 - [ ] 正式文書とtesting記録を実測へ更新し、Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
 ---
