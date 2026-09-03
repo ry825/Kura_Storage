@@ -111,6 +111,9 @@ private class FakeRuleDao : BackupRuleDao {
 
     override fun observeByScope(scopeId: String): Flow<List<BackupRuleEntity>> = flowOf(listOfNotNull(saved))
 
+    override suspend fun enabledByScope(scopeId: String): List<BackupRuleEntity> =
+        listOfNotNull(saved?.takeIf { it.accountScopeId == scopeId && it.enabled })
+
     override suspend fun find(
         id: String,
         scopeId: String,

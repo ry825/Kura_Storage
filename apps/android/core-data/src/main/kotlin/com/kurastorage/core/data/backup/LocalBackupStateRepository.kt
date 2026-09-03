@@ -4,12 +4,14 @@ import com.kurastorage.core.database.backup.BackupEntityMapper
 import com.kurastorage.core.database.backup.LocalSyncItemDao
 import com.kurastorage.core.model.backup.AccountScopeId
 import com.kurastorage.core.model.backup.BackupFailureReason
+import com.kurastorage.core.model.backup.BackupRuleId
 import com.kurastorage.core.model.backup.BackupStateCount
 import com.kurastorage.core.model.backup.BackupWaitReason
 import com.kurastorage.core.model.backup.LocalSyncItem
 import com.kurastorage.core.model.backup.LocalSyncItemId
 import com.kurastorage.core.model.backup.SyncLifecycleState
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import java.time.Clock
 import java.time.Duration
@@ -30,6 +32,25 @@ class LocalBackupStateRepository(
 
     fun observeCounts(accountScopeId: AccountScopeId): Flow<List<BackupStateCount>> =
         dao.observeStateCounts(accountScopeId.value).map { counts -> counts.map(BackupEntityMapper::toModel) }
+
+    fun observeProgress(accountScopeId: AccountScopeId): Flow<BackupProgressSnapshot> =
+        combine(
+            dao.observeStateCounts(accountScopeId.value),
+            dao.observeRuleStateCounts(accountScopeId.value),
+            dao.observeWaitReasonCounts(accountScopeId.value),
+            dao.observeLastCompletedAt(accountScopeId.value),
+        ) { totals, rules, waits, lastCompletedAt ->
+            BackupProgressSnapshot(
+                totals.associate { enumValueOf<SyncLifecycleState>(it.lifecycleState) to it.count },
+                rules
+                    .groupBy { BackupRuleId(it.ruleId) }
+                    .mapValues { (_, values) ->
+                        values.associate { enumValueOf<SyncLifecycleState>(it.lifecycleState) to it.count }
+                    },
+                waits.associate { enumValueOf<BackupWaitReason>(it.waitReason) to it.count },
+                lastCompletedAt?.let(Instant::ofEpochMilli),
+            )
+        }
 
     suspend fun upsert(items: List<LocalSyncItem>) = dao.upsertAll(items.map(BackupEntityMapper::toEntity))
 
@@ -72,3 +93,10 @@ class LocalBackupStateRepository(
     @Suppress("MaxLineLength")
     fun onDatabaseRecreatedAfterCorruption(): LocalDatabaseRecoveryDirective = LocalDatabaseRecoveryDirective.RESCAN_AND_COMPARE
 }
+
+data class BackupProgressSnapshot(
+    val stateCounts: Map<SyncLifecycleState, Int>,
+    val ruleStateCounts: Map<BackupRuleId, Map<SyncLifecycleState, Int>>,
+    val waitReasonCounts: Map<BackupWaitReason, Int>,
+    val lastCompletedAt: Instant?,
+)

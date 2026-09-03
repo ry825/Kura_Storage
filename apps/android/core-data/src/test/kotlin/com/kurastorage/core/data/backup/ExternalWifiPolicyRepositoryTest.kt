@@ -180,6 +180,9 @@ private class FakeWifiDao : ExternalWifiPolicyDao {
 
     override fun observeByScope(scopeId: String): Flow<List<ExternalWifiPolicyEntity>> = flowOf(listOfNotNull(saved))
 
+    override suspend fun listByScope(scopeId: String): List<ExternalWifiPolicyEntity> =
+        listOfNotNull(saved?.takeIf { it.accountScopeId == scopeId })
+
     override suspend fun count(scopeId: String): Int = currentCount
 
     override suspend fun find(

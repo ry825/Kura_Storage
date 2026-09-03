@@ -46,7 +46,7 @@ class AndroidCurrentWifiSource(
     private val sdkInt: Int = Build.VERSION.SDK_INT,
     private val canRequestPermissionAgain: (String) -> Boolean = { true },
 ) : CurrentWifiSource {
-    @Suppress("ReturnCount")
+    @Suppress("DEPRECATION", "ReturnCount")
     override fun read(): CurrentWifiResult {
         val missing =
             WifiPermissionPolicy.requiredPermissions(sdkInt).filterTo(mutableSetOf()) { permission ->
@@ -55,7 +55,15 @@ class AndroidCurrentWifiSource(
         if (missing.isNotEmpty()) return WifiPermissionPolicy.missingResult(missing, canRequestPermissionAgain)
         if (!locationManager.isLocationEnabled) return CurrentWifiResult.LocationServicesDisabled
 
-        val activeNetwork = connectivityManager.activeNetwork ?: return CurrentWifiResult.NotConnectedToWifi
+        // A VPN is commonly the active network while ZeroTier is connected. Read the
+        // non-VPN Wi-Fi underneath it so Android 13 can still evaluate an allowlisted SSID/BSSID.
+        val activeNetwork =
+            connectivityManager.allNetworks.firstOrNull { network ->
+                connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                        !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+                } == true
+            } ?: return CurrentWifiResult.NotConnectedToWifi
         val capabilities =
             connectivityManager.getNetworkCapabilities(activeNetwork)
                 ?: return CurrentWifiResult.InformationUnavailable

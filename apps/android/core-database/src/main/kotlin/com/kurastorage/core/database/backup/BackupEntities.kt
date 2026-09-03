@@ -146,3 +146,20 @@ data class BackupStateCountEntity(
     @ColumnInfo(name = "lifecycle_state") val lifecycleState: String,
     val count: Int,
 )
+
+data class BackupRuleStateCountEntity(
+    @ColumnInfo(name = "rule_id") val ruleId: String,
+    @ColumnInfo(name = "lifecycle_state") val lifecycleState: String,
+    val count: Int,
+)
+
+data class BackupWaitReasonCountEntity(
+    @ColumnInfo(name = "wait_reason") val waitReason: String,
+    val count: Int,
+)
+
+data class BackupPendingEstimateEntity(
+    val itemCount: Int,
+    val byteCount: Long,
+    val maximumItemBytes: Long,
+)

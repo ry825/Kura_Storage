@@ -469,7 +469,7 @@ Data Sources
 ├─ SecureCredentialStore
 ```
 
-RoomとWorkManagerはMVP後のAndroid自動Backupで導入済みである。MediaStore／SAF差分取得は`core-data`、安定したSource identity mappingと永続Queue反映は`core-database`へ導入済みである。Network Policyと転送Workerの実装は後続PRで追加する。
+RoomとWorkManagerはMVP後のAndroid自動Backupで導入済みである。MediaStore／SAF差分取得は`core-data`、安定したSource identity mappingと永続Queue反映は`core-database`が担う。Network Policy、Account Scope単位の一意Work chain、Compareと分割Uploadの再開、状態集計は実装済みで、プロセス再生成時はApplicationからRoom・保存認証情報・接続判定を再構成する。
 
 
 ### 7.2 推奨モジュール構成

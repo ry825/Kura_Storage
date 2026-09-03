@@ -1,6 +1,5 @@
 package com.kurastorage.core.database.backup
 
-import androidx.room.withTransaction
 import com.kurastorage.core.model.backup.BackupFailureReason
 import com.kurastorage.core.model.backup.BackupRuleId
 import com.kurastorage.core.model.backup.BackupWaitReason
@@ -36,7 +35,7 @@ data class ScanPersistenceCandidate(
 )
 
 class BackupScanPersistence(
-    private val database: KuraBackupDatabase,
+    private val database: BackupDatabaseAccess,
 ) {
     suspend fun checkpoint(ruleId: BackupRuleId): ScanCheckpoint? =
         database.scanCheckpointDao().find(ruleId.value)?.let(BackupEntityMapper::toModel)
@@ -69,7 +68,7 @@ class BackupScanPersistence(
         observedAt: Instant,
     ) {
         require(documents.size in 1..MAX_SCAN_BATCH_SIZE)
-        database.withTransaction {
+        database.inTransaction {
             val itemDao = database.localSyncItemDao()
             val identityDao = database.sourceIdentityMappingDao()
             val entities =
@@ -104,7 +103,7 @@ class BackupScanPersistence(
         observedAt: Instant,
         wasFullScan: Boolean,
     ) {
-        database.withTransaction {
+        database.inTransaction {
             if (wasFullScan) {
                 database.localSyncItemDao().markMissingNotSeenSince(
                     rule.id.value,

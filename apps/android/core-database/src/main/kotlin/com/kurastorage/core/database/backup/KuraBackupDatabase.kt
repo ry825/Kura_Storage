@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
+import androidx.room.withTransaction
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
@@ -18,16 +19,20 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     version = 2,
     exportSchema = true,
 )
-abstract class KuraBackupDatabase : RoomDatabase() {
-    abstract fun backupRuleDao(): BackupRuleDao
+abstract class KuraBackupDatabase :
+    RoomDatabase(),
+    BackupDatabaseAccess {
+    abstract override fun backupRuleDao(): BackupRuleDao
 
-    abstract fun localSyncItemDao(): LocalSyncItemDao
+    abstract override fun localSyncItemDao(): LocalSyncItemDao
 
-    abstract fun externalWifiPolicyDao(): ExternalWifiPolicyDao
+    abstract override fun externalWifiPolicyDao(): ExternalWifiPolicyDao
 
-    abstract fun scanCheckpointDao(): ScanCheckpointDao
+    abstract override fun scanCheckpointDao(): ScanCheckpointDao
 
-    abstract fun sourceIdentityMappingDao(): SourceIdentityMappingDao
+    abstract override fun sourceIdentityMappingDao(): SourceIdentityMappingDao
+
+    override suspend fun <R> inTransaction(block: suspend () -> R): R = withTransaction(block)
 
     companion object {
         const val DATABASE_NAME = "kurastorage_backup.db"
@@ -60,11 +65,28 @@ abstract class KuraBackupDatabase : RoomDatabase() {
                     )
                 }
             }
-
-        fun create(context: Context): KuraBackupDatabase =
-            Room
-                .databaseBuilder(context.applicationContext, KuraBackupDatabase::class.java, DATABASE_NAME)
-                .addMigrations(MIGRATION_1_2)
-                .build()
     }
+}
+
+fun createBackupDatabase(context: Context): BackupDatabaseAccess =
+    Room
+        .databaseBuilder(
+            context.applicationContext,
+            KuraBackupDatabase::class.java,
+            KuraBackupDatabase.DATABASE_NAME,
+        ).addMigrations(KuraBackupDatabase.MIGRATION_1_2)
+        .build()
+
+interface BackupDatabaseAccess {
+    fun backupRuleDao(): BackupRuleDao
+
+    fun localSyncItemDao(): LocalSyncItemDao
+
+    fun externalWifiPolicyDao(): ExternalWifiPolicyDao
+
+    fun scanCheckpointDao(): ScanCheckpointDao
+
+    fun sourceIdentityMappingDao(): SourceIdentityMappingDao
+
+    suspend fun <R> inTransaction(block: suspend () -> R): R
 }
