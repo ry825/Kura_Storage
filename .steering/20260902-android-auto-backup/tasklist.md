@@ -348,8 +348,8 @@
   - [x] 差分をself-reviewし、無関係な変更、debug code、秘密情報、実環境値がない。
   - [x] Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
 
-- [ ] PR5 Merge後に全体完了処理を行う。
-  - [ ] 全Pull RequestがMergeされた後だけ、steeringモード3-Bで全体振り返りを記録する。
+- [x] PR5 Merge後に全体完了処理を行う。
+  - [x] 全Pull RequestがMergeされた後だけ、steeringモード3-Bで全体振り返りを記録する。
 
 ---
 
@@ -489,4 +489,32 @@
 
 ## 全体振り返り
 
-> PR1〜PR5がすべてMergeされ、本tasklistの全タスクが完了した後にだけ、steeringモード3-Bで記録する。
+- 実装完了日: 2026-09-03
+- 完了したPull Request:
+  - [#44 Add server-side Android automatic backup receipts](https://github.com/ry825/Kura_Storage/pull/44)
+  - [#45 Add Android automatic backup foundation](https://github.com/ry825/Kura_Storage/pull/45)
+  - [#46 Add Android backup source scanning and persistent queue](https://github.com/ry825/Kura_Storage/pull/46)
+  - [#47 Implement Android automatic backup transfer orchestration](https://github.com/ry825/Kura_Storage/pull/47)
+  - [#48 Complete Android automatic backup UI and end-to-end verification](https://github.com/ry825/Kura_Storage/pull/48)
+- 全体の計画と実績の差分:
+  - 計画どおり、PR1でServer側Receipt・Compare・Upload確定、PR2でAndroidのRoom・Rule・Wi-Fi Policy基盤、PR3でMediaStore・SAF走査と永続Queue、PR4でNetwork Policy・WorkManager・分割Upload連携、PR5で設定・進捗・履歴UIと実機E2Eを完成させた。各PRは先行PRのMerge後に進め、機能境界と検証範囲を分離した。
+  - 実装中に、Source identity mapping、転送中のPolicy再評価、Application所有のRuntime Factory、Account Scope付きPaging・retry、認証応答の`userId`、index WorkerとBackup更新のmtime競合対策を追加した。いずれも再起動、User切替、大量転送、実HDDで検出した整合性要件を正式設計とTestへ反映したものである。
+- 主な設計変更と理由:
+  - Serverは既存のResumable UploadをBackup contextで再利用し、Receipt・Remote File version・操作時の現在権限をCompareと確定の両方で検証する構成にした。通信結果不明や共有解除後に重複File・Versionを作らないためである。
+  - AndroidはRoomのAccount Scope付きRule・Policy・Queue・Receiptを正とし、一意Workと期限付きclaimでProcess kill・端末再起動後も収束させた。Activityから独立して復元でき、旧Userの状態を再利用しないことを優先した。
+  - Local Directと登録済み外部Wi-Fi＋ZeroTierの判定を、SSID／BSSID一致だけでなく基盤Network binding、Route、TLS、Server identity、認証に分離した。Wi-Fi情報を信頼境界の代替にしないためである。
+  - 自動Backupを端末からServerへの一方向に限定し、端末削除、Rule削除、候補省略からServer Fileや関連データを削除しない契約をAPI、Room、UI、E2Eで一貫して保護した。
+- 技術的な学び:
+  - 自動Backupの冪等性はClientのQueueだけでは保証できず、Server offset、Receipt、Remote version、永続Work identityを組み合わせて初めて、Process・Network・API・DBの各中断後に同じ結果へ収束できる。
+  - AndroidでZeroTier VPNがactive networkになる場合は、非VPN Wi-Fiの取得と通信経路への明示bindingを分けて評価する必要がある。許可情報が取得できない場合はfail-closedとすることで、OS差分を安全側に吸収できた。
+  - 実exFAT HDDではKuraStorage自身の書込みとindex Workerが競合し得る。更新確定時の物理snapshotとDBの時刻精度を揃え、後続rescanでVersionが不要に進まないことを実Storage統合Testで保護する必要がある。
+  - 1万件走査、100件／2GiB／20分Batch、Doze、force-stop、API／DB／HDD障害は、Unit Testだけでは判定できない。性能fixture、Android version別Connected Test、Raspberry Pi実E2Eを段階的に組み合わせることが有効だった。
+- プロセス上の改善点:
+  - Android 13実機のsleep・画面lockにより、Repository全体のConnected suiteの初回試行が無効になる場面があった。実機条件をpreflightで固定し、製品障害とtest harness障害を早期に分離する必要がある。
+  - API 29、Android 13実機、API 36の最終matrixは有効だったが、Android 10分岐と現行OS分岐の実行条件をPR開始時から固定すれば、後半のEmulator準備と再検証をより予測可能にできる。
+  - 大量Backupと実HDD E2Eで作成する匿名fixtureは、開始時にprefix、想定件数、後処理、保持が必要な障害証跡を明示すると、検証後の環境判定を容易にできる。
+- 次回への改善提案:
+  - Android OS別の権限、Wi-Fi／VPN構成、Battery、Doze、通知許可、Process状態を共通のE2E matrixとpreflight scriptにまとめ、実機・Emulator検証の再現性を上げる。
+  - Backupの長期運用では、実データをLogへ出さず、待機理由、retry回数、Batch時間、Receipt整合性、Room増加量を定期的に確認する運用チェックを追加する。
+  - Webクライアント等の後続機能でBackup Receiptを再利用する場合も、端末削除をServer削除へ伝播しない一方向契約と、現在権限の再評価を先に固定する。
+- 未実装・技術的に不要になったタスク: 本Steeringに未実装タスクはない。PR3のAPI 29 Emulator実行は対象端末条件に合わせてAndroid 13を正式gateとし、API 29分岐はversion-gated実装・自動Test・全Android buildで保護した。最終PRではAPI 29とAPI 36のConnected suiteが成功し、Android 10と現行Androidの受け入れ条件を補完した。
