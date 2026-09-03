@@ -6,32 +6,42 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.kurastorage.core.ui.state.KuraStateKind
+import com.kurastorage.core.ui.state.KuraStateView
 
 @Composable
-fun KuraStorageTheme(content: @Composable () -> Unit) {
-    MaterialTheme(content = content)
+fun KuraStorageTheme(
+    darkTheme: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
+    content: @Composable () -> Unit,
+) {
+    KuraMaterialTheme(darkTheme = darkTheme, content = content)
 }
 
 @Composable
 fun LoadingState(label: String) {
     CenteredState {
-        CircularProgressIndicator()
-        Text(label)
+        KuraStateView(
+            kind = KuraStateKind.LOADING,
+            title = label,
+            message = "Please wait.",
+        )
     }
 }
 
 @Composable
 fun EmptyState(message: String) {
-    CenteredState { Text(message) }
+    CenteredState {
+        KuraStateView(
+            kind = KuraStateKind.EMPTY,
+            title = "Nothing to show",
+            message = message,
+        )
+    }
 }
 
 @Composable
@@ -41,11 +51,14 @@ fun ErrorState(
     onRetry: (() -> Unit)? = null,
 ) {
     CenteredState {
-        Text(message, color = MaterialTheme.colorScheme.error)
-        requestId?.let { Text("Request ID: $it", style = MaterialTheme.typography.bodySmall) }
-        onRetry?.let { action ->
-            Button(onClick = action) { Text("Try again") }
-        }
+        KuraStateView(
+            kind = if (onRetry == null) KuraStateKind.BLOCKING_ERROR else KuraStateKind.RECOVERABLE_ERROR,
+            title = "Unable to continue",
+            message = message,
+            requestId = requestId,
+            actionLabel = if (onRetry == null) null else "Try again",
+            onAction = onRetry,
+        )
     }
 }
 
@@ -55,12 +68,12 @@ fun ProgressState(
     progress: Float?,
 ) {
     CenteredState {
-        if (progress == null) {
-            CircularProgressIndicator()
-        } else {
-            CircularProgressIndicator(progress = { progress.coerceIn(0f, 1f) })
-        }
-        Text(label)
+        KuraStateView(
+            kind = KuraStateKind.PROGRESS,
+            title = label,
+            message = "In progress",
+            progress = progress,
+        )
     }
 }
 
