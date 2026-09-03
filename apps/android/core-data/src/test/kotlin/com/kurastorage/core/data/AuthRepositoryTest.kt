@@ -38,6 +38,7 @@ class AuthRepositoryTest {
                     "Android",
                 )
             assertEquals(DeviceId(DEVICE_ID), result.deviceId)
+            assertEquals(USER_ID, result.userId)
             assertEquals(UserRole.ADMIN, result.role)
             assertEquals(UserRole.ADMIN, fixture.repository.role())
 
@@ -222,9 +223,11 @@ class AuthRepositoryTest {
 
     private companion object {
         const val DEVICE_ID = "11111111-1111-1111-1111-111111111111"
+        const val USER_ID = "22222222-2222-2222-2222-222222222222"
 
         fun token(suffix: String) =
             TokenResponseDto(
+                userId = USER_ID,
                 deviceId = DEVICE_ID,
                 accessToken = "access-$suffix",
                 refreshToken = "refresh-$suffix",

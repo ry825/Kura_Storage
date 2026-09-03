@@ -1,6 +1,7 @@
 namespace KuraStorage.Application.Identity;
 
 public sealed record TokenPair(
+    Guid UserId,
     Guid DeviceId,
     string AccessToken,
     string RefreshToken,

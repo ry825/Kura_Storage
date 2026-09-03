@@ -39,6 +39,7 @@ data class LogoutRequestDto(
 
 @Serializable
 data class TokenResponseDto(
+    val userId: String,
     val deviceId: String,
     val accessToken: String,
     val refreshToken: String,

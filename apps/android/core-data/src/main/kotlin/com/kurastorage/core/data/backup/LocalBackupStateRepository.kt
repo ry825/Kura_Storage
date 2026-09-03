@@ -23,17 +23,38 @@ enum class LocalDatabaseRecoveryDirective {
     RESCAN_AND_COMPARE,
 }
 
+interface BackupStateRepository {
+    fun observeItems(
+        accountScopeId: AccountScopeId,
+        limit: Int,
+    ): Flow<List<LocalSyncItem>>
+
+    fun observeProgress(accountScopeId: AccountScopeId): Flow<BackupProgressSnapshot>
+
+    suspend fun retryFailed(
+        accountScopeId: AccountScopeId,
+        itemId: LocalSyncItemId,
+    ): Boolean
+
+    suspend fun retryAllFailed(accountScopeId: AccountScopeId): Int
+}
+
 class LocalBackupStateRepository(
     private val dao: LocalSyncItemDao,
     private val clock: Clock = Clock.systemUTC(),
-) {
-    fun observeItems(accountScopeId: AccountScopeId): Flow<List<LocalSyncItem>> =
-        dao.observeByScope(accountScopeId.value).map { items -> items.map(BackupEntityMapper::toModel) }
+) : BackupStateRepository {
+    override fun observeItems(
+        accountScopeId: AccountScopeId,
+        limit: Int,
+    ): Flow<List<LocalSyncItem>> {
+        require(limit in 1..MAXIMUM_HISTORY_PAGE_ITEMS)
+        return dao.observeHistory(accountScopeId.value, limit).map { items -> items.map(BackupEntityMapper::toModel) }
+    }
 
     fun observeCounts(accountScopeId: AccountScopeId): Flow<List<BackupStateCount>> =
         dao.observeStateCounts(accountScopeId.value).map { counts -> counts.map(BackupEntityMapper::toModel) }
 
-    fun observeProgress(accountScopeId: AccountScopeId): Flow<BackupProgressSnapshot> =
+    override fun observeProgress(accountScopeId: AccountScopeId): Flow<BackupProgressSnapshot> =
         combine(
             dao.observeStateCounts(accountScopeId.value),
             dao.observeRuleStateCounts(accountScopeId.value),
@@ -90,6 +111,13 @@ class LocalBackupStateRepository(
 
     suspend fun recoverExpiredLeases(): Int = dao.recoverExpiredLeases(Instant.now(clock).toEpochMilli())
 
+    override suspend fun retryFailed(
+        accountScopeId: AccountScopeId,
+        itemId: LocalSyncItemId,
+    ): Boolean = dao.retryFailed(itemId.value, accountScopeId.value) == 1
+
+    override suspend fun retryAllFailed(accountScopeId: AccountScopeId): Int = dao.retryAllFailed(accountScopeId.value)
+
     @Suppress("MaxLineLength")
     fun onDatabaseRecreatedAfterCorruption(): LocalDatabaseRecoveryDirective = LocalDatabaseRecoveryDirective.RESCAN_AND_COMPARE
 }
@@ -100,3 +128,5 @@ data class BackupProgressSnapshot(
     val waitReasonCounts: Map<BackupWaitReason, Int>,
     val lastCompletedAt: Instant?,
 )
+
+private const val MAXIMUM_HISTORY_PAGE_ITEMS = 10_001

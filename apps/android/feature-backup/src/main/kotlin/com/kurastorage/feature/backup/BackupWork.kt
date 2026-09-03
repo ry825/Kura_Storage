@@ -192,6 +192,8 @@ class BackupCoordinator(
         ruleId: BackupRuleId,
     ) = work.enqueuePeriodicSafScan(scope, ruleId)
 
+    fun enqueueTransfer(scope: AccountScopeId) = work.enqueueTransfer(scope)
+
     private fun enqueue(
         scope: AccountScopeId,
         rules: Collection<BackupRuleId>,
@@ -201,6 +203,9 @@ class BackupCoordinator(
         work.enqueueTransfer(scope)
     }
 }
+
+fun createBackupCoordinator(context: Context): BackupCoordinator =
+    BackupCoordinator(WorkManagerBackupEnqueuer(WorkManager.getInstance(context.applicationContext)))
 
 class BackupScanWorker(
     context: Context,

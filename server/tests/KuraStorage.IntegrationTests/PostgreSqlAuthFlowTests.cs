@@ -61,12 +61,14 @@ public sealed class PostgreSqlAuthFlowTests(PostgreSqlAuthFlowFixture fixture)
             route: "LOCAL_DIRECT");
         Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
         var registeredTokens = await ReadTokensAsync(registration);
+        Assert.Equal(userId, registeredTokens.UserId);
 
         using var login = await client.PostAsJsonAsync(
             "/api/v1/auth/login",
             new { username = "alice", password = fixture.Password, deviceId = registeredTokens.DeviceId });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var loginTokens = await ReadTokensAsync(login);
+        Assert.Equal(userId, loginTokens.UserId);
 
         var refreshRequest = new
         {
@@ -80,6 +82,12 @@ public sealed class PostgreSqlAuthFlowTests(PostgreSqlAuthFlowFixture fixture)
         Assert.Contains(refreshes, response => response.StatusCode == HttpStatusCode.Unauthorized);
         foreach (var response in refreshes)
         {
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                var refreshedTokens = await ReadTokensAsync(response);
+                Assert.Equal(userId, refreshedTokens.UserId);
+            }
+
             response.Dispose();
         }
 
@@ -87,6 +95,7 @@ public sealed class PostgreSqlAuthFlowTests(PostgreSqlAuthFlowFixture fixture)
             "/api/v1/auth/login",
             new { username = "alice", password = fixture.Password, deviceId = registeredTokens.DeviceId });
         var secondLoginTokens = await ReadTokensAsync(secondLogin);
+        Assert.Equal(userId, secondLoginTokens.UserId);
         using var staleAccessLogoutRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/logout")
         {
             Content = JsonContent.Create(
@@ -126,6 +135,7 @@ public sealed class PostgreSqlAuthFlowTests(PostgreSqlAuthFlowFixture fixture)
             "/api/v1/auth/login",
             new { username = "alice", password = fixture.Password, deviceId = registeredTokens.DeviceId });
         var thirdLoginTokens = await ReadTokensAsync(thirdLogin);
+        Assert.Equal(userId, thirdLoginTokens.UserId);
         await using (var scope = fixture.Factory.Services.CreateAsyncScope())
         {
             var identity = scope.ServiceProvider.GetRequiredService<IdentityService>();
@@ -186,6 +196,7 @@ public sealed class PostgreSqlAuthFlowTests(PostgreSqlAuthFlowFixture fixture)
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
         var root = json.RootElement;
         return new TestTokenPair(
+            root.GetProperty("userId").GetGuid(),
             root.GetProperty("deviceId").GetGuid(),
             root.GetProperty("accessToken").GetString()!,
             root.GetProperty("refreshToken").GetString()!);
@@ -199,7 +210,7 @@ public sealed class PostgreSqlAuthFlowTests(PostgreSqlAuthFlowFixture fixture)
         Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("requestId").GetString()));
     }
 
-    private sealed record TestTokenPair(Guid DeviceId, string AccessToken, string RefreshToken);
+    private sealed record TestTokenPair(Guid UserId, Guid DeviceId, string AccessToken, string RefreshToken);
 }
 
 public sealed class PostgreSqlAuthFlowFixture : IAsyncLifetime

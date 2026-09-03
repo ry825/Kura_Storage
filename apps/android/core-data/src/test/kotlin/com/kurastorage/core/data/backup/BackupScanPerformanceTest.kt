@@ -18,6 +18,29 @@ import kotlin.system.measureTimeMillis
 
 class BackupScanPerformanceTest {
     @Test
+    fun initialTenThousandItemFixtureUsesBoundedBatchesAndStreamingChecksums() =
+        runTest {
+            val documents = (0 until DOCUMENT_COUNT).map { fixtureDocument(it, SMALL_FILE_BYTES) }
+            val store = PerformanceScanStore(documents, includeExisting = false)
+            val checksums = GeneratedChecksumSource(SMALL_FILE_BYTES)
+            val coordinator = BackupScanCoordinator(store, ListDocumentSource(documents), checksums)
+            lateinit var result: ScanResult
+
+            val elapsedMillis = measureTimeMillis { result = coordinator.scan(mediaRule(), ScanTrigger.PERIODIC) }
+
+            assertTrue(result.completed)
+            assertEquals(DOCUMENT_COUNT, result.hashedCount)
+            assertEquals(DOCUMENT_COUNT, checksums.openCount)
+            assertEquals(DOCUMENT_COUNT * SMALL_FILE_BYTES, checksums.readBytes)
+            assertEquals(BATCH_COUNT, store.batchCount)
+            assertEquals(MAXIMUM_BATCH_SIZE, store.maximumBatchSize)
+            println(
+                "initial-scan-performance items=$DOCUMENT_COUNT elapsedMs=$elapsedMillis " +
+                    "hashes=${result.hashedCount} readBytes=${checksums.readBytes} batches=${store.batchCount}",
+            )
+        }
+
+    @Test
     fun tenThousandItemFixtureHashesOnlyTenChangedLargeFilesInBoundedBatches() =
         runTest {
             val documents = (0 until DOCUMENT_COUNT).map(::fixtureDocument)
@@ -77,17 +100,19 @@ class BackupScanPerformanceTest {
         )
 }
 
-private fun fixtureDocument(index: Int) =
-    ScannedDocumentMetadata(
-        providerKey = "anonymous:$index",
-        identityDiscriminator = "generation:$index",
-        sourceLocator = "content://anonymous/$index",
-        relativePath = "fixture/$index.bin",
-        displayName = "$index.bin",
-        mimeType = "application/octet-stream",
-        size = LARGE_FILE_BYTES,
-        modifiedAtMillis = index.toLong(),
-    )
+private fun fixtureDocument(
+    index: Int,
+    size: Long = LARGE_FILE_BYTES,
+) = ScannedDocumentMetadata(
+    providerKey = "anonymous:$index",
+    identityDiscriminator = "generation:$index",
+    sourceLocator = "content://anonymous/$index",
+    relativePath = "fixture/$index.bin",
+    displayName = "$index.bin",
+    mimeType = "application/octet-stream",
+    size = size,
+    modifiedAtMillis = index.toLong(),
+)
 
 private class ListDocumentSource(
     private val documents: List<ScannedDocumentMetadata>,
@@ -106,20 +131,25 @@ private class ListDocumentSource(
 
 private class PerformanceScanStore(
     documents: List<ScannedDocumentMetadata>,
+    includeExisting: Boolean = true,
 ) : BackupScanStore {
     private val existing =
-        documents.associate { document ->
-            val changed = document.providerKey.substringAfterLast(':').toInt() >= DOCUMENT_COUNT - CHANGED_COUNT
-            document.providerKey to
-                StoredDocumentMetadata(
-                    localDocumentKey = UUID.randomUUID().toString(),
-                    identityDiscriminator = document.identityDiscriminator,
-                    relativePath = document.relativePath,
-                    displayName = document.displayName,
-                    size = if (changed) document.size - 1 else document.size,
-                    modifiedAtMillis = document.modifiedAtMillis,
-                    checksum = "0".repeat(64),
-                )
+        if (!includeExisting) {
+            emptyMap()
+        } else {
+            documents.associate { document ->
+                val changed = document.providerKey.substringAfterLast(':').toInt() >= DOCUMENT_COUNT - CHANGED_COUNT
+                document.providerKey to
+                    StoredDocumentMetadata(
+                        localDocumentKey = UUID.randomUUID().toString(),
+                        identityDiscriminator = document.identityDiscriminator,
+                        relativePath = document.relativePath,
+                        displayName = document.displayName,
+                        size = if (changed) document.size - 1 else document.size,
+                        modifiedAtMillis = document.modifiedAtMillis,
+                        checksum = "0".repeat(64),
+                    )
+            }
         }
     var batchCount = 0
     var maximumBatchSize = 0
@@ -148,13 +178,15 @@ private class PerformanceScanStore(
     ) = Unit
 }
 
-private class GeneratedChecksumSource : DocumentChecksumSource {
+private class GeneratedChecksumSource(
+    private val size: Long = LARGE_FILE_BYTES,
+) : DocumentChecksumSource {
     var openCount = 0
     var readBytes = 0L
 
     override fun open(sourceLocator: String): InputStream {
         openCount++
-        return GeneratedInputStream(LARGE_FILE_BYTES) { count -> readBytes += count }
+        return GeneratedInputStream(size) { count -> readBytes += count }
     }
 }
 
@@ -188,5 +220,6 @@ private class GeneratedInputStream(
 private const val DOCUMENT_COUNT = 10_000
 private const val CHANGED_COUNT = 10
 private const val LARGE_FILE_BYTES = 1_048_576L
+private const val SMALL_FILE_BYTES = 1_024L
 private const val MAXIMUM_BATCH_SIZE = 500
 private const val BATCH_COUNT = DOCUMENT_COUNT / MAXIMUM_BATCH_SIZE

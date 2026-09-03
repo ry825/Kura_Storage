@@ -41,6 +41,7 @@ class HomeScreenTest {
         compose.onNodeWithText("Favorites").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Tags").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Media quality").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Automatic backup").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Connection: REMOTE_SECURE").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Log out").performScrollTo().assertIsDisplayed()
     }

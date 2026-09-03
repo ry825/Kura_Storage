@@ -301,6 +301,7 @@ public sealed class IdentityService(
             now);
         var accessToken = accessTokens.Issue(userId, deviceId, familyId, role, now);
         return new TokenPair(
+            userId,
             deviceId,
             accessToken.Value,
             refreshToken,

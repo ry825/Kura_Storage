@@ -14,7 +14,7 @@ public sealed class IdentityServiceTests
     public async Task TokenResponses_PreserveUserRoleAcrossRegisterLoginAndRefresh()
     {
         var fixture = new Fixture();
-        await fixture.CreateUserAsync(UserRole.Admin);
+        var userId = await fixture.CreateUserAsync(UserRole.Admin);
 
         var registration = await fixture.Service.RegisterDeviceAsync(
             "alice",
@@ -39,6 +39,9 @@ public sealed class IdentityServiceTests
         Assert.Equal(UserRole.Admin.ToString().ToUpperInvariant(), registration.Value.Role);
         Assert.Equal(UserRole.Admin.ToString().ToUpperInvariant(), login.Value.Role);
         Assert.Equal(UserRole.Admin.ToString().ToUpperInvariant(), refresh.Value!.Role);
+        Assert.Equal(userId, registration.Value.UserId);
+        Assert.Equal(userId, login.Value.UserId);
+        Assert.Equal(userId, refresh.Value.UserId);
     }
 
     [Fact]

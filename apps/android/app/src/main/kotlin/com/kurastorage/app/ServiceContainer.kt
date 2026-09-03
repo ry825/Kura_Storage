@@ -1,7 +1,9 @@
 package com.kurastorage.app
 
 import android.content.Context
+import android.location.LocationManager
 import android.net.ConnectivityManager
+import android.net.wifi.WifiManager
 import coil3.ImageLoader
 import com.kurastorage.core.data.AndroidContentStreamProvider
 import com.kurastorage.core.data.AuthenticatedRequestExecutor
@@ -16,7 +18,14 @@ import com.kurastorage.core.data.DefaultSearchRepository
 import com.kurastorage.core.data.DefaultSharingRepository
 import com.kurastorage.core.data.DefaultTextFileRepository
 import com.kurastorage.core.data.DefaultTransferRepository
+import com.kurastorage.core.data.backup.AccountScopeHasher
+import com.kurastorage.core.data.backup.AndroidCurrentWifiSource
+import com.kurastorage.core.data.backup.AndroidPersistableSourcePermissionController
 import com.kurastorage.core.data.backup.AuthenticatedBackupRemoteDataSource
+import com.kurastorage.core.data.backup.FileRepositoryRemoteBackupFolderValidator
+import com.kurastorage.core.data.backup.LocalBackupStateRepository
+import com.kurastorage.core.data.backup.RoomBackupRuleRepository
+import com.kurastorage.core.data.backup.RoomExternalWifiPolicyRepository
 import com.kurastorage.core.data.media.AndroidNetworkTransportSource
 import com.kurastorage.core.data.media.DataStoreQualityPreferenceStore
 import com.kurastorage.core.data.media.DefaultMediaRepository
@@ -38,7 +47,9 @@ import com.kurastorage.core.network.KuraStorageApi
 import com.kurastorage.core.network.media.OkHttpMediaApi
 import com.kurastorage.core.security.AndroidKeystoreCredentialCipher
 import com.kurastorage.core.security.SharedPreferencesEncryptedTokenStore
+import com.kurastorage.feature.backup.BackupCoordinator
 import com.kurastorage.feature.backup.BackupWorkerRuntime
+import com.kurastorage.feature.backup.createBackupCoordinator
 import com.kurastorage.feature.media.MediaImageLoaderFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -108,6 +119,33 @@ class ServiceContainer(
     }
 
     fun backupRuntime(scope: AccountScopeId): BackupWorkerRuntime = backupRuntimeFactory.create(scope)
+
+    fun backupUiServices(session: SessionServices): BackupUiServices {
+        val userId = requireNotNull(session.authentication.userId()) { "An authenticated user is required" }
+        val deviceId = requireNotNull(session.authentication.deviceId()) { "An authenticated device is required" }
+        val scope = AccountScopeHasher.create(BuildConfig.API_HOSTNAME, userId, deviceId.value)
+        return BackupUiServices(
+            scope = scope,
+            rules =
+                RoomBackupRuleRepository(
+                    backupDatabase.backupRuleDao(),
+                    AndroidPersistableSourcePermissionController(applicationContext.contentResolver),
+                    FileRepositoryRemoteBackupFolderValidator(session.files),
+                ),
+            wifi =
+                RoomExternalWifiPolicyRepository(
+                    backupDatabase.externalWifiPolicyDao(),
+                    AndroidCurrentWifiSource(
+                        applicationContext,
+                        applicationContext.getSystemService(ConnectivityManager::class.java),
+                        applicationContext.getSystemService(WifiManager::class.java),
+                        applicationContext.getSystemService(LocationManager::class.java),
+                    ),
+                ),
+            state = LocalBackupStateRepository(backupDatabase.localSyncItemDao()),
+            coordinator = createBackupCoordinator(applicationContext),
+        )
+    }
 
     private fun backupSessionServices(route: ConnectionRoute): BackupSessionServices {
         val api = createApi(route)
@@ -226,6 +264,14 @@ data class SessionServices(
 ) : Closeable {
     override fun close() = media.close()
 }
+
+data class BackupUiServices(
+    val scope: AccountScopeId,
+    val rules: RoomBackupRuleRepository,
+    val wifi: RoomExternalWifiPolicyRepository,
+    val state: LocalBackupStateRepository,
+    val coordinator: BackupCoordinator,
+)
 
 @Suppress("LongParameterList")
 class MediaSessionScope(

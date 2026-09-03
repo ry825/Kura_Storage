@@ -3,6 +3,7 @@ using System.Diagnostics.Metrics;
 using System.Security.Cryptography;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
+using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Sharing;
 using KuraStorage.Application.Activity;
 using KuraStorage.Application.Backup;
@@ -27,7 +28,8 @@ public sealed class UploadSessionService(
     IAuthorizationService? authorizationService = null,
     FileVersionService? fileVersions = null,
     UserActivityFactory? activities = null,
-    IBackupRepository? backups = null)
+    IBackupRepository? backups = null,
+    IManagedFileSystemSnapshotReader? snapshotReader = null)
 {
     private static readonly Meter Meter = new("KuraStorage.Transfers");
     private static readonly Counter<long> SessionCounter = Meter.CreateCounter<long>("kurastorage.upload.sessions");
@@ -616,6 +618,18 @@ public sealed class UploadSessionService(
         operation.MarkFilesystemDone(clock.UtcNow);
         await sessions.SaveChangesAsync(cancellationToken);
         var now = clock.UtcNow;
+        ObservedStorageEntry? managedObservation;
+        try
+        {
+            managedObservation = await InspectManagedTargetAsync(target, session.TargetOwnerUserId, cancellationToken);
+        }
+        catch (IOException)
+        {
+            session.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            await sessions.SaveChangesAsync(CancellationToken.None);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
         var entry = FileEntry.CreateFile(
             session.FileEntryId,
             session.TargetOwnerUserId,
@@ -625,6 +639,7 @@ public sealed class UploadSessionService(
             session.ContentType,
             session.ExpectedSize,
             now);
+        ApplyManagedObservation(entry, managedObservation, now);
         try
         {
             if (fileVersions is not null)
@@ -860,8 +875,21 @@ public sealed class UploadSessionService(
         operation.MarkFilesystemDone(clock.UtcNow);
         await sessions.SaveChangesAsync(cancellationToken);
         now = clock.UtcNow;
+        ObservedStorageEntry? managedObservation;
+        try
+        {
+            managedObservation = await InspectManagedTargetAsync(target, entry.OwnerUserId, cancellationToken);
+        }
+        catch (IOException)
+        {
+            session.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            operation.RequireRecovery(FileErrorCodes.RecoveryRequired, clock.UtcNow);
+            await sessions.SaveChangesAsync(CancellationToken.None);
+            return FileResult<FileItem>.Fail(FileErrorCodes.RecoveryRequired, FileFailureKind.Conflict);
+        }
         await using var transaction = await files.BeginTransactionAsync(cancellationToken);
         entry.ApplyManagedContentChange(session.ExpectedSize, backup.ExpectedRemoteFileVersion!.Value, now);
+        ApplyManagedObservation(entry, managedObservation, now);
         receipt.UpdateCompletion(
             entry.Id,
             backup.RelativePath,
@@ -1025,6 +1053,11 @@ public sealed class UploadSessionService(
 
         try
         {
+            var managedObservation = await InspectManagedTargetAsync(
+                target,
+                session.TargetOwnerUserId,
+                cancellationToken);
+            ApplyManagedObservation(existing, managedObservation, clock.UtcNow);
             if (fileVersions is not null)
             {
                 _ = await fileVersions.EnsureCurrentAsync(
@@ -1164,6 +1197,16 @@ public sealed class UploadSessionService(
             return await RequireBackupRecoveryAsync(session, operation, cancellationToken);
         }
 
+        ObservedStorageEntry? managedObservation;
+        try
+        {
+            managedObservation = await InspectManagedTargetAsync(target, entry.OwnerUserId, cancellationToken);
+        }
+        catch (IOException)
+        {
+            return await RequireBackupRecoveryAsync(session, operation, cancellationToken);
+        }
+
         await using var transaction = await files.BeginTransactionAsync(cancellationToken);
         if (requiresMetadataCompletion)
         {
@@ -1177,6 +1220,7 @@ public sealed class UploadSessionService(
                 entry.FileVersion,
                 now);
         }
+        ApplyManagedObservation(entry, managedObservation, now);
         await activities.AddEditAsync(
             operation.Id,
             session.ActorUserId,
@@ -1359,6 +1403,46 @@ public sealed class UploadSessionService(
             entry,
             owner,
             await ResolvePermissionAsync(actorUserId, entry, cancellationToken));
+    }
+
+    private async Task<ObservedStorageEntry?> InspectManagedTargetAsync(
+        RelativeStoragePath target,
+        Guid ownerUserId,
+        CancellationToken cancellationToken)
+    {
+        if (snapshotReader is null)
+        {
+            return null;
+        }
+
+        var observed = await snapshotReader.InspectAsync(target, cancellationToken);
+        if (observed is null || observed.IsolationReason is not null ||
+            observed.OwnerUserId != ownerUserId || observed.RelativePath != target ||
+            observed.EntryType != FileEntryType.File)
+        {
+            throw new IOException("The managed upload target could not be inspected.");
+        }
+
+        return observed;
+    }
+
+    private static void ApplyManagedObservation(
+        FileEntry entry,
+        ObservedStorageEntry? observed,
+        DateTimeOffset observedAt)
+    {
+        if (observed is null)
+        {
+            return;
+        }
+
+        entry.ApplySourceObservation(
+            observed.Size,
+            observed.MimeType,
+            observed.SourceModifiedAt,
+            observed.SourceFileKey,
+            observedAt,
+            contentChanged: false);
     }
 
     private static IEnumerable<Guid> OptionalId(Guid? value)

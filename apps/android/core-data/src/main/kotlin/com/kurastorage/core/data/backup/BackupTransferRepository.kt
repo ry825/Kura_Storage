@@ -200,6 +200,7 @@ class BackupTransferRepository(
     @Suppress("LongMethod", "CyclomaticComplexMethod", "TooGenericExceptionCaught")
     suspend fun transfer(scope: AccountScopeId): BackupTransferBatchResult {
         val startedAt = Instant.now(clock)
+        val batchDeadline = startedAt.plus(MAX_BATCH_DURATION)
         val leaseOwner = UUID.randomUUID().toString()
         val rules = store.enabledRules(scope).associateBy { it.id }
         val claimed = store.claim(scope, leaseOwner, startedAt, LEASE_DURATION, MAX_BATCH_FILES)
@@ -243,8 +244,7 @@ class BackupTransferRepository(
                 currentCoroutineContext().ensureActive()
                 if (
                     completed >= MAX_BATCH_FILES ||
-                    transferred + claimedItem.size > MAX_BATCH_BYTES ||
-                    Duration.between(startedAt, Instant.now(clock)) >= MAX_BATCH_DURATION
+                    !Instant.now(clock).isBefore(batchDeadline)
                 ) {
                     store.save(claimedItem.waiting(BackupWaitReason.NONE))
                     capped = true
@@ -267,10 +267,16 @@ class BackupTransferRepository(
                     BackupCompareDecision.NEW,
                     BackupCompareDecision.CHANGED,
                     -> {
-                        val result = upload(claimedItem, rule, comparison)
+                        val remainingByteBudget = MAX_BATCH_BYTES - transferred
+                        if (transferred > 0 && claimedItem.size > remainingByteBudget) {
+                            store.save(claimedItem.waiting(BackupWaitReason.NONE))
+                            capped = true
+                            continue
+                        }
+                        val result = upload(claimedItem, rule, comparison, remainingByteBudget, batchDeadline)
                         completed += if (result.completed) 1 else 0
                         transferred += result.bytes
-                        capped = capped || result.stoppedForPolicy
+                        capped = capped || result.stoppedEarly
                         retryRecommended = retryRecommended || result.retryRecommended
                     }
                 }
@@ -298,6 +304,8 @@ class BackupTransferRepository(
         original: LocalSyncItem,
         rule: LocalBackupRule,
         comparison: BackupCompareResult,
+        byteBudget: Long,
+        batchDeadline: Instant,
     ): UploadResult {
         var item = original.copy(lifecycleState = SyncLifecycleState.READY_TO_UPLOAD)
         store.save(item)
@@ -328,16 +336,21 @@ class BackupTransferRepository(
             var sent = 0L
             while (item.confirmedOffset < item.size) {
                 currentCoroutineContext().ensureActive()
+                if (sent >= byteBudget || !Instant.now(clock).isBefore(batchDeadline)) {
+                    store.save(item.waiting(BackupWaitReason.NONE))
+                    return UploadResult(sent, stoppedEarly = true)
+                }
                 val policyDecision = policy.evaluate(rule)
                 if (!policyDecision.allowed) {
                     store.save(item.waiting(policyDecision.waitReason))
-                    return UploadResult(sent, stoppedForPolicy = true)
+                    return UploadResult(sent, stoppedEarly = true)
                 }
                 if (source.fingerprint(item) != item.sourceFingerprint) {
                     store.save(item.failed(BackupFailureReason.SOURCE_CHANGED))
                     return UploadResult(sent)
                 }
-                val chunkSize = min(min(session.preferredChunkBytes, session.maximumChunkBytes), MAX_CHUNK_BYTES)
+                val remainingBudget = (byteBudget - sent).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                val chunkSize = min(min(min(session.preferredChunkBytes, session.maximumChunkBytes), MAX_CHUNK_BYTES), remainingBudget)
                 require(chunkSize > 0) { "Server returned an invalid chunk size" }
                 val bytes =
                     source.open(item.sourceLocator).use {
@@ -357,7 +370,7 @@ class BackupTransferRepository(
             val finalPolicy = policy.evaluate(rule)
             if (!finalPolicy.allowed) {
                 store.save(item.waiting(finalPolicy.waitReason))
-                return UploadResult(sent, stoppedForPolicy = true)
+                return UploadResult(sent, stoppedEarly = true)
             }
             session = remote.complete(session.id)
             validateCompletedSession(session, comparison)
@@ -465,7 +478,7 @@ class BackupTransferRepository(
     private data class UploadResult(
         val bytes: Long = 0,
         val completed: Boolean = false,
-        val stoppedForPolicy: Boolean = false,
+        val stoppedEarly: Boolean = false,
         val retryRecommended: Boolean = false,
     )
 }

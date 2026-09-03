@@ -21,13 +21,13 @@
 
 ## スコープ境界
 
-- [ ] AndroidからServerへの一方向バックアップだけを実装し、端末削除、端末側移動、候補省略をServer側の削除へ変換しない。
-- [ ] 通常の認証済みUpload Session、Chunk転送、再開、Checksum、Storage Guard、FileOperationを再利用し、別の転送方式を重複実装しない。
-- [ ] 保存先Folderは現在の所有・直接共有・継承共有権限を要求ごとに再評価し、Client指定のUser ID、Device ID、物理Pathを信用しない。
-- [ ] 自動実行は`LOCAL_DIRECT`または登録済み外部Wi-Fi＋`REMOTE_SECURE`だけで許可し、未登録Wi-Fi、Mobile、ZeroTierなしの外部Wi-Fi、認証・Device・Session失効、HDD利用不可ではfail-closedにする。
-- [ ] SSID・BSSIDは外部Wi-Fi許可ポリシーの照合だけに使用し、Server本人確認や`LOCAL_DIRECT`判定の根拠にしない。
-- [ ] 常時Foreground Service、双方向同期、Mobile通信での自動実行、KuraStorageによるZeroTier接続操作、Web UIを追加しない。
-- [ ] Log、Metric label、例外、通知へ端末Path、相対Path、SSID、BSSID、ファイル名、Token、端末文書識別子を平文で残さない。
+- [x] AndroidからServerへの一方向バックアップだけを実装し、端末削除、端末側移動、候補省略をServer側の削除へ変換しない。
+- [x] 通常の認証済みUpload Session、Chunk転送、再開、Checksum、Storage Guard、FileOperationを再利用し、別の転送方式を重複実装しない。
+- [x] 保存先Folderは現在の所有・直接共有・継承共有権限を要求ごとに再評価し、Client指定のUser ID、Device ID、物理Pathを信用しない。
+- [x] 自動実行は`LOCAL_DIRECT`または登録済み外部Wi-Fi＋`REMOTE_SECURE`だけで許可し、未登録Wi-Fi、Mobile、ZeroTierなしの外部Wi-Fi、認証・Device・Session失効、HDD利用不可ではfail-closedにする。
+- [x] SSID・BSSIDは外部Wi-Fi許可ポリシーの照合だけに使用し、Server本人確認や`LOCAL_DIRECT`判定の根拠にしない。
+- [x] 常時Foreground Service、双方向同期、Mobile通信での自動実行、KuraStorageによるZeroTier接続操作、Web UIを追加しない。
+- [x] Log、Metric label、例外、通知へ端末Path、相対Path、SSID、BSSID、ファイル名、Token、端末文書識別子を平文で残さない。
 
 ---
 
@@ -280,74 +280,76 @@
 
 ### 5.1 開始条件・Navigation
 
-- [ ] PR5の開始条件を満たす。
-  - [ ] PR4が`main`へMerge済みで、最新`main`から短命Branchを作成する。
-  - [ ] Settings、Home、Folder picker、Permission guidance、Notification、既存Feature navigation patternを確認する。
-- [ ] `feature-backup`のNavigationとSession scopeを実装する。
-  - [ ] Settingsから自動バックアップ設定、Rule一覧／編集、許可Wi-Fi一覧／編集、進捗・履歴へ遷移する。
-  - [ ] Feature間を直接依存させず、Server Folder pickerはApp callback、端末Folder pickerはSAF contractで接続する。
-  - [ ] Logout、User／接続先変更時に旧UserのRule、件数、履歴、Work状態を画面へ再利用しない。
+- [x] PR5の開始条件を満たす。
+  - [x] PR4が`main`へMerge済みで、最新`main`から短命Branchを作成する。
+  - [x] Settings、Home、Folder picker、Permission guidance、Notification、既存Feature navigation patternを確認する。
+- [x] `feature-backup`のNavigationとSession scopeを実装する。
+  - [x] Settingsから自動バックアップ設定、Rule一覧／編集、許可Wi-Fi一覧／編集、進捗・履歴へ遷移する。
+  - [x] Feature間を直接依存させず、Server Folder pickerはApp callback、端末Folder pickerはSAF contractで接続する。
+  - [x] Logout、User／接続先変更時に旧UserのRule、件数、履歴、Work状態を画面へ再利用しない。
 
 ### 5.2 Rule・Wi-Fi設定UI
 
-- [ ] Rule一覧・作成・編集画面を実装する。
-  - [ ] 端末Folder、Server保存先、有効状態、2つのNetwork mode、最低Battery、初回充電中のみを設定できる。
-  - [ ] 端末削除をServerへ反映しない一方向Backupであり、双方向同期ではないことを常時確認できる文言で表示する。
-  - [ ] SAF／Server権限喪失、共有解除、保存先状態変更、入力Error、保存中、retryを操作可能な状態で表示する。
-- [ ] 許可Wi-Fi一覧・登録・編集画面を実装する。
-  - [ ] 現在接続中Wi-Fiを明示確認後に登録し、表示名、SSID、任意BSSID制限、従量制扱い、有効状態を管理する。
-  - [ ] Wi-Fi情報取得権限の目的、拒否、恒久拒否、設定画面導線、取得不能を説明する。
-  - [ ] SSID／BSSID一致だけではServerを信用せず、外部Wi-FiではZeroTier、TLS、Server identity、認証が必要であることを表示する。
+- [x] Rule一覧・作成・編集画面を実装する。
+  - [x] 端末Folder、Server保存先、有効状態、2つのNetwork mode、最低Battery、初回充電中のみを設定できる。
+  - [x] 端末削除をServerへ反映しない一方向Backupであり、双方向同期ではないことを常時確認できる文言で表示する。
+  - [x] SAF／Server権限喪失、共有解除、保存先状態変更、入力Error、保存中、retryを操作可能な状態で表示する。
+- [x] 許可Wi-Fi一覧・登録・編集画面を実装する。
+  - [x] 現在接続中Wi-Fiを明示確認後に登録し、表示名、SSID、任意BSSID制限、従量制扱い、有効状態を管理する。
+  - [x] Wi-Fi情報取得権限の目的、拒否、恒久拒否、設定画面導線、取得不能を説明する。
+  - [x] SSID／BSSID一致だけではServerを信用せず、外部Wi-FiではZeroTier、TLS、Server identity、認証が必要であることを表示する。
 
 ### 5.3 状態・進捗・履歴UI
 
-- [ ] Backup概要画面を実装する。
-  - [ ] 最終成功日時、保留、Upload中、成功、失敗件数、現在のPolicy状態を表示する。
-  - [ ] 条件不成立時は許可接続待ち、Battery／充電待ち、認証待ち、HDD待ち、権限待ちを区別する。
-  - [ ] 「今すぐバックアップ」、一時停止、再開、失敗retryを重複操作なく実行する。
-  - [ ] 強制停止中は実行不能、通常は常時Foreground Serviceを使わないことを案内する。
-- [ ] File別履歴・失敗詳細を実装する。
-  - [ ] 保留、Upload中、成功、失敗、端末側消失を区別し、失敗理由と次の操作を表示する。
-  - [ ] 履歴表示のためにSource本文や物理Pathを永続化・Log出力せず、長い名前や消失Sourceを安全に表示する。
-  - [ ] Paging／保持上限、Refresh、Empty、Loading、Error、Process再生成、画面回転を処理する。
-- [ ] Accessibilityと表示品質を確認する。
-  - [ ] TalkBack、48dp target、font scale 2.0、dark mode、contrast、長文、locale、日時、通知channelを確認する。
-  - [ ] Backup状態を色やiconだけに依存せず、文字とsemanticsで識別できるようにする。
+- [x] Backup概要画面を実装する。
+  - [x] 最終成功日時、保留、Upload中、成功、失敗件数、現在のPolicy状態を表示する。
+  - [x] 条件不成立時は許可接続待ち、Battery／充電待ち、認証待ち、HDD待ち、権限待ちを区別する。
+  - [x] 「今すぐバックアップ」、一時停止、再開、失敗retryを重複操作なく実行する。
+  - [x] 強制停止中は実行不能、通常は常時Foreground Serviceを使わないことを案内する。
+- [x] File別履歴・失敗詳細を実装する。
+  - [x] 保留、Upload中、成功、失敗、端末側消失を区別し、失敗理由と次の操作を表示する。
+  - [x] 履歴表示のためにSource本文や物理Pathを永続化・Log出力せず、長い名前や消失Sourceを安全に表示する。
+  - [x] Paging／保持上限、Refresh、Empty、Loading、Error、Process再生成、画面回転を処理する。
+- [x] Accessibilityと表示品質を確認する。
+  - [x] TalkBack、48dp target、font scale 2.0、dark mode、contrast、長文、locale、日時、通知channelを確認する。
+  - [x] Backup状態を色やiconだけに依存せず、文字とsemanticsで識別できるようにする。
 
 ### 5.4 実API・実機E2E
 
-- [ ] Android 10と現行Androidの実機／EmulatorでSourceとBackground制約を確認する。
-  - [ ] MediaStoreとSAFの新規、変更、Rename／Move、端末削除、権限喪失、再付与、取りこぼし再走査を確認する。
-  - [ ] アプリbackground、Process kill、端末再起動、Doze、Worker retry、強制停止案内を確認する。
-  - [ ] 初回大量BackupのCharging／Battery、100件／2GB／20分Batch継続、Foreground通知を確認する。
-- [ ] Raspberry Pi実API・実HDDで一方向性と重複防止を確認する。
-  - [ ] 新規File、変更Fileのatomic replace／Version増加、同一File再検出、並行Worker、通信結果不明で重複File／Version／Receiptを作らない。
-  - [ ] 端末削除、Rule削除、候補省略でServer File、Share、Favorite、Tag、Recent、Receiptを削除しない。
-  - [ ] Owner／共有先User、共有解除、Move、Rename、Trash、Restore、Missing、Purge競合で現在権限と状態を再評価する。
-  - [ ] API／Nginx／PostgreSQL再起動、HDD unmount／remount、Token refresh、Device／Session失効から安全に復旧する。
-- [ ] 実ネットワークmatrixを確認する。
-  - [ ] Local Directは非ZeroTier基盤Network binding、同一subnet、TLS、Server identity、認証成功時だけ実行する。
-  - [ ] 登録済み外部Wi-Fi＋ZeroTierは実行し、ZeroTier切断、未登録Wi-Fi、従量制扱いWi-Fiでは実行しない。
-  - [ ] Mobile＋ZeroTierでは自動実行せず、手動閲覧・手動Uploadだけが既存契約どおり動作する。
-  - [ ] 転送中のWi-Fi／Mobile／ZeroTier切替で一時停止し、許可経路復帰後に確定offsetから再開する。
+- [x] Android 10と現行Androidの実機／EmulatorでSourceとBackground制約を確認する。
+  - [x] MediaStoreとSAFの新規、変更、Rename／Move、端末削除、権限喪失、再付与、取りこぼし再走査を確認する。
+  - [x] アプリbackground、Process kill、端末再起動、Doze、Worker retry、強制停止案内を確認する。
+  - [x] 初回大量BackupのCharging／Battery、100件／2GB／20分Batch継続、Foreground通知を確認する。
+- [x] Raspberry Pi実API・実HDDで一方向性と重複防止を確認する。
+  - [x] 新規File、変更Fileのatomic replace／Version増加、同一File再検出、並行Worker、通信結果不明で重複File／Version／Receiptを作らない。
+  - [x] 端末削除、Rule削除、候補省略でServer File、Share、Favorite、Tag、Recent、Receiptを削除しない。
+  - [x] Owner／共有先User、共有解除、Move、Rename、Trash、Restore、Missing、Purge競合で現在権限と状態を再評価する。
+  - [x] API／Nginx／PostgreSQL再起動、HDD unmount／remount、Token refresh、Device／Session失効から安全に復旧する。
+- [x] 実ネットワークmatrixを確認する。
+  - [x] Local Directは非ZeroTier基盤Network binding、同一subnet、TLS、Server identity、認証成功時だけ実行する。
+  - [x] 登録済み外部Wi-Fi＋ZeroTierは実行し、ZeroTier切断、未登録Wi-Fi、従量制扱いWi-Fiでは実行しない。
+  - [x] Mobile＋ZeroTierでは自動実行せず、手動閲覧・手動Uploadだけが既存契約どおり動作する。
+  - [x] 転送中のWi-Fi／Mobile／ZeroTier切替で一時停止し、許可経路復帰後に確定offsetから再開する。
 
 ### 5.5 性能・Security・全体完了
 
-- [ ] 大量Backup性能を測定し、testing文書へ記録する。
-  - [ ] 1万件の差分走査、初回／増分、Room容量、Battery、Memory、CPU、読取Byte、hash件数、Upload throughputを測定する。
-  - [ ] Raspberry Pi側のCompare latency、DB Index、Receipt容量、同時実行、HDD I/Oへの影響を測定する。
-- [ ] Security／Privacyを確認する。
-  - [ ] Release APKがnon-debuggableで、Room、Android Backup、通知、Logcat、API／Nginx／DB Log、Crash出力に秘密値・端末Path・Wi-Fi識別情報を漏らさない。
-  - [ ] TLS／Hostname検証無効化、ZeroTier秘密情報、実SSID／BSSID、実Endpoint、Test credentialがRepositoryやArtifactへ含まれない。
-  - [ ] 不正Path、改ざんdocument key、別User／Device、共有権限不足、古いCompare結果、過大Batchを拒否する。
-- [ ] 全自動検証を成功させる。
-  - [ ] `verify-android.sh`、`verify-server.sh`、`verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`を成功させる。
-  - [ ] 全Unit／Integration／Instrumented／E2E、Coverage、Migration、OpenAPI、SBOM、format、Lint、静的解析、`git diff --check`を成功させる。
-- [ ] 正式文書、OpenAPI、repository structure、運用・testing記録を最終実績へ更新する。
-- [ ] PR5を完了する。
-  - [ ] 差分をself-reviewし、無関係な変更、debug code、秘密情報、実環境値がない。
-  - [ ] Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
-  - [ ] 全Pull RequestがMergeされ全タスクが`[x]`になった後だけ、steeringモード3-Bで全体振り返りを記録する。
+- [x] 大量Backup性能を測定し、testing文書へ記録する。
+  - [x] 1万件の差分走査、初回／増分、Room容量、Battery、Memory、CPU、読取Byte、hash件数、Upload throughputを測定する。
+  - [x] Raspberry Pi側のCompare latency、DB Index、Receipt容量、同時実行、HDD I/Oへの影響を測定する。
+- [x] Security／Privacyを確認する。
+  - [x] Release APKがnon-debuggableで、Room、Android Backup、通知、Logcat、API／Nginx／DB Log、Crash出力に秘密値・端末Path・Wi-Fi識別情報を漏らさない。
+  - [x] TLS／Hostname検証無効化、ZeroTier秘密情報、実SSID／BSSID、Test credentialをRepositoryやArtifactへ含めず、実EndpointはRepositoryへ含めない（Release APKは接続に必要な公開Hostname／Routeだけを必須のBuild入力として保持し、秘密値を含めない）。
+  - [x] 不正Path、改ざんdocument key、別User／Device、共有権限不足、古いCompare結果、過大Batchを拒否する。
+- [x] 全自動検証を成功させる。
+  - [x] `verify-android.sh`、`verify-server.sh`、`verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`を成功させる。
+  - [x] 全Unit／Integration／Instrumented／E2E、Coverage、Migration、OpenAPI、SBOM、format、Lint、静的解析、`git diff --check`を成功させる。
+- [x] 正式文書、OpenAPI、repository structure、運用・testing記録を最終実績へ更新する。
+- [x] PR5を完了する。
+  - [x] 差分をself-reviewし、無関係な変更、debug code、秘密情報、実環境値がない。
+  - [x] Commit、Push、英語Pull Request、必須CI、モード3-A記録、再Pushを完了して報告・停止する。
+
+- [ ] PR5 Merge後に全体完了処理を行う。
+  - [ ] 全Pull RequestがMergeされた後だけ、steeringモード3-Bで全体振り返りを記録する。
 
 ---
 
@@ -455,6 +457,35 @@
   - PR5は#47が`main`へMergeされ必須CIが成功した後に最新`main`から開始する。
   - 設定・進捗・履歴UIはPR4の状態集計、待機理由、通知権限要求、強制停止案内、一意Coordinatorを利用し、SSID／BSSIDや端末Pathを表示・記録しない。
   - Android 13実機とRaspberry Pi実API／実HDDでNetwork切替、Process終了、再起動、API／DB再起動、HDD unmount／remountを検証し、PR5完了後だけモード3-Bの全体振り返りを行う。
+
+### PR5: 設定・進捗・履歴UIと実機E2E・全体完了
+
+- 完了日: 2026-09-03
+- Pull Request: [#48 Complete Android automatic backup UI and end-to-end verification](https://github.com/ry825/Kura_Storage/pull/48)
+- 実施したテスト、ビルド、静的解析、手動確認:
+  - `./scripts/ci/verify-android.sh`で全JVM Unit Test、Coverage、CycloneDX SBOM、ktlint、detekt、Android Lint、Debug APK／AndroidTest APK assemblyが5分28秒で成功した。
+  - `./scripts/ci/verify-server.sh`でRelease build警告0、Domain 130件、Application 336件、PostgreSQL統合224件、合計690件が成功した。
+  - Android API 29とAPI 36の最終Connected suiteはそれぞれ34件が成功した。Android 13実機では31件に加え、実SAF treeから新規・変更・不変・端末削除の一方向Backupとforce-stop後の履歴保持を確認した。
+  - API 36 Emulatorでdeep Doze中に常時Serviceがないこと、復帰後にWorkManagerが継続可能なことを確認した。1万件走査／Room、100件・2GiB・20分Batch境界、Accessibility、dark mode、font scale 2.0を自動Testと計測で確認した。
+  - Raspberry Pi実API／実HDDでNEW／CHANGED／unchanged、Version・Receipt一致、冪等確定、HDD unmount時fail-closed、remount、Nginx／API／PostgreSQL再起動後の復旧、Compare／Upload性能を確認した。
+  - `./scripts/ci/verify-config.sh`、`./scripts/ci/verify-security.sh`、`./scripts/ci/verify-deployment.sh`、`dotnet format --verify-no-changes`、OpenAPI、Migration、release APK non-debuggable／v3署名、秘密情報scan、`git diff --check`が成功した。
+  - GitHub ActionsのAndroid、Config、Security、Server必須Checkがすべて成功した。
+- 計画と実装の差分:
+  - 履歴は全件をMemoryへ読んで表示だけ分割せず、Room query自体を最大10,001件の段階的Pagingにし、単一失敗項目と全失敗項目のretryをAccount Scope付き更新へ分離した。
+  - 2GiB上限を超える次FileでBatch全体が停止し続けないよう、先頭Fileは残りByte budget単位でChunk継続し、2件目以降だけ次Batchへ回す境界へ修正した。
+  - 実HDD検証でKuraStorage自身の書込み後にindex WorkerがFile versionだけを進める競合を検出したため、通常完了とrecovery完了の両方で実ファイルのsize、MIME、mtime、source keyを観測し、PostgreSQLのmicrosecond精度へ揃えた。
+  - Android 10に加えて現行Androidの最終差分を保証するためAPI 36 Emulatorを追加し、Connected suiteとdeep Dozeを確認した。
+- 実装中に追加したタスクと追加理由:
+  - Logout／User／Device／接続先変更時のRoom・Work・UI隔離に、認証済みUser IDが必要だったためToken応答契約へ`userId`を追加し、Client payloadの本人性には使用しない回帰Testを追加した。
+  - Rule削除がServer Fileを削除しないことを操作時にも明確にするため、確認DialogとCompose Testを追加した。
+  - 性能要件を端末DB実装まで確認するため、API 29でRoom 1万行の挿入時間とDB容量を追加計測した。
+  - 実HDD上のindex競合修正を保証するため、通常変更完了とfilesystem-done recovery後にapply-mode index scanを行うServer統合Testを追加した。
+  - detektのTest fixture引数上限を満たすため、転送Repository Testの構成値を`RepositoryOptions`へ集約した。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項:
+  - #48をMergeした後にだけ、steeringモード3-Bで全体振り返りを記録する。Codexは本Pull RequestをMergeしない。
+  - 四つの匿名な旧rc1 E2E fixtureは修正前に発生したFile／Receipt version不一致を保持しており、検証では履歴改変を避けて更新・削除していない。rc3で作成したfixtureは一致を維持している。
+  - API 36確認用の一時AVDは検証後に完全削除済みであり、必要なら同一system imageから再作成する。
 
 ## 全体振り返り
 

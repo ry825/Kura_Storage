@@ -40,7 +40,7 @@ class BackupTransferRepositoryTest {
                     preferredChunkBytes = 2
                 }
             val metrics = mutableListOf<BackupMetric>()
-            val repository = repository(store, remote, telemetry = BackupTelemetry(metrics::add))
+            val repository = repository(store, remote, RepositoryOptions(telemetry = BackupTelemetry(metrics::add)))
 
             val outcome = repository.transfer(SCOPE)
 
@@ -105,7 +105,7 @@ class BackupTransferRepositoryTest {
                     if (calls <= 2) allowedPolicy() else blockedPolicy(BackupWaitReason.NETWORK)
                 }
 
-            repository(store, remote, policy).transfer(SCOPE)
+            repository(store, remote, RepositoryOptions(policy = policy)).transfer(SCOPE)
 
             val pending = store.items.getValue(candidate.id)
             assertEquals(SyncLifecycleState.PENDING, pending.lifecycleState)
@@ -155,7 +155,7 @@ class BackupTransferRepositoryTest {
                             BackupCompareDecision.NEW,
                         )
                 }
-            repository(changedStore, changedRemote, fingerprint = "different").transfer(SCOPE)
+            repository(changedStore, changedRemote, RepositoryOptions(fingerprint = "different")).transfer(SCOPE)
             assertEquals(BackupFailureReason.SOURCE_CHANGED, changedStore.items.getValue(changed.id).failureReason)
             assertEquals(0, changedRemote.createdSessions)
 
@@ -170,24 +170,80 @@ class BackupTransferRepositoryTest {
             assertEquals(0, blockedRemote.createdSessions)
         }
 
+    @Test
+    fun batchStopsAtOneHundredItemsAndLeavesTheRemainderPending() =
+        runBlocking {
+            val candidates = (0 until 101).map { item("item-$it", 1) }
+            val store = FakeTransferStore(candidates, rule())
+            val remote = FakeBackupRemote()
+            candidates.forEach { remote.decisions[it.localDocumentKey] = result(it, BackupCompareDecision.ALREADY_UPLOADED) }
+
+            val outcome = repository(store, remote).transfer(SCOPE)
+
+            assertEquals(100, outcome.claimedCount)
+            assertEquals(100, outcome.completedCount)
+            assertTrue(outcome.hasRemaining)
+            assertEquals(1, store.items.values.count { it.lifecycleState == SyncLifecycleState.PENDING })
+        }
+
+    @Test
+    fun byteCapDefersTheNextLargeItemWithoutOpeningItsContent() =
+        runBlocking {
+            val first = item("small", 1)
+            val next = item("large", 2L * 1024 * 1024 * 1024)
+            val store = FakeTransferStore(listOf(first, next), rule())
+            val remote = FakeBackupRemote()
+            remote.decisions[first.localDocumentKey] = result(first, BackupCompareDecision.NEW)
+            remote.decisions[next.localDocumentKey] = result(next, BackupCompareDecision.NEW)
+
+            val outcome = repository(store, remote).transfer(SCOPE)
+
+            assertEquals(1, outcome.completedCount)
+            assertEquals(1, outcome.transferredBytes)
+            assertTrue(outcome.hasRemaining)
+            assertEquals(SyncLifecycleState.PENDING, store.items.getValue(next.id).lifecycleState)
+            assertEquals(1, remote.createdSessions)
+        }
+
+    @Test
+    fun elapsedTwentyMinuteBudgetDefersTheItemBeforeUpload() =
+        runBlocking {
+            val candidate = item("timed", 1)
+            val store = FakeTransferStore(listOf(candidate), rule())
+            val remote = FakeBackupRemote()
+            remote.decisions[candidate.localDocumentKey] = result(candidate, BackupCompareDecision.NEW)
+
+            val outcome = repository(store, remote, RepositoryOptions(clock = ElapsedBatchClock())).transfer(SCOPE)
+
+            assertEquals(0, outcome.completedCount)
+            assertTrue(outcome.hasRemaining)
+            assertEquals(SyncLifecycleState.PENDING, store.items.getValue(candidate.id).lifecycleState)
+            assertEquals(0, remote.createdSessions)
+        }
+
     private fun repository(
         store: FakeTransferStore,
         remote: FakeBackupRemote,
-        policy: BackupPolicyProvider = BackupPolicyProvider { allowedPolicy() },
-        fingerprint: String? = null,
-        telemetry: BackupTelemetry = BackupTelemetry {},
+        options: RepositoryOptions = RepositoryOptions(),
     ) = BackupTransferRepository(
         store,
         remote,
         object : BackupContentSource {
             override fun open(sourceLocator: String) = ByteArrayInputStream(store.content)
 
-            override suspend fun fingerprint(item: LocalSyncItem) = fingerprint ?: item.sourceFingerprint
+            override suspend fun fingerprint(item: LocalSyncItem) = options.fingerprint ?: item.sourceFingerprint
         },
-        policy,
-        telemetry,
-        Clock.fixed(NOW, ZoneOffset.UTC),
+        options.policy ?: BackupPolicyProvider { allowedPolicy() },
+        options.telemetry,
+        options.clock,
         kotlin.random.Random(1),
+    )
+
+    private data class RepositoryOptions(
+        val policy: BackupPolicyProvider? = null,
+        val fingerprint: String? = null,
+        val telemetry: BackupTelemetry = BackupTelemetry {},
+        val clock: Clock = Clock.fixed(NOW, ZoneOffset.UTC),
     )
 
     private fun result(
@@ -271,12 +327,27 @@ class BackupTransferRepositoryTest {
     }
 }
 
+private class ElapsedBatchClock : Clock() {
+    private var calls = 0
+
+    override fun getZone() = ZoneOffset.UTC
+
+    override fun withZone(zone: java.time.ZoneId): Clock = this
+
+    override fun instant(): Instant =
+        if (calls++ == 0) {
+            Instant.parse("2026-09-03T00:00:00Z")
+        } else {
+            Instant.parse("2026-09-03T00:21:00Z")
+        }
+}
+
 private class FakeTransferStore(
     initial: List<LocalSyncItem>,
     private val rule: LocalBackupRule,
 ) : BackupTransferStore {
     val items = initial.associateBy { it.id }.toMutableMap()
-    val content = ByteArray((initial.maxOfOrNull { it.size } ?: 0).toInt()) { it.toByte() }
+    val content = ByteArray(minOf(initial.maxOfOrNull { it.size } ?: 0, 1_024).toInt()) { it.toByte() }
 
     override suspend fun enabledRules(scope: AccountScopeId) = listOf(rule)
 

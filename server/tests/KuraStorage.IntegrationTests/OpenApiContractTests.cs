@@ -126,7 +126,7 @@ public sealed class OpenApiContractTests
         Assert.Contains("TEXT_SIZE_LIMIT_EXCEEDED", contract, StringComparison.Ordinal);
         Assert.Contains("maximum: 1048576", contract, StringComparison.Ordinal);
         Assert.Contains(
-            "required: [deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, role]",
+            "required: [userId, deviceId, accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, role]",
             contract,
             StringComparison.Ordinal);
         Assert.Contains("enum: [ADMIN, MEMBER]", contract, StringComparison.Ordinal);

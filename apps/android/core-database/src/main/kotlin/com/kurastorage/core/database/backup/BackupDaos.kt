@@ -35,6 +35,17 @@ interface BackupRuleDao {
         updatedAt: Long,
     ): Int
 
+    @Query(
+        "UPDATE backup_rules SET paused_at = :pausedAt, updated_at = :updatedAt " +
+            "WHERE id = :id AND account_scope_id = :scopeId",
+    )
+    suspend fun setPaused(
+        id: String,
+        scopeId: String,
+        pausedAt: Long?,
+        updatedAt: Long,
+    ): Int
+
     @Delete
     suspend fun delete(rule: BackupRuleEntity)
 }
@@ -47,6 +58,15 @@ interface LocalSyncItemDao {
             "ORDER BY first_seen_at, id",
     )
     fun observeByScope(scopeId: String): Flow<List<LocalSyncItemEntity>>
+
+    @Query(
+        "SELECT * FROM local_sync_items WHERE account_scope_id = :scopeId " +
+            "ORDER BY COALESCE(completed_at, last_attempt_at, last_seen_at) DESC, id DESC LIMIT :limit",
+    )
+    fun observeHistory(
+        scopeId: String,
+        limit: Int,
+    ): Flow<List<LocalSyncItemEntity>>
 
     @Query("SELECT * FROM local_sync_items WHERE id = :id AND account_scope_id = :scopeId")
     suspend fun find(
@@ -199,6 +219,25 @@ interface LocalSyncItemDao {
         scopeId: String,
         limit: Int,
     ): List<LocalSyncItemEntity>
+
+    @Query(
+        "UPDATE local_sync_items SET lifecycle_state = 'PENDING', wait_reason = 'NONE', " +
+            "failure_reason = 'NONE', retry_count = 0, next_attempt_at = NULL, " +
+            "lease_owner = NULL, lease_expires_at = NULL WHERE id = :id " +
+            "AND account_scope_id = :scopeId AND lifecycle_state = 'FAILED'",
+    )
+    suspend fun retryFailed(
+        id: String,
+        scopeId: String,
+    ): Int
+
+    @Query(
+        "UPDATE local_sync_items SET lifecycle_state = 'PENDING', wait_reason = 'NONE', " +
+            "failure_reason = 'NONE', retry_count = 0, next_attempt_at = NULL, " +
+            "lease_owner = NULL, lease_expires_at = NULL WHERE account_scope_id = :scopeId " +
+            "AND lifecycle_state = 'FAILED'",
+    )
+    suspend fun retryAllFailed(scopeId: String): Int
 
     @Query(
         "UPDATE local_sync_items SET lifecycle_state = 'LOCAL_MISSING', wait_reason = 'NONE', " +

@@ -97,7 +97,7 @@ Rename・Moveは現行のServer File機能を拡張し、Domainは`KuraStorage.D
 
 Android自動バックアップのServer側は、`BackupReceipt`とValue Objectを`KuraStorage.Domain/Backup/`、Compare契約・検証・Use CaseとRepository境界を`KuraStorage.Application/Backup/`および`Abstractions/BackupAbstractions.cs`へ配置する。EF ConfigurationとRepositoryは`KuraStorage.Infrastructure/Persistence/`、Migrationは既存`Persistence/Migrations/`、CompareとUpload Session Endpointは既存`KuraStorage.Api/Program.cs`、HTTP契約は`contracts/openapi/kurastorage-api.yaml`へ置く。Backup確定は既存`Transfers/UploadSessionService.cs`のChunk・Storage Guard・FileOperation・mutation lock・Version発行を拡張し、別の転送ProjectやServer Workerを追加しない。Domain、Application、Migration、API、復旧のTestは既存Test ProjectのBackup対応Fileへ配置する。
 
-Android自動バックアップの端末内Domain modelは`core-model/backup/`、Room Entity／DAO／Database／状態遷移／Mapperは`core-database/backup/`、Rule・SAF権限・外部Wi-Fi Policy・Network Policy・Compare／Upload転送のRepository実装は`core-data/backup/`、Use Case・秘密値を含まないWork名契約・WorkManager Workerは`feature-backup/`へ配置する。プロセス再生成可能な実行時依存の構築は`app/`のApplication／ServiceContainer境界に置く。`feature-backup`はCore Moduleだけへ依存し、他Featureへ直接依存しない。Room schema exportは`core-database/schemas/`へ保存し、Room実機Testは同Moduleの`src/androidTest/`へ置く。
+Android自動バックアップの端末内Domain modelは`core-model/backup/`、Room Entity／DAO／Database／状態遷移／Mapperは`core-database/backup/`、Rule・SAF権限・外部Wi-Fi Policy・Network Policy・Compare／Upload転送のRepository実装は`core-data/backup/`、Use Case・秘密値を含まないWork名契約・WorkManager Worker・`BackupScreens.kt`・`BackupViewModels.kt`は`feature-backup/`へ配置する。プロセス再生成可能な実行時依存の構築と、SAF／Server Folder pickerのActivity contract・Navigation callbackは`app/`のApplication／ServiceContainer／`MainActivity`境界に置く。`feature-backup`はCore Moduleだけへ依存し、他Featureへ直接依存しない。Room schema exportは`core-database/schemas/`へ保存し、Room実機Testは同Moduleの`src/androidTest/`へ置く。
 
 ```text
 kurastorage/
@@ -931,12 +931,13 @@ feature-files/
 | `feature-search` | 権限対応検索、Tag Filter、ページング、最近使用、お気に入り一覧、Tag管理、Entry organization画面。結果選択はApp callbackで既存File画面へ接続 |
 | `feature-media` | 一覧Thumbnail、写真Viewer、PDF Viewer、動画・音声Player、Media Job状態、品質切替、通信量確認 |
 | `feature-text` | 対応テキストのread-only表示・編集、dirty／競合、行比較、version履歴・preview・復元 |
+| `feature-backup` | 自動バックアップ概要・履歴、Rule一覧／編集、許可Wi-Fi一覧／編集、WorkManager実行・進捗通知 |
 | `feature-settings` | 接続環境別の写真・動画初期品質と通信量説明 |
 | `feature-activity` | 利用者向け操作履歴、type filter、opaque cursorページング、Refresh、snapshot表示、アクセス可能Targetへの導線 |
 
 `feature-sharing`は`SharingScreens.kt`と`SharingViewModels.kt`を持ち、`core-model`の共有・権限Model、`core-network`の`SharingApi`、`core-data`の`SharingRepository`を利用する。共有Folderの閲覧と権限別File操作は`app`のNavigationから既存`feature-files`へ遷移して再利用し、Feature間を直接依存させない。`feature-search`も同じ境界を守り、`SearchScreens.kt`、`OrganizationScreens.kt`と対応ViewModelだけを保持する。`feature-files`のお気に入り・Tag actionはEntry IDだけをApp callbackへ返し、Appが`feature-search`のEntry organization画面へNavigationする。
 
-`feature-media`、`feature-text`、`feature-settings`もFeature間を直接依存させない。`feature-files`、`feature-search`、`feature-sharing`はFile IDと閲覧ContextをApp callbackへ返し、`app`がMediaまたはText destinationへ遷移する。一覧Thumbnailは`app`が`feature-media`のComposableを`feature-files`のslotへ渡す。`feature-backup`はMVP後に必要となった時点で追加する。
+`feature-media`、`feature-text`、`feature-settings`、`feature-backup`もFeature間を直接依存させない。`feature-files`、`feature-search`、`feature-sharing`はFile IDと閲覧ContextをApp callbackへ返し、`app`がMediaまたはText destinationへ遷移する。一覧Thumbnailは`app`が`feature-media`のComposableを`feature-files`のslotへ渡す。`feature-backup`はSAFとServer Folderの選択をApp callbackへ委譲し、選択済みIDと表示名だけをRule編集画面へ戻す。
 
 `feature-activity`は`ActivityScreen.kt`と`ActivityViewModel.kt`だけを持ち、`core-data/ActivityRepository.kt`のSession-scoped pagerを利用する。Target選択時はFeature間で直接遷移せず、現在アクセス可能な`targetEntryId`と型だけをApp callbackへ返す。
 
