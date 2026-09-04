@@ -182,8 +182,8 @@
   - [x] `./scripts/ci/verify-android.sh`、`:feature-connection:connectedDebugAndroidTest`、`:feature-auth:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
   - [x] Android 13実機相当のAPI 33 EmulatorでLOCAL_DIRECT、REMOTE_SECURE、未接続、Login、初回Device登録を確認する（物理端末が未接続のため決定的Compose fixtureで代替し、物理端末の最終確認はPR10で実施する）。
   - [x] `docs/testing/YYYYMMDD-android-ui-pr3-connection-auth.md`に`001`〜`008`のCapture、状態、意図的差分を記録する。
-- [ ] PR3を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR3完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] PR3を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR3完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -624,7 +624,26 @@
 
 ### PR3: 起動・接続・認証UI
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#51 Rebuild Android connection and authentication flow](https://github.com/ry825/Kura_Storage/pull/51)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Lint、ktlint、Detekt、Coverage、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。
+  - API 29、API 33、API 36 Emulatorで`:feature-connection:connectedDebugAndroidTest`（各5/5）、`:feature-auth:connectedDebugAndroidTest`（各6/6）、`:app:connectedDebugAndroidTest`（各8/8）が成功した。
+  - API 29、API 33、API 36でLight/DarkのCold startを目視確認した。API 33では320 x 640 dpのCompact表示も確認し、最終Dark captureでLogo、見出し、説明、進捗、接続順序が判読可能であることを確認した。
+  - `git diff --check`成功。Self-reviewでLOCAL_DIRECT優先、REMOTE_SECUREでのDevice登録無効化、Password semantics、送信重複防止、入力保持、ZeroTier操作非搭載を確認した。
+  - GitHub必須CI run `33832746455`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - 物理Android 13端末が未接続だったため、同一API levelのAPI 33 Emulatorによる状態fixture、320 x 640 dp表示、Light/Dark Cold startで代替した。物理端末での最終確認は計画済みのPR10へ引き継ぐ。
+  - API 31以上はSystem Splashの制約に合わせてLogoと背景色をNative resourceで統一し、App名は固定待機なしの最初のCompose frameに表示した。API 29は同じ意匠のWindow backgroundを使用した。
+- 追加タスクと理由:
+  - API境界と最新環境の回帰を同時に確認するため、計画したAPI 33に加えてAPI 29とAPI 36でも全19件のconnected testとLight/Dark Cold startを実行した。
+  - 手動Dark確認で初期Compose frameの文字色不整合を検出したため、Connection/Auth rootへMaterial `Surface`を追加し、再Build・再Install・再Capture・全検証を実行した。
+- 技術的に不要となったタスクと代替実装: なし。物理端末確認は削除せずPR10へ引き継ぎ、PR3では決定的な同一API level Emulator検証を完了した。
+- 後続への引継ぎ:
+  - PR4はPR3 Merge後に最新`main`から開始し、File browser・Detail・Transfer・Trash・Missingを再構築する。
+  - Connection/AuthはShell外Routeのまま維持し、保護画面へ遷移する条件をStorage availableかつ認証済みに限定する。
+  - PR10でAndroid 13物理端末、TalkBack、回転、200%文字、全画面E2Eを最終確認する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成とCIは成功している。
 
 ### PR4: File browser・Detail・Transfer・Trash・Missing
 
