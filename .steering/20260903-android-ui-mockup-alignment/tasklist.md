@@ -572,10 +572,10 @@
 - [x] PR10を完了する。
   - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR10完了記録、記録Commitの再Pushを完了して報告・停止する。
 
-- [ ] PR10 Merge後に全体完了処理を行う。
-  - [ ] PR1〜PR10がすべて`main`へMergeされている。
-  - [ ] 本ファイル全体に未完了タスク`[ ]`がないことを確認する。
-  - [ ] steeringモード3-Bで「全体振り返り」を記録する。
+- [x] PR10 Merge後に全体完了処理を行う。
+  - [x] PR1〜PR10がすべて`main`へMergeされている。
+  - [x] 本ファイル全体に未完了タスク`[ ]`がないことを確認する。
+  - [x] steeringモード3-Bで「全体振り返り」を記録する。
 
 ---
 
@@ -815,4 +815,34 @@
 
 ## 全体振り返り
 
-> PR1〜PR10のMerge、全タスク完了、各Pull Request完了記録を確認した後だけ、steeringモード3-Bで実装完了日、全体の計画と実績の差分、主な設計変更、技術的な学び、プロセス上の改善点、次回への改善提案を記録する。
+- 実装完了日: 2026-09-04
+- 完了確認:
+  - PR1〜PR10（[#49](https://github.com/ry825/Kura_Storage/pull/49)〜[#58](https://github.com/ry825/Kura_Storage/pull/58)）がすべて`main`へMerge済みであることを確認した。
+  - 最終Merge commit `644324b`のGitHub Actions run `33869813140`でAndroid、Server、Config、Securityがすべて成功した。
+  - 本tasklistに未完了checkboxがなく、各Pull Requestの完了記録と最終36画面追跡記録が存在することを確認した。
+- 全体の計画と実績の差分:
+  - 計画どおり10個の短命Pull Requestに分割し、Design system、App shell、接続/認証、Files、Discovery/Sharing、Media、Text、Server Cache契約、Settings/Backup/Cache、最終実機E2Eの順に完成させた。正式文書を機能・状態・権限の正、36枚のMockupを視覚階層の参考とする境界も維持した。
+  - PR2〜PR7とPR9では物理端末が未接続だったためAPI 33 Emulatorと決定的Compose fixtureを使用し、PR10で同じAPI levelの物理端末、実Server、LOCAL_DIRECT/REMOTE_SECURE/offline、TalkBack、回転、Light/Dark、性能・Logをまとめて回帰確認した。
+  - PR3はUserの明示指示により先行Branchへ一時的に積み上げ、PR2 Merge後に最新`main`へ載せ替えた。それ以外は先行PRのMergeと必須CI成功後に次PRを開始する順序を維持した。
+  - 最終物理端末確認でCache titleと共通Section headingのDark theme低コントラストを発見した。PR10内で修正とpixel回帰testを追加し、focused test、全module connected test、実機Captureで再確認した。
+  - 物理端末のSystem font設定は160%が上限だったため、160%はSystem UIで検証し、200%は同じ物理端末上の決定的Compose fixtureで補完した。要求するlayout条件自体は省略していない。
+- 主な設計変更と理由:
+  - `core-ui`へTheme token、共通Scaffold/Card/List/Status/Dialog、意味Semantics、48dp操作領域、compact/large-text再配置を集約した。Featureごとの任意な色・余白・状態表示を減らし、Light/DarkとTalkBackを横断的に保証するためである。
+  - App shellをHome、Files、Shared、Search、Settingsの5 destinationに固定し、Viewer/DialogではBottom navigationを非表示にした。Session/Route/User変更時はViewModelと認証済みresourceを破棄し、異なるContextへの状態再利用を防いだ。
+  - Connection UIはLegacy VPN操作を実装せず、KuraStorage外で管理するZeroTierと到達性再確認に統一した。LOCAL_DIRECT優先、実Network binding、TLS/Server/Storage理由の分離を維持した。
+  - Files、Search、Recent、Shared、Favorites、Tags、Activityは共通Entry表示とServer-backed paging/permissionを再利用した。Folder件数やFavorite filter等の未提供値をClientで合成せず、正式API境界を守った。
+  - Media/Textは既存の認証Session、route、lease、temporary file、player/editor lifecycleを維持し、Original確認、品質変更、競合、未保存、履歴操作をDesign systemへ統合した。
+  - Admin CacheはHTTP処理内で削除せず、永続Cleanup run、Idempotency key hash、Worker claim/lease、advisory lock、DB集計を導入した。AndroidはServer応答を権威としてpollし、Admin/Memberと通信結果不明をfail-closedで扱った。
+- 技術的な学び:
+  - 決定的Compose fixtureは360dp、200%文字、Dark、横画面、状態別SemanticsをPull Request内で高速に固定できる一方、OEM font上限、System bar/cutout、実TalkBack focus、実Network切替、jank/memoryは物理端末でなければ確認できない。両者を同じ完了条件に組み込む必要がある。
+  - 親ThemeのContent color継承だけでは、異なるBackground/Surface階層で見出しが低コントラストになることがある。意味tokenを明示し、Semanticsだけでなくpixel luminance回帰testと実機Captureを併用すると検出しやすい。
+  - UI整合で固定sample値を持ち込まず、Server状態・権限・失敗理由を権威にすると、視覚変更と既存の安全境界を両立できる。参考画像に存在しても契約のない操作は追加しない判断が重要だった。
+  - 長時間の全module実機testはUSB切断の影響を受けるため、変更moduleのfocused run、全module最終run、CI gateを分けて証拠化すると、失敗範囲と再実行範囲を明確にできる。
+- プロセス上の改善点:
+  - 物理端末を必要とするPull Requestでは、開始時にUSB/無線ADB、System font上限、TalkBack導入状態、Light/Dark、rotation、必要な実Fileをpreflight表で確認すると、PR10への検証集中とpicker操作の手戻りを減らせる。
+  - Mockup追跡表へ最初からProduction owner、状態、Navigation、自動fixture、物理Capture、意図的差分の列を持たせ、各PR完了時に最終列まで更新すると、最終PRでの再集約を機械的にできる。
+  - 実機E2E用account/fileの作成・失効・削除を正式なtest-fixture cleanup手順として用意すると、管理CLIにUser削除がない環境でも残存test dataを一貫して処理できる。
+- 次回への改善提案:
+  - Screenshot regressionをCIへ追加する場合はpixel完全一致ではなく、Design token、重要領域、文字可視性、layout bounds、Semanticsを組み合わせた許容差付き比較を採用する。
+  - API 29端末またはEmulatorでも最終Smokeを定期実行し、API 33実機で確認したSystem bar、startup theme、SAF、Media lifecycleとの差を継続監視する。
+  - 物理端末のTalkBack探索順と主要操作到達を再現可能なmanual checklistとして`docs/testing/`テンプレート化し、各大規模UI変更でPR10相当の最終工程を短縮する。
