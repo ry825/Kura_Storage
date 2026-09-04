@@ -98,43 +98,44 @@
 
 ### 2.1 開始条件・App構成
 
-- [ ] PR2の開始条件を満たす。
-  - [ ] PR1が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`から短命Branchを作成し、`MainActivity.kt`、`AppDestination`、`HomeScreenTest`とNavigation testを確認する。
-- [ ] App shellを構築する。
-  - [ ] `KuraAppScaffold`にTop bar、Bottom navigation、Snackbar、FAB、Window insetを統合する。
-  - [ ] 認証後の主要Destinationをホーム、ファイル、共有、検索、設定の5項目に固定する。
-  - [ ] 認証前、フルスクリーンViewer、DialogでBottom navigationを表示しない。
-  - [ ] `launchSingleTop`、`popUpTo`、state restorationを用い、同一TabのBack stack重複を防ぐ。
-  - [ ] Session/Route/User変更時に保護画面とUI stateを破棄し、別Contextへ再利用しない。
-  - [ ] `MainActivity.kt`の巨大Composableを、挙動変更に必要なApp shell、Home、Navigation helperのみへ分割する。
+- [x] PR2の開始条件を満たす。
+  - [x] PR1が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`から短命Branchを作成し、`MainActivity.kt`、`AppDestination`、`HomeScreenTest`とNavigation testを確認する。
+  - [x] Userの明示指示により、PR1 Merge前はPR1先端から積み上げた一時BranchでPR2実装を先行し、Merge連絡後に最新`main`へ載せ替える。
+- [x] App shellを構築する。
+  - [x] `KuraAppScaffold`にTop bar、Bottom navigation、Snackbar、FAB、Window insetを統合する。
+  - [x] 認証後の主要Destinationをホーム、ファイル、共有、検索、設定の5項目に固定する。
+  - [x] 認証前、フルスクリーンViewer、DialogでBottom navigationを表示しない。
+  - [x] `launchSingleTop`、`popUpTo`、state restorationを用い、同一TabのBack stack重複を防ぐ。
+  - [x] Session/Route/User変更時に保護画面とUI stateを破棄し、別Contextへ再利用しない。
+  - [x] `MainActivity.kt`の巨大Composableを、挙動変更に必要なApp shell、Home、Navigation helperのみへ分割する。
 
 ### 2.2 Home（`009-home.png`）
 
-- [ ] Homeを参考UIと正式仕様に整合する。
-  - [ ] Logo、接続状態、自動バックアップ状態の要約カードを表示する。
-  - [ ] 自分のファイル、家族共有、最近開いたファイルの主要導線をカード内に表示する。
-  - [ ] 写真、動画、音声、文書のCategory導線を表示し、サンプル件数を固定しない。
-  - [ ] 最近のFileをThumbnail/File type Icon、名前、更新日時、Sizeとともに有界表示する。
-  - [ ] Favorites、Tags、Activity、Trash、Media settings、Backup settings、Logoutの現行導線をメニューまたは適切なSectionに保つ。
-  - [ ] AdminにだけStorage/Trash/Cache警告導線を表示し、Memberに管理状態を公開しない。
-- [ ] HomeのAdaptive layoutを実装する。
-  - [ ] 360dp幅でカードが1列、十分な幅で状態/Categoryが有界に2列化する。
-  - [ ] 200%文字と横画面で主要導線とLogoutへスクロールで到達できる。
-  - [ ] Loading、部分Error、Empty recent、接続変化を画面全体の汎用Errorにまとめない。
+- [x] Homeを参考UIと正式仕様に整合する。
+  - [x] Logo、接続状態、自動バックアップ状態の要約カードを表示する。
+  - [x] 自分のファイル、家族共有、最近開いたファイルの主要導線をカード内に表示する。
+  - [x] 写真、動画、音声、文書のCategory導線を表示し、サンプル件数を固定しない。
+  - [x] 最近のFileをThumbnail/File type Icon、名前、更新日時、Sizeとともに有界表示する。
+  - [x] Favorites、Tags、Activity、Trash、Media settings、Backup settings、Logoutの現行導線をメニューまたは適切なSectionに保つ。
+  - [x] AdminにだけStorage/Trash/Cache警告導線を表示し、Memberに管理状態を公開しない。
+- [x] HomeのAdaptive layoutを実装する。
+  - [x] 360dp幅でカードが1列、十分な幅で状態/Categoryが有界に2列化する。
+  - [x] 200%文字と横画面で主要導線とLogoutへスクロールで到達できる。
+  - [x] Loading、部分Error、Empty recent、接続変化を画面全体の汎用Errorにまとめない。
 
 ### 2.3 PR2テスト・検証・完了
 
-- [ ] App NavigationとHomeのテストを更新する。
-  - [ ] 5項目のBottom navigation、選択状態、再選択、Back、認証前/後の表示を検証する。
-  - [ ] Homeの接続、Backup、Category、Recent、Admin/Memberの主要状態とCallbackを検証する。
-  - [ ] 360dp、200%文字、Light/Dark、Heading、navigation semanticsを検証する。
-- [ ] PR2の自動・手動検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
-  - [ ] Android 13実機でHomeの縦/横、通常/200%文字、Light/Dark、Bottom navigationを確認する。
-  - [ ] `docs/testing/YYYYMMDD-android-ui-pr2-app-shell-home.md`に`009`のCapture、意図的差分、Navigation検証を記録する。
-- [ ] PR2を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR2完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] App NavigationとHomeのテストを更新する。
+  - [x] 5項目のBottom navigation、選択状態、再選択、Back、認証前/後の表示を検証する。
+  - [x] Homeの接続、Backup、Category、Recent、Admin/Memberの主要状態とCallbackを検証する。
+  - [x] 360dp、200%文字、Light/Dark、Heading、navigation semanticsを検証する。
+- [x] PR2の自動・手動検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
+  - [x] Android 13実機相当のAPI 33 EmulatorでHomeの縦/横、通常/200%文字、Light/Dark、Bottom navigationを確認する（物理端末が未接続のため決定的Compose fixtureで代替し、物理端末の最終確認はPR10で実施する）。
+  - [x] `docs/testing/YYYYMMDD-android-ui-pr2-app-shell-home.md`に`009`のCapture、意図的差分、Navigation検証を記録する。
+- [x] PR2を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR2完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -602,7 +603,24 @@
 
 ### PR2: App shell・Home・グローバルNavigation
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#50 Add Android app shell and Home dashboard](https://github.com/ry825/Kura_Storage/pull/50)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Lint、ktlint、Detekt、Coverage、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。
+  - Android 13 / API 33 Emulatorで`:app:connectedDebugAndroidTest`成功（8/8）、`:feature-settings:connectedDebugAndroidTest`成功（4/4）。5項目Navigation、選択・再選択・Back、認証前非表示、Homeの状態・Callback、Admin/Member、360dp、横画面、200%文字、Light/Dark、Heading、Navigation semantics、決定的Captureを確認した。
+  - `git diff --check`成功。Self-reviewで全保護画面のViewModel keyを`SessionServices.sessionId`に紐付け、Route/User再接続時に旧RepositoryとUI stateを再利用しないことを確認した。
+  - GitHub必須CI run `33827693590`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - 物理Android 13端末が未接続で、既知の無線Debug endpointも接続拒否だったため、PR2の表示確認はAPI 33 Emulator上の縦横・通常/200%文字・Light/Dark fixtureで代替した。物理端末での全画面最終確認は計画済みのPR10で実施する。
+  - 固定5項目Navigationで既存のMedia settings、Backup settings、Logout導線を維持するため、PR9の詳細Settings再構築に先立って最小Settings hubを追加した。Cacheは契約未実装のためAdmin専用の無効行とし、正式な状態・清掃操作はPR8/PR9に残した。
+- 追加タスクと理由:
+  - LazyColumnの未構成Nodeを決定的に検証する`performScrollToNode`用Semantics tag、Settingsの200%文字・横画面Logout fixture、全保護ViewModelのSession key監査を追加した。Adaptive到達性とSession隔離の完了条件を満たすためである。
+- 技術的に不要となったタスクと代替実装: なし。物理端末確認は削除せずPR10の最終実機E2Eに引き継ぎ、PR2では同一API levelの決定的Emulator fixtureを追加実行した。
+- 後続への引継ぎ:
+  - PR3では接続・認証画面を再構築し、今回追加したShell外RouteとSession破棄境界を維持する。
+  - PR4〜PR7ではFiles、Shared/Search系、Viewer、Textの個別画面を更新し、Top-level以外ではBottom navigationを出さない現在のRoute分類を維持する。
+  - PR8/PR9でAdmin cache契約と完全なSettings UIを実装し、現在の無効Cache行を正式状態・清掃操作へ置き換える。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成とCIは成功している。
 
 ### PR3: 起動・接続・認証UI
 
