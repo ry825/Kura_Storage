@@ -30,6 +30,10 @@
 ## MVP実装規約
 
 - MVPに必要なHost、Project、Android Module、DB Table、API、依存だけを追加する。Worker、Room、WorkManager、Media3、Coil、PDF、FFmpeg、Popplerを先行追加しない。
+- Android認証では、端末登録Metadataと認証Sessionを別の状態として扱う。登録の有無をRefresh Tokenの有無から推測せず、Device ID・前回Usernameと、暗号化Refresh Token・User ID・Role・有効期限を独立して読み書き・削除する。
+- 通常Logout、Refresh Token期限切れ、Session失効、Token再利用検知、Keystore内Token喪失ではSessionだけを破棄し、有効な端末登録Metadataを保持して`Sign in`へ遷移する。Device失効、登録失敗、不正な端末登録Metadataの場合だけ端末登録も破棄する。
+- 通常Logout後のLoginは保存済みDevice IDとPasswordを使用し、`register-device`を呼ばない。Device ID単独を認証・認可の根拠にせず、Server側のPassword、User所有関係、Device状態の検証を必須とする。
+- Logout実装はServer要求の失敗時もローカルTokenとSession scopeを`finally`相当の境界で破棄する。TestではLogout成功・通信失敗、Session期限切れ、Token再利用、Device失効を分け、保持・破棄対象と再起動画面を個別に検証する。
 - Uploadは`multipart/form-data`の単一File Partを逐次読み取り、Client、Nginx、APIで全体Bufferingしない。`Idempotency-Key`、期待Size、任意SHA-256を検証する。
 - Upload中断は同じKeyで先頭から全体再試行する。Chunk Uploadまたは中断位置からの再開をMVPへ混在させない。
 - Phase 1拡張のResumable Uploadは独立した`/api/v1/upload-sessions`契約とし、MVPのMultipart Endpointを変更しない。Sessionは認証ContextのUser・Deviceに紐付け、Client指定の物理Pathを受け取らない。

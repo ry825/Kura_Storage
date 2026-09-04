@@ -44,14 +44,19 @@ class KuraStorageApiContractTest {
             api.registerDevice(RegisterDeviceRequestDto("family", "secret", "Pixel"))
             assertEquals("/api/v1/auth/register-device", server.takeRequest().path)
             api.login(LoginRequestDto("family", "secret", DEVICE_ID))
-            assertEquals("/api/v1/auth/login", server.takeRequest().path)
+            val login = server.takeRequest()
+            assertEquals("/api/v1/auth/login", login.path)
+            assertTrue(login.body.readUtf8().contains("\"deviceId\":\"$DEVICE_ID\""))
             api.refresh(RefreshRequestDto(DEVICE_ID, REFRESH_TOKEN))
             assertEquals("/api/v1/auth/refresh", server.takeRequest().path)
             api.logout("access-token", LogoutRequestDto(DEVICE_ID, REFRESH_TOKEN))
             val logout = server.takeRequest()
             assertEquals("/api/v1/auth/logout", logout.path)
             assertEquals("Bearer access-token", logout.getHeader("Authorization"))
-            assertFalse(logout.body.readUtf8().contains("access-token"))
+            val logoutBody = logout.body.readUtf8()
+            assertTrue(logoutBody.contains("\"deviceId\":\"$DEVICE_ID\""))
+            assertTrue(logoutBody.contains("\"refreshToken\":\"$REFRESH_TOKEN\""))
+            assertFalse(logoutBody.contains("access-token"))
         }
 
     @Test

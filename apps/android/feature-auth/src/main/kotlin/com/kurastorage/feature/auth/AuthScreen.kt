@@ -230,6 +230,9 @@ private fun inlineErrorMessage(
 ): String =
     when (error.code) {
         ErrorCode.RATE_LIMIT_EXCEEDED -> "Too many attempts. Wait a moment and try again."
+        ErrorCode.AUTHENTICATION_REQUIRED -> "Your session ended. Enter your password to sign in again."
+        ErrorCode.REFRESH_TOKEN_REUSED ->
+            "This session ended because its security token was reused. Enter your password to sign in again."
         else ->
             if (registration) {
                 "Check your details or ask an administrator, then try again."

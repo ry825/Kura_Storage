@@ -454,7 +454,7 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 **受け入れ条件**
 
 - [ ] 管理CLIで作成済みのユーザー名とパスワードでログインできる
-- [ ] Android端末内に有効な`deviceId`とRefresh Tokenがない場合、`LOCAL_DIRECT`からのログインを初回端末登録として処理できる
+- [ ] Android端末内に端末登録Metadataとして有効な`deviceId`がない場合、`LOCAL_DIRECT`からのログインを初回端末登録として処理できる
 - [ ] バックエンドがDeviceを作成し、UUID形式の`deviceId`を発行する
 - [ ] ZeroTier経由では新規Device登録を実行しない
 - [ ] Access Tokenの有効期限は15分とする
@@ -466,9 +466,13 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 - [ ] 認証失敗時にユーザーの存在有無を判別できる過度に詳細な情報を表示しない
 - [ ] 認証失敗はUser単位で管理し、正常ログイン時は対象Userの失敗回数を0へリセットする
 - [ ] セッションの有効期限切れ、失効、Token再利用検知時に再認証を要求する
+- [ ] 有効な端末登録Metadataが残っている場合、Refresh Tokenの期限切れ、Session失効、Token再利用検知後は新規端末登録ではなく、保持した同一`deviceId`での再ログインを要求する
+- [ ] `DEVICE_REVOKED`または端末登録Metadata消失時だけ端末登録を破棄し、`LOCAL_DIRECT`からの再登録を要求する
 - [ ] アプリ再インストールなどで端末内の登録情報を失った場合、`LOCAL_DIRECT`から新しいDeviceとして再登録し、古いDeviceは管理CLIで失効できる
 - [ ] ログアウトできる
-- [ ] ログアウト時に現在のRefresh Sessionを失効し、端末内の認証情報を削除する
+- [ ] ログアウト時に現在のRefresh Sessionを失効し、Access Token、Refresh Token、認証済みUser情報、Session固有状態を削除する
+- [ ] 通常ログアウトでは非秘密の端末登録Metadataである`deviceId`と前回Usernameを保持し、次回起動時に`Register this device`ではなく`Sign in`を表示する
+- [ ] 通常ログアウト後の再ログインで新しいDeviceを作成せず、同じ端末で操作を繰り返してもDevice件数を増やさない
 - [ ] ZeroTier接続だけではログイン済みとみなさない
 
 **優先度**: P0（必須）
@@ -1470,14 +1474,15 @@ PDF、テキスト、文書内の文字列を検索する。
 
 ### 10.3 Android端末内へ保存するもの
 
-- バックエンドが発行した`deviceId`
+- 端末登録Metadataとして、バックエンドが発行した`deviceId`と前回Username。通常ログアウトでは保持し、Device失効、アプリデータ消去、不正な登録Metadata検出時に削除する
 - Device表示名
 - 選択された端末フォルダの永続アクセス情報
 - 自動バックアップルール
 - 端末側ファイルの差分索引と保留キュー
 - 登録済みWi-FiのSSID、任意のBSSID、表示名、従量制設定、許可状態
 - 通信種別ごとの初期画質
-- Refresh Token
+- Session秘密情報としてAndroid Keystoreで保護したRefresh Token。通常ログアウト、Session失効、期限切れ、Token再利用検知、Device失効時に削除する
+- Session MetadataとしてUser ID、Role、Refresh Token有効期限。Refresh Tokenと同じSession境界で削除し、端末登録Metadataと混在させない
 
 
 Wi-Fi情報は端末ごとの通信ポリシーとして扱い、サーバー認証情報としては使用しない。

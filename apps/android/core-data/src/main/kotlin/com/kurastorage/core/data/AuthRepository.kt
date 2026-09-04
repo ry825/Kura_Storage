@@ -3,8 +3,10 @@ package com.kurastorage.core.data
 import com.kurastorage.core.model.AuthSession
 import com.kurastorage.core.model.ConnectionRoute
 import com.kurastorage.core.model.DeviceId
+import com.kurastorage.core.model.DeviceRegistrationMetadata
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.KuraStorageException
+import com.kurastorage.core.model.SessionMetadata
 import com.kurastorage.core.model.StoredCredential
 import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.network.AuthenticationApi
@@ -18,13 +20,18 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Clock
 import java.time.Instant
+import java.time.format.DateTimeParseException
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 
 private const val HTTP_UNAUTHORIZED = 401
 
+@Suppress("TooManyFunctions")
 interface AuthenticationRepository {
     suspend fun storedCredential(): StoredCredential?
+
+    suspend fun storedRegistration(): DeviceRegistrationMetadata? =
+        storedCredential()?.let { DeviceRegistrationMetadata(it.deviceId, it.username) }
 
     suspend fun register(
         route: ConnectionRoute,
@@ -65,26 +72,41 @@ class DefaultAuthenticationRepository(
 
     @Suppress("ReturnCount")
     override suspend fun storedCredential(): StoredCredential? {
-        val metadata = metadataStore.read() ?: return null
-        if (!metadata.refreshTokenExpiresAt.isAfter(clock.instant())) {
-            clearCredentials()
+        val registration = storedRegistration() ?: return null
+        val metadata = metadataStore.readSession()
+        if (metadata == null || !metadata.refreshTokenExpiresAt.isAfter(clock.instant())) {
+            clearSessionCredentials()
             return null
         }
         val refreshToken =
             try {
                 tokenStore.read()
             } catch (_: KuraStorageException.CredentialUnavailable) {
-                clearCredentials()
+                clearSessionCredentials()
                 null
-            } ?: return null
+            }
+        if (refreshToken == null) {
+            clearSessionCredentials()
+            return null
+        }
         return StoredCredential(
             userId = metadata.userId,
-            deviceId = metadata.deviceId,
+            deviceId = registration.deviceId,
             refreshToken = refreshToken,
             refreshTokenExpiresAt = metadata.refreshTokenExpiresAt,
-            username = metadata.username,
+            username = registration.username,
             role = metadata.role,
         )
+    }
+
+    @Suppress("ReturnCount")
+    override suspend fun storedRegistration(): DeviceRegistrationMetadata? {
+        val registration = metadataStore.readRegistration() ?: return null
+        if (runCatching { UUID.fromString(registration.deviceId.value) }.isFailure) {
+            clearRegistrationCredentials()
+            return null
+        }
+        return registration
     }
 
     override suspend fun register(
@@ -96,7 +118,7 @@ class DefaultAuthenticationRepository(
         require(route == ConnectionRoute.LOCAL_DIRECT) {
             "Device registration requires LOCAL_DIRECT"
         }
-        return persist(
+        return persistNewRegistration(
             api.registerDevice(RegisterDeviceRequestDto(username, password, deviceName)),
             username,
         )
@@ -106,18 +128,16 @@ class DefaultAuthenticationRepository(
         username: String,
         password: String,
     ): AuthSession {
-        val credential =
-            storedCredential() ?: throw KuraStorageException.Api(
-                com.kurastorage.core.model
-                    .ApiError(ErrorCode.AUTHENTICATION_REQUIRED, null, HTTP_UNAUTHORIZED),
-            )
+        val registration = storedRegistration() ?: authenticationRequired()
         return try {
-            persist(
-                api.login(LoginRequestDto(username, password, credential.deviceId.value)),
-                username,
+            persistExistingRegistration(
+                response = api.login(LoginRequestDto(username, password, registration.deviceId.value)),
+                registration = registration.copy(username = username),
+                expectedUserId = null,
+                updateRegistration = true,
             )
         } catch (error: KuraStorageException.Api) {
-            if (error.error.code == ErrorCode.DEVICE_REVOKED) clearCredentials()
+            if (error.error.code == ErrorCode.DEVICE_REVOKED) clearRegistrationCredentials()
             throw error
         }
     }
@@ -138,8 +158,8 @@ class DefaultAuthenticationRepository(
 
     override suspend fun logout() {
         val current = session.get()
-        val credential = storedCredential()
         try {
+            val credential = storedCredential()
             if (current != null && credential != null) {
                 api.logout(
                     current.accessToken,
@@ -147,7 +167,7 @@ class DefaultAuthenticationRepository(
                 )
             }
         } finally {
-            clearCredentials()
+            clearSessionCredentials()
         }
     }
 
@@ -164,63 +184,114 @@ class DefaultAuthenticationRepository(
     override fun deviceId(): DeviceId? = session.get()?.deviceId
 
     @Suppress("TooGenericExceptionCaught")
-    private suspend fun persist(
+    private suspend fun persistNewRegistration(
         response: TokenResponseDto,
-        username: String?,
+        username: String,
     ): AuthSession {
-        UUID.fromString(response.userId)
-        val authSession =
-            AuthSession(
-                userId = response.userId,
-                deviceId = DeviceId(response.deviceId),
-                accessToken = response.accessToken,
-                refreshToken = response.refreshToken,
-                accessTokenExpiresAt = Instant.parse(response.accessTokenExpiresAt),
-                refreshTokenExpiresAt = Instant.parse(response.refreshTokenExpiresAt),
-                role = UserRole.valueOf(response.role),
-            )
+        val authSession = response.toAuthSession()
+        val registration = DeviceRegistrationMetadata(authSession.deviceId, username)
         try {
+            metadataStore.writeRegistration(registration)
             tokenStore.write(authSession.refreshToken)
-            metadataStore.write(
-                CredentialMetadata(
+            metadataStore.writeSession(
+                SessionMetadata(
                     userId = authSession.userId,
-                    deviceId = authSession.deviceId,
                     refreshTokenExpiresAt = authSession.refreshTokenExpiresAt,
-                    username = username,
                     role = authSession.role,
                 ),
             )
             session.set(authSession)
         } catch (error: Exception) {
-            clearCredentials()
+            clearRegistrationCredentials()
             throw error
         }
         return authSession
     }
 
-    private suspend fun clearCredentials() {
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun persistExistingRegistration(
+        response: TokenResponseDto,
+        registration: DeviceRegistrationMetadata,
+        expectedUserId: String?,
+        updateRegistration: Boolean,
+    ): AuthSession {
+        val authSession = response.toAuthSession()
+        if (authSession.deviceId != registration.deviceId || expectedUserId?.let { it != authSession.userId } == true) {
+            clearSessionCredentials()
+            throw KuraStorageException.InvalidServerResponse()
+        }
+        try {
+            if (updateRegistration) metadataStore.writeRegistration(registration)
+            tokenStore.write(authSession.refreshToken)
+            metadataStore.writeSession(
+                SessionMetadata(
+                    userId = authSession.userId,
+                    refreshTokenExpiresAt = authSession.refreshTokenExpiresAt,
+                    role = authSession.role,
+                ),
+            )
+            session.set(authSession)
+        } catch (error: Exception) {
+            clearSessionCredentials()
+            throw error
+        }
+        return authSession
+    }
+
+    private fun TokenResponseDto.toAuthSession(): AuthSession {
+        try {
+            UUID.fromString(userId)
+            UUID.fromString(deviceId)
+            return AuthSession(
+                userId = userId,
+                deviceId = DeviceId(deviceId),
+                accessToken = accessToken,
+                refreshToken = refreshToken,
+                accessTokenExpiresAt = Instant.parse(accessTokenExpiresAt),
+                refreshTokenExpiresAt = Instant.parse(refreshTokenExpiresAt),
+                role = UserRole.valueOf(role),
+            )
+        } catch (_: IllegalArgumentException) {
+            throw KuraStorageException.InvalidServerResponse()
+        } catch (_: DateTimeParseException) {
+            throw KuraStorageException.InvalidServerResponse()
+        }
+    }
+
+    private suspend fun clearSessionCredentials() {
         session.set(null)
-        tokenStore.clear()
-        metadataStore.clear()
+        try {
+            tokenStore.clear()
+        } finally {
+            metadataStore.clearSession()
+        }
+    }
+
+    private suspend fun clearRegistrationCredentials() {
+        session.set(null)
+        try {
+            tokenStore.clear()
+        } finally {
+            metadataStore.clearRegistration()
+        }
     }
 
     private suspend fun rotateRefreshToken(): AuthSession {
         val credential = storedCredential() ?: authenticationRequired()
         return try {
-            persist(
-                api.refresh(RefreshRequestDto(credential.deviceId.value, credential.refreshToken)),
-                credential.username,
+            persistExistingRegistration(
+                response = api.refresh(RefreshRequestDto(credential.deviceId.value, credential.refreshToken)),
+                registration = DeviceRegistrationMetadata(credential.deviceId, credential.username),
+                expectedUserId = credential.userId,
+                updateRegistration = false,
             )
         } catch (error: KuraStorageException.Api) {
-            if (
-                error.error.code in
-                setOf(
-                    ErrorCode.AUTHENTICATION_REQUIRED,
-                    ErrorCode.DEVICE_REVOKED,
-                    ErrorCode.REFRESH_TOKEN_REUSED,
-                )
-            ) {
-                clearCredentials()
+            when (error.error.code) {
+                ErrorCode.DEVICE_REVOKED -> clearRegistrationCredentials()
+                ErrorCode.AUTHENTICATION_REQUIRED,
+                ErrorCode.REFRESH_TOKEN_REUSED,
+                -> clearSessionCredentials()
+                else -> Unit
             }
             throw error
         }

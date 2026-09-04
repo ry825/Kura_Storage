@@ -83,4 +83,27 @@ class AppShellTest {
         compose.onNodeWithText("Authentication body").assertIsDisplayed()
         compose.onNodeWithContentDescription("Primary navigation").assertDoesNotExist()
     }
+
+    @Test
+    fun logoutNavigationClearsProtectedBackStack() {
+        lateinit var controller: NavHostController
+        compose.setContent {
+            controller = rememberNavController()
+            NavHost(
+                navController = controller,
+                startDestination = AppDestination.HOME.route,
+            ) {
+                composable(AppDestination.CONNECTION.route) { Text("Connection body") }
+                composable(AppDestination.HOME.route) { Text("Home body") }
+                composable(AppDestination.SETTINGS.route) { Text("Settings body") }
+            }
+        }
+        compose.runOnIdle { controller.navigate(AppDestination.SETTINGS.route) }
+        compose.onNodeWithText("Settings body").assertIsDisplayed()
+
+        compose.runOnIdle { controller.navigateToConnection() }
+
+        compose.onNodeWithText("Connection body").assertIsDisplayed()
+        compose.runOnIdle { check(!controller.popBackStack()) }
+    }
 }
