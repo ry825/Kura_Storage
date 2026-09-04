@@ -446,8 +446,8 @@
   - [x] API/Worker/PostgreSQLを使った実際のmanual cleanupでpending→running→completed/failed、解放Byte、重複防止を確認する。
   - [x] Log/Response/MetricにFile名、物理Path、User入力、Token、Idempotency key平文が漏れないことを確認する。
   - [x] `docs/testing/YYYYMMDD-android-ui-pr8-cache-server.md`にAPI、Migration、Worker復旧、実測結果を記録する。
-- [ ] PR8を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR8完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] PR8を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR8完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -741,7 +741,27 @@
 
 ### PR8: Server側Cache管理契約・永続Cleanup run
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#56 Persist server media cache cleanup runs](https://github.com/ry825/Kura_Storage/pull/56)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-server.sh`成功（Release build警告0、Domain 135、Application 353、Integration 229）。`dotnet format --verify-no-changes`を含む。
+  - `./scripts/ci/verify-config.sh`、`verify-deployment.sh`、`verify-security.sh`、OpenAPI YAML parse、`OpenApiContractTests`、`git diff --check`が成功した。ホストにない`nginx`/`shellcheck`を含む構成・配備検証は使い捨てUbuntu Docker環境で実行した。
+  - PostgreSQL 17でMigrationのUp/Down/再Up、既存Media data保持、manual一意制約、4 Index、pending modelなしを確認した。同一Admin/keyの並列登録、異なるfingerprint拒否、manual優先claim、active lease拒否、期限切れrunning lease回収、旧worker token拒否も確認した。
+  - 実`MediaCleanupWorker`、`MediaCleanupService`、`PostgreSqlMediaCleanupRepository`、`DerivativeStore`を接続し、manual runの`PENDING -> RUNNING -> COMPLETED`、1件/10 bytes解放、元File・有効Delivery lease・Thumbnail保持を確認した。Storage unavailable、部分削除失敗、advisory lock競合、取消後回収も自動Testで確認した。
+  - API結合TestでAdmin成功、Member `403`、未認証/失効Device `401`、不正key `400`、同一key再送`202`と同一Run ID、GET再取得を確認した。Response/収集Log/MetricにFile名、物理Path、User入力、Token、Idempotency key平文を出さない境界を確認した。
+  - Coverlet Line CoverageはDomain 84.57%、Application Unit/Integration統合88.57%。重要境界は`MediaCleanupRun.cs` 96.77%、`AdminMediaCacheService.cs` 98.98%、`MediaCleanupWorker.cs` 96.05%で基準を満たした。
+  - GitHub必須CI run `33851958226`のConfig、Security、Android、Serverがすべて成功した。
+- 計画と実装の差分:
+  - 永続Runと5秒poll/15分leaseを運用設定として変更可能にするため、Server exampleだけでなくProduction template、environment example、Raspberry Pi config validation、deployment verificationへ設定を追加した。
+  - 実Workerと実Storageを同一PostgreSQL統合Testで検証するため、Integration test projectからWorker projectを明示参照した。PR8のAPI/Worker/DB境界とPR9のAndroid UI非実装という範囲は計画どおり維持した。
+- 追加タスクと理由:
+  - Cleanup poll/lease設定の起動時範囲検証と配備template検証を追加した。誤設定でmanual受理遅延またはlease競合を拡大しないためである。
+  - Domain/Application全体80%と重要状態境界95%を数値確認し、不正identity/counter/failure code、Worker取消/lease喪失/hosted lifecycleのテストを追加した。
+- 技術的に不要となったタスクと代替実装: なし。
+- 後続への引継ぎ:
+  - PR9では本PRのOpenAPIに従い、AdminだけにCache状態・manual cleanup導線を表示し、POSTごとにUUID keyを生成する。通信結果不明時は同じkeyを再送し、GETのRun状態を権威としてpollする。
+  - Android側でFile名、Path、User名、Job入力、内部Errorを推測または表示せず、Serverが返す集計・許可済みfailure codeだけを使用する。
+  - PR10でAndroid 13物理端末と実Serverを使い、Settingsからmanual cleanup、通信断/再接続、pending/running/completed/failed表示、TalkBack、200%文字を最終確認する。
 
 ### PR9: Settings・Backup・Cache UI
 
