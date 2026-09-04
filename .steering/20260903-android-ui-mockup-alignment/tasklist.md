@@ -239,8 +239,8 @@
   - [x] `./scripts/ci/verify-android.sh`、`:feature-files:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
   - [x] Android 13実機相当のAPI 33 EmulatorでList/Grid、Folder遷移、Detail、Upload/Download、Rename/Move、Trash/Restore/Purge、Missingを確認する（物理端末が未接続のため決定的Compose fixtureで代替し、物理端末の最終確認はPR10で実施する）。
   - [x] `docs/testing/20260904-android-ui-pr4-files.md`に対象MockupのCapture、操作、意図的差分、大量一覧の結果を記録する。
-- [ ] PR4を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR4完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] PR4を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR4完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -647,7 +647,28 @@
 
 ### PR4: File browser・Detail・Transfer・Trash・Missing
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#52 Rebuild Android file management screens](https://github.com/ry825/Kura_Storage/pull/52)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Lint、ktlint、Detekt、Coverage、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。
+  - Android 13 / API 33 Emulatorで`:feature-files:connectedDebugAndroidTest`成功（23/23）、`:app:connectedDebugAndroidTest`成功（8/8）。List/Grid、権限別操作、Detail、非対応File、Move、Transfer、Trash/Purge、Missing、360dp、200%文字、Dark、横画面、1,000件Lazy表示の決定的fixtureを確認した。
+  - `git diff --check`成功。Self-reviewでBreadcrumb、Search境界、direct/inherited権限、Unknown状態のfail-closed、索引削除範囲、Dialog scroll、Thumbnail fallbackを確認した。
+  - GitHub必須CI run `33835560354`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - 物理Android 13端末が未接続だったため、同一API levelのAPI 33 Emulatorと決定的Compose fixtureで代替した。物理端末での最終確認は計画済みのPR10へ引き継ぐ。
+  - 現行`FileEntry`/一覧APIにFolder項目数がないため、値を合成せず「取得不能」と明示した。Searchは読み込み済みPageだけを絞り込まず、既存のServer-backed Search Routeへ接続した。
+  - 320 x 640 dpでの初回fixtureによりDetail上部の優先情報が画面外になる問題を検出し、状態/MIME/非対応理由を上位へ移動してDetail本文をscroll可能にした後、23件を再実行した。
+- 追加タスクと理由:
+  - Browserの階層位置を正確に維持する`BrowserBreadcrumb` stateとJVM回帰テストを追加した。Mockupの現在位置要件を、下位Folderでも安定して満たすためである。
+  - Backup destination pickerにも同じowner・permission source・writable guard・Folder作成表示を適用した。`026`のServer Folder pickerがMoveとBackupで異なる安全性を持たないようにするためである。
+- 技術的に不要となったタスクと代替実装:
+  - 非対応Fileの自動外部Openは安全なURI/Intent契約がないため追加せず、現在権限で許可されたDownloadを安全な代替操作とした。
+  - Folder項目数のServer/API拡張はPR4のUI範囲外かつ現行契約にないため追加せず、取得不能表示で代替した。
+- 後続への引継ぎ:
+  - PR5では本PRのEntry metadata/type fallback/permission表示をFeature間直接依存なしでRecent、Shared、Category、Search、Favorites、Activityへ展開する。
+  - PR6/PR7ではDetailから既存のMedia/Text Routeへ渡す境界と、非対応/Unknownでのfail-closedを維持する。
+  - PR10でAndroid 13物理端末、TalkBack、回転、200%文字、実Serverを使うUpload/Download/Move/Trash/Missing E2Eを最終確認する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成とCIは成功している。
 
 ### PR5: Recent・Sharing・Category・Search・Organization・Activity
 
