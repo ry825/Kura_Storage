@@ -107,6 +107,7 @@ enum class AppDestination(
     TAGS("tags"),
     ENTRY_ORGANIZATION("entry-organization"),
     MEDIA_SETTINGS("media-settings"),
+    CACHE_MANAGEMENT("cache-management"),
     BACKUP_SETTINGS("backup-settings"),
     BACKUP_OVERVIEW("backup-overview"),
     BACKUP_RULES("backup-rules"),

@@ -28,6 +28,7 @@ import com.kurastorage.core.data.backup.RoomBackupRuleRepository
 import com.kurastorage.core.data.backup.RoomExternalWifiPolicyRepository
 import com.kurastorage.core.data.media.AndroidNetworkTransportSource
 import com.kurastorage.core.data.media.DataStoreQualityPreferenceStore
+import com.kurastorage.core.data.media.DefaultAdminMediaCacheRepository
 import com.kurastorage.core.data.media.DefaultMediaRepository
 import com.kurastorage.core.data.media.MediaContentDownloader
 import com.kurastorage.core.data.media.MediaRepository
@@ -172,6 +173,7 @@ class ServiceContainer(
             recentFiles = DefaultRecentFileRepository(api, executor),
             organization = DefaultOrganizationRepository(api, executor),
             adminStorage = DefaultAdminStorageRepository(api, executor, auth),
+            adminMediaCache = DefaultAdminMediaCacheRepository(api, executor),
             activity = DefaultActivityRepository(api, executor),
             transfers =
                 DefaultTransferRepository(
@@ -257,6 +259,7 @@ data class SessionServices(
     val recentFiles: DefaultRecentFileRepository,
     val organization: DefaultOrganizationRepository,
     val adminStorage: DefaultAdminStorageRepository,
+    val adminMediaCache: DefaultAdminMediaCacheRepository,
     val activity: DefaultActivityRepository,
     val transfers: DefaultTransferRepository,
     val qualityPreferences: QualityPreferenceStore,

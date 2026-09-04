@@ -34,9 +34,13 @@ class SettingsHubScreenTest {
             KuraStorageTheme {
                 SettingsHubScreen(
                     isAdmin = true,
+                    accountStatus = "Administrator",
+                    connectionStatus = "Local direct",
                     onConnection = {},
                     onMediaSettings = {},
                     onBackupSettings = {},
+                    onWifiSettings = {},
+                    onCacheManagement = {},
                     onActivity = {},
                     onTrash = {},
                     onLogout = { loggedOut = true },
@@ -59,9 +63,13 @@ class SettingsHubScreenTest {
             KuraStorageTheme {
                 SettingsHubScreen(
                     isAdmin = false,
+                    accountStatus = "Member",
+                    connectionStatus = "External via ZeroTier",
                     onConnection = {},
                     onMediaSettings = {},
                     onBackupSettings = {},
+                    onWifiSettings = {},
+                    onCacheManagement = {},
                     onActivity = {},
                     onTrash = {},
                     onLogout = {},
@@ -82,9 +90,13 @@ class SettingsHubScreenTest {
                     Box(Modifier.size(width = 800.dp, height = 360.dp).testTag("settings-landscape")) {
                         SettingsHubScreen(
                             isAdmin = true,
+                            accountStatus = "Administrator",
+                            connectionStatus = "Local direct",
                             onConnection = {},
                             onMediaSettings = {},
                             onBackupSettings = {},
+                            onWifiSettings = {},
+                            onCacheManagement = {},
                             onActivity = {},
                             onTrash = {},
                             onLogout = {},

@@ -3,6 +3,8 @@ package com.kurastorage.core.network
 import com.kurastorage.core.model.ApiError
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.KuraStorageException
+import com.kurastorage.core.network.media.AdminMediaCacheStatusDto
+import com.kurastorage.core.network.media.MediaCleanupRunDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -128,6 +130,15 @@ interface FileApi {
 
 interface AdminStorageApi {
     suspend fun getAdminStorage(accessToken: String): NetworkCallResult<AdminStorageStatusDto>
+}
+
+interface AdminMediaCacheApi {
+    suspend fun getMediaCache(accessToken: String): NetworkCallResult<AdminMediaCacheStatusDto>
+
+    suspend fun requestMediaCacheCleanup(
+        accessToken: String,
+        idempotencyKey: String,
+    ): NetworkCallResult<MediaCleanupRunDto>
 }
 
 interface TextFileApi {
@@ -603,6 +614,17 @@ private interface KuraStorageService {
         @Header("Authorization") authorization: String,
     ): Response<AdminStorageStatusDto>
 
+    @GET("admin/media-cache")
+    suspend fun getMediaCache(
+        @Header("Authorization") authorization: String,
+    ): Response<AdminMediaCacheStatusDto>
+
+    @POST("admin/media-cache/cleanup-requests")
+    suspend fun requestMediaCacheCleanup(
+        @Header("Authorization") authorization: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<MediaCleanupRunDto>
+
     @POST("upload-sessions")
     suspend fun createUploadSession(
         @Header("Authorization") authorization: String,
@@ -674,6 +696,7 @@ class KuraStorageApi(
     FileApi,
     TextFileApi,
     AdminStorageApi,
+    AdminMediaCacheApi,
     UploadSessionApi,
     BackupApi,
     SharingApi,
@@ -926,6 +949,15 @@ class KuraStorageApi(
         executeAuthenticated {
             service.getAdminStorage(bearer(accessToken))
         }
+
+    override suspend fun getMediaCache(accessToken: String): NetworkCallResult<AdminMediaCacheStatusDto> =
+        executeAuthenticated { service.getMediaCache(bearer(accessToken)) }
+
+    override suspend fun requestMediaCacheCleanup(
+        accessToken: String,
+        idempotencyKey: String,
+    ): NetworkCallResult<MediaCleanupRunDto> =
+        executeAuthenticated { service.requestMediaCacheCleanup(bearer(accessToken), idempotencyKey) }
 
     override suspend fun createUploadSession(
         accessToken: String,

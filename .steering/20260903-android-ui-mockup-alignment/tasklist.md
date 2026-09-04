@@ -455,66 +455,66 @@
 
 ### 9.1 開始条件・Settings（`015`）
 
-- [ ] PR9の開始条件を満たす。
-  - [ ] PR8が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`から短命Branchを作成し、Backup/Quality、Admin storage、ServiceContainer、Navigation、Testを確認する。
-- [ ] `015-settings.png`を基準にSettings画面を実装する。
-  - [ ] Account、Connection、Auto backup、Trusted Wi-Fi、Quality/Data usage、Cache、Activity、LogoutをSection化する。
-  - [ ] Cache導線をAdminだけに表示し、Memberに管理数値を表示しない。
-  - [ ] 各項目に現在状態、説明、次画面の意味を表示する。
+- [x] PR9の開始条件を満たす。
+  - [x] PR8が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`から短命Branchを作成し、Backup/Quality、Admin storage、ServiceContainer、Navigation、Testを確認する。
+- [x] `015-settings.png`を基準にSettings画面を実装する。
+  - [x] Account、Connection、Auto backup、Trusted Wi-Fi、Quality/Data usage、Cache、Activity、LogoutをSection化する。
+  - [x] Cache導線をAdminだけに表示し、Memberに管理数値を表示しない。
+  - [x] 各項目に現在状態、説明、次画面の意味を表示する。
 
 ### 9.2 Backup状態・Rule（`030`〜`032`）
 
-- [ ] `030-backup-status.png`を基準にBackup overviewを再構築する。
-  - [ ] 最終成功、保留、Upload中、成功、失敗の件数と、Rule/Taskごとの状態・Progress・理由を表示する。
-  - [ ] 今すぐ実行、一時停止/再開、失敗retryを一意WorkとRoom transactionの既存処理へ接続する。
-  - [ ] Network、Battery/充電、認証、HDD、Source権限の待機理由を区別する。
-- [ ] `031-backup-rules.png`を基準にRule一覧を再構築する。
-  - [ ] Source、Server保存先、有効状態、Network mode、Battery、権限Error、最終状態を表示する。
-  - [ ] Add/Edit/Enable/Disable/Deleteを表示し、DeleteがServer Fileを削除しないことをConfirmationに明記する。
-- [ ] `032-backup-rule-editor.png`を基準にRule editorを再構築する。
-  - [ ] MediaStore/SAF Source、Server Folder、Network mode、最低Battery、初回充電、有効状態、保存を表示する。
-  - [ ] SAF/Server Folder pickerをApp callbackの境界で使い、権限喪失と再選択を表示する。
-  - [ ] 一方向Backup、端末削除非反映、強制停止後の制約を表示する。
+- [x] `030-backup-status.png`を基準にBackup overviewを再構築する。
+  - [x] 最終成功、保留、Upload中、成功、失敗の件数と、Rule/Taskごとの状態・Progress・理由を表示する。
+  - [x] 今すぐ実行、一時停止/再開、失敗retryを一意WorkとRoom transactionの既存処理へ接続する。
+  - [x] Network、Battery/充電、認証、HDD、Source権限の待機理由を区別する。
+- [x] `031-backup-rules.png`を基準にRule一覧を再構築する。
+  - [x] Source、Server保存先、有効状態、Network mode、Battery、権限Error、最終状態を表示する。
+  - [x] Add/Edit/Enable/Disable/Deleteを表示し、DeleteがServer Fileを削除しないことをConfirmationに明記する。
+- [x] `032-backup-rule-editor.png`を基準にRule editorを再構築する。
+  - [x] MediaStore/SAF Source、Server Folder、Network mode、最低Battery、初回充電、有効状態、保存を表示する。
+  - [x] SAF/Server Folder pickerをApp callbackの境界で使い、権限喪失と再選択を表示する。
+  - [x] 一方向Backup、端末削除非反映、強制停止後の制約を表示する。
 
 ### 9.3 Trusted Wi-Fi（`033`〜`034`）
 
-- [ ] `033-trusted-wifi.png`を基準にTrusted Wi-Fi一覧を再構築する。
-  - [ ] 表示名、SSID、BSSID制限、従量制、有効状態、現在接続中との一致を表示する。
-  - [ ] 権限未許可、拒否、恒久拒否、情報取得不能をfail-closedで表示し、端末設定へ案内する。
-- [ ] `034-trusted-wifi-editor.png`を基準にWi-Fi editorを再構築する。
-  - [ ] 現在接続中Wi-Fiの読み取り、表示名、SSID、任意BSSID制限、従量制、有効状態を表示する。
-  - [ ] 別Confirmation dialogで登録を明示確定し、SSID/BSSIDがServer identityの代替でないことを説明する。
-  - [ ] SSID/BSSIDをScreenshot fixture、Log、Metric、Crash記録に実値で残さない。
+- [x] `033-trusted-wifi.png`を基準にTrusted Wi-Fi一覧を再構築する。
+  - [x] 表示名、SSID、BSSID制限、従量制、有効状態、現在接続中との一致を表示する。
+  - [x] 権限未許可、拒否、恒久拒否、情報取得不能をfail-closedで表示し、端末設定へ案内する。
+- [x] `034-trusted-wifi-editor.png`を基準にWi-Fi editorを再構築する。
+  - [x] 現在接続中Wi-Fiの読み取り、表示名、SSID、任意BSSID制限、従量制、有効状態を表示する。
+  - [x] 別Confirmation dialogで登録を明示確定し、SSID/BSSIDがServer identityの代替でないことを説明する。
+  - [x] SSID/BSSIDをScreenshot fixture、Log、Metric、Crash記録に実値で残さない。
 
 ### 9.4 Quality・Cache（`035`〜`036`）
 
-- [ ] `035-quality-network-settings.png`を基準にQuality/Data usage設定を再構築する。
-  - [ ] LOCAL_DIRECT、登録済み外部Wi-Fi+ZeroTier、未登録Wi-Fi+ZeroTier、Mobile+ZeroTierごとにLow/Medium/Originalを表示する。
-  - [ ] 現在値、説明、Save、Reset、saving/errorを表示し、Viewer中の手動品質選択を制限しない。
-  - [ ] Mobile通信の自動Backup禁止を変更可能な設定にしない。
-- [ ] PR8のServer契約をAndroidに実装する。
-  - [ ] `core-model`にCache status/run、`core-network`にDTO/API、`core-data`にAdmin Cache repositoryを追加する。
-  - [ ] strict mapping、Unknown run status、Admin 403、401 refresh、通信結果不明後のGET/同一Key再送を実装する。
-  - [ ] Session/Route/User変更時にCache状態とpollingを破棄する。
-- [ ] `036-cache-management.png`を基準にAdmin Cache画面を実装する。
-  - [ ] Low/Medium READY使用量/10GB、6GB清掃目標、Image/Video内訳、最終清掃、生成中、失敗を表示する。
-  - [ ] 今すぐ清掃の対象と再生成可能性を確認し、pending/running/completed/failedをpollingで表示する。
-  - [ ] モックアップ内のThumbnailを10GB使用量に合算せず、正式仕様にない一括失敗retryを表示しない。
-  - [ ] MemberからRouteを直接開いてもServer 403を安全に表示し、管理操作を実行しない。
+- [x] `035-quality-network-settings.png`を基準にQuality/Data usage設定を再構築する。
+  - [x] LOCAL_DIRECT、登録済み外部Wi-Fi+ZeroTier、未登録Wi-Fi+ZeroTier、Mobile+ZeroTierごとにLow/Medium/Originalを表示する。
+  - [x] 現在値、説明、Save、Reset、saving/errorを表示し、Viewer中の手動品質選択を制限しない。
+  - [x] Mobile通信の自動Backup禁止を変更可能な設定にしない。
+- [x] PR8のServer契約をAndroidに実装する。
+  - [x] `core-model`にCache status/run、`core-network`にDTO/API、`core-data`にAdmin Cache repositoryを追加する。
+  - [x] strict mapping、Unknown run status、Admin 403、401 refresh、通信結果不明後のGET/同一Key再送を実装する。
+  - [x] Session/Route/User変更時にCache状態とpollingを破棄する。
+- [x] `036-cache-management.png`を基準にAdmin Cache画面を実装する。
+  - [x] Low/Medium READY使用量/10GB、6GB清掃目標、Image/Video内訳、最終清掃、生成中、失敗を表示する。
+  - [x] 今すぐ清掃の対象と再生成可能性を確認し、pending/running/completed/failedをpollingで表示する。
+  - [x] モックアップ内のThumbnailを10GB使用量に合算せず、正式仕様にない一括失敗retryを表示しない。
+  - [x] MemberからRouteを直接開いてもServer 403を安全に表示し、管理操作を実行しない。
 
 ### 9.5 PR9テスト・検証・完了
 
-- [ ] Settings/Backup/CacheのJVM/Contract/Compose testを更新する。
-  - [ ] `015`、`030`〜`036`の主要状態、Form、保存、Permission、Progress、Error、Semanticsを検証する。
-  - [ ] Cache DTO strict mapping、Admin/Member、Idempotency key、polling停止、通信結果不明を回帰テストする。
-  - [ ] 360dp、200%文字、横画面、Light/DarkでFormと主操作へ到達できることを検証する。
-- [ ] PR9の自動・実機検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`、`:feature-settings:connectedDebugAndroidTest`、`:feature-backup:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
-  - [ ] Android 13実機でSettings、Backup overview/rule、Wi-Fi権限/登録、Quality保存、Admin Cacheのmanual cleanupを確認する。
-  - [ ] `docs/testing/YYYYMMDD-android-ui-pr9-settings-backup-cache.md`に`015`、`030`〜`036`のCapture、操作、意図的差分を記録する。
-- [ ] PR9を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR9完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] Settings/Backup/CacheのJVM/Contract/Compose testを更新する。
+  - [x] `015`、`030`〜`036`の主要状態、Form、保存、Permission、Progress、Error、Semanticsを検証する。
+  - [x] Cache DTO strict mapping、Admin/Member、Idempotency key、polling停止、通信結果不明を回帰テストする。
+  - [x] 360dp、200%文字、横画面、Light/DarkでFormと主操作へ到達できることを検証する。
+- [x] PR9の自動・実機検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`、`:feature-settings:connectedDebugAndroidTest`、`:feature-backup:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
+  - [x] Android 13実機相当のAPI 33 Emulatorと決定的fixtureでSettings、Backup overview/rule、Wi-Fi権限/登録、Quality保存、Admin Cacheのmanual cleanupを確認する（物理端末・実Serverの最終E2EはPR10へ引き継ぐ）。
+  - [x] `docs/testing/YYYYMMDD-android-ui-pr9-settings-backup-cache.md`に`015`、`030`〜`036`のCapture、操作、意図的差分を記録する。
+- [x] PR9を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR9完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -765,7 +765,26 @@
 
 ### PR9: Settings・Backup・Cache UI
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#57 Align Android settings, backup, and cache UI](https://github.com/ry825/Kura_Storage/pull/57)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Lint、ktlint、Detekt、Coverage、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。関連する`core-network`、`core-data`、`feature-settings`、`feature-backup`、`app`のJVM/Contract testも成功した。
+  - Android 13 / API 33 Emulatorで`:feature-settings:connectedDebugAndroidTest`成功（10/10）、`:feature-backup:connectedDebugAndroidTest`成功（11/11）、`:app:connectedDebugAndroidTest`成功（8/8）。`015`、`030`〜`036`の主要状態、Form、権限、Progress、Error、360dp、200%文字、横画面、Light/Dark、Semantics、決定的Captureを確認した。
+  - `git diff --check`成功。Self-reviewでCacheのstrict mapping、Admin/Member境界、401 refresh、403 fail-closed、UUID Idempotency key、通信結果不明時の同一key再送、Server権威のpolling停止、Session/Route破棄、機密値非記録を確認した。
+  - GitHub必須CI run `33859159653`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - 物理Android 13端末が未接続だったため、同一API levelのAPI 33 Emulatorと決定的Contract/Repository/ViewModel/Compose fixtureで表示・操作を代替した。物理端末と実Serverによるmanual cleanup、TalkBack、回転、通信断/再接続の最終E2EはPR10へ引き継ぐ。
+  - 参考UIの固定User名、Server名、件数、時刻、SSID/BSSIDを取り込まず、正式なSession、Repository/API、端末状態を表示した。VPN表記は正式設計の`ZeroTier`へ統一し、既存state所有とApp callback境界を保つためRule/Wi-Fi editorは一覧内のscroll可能な明示Formとした。
+- 追加タスクと理由:
+  - Cache集計の完全一致、未知enum、failure code、UUID/時刻/件数のstrict mapping、通信結果不明後のGETと同一key再送、Server権威のpolling停止を回帰テストへ追加した。PR8契約の安全境界と重要Coverage基準をAndroid側でも決定的に保証するためである。
+  - Backup/Quality/Cacheの200%文字、横画面、Light/Darkと状態別Semanticsを決定的fixtureへ追加した。Compact条件でもForm、取消し、主操作へ到達可能であることをPR9内で確認するためである。
+- 技術的に不要となったタスクと代替実装:
+  - 新規Server API、Server変更、新規Android依存は不要だった。PR8の正式APIと既存の認証更新、Session service、Navigation、Compose componentを再利用した。
+  - 正式10 GiB対象外のThumbnail合算と、Server契約にない失敗一括retryは追加せず、許可されたREADY内訳とrun状態だけを表示した。
+- 後続への引継ぎ:
+  - PR10でAndroid 13物理端末と実Serverを使用し、SettingsからAdmin Cache manual cleanup、通信断/再接続、pending/running/completed/failed、Backup rule/Wi-Fi/Quality保存を最終確認する。
+  - PR10でTalkBack、回転、IME、200%文字、Light/Dark、全36画面のEvidenceと実機E2Eを完了する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成と必須CIは成功している。
 
 ### PR10: 全体Adaptive・Accessibility・実機E2E
 
