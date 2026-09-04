@@ -1,11 +1,17 @@
 package com.kurastorage.feature.files
 
 import android.view.KeyEvent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -13,15 +19,19 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kurastorage.core.model.AdminStorageStatus
 import com.kurastorage.core.model.ErrorCategory
@@ -47,6 +57,7 @@ class FileBrowserScreenTest {
 
     @Test
     fun fileListShowsActionsAndEntry() {
+        var searched = false
         compose.setContent {
             FileBrowserScreen(
                 state = FileBrowserState(loading = false, entries = listOf(file())),
@@ -65,12 +76,15 @@ class FileBrowserScreenTest {
                 onCancelTransfer = {},
                 onRetryTransfer = {},
                 onOpenDownload = {},
+                onSearch = { searched = true },
             )
         }
 
         compose.onNodeWithText("My files").assertIsDisplayed()
         compose.onNodeWithText("Upload").assertIsDisplayed()
         compose.onNodeWithText("File: document.txt").assertIsDisplayed()
+        compose.onNodeWithText("Search").performClick()
+        compose.runOnIdle { assertTrue(searched) }
     }
 
     @Test
@@ -187,6 +201,14 @@ class FileBrowserScreenTest {
 
         compose.onNodeWithText("4 / 10 bytes").assertIsDisplayed()
         compose.onNodeWithText("a-very-long-video-file-name.mp4").assertIsDisplayed()
+        compose
+            .onNodeWithTag("transfer-status")
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.StateDescription,
+                    "Upload paused; received bytes are safe on the server",
+                ),
+            )
         compose.onNodeWithTag("resume-upload").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(true, retried) }
         compose.onNodeWithTag("cancel-upload").performClick()
@@ -865,6 +887,136 @@ class FileBrowserScreenTest {
         compose.runOnIdle { state.value = state.value.copy(selected = null) }
         compose.runOnIdle { state.value = state.value.copy(selected = file()) }
         compose.runOnIdle { assertEquals(2, displayed) }
+    }
+
+    @Test
+    fun unsupportedFileDetailsShowTypeReasonAndOnlySafeFallback() {
+        val unsupported = file().copy(name = "archive.bin", mimeType = "application/x-private-archive")
+        compose.setContent {
+            FileBrowserScreen(
+                state = FileBrowserState(loading = false, entries = listOf(unsupported), selected = unsupported),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("Unsupported file").assertIsDisplayed()
+        compose.onNodeWithText("MIME type: application/x-private-archive").assertIsDisplayed()
+        compose.onNodeWithText("Download").assertIsDisplayed()
+        compose.onAllNodesWithText("Open").assertCountEquals(0)
+        compose.onAllNodesWithText("Open text").assertCountEquals(0)
+    }
+
+    @Test
+    fun listAndGridShareTypeMetadataFallbackAndLongName() {
+        val longName = "a-very-long-file-name-that-must-remain-readable-and-ellipsize-safely.txt"
+        compose.setContent {
+            FileBrowserScreen(
+                state = FileBrowserState(loading = false, entries = listOf(folder(), file().copy(name = longName))),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("Folders").assertIsDisplayed()
+        compose.onNodeWithText("Files").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Folder").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Text file").assertIsDisplayed()
+        compose.onNodeWithText("Grid").performClick()
+        compose.onNodeWithText(longName).assertIsDisplayed()
+        compose.onNodeWithTag("file-grid").captureToImage()
+    }
+
+    @Test
+    fun compactTwoHundredPercentDarkFixtureRemainsReachable() {
+        val entry = file().copy(name = "long-document-name-for-compact-layout.txt")
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                com.kurastorage.core.ui.KuraStorageTheme(darkTheme = true) {
+                    Box(Modifier.size(width = 360.dp, height = 800.dp).testTag("files-compact")) {
+                        FileBrowserScreen(
+                            state = FileBrowserState(loading = false, entries = listOf(entry)),
+                            trashMode = false,
+                            onOpen = {},
+                            onShowDetails = {},
+                            onBack = {},
+                            onRefresh = {},
+                            onLoadMore = {},
+                            onCreateFolder = {},
+                            onChooseUpload = {},
+                            onChooseDownload = {},
+                            onTrash = {},
+                            onRestore = {},
+                            onDismissDetail = {},
+                            onCancelTransfer = {},
+                            onRetryTransfer = {},
+                            onOpenDownload = {},
+                        )
+                    }
+                }
+            }
+        }
+
+        compose.onNodeWithTag("file-list").assertIsDisplayed()
+        compose.onNodeWithTag("upload-fab").assertIsDisplayed()
+        compose.onNodeWithTag("files-compact").captureToImage()
+    }
+
+    @Test
+    fun landscapeFixtureKeepsFileActionsReachable() {
+        compose.setContent {
+            Box(Modifier.size(width = 800.dp, height = 360.dp).testTag("files-landscape")) {
+                FileBrowserScreen(
+                    state = FileBrowserState(loading = false, entries = listOf(file())),
+                    trashMode = false,
+                    onOpen = {},
+                    onShowDetails = {},
+                    onBack = {},
+                    onRefresh = {},
+                    onLoadMore = {},
+                    onCreateFolder = {},
+                    onChooseUpload = {},
+                    onChooseDownload = {},
+                    onTrash = {},
+                    onRestore = {},
+                    onDismissDetail = {},
+                    onCancelTransfer = {},
+                    onRetryTransfer = {},
+                    onOpenDownload = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag("file-list").assertIsDisplayed()
+        compose.onNodeWithText("Actions").assertIsDisplayed()
+        compose.onNodeWithTag("files-landscape").captureToImage()
     }
 
     @Test
