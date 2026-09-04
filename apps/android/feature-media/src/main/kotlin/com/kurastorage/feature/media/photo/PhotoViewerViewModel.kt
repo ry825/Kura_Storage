@@ -29,6 +29,8 @@ data class PhotoViewerUiState(
     val originalSizeLabel: String? = null,
     val previousPrefetch: FileEntry? = null,
     val nextPrefetch: FileEntry? = null,
+    val currentPosition: Int = 0,
+    val totalCount: Int = 0,
 )
 
 @Suppress("TooManyFunctions")
@@ -123,6 +125,8 @@ class PhotoViewerViewModel(
                 file = file,
                 canGoPrevious = currentIndex > 0,
                 canGoNext = currentIndex < candidates.lastIndex,
+                currentPosition = currentIndex + 1,
+                totalCount = candidates.size,
             )
         controller.start(file.id, file.fileVersion, MediaKind.IMAGE)
         val previous = adjacent(-1)

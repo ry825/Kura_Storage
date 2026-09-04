@@ -80,12 +80,15 @@ class PhotoViewerViewModelTest {
                     ?.id,
             )
             assertEquals(MediaVariant.IMAGE_LOW, viewModel.requestTicket()?.source?.variant)
+            assertEquals(1, viewModel.state.value.currentPosition)
+            assertEquals(3, viewModel.state.value.totalCount)
             viewModel.next()
             assertEquals(
                 last.id,
                 viewModel.state.value.file
                     ?.id,
             )
+            assertEquals(3, viewModel.state.value.currentPosition)
             viewModel.setZoom(10f)
             assertEquals(4f, viewModel.state.value.zoom)
         }

@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kurastorage.core.data.FileRepository
+import com.kurastorage.core.data.media.InsufficientPdfStorageException
 import com.kurastorage.core.data.media.InvalidPdfException
 import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.data.media.PdfTooLargeException
@@ -147,6 +148,7 @@ class PdfViewerViewModel(
         val message =
             when (error) {
                 is PdfTooLargeException -> "PDF is larger than 256 MiB. Download it instead."
+                is InsufficientPdfStorageException -> "Not enough private storage is available for safe PDF viewing. Download it instead."
                 else -> "This PDF could not be opened safely. Download it instead."
             }
         mutableState.update { it.copy(loadState = PdfLoadState.FAILED, bitmap = null, error = message) }

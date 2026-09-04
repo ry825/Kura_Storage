@@ -16,14 +16,11 @@ import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertWidthIsAtLeast
-import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
@@ -47,6 +44,7 @@ import com.kurastorage.core.model.media.MediaLoadState
 import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.NetworkQualityContext
+import com.kurastorage.core.model.media.OriginalMetadata
 import com.kurastorage.core.model.media.ReadyMediaSource
 import com.kurastorage.feature.media.pdf.PdfLoadState
 import com.kurastorage.feature.media.pdf.PdfViewerScreen
@@ -144,6 +142,8 @@ class MediaViewerScreenTest {
                             MediaLoadState.ConfirmingTransfer,
                             prompt,
                         ),
+                    currentPosition = 3,
+                    totalCount = 24,
                 ),
             )
         loader = ImageLoader.Builder(InstrumentationRegistry.getInstrumentation().targetContext).build()
@@ -157,7 +157,10 @@ class MediaViewerScreenTest {
                 onGenerating = { _, _ -> },
                 onImageFailed = {},
                 onQuality = {},
-                onConfirmOriginal = { confirmed = true },
+                onConfirmOriginal = {
+                    confirmed = true
+                    state = state.copy(media = state.media?.copy(confirmation = null, loadState = MediaLoadState.Loading))
+                },
                 onPrevious = {},
                 onNext = {},
                 onZoom = { state = state.copy(zoom = it) },
@@ -168,10 +171,11 @@ class MediaViewerScreenTest {
         }
 
         compose.onNodeWithText("Load original photo?").assertIsDisplayed()
+        compose.onNodeWithText("3 / 24").assertIsDisplayed()
         compose.onNodeWithText("Load original").performClick()
         compose.runOnIdle { assertEquals(true, confirmed) }
-        compose.onNodeWithTag("photo-canvas").performTouchInput { doubleClick() }
-        compose.runOnIdle { assertEquals(2f, state.zoom) }
+        compose.onNodeWithText("Zoom in").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1.5f, state.zoom) }
     }
 
     @Test
@@ -199,10 +203,39 @@ class MediaViewerScreenTest {
             )
         }
 
-        compose.onNodeWithText("Page 2 / 3 • Zoom 1.0x").assertIsDisplayed()
-        compose.onNodeWithText("This PDF could not be opened safely.").assertIsDisplayed()
+        compose.onNodeWithText("Page 2 / 3 • Zoom 1.0x").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("This PDF could not be opened safely.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Next page").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(true, next) }
+    }
+
+    @Test
+    fun pdfConfirmationShowsMimeRangeAndEstimatedTransferBeforeContent() {
+        var confirmed = false
+        compose.setContent {
+            PdfViewerScreen(
+                PdfViewerUiState(
+                    file = file("report", "application/pdf"),
+                    metadata = OriginalMetadata(ByteCount(2_048), "application/pdf", true),
+                    loadState = PdfLoadState.CONFIRMING,
+                ),
+                onConfirm = { confirmed = true },
+                onPrevious = {},
+                onNext = {},
+                onPage = {},
+                onZoom = {},
+                onViewport = { _, _ -> },
+                onDownload = {},
+                onBack = {},
+                onDisposeViewer = {},
+            )
+        }
+
+        compose.onNodeWithText("MIME: application/pdf").assertIsDisplayed()
+        compose.onNodeWithText("Estimated transfer: 2.0 KiB", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Range support: Yes", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Open PDF").performClick()
+        compose.runOnIdle { assertEquals(true, confirmed) }
     }
 
     @Test
@@ -229,7 +262,7 @@ class MediaViewerScreenTest {
         }
 
         compose.onNodeWithText("Download").assertIsDisplayed().assertHeightIsEqualTo(48.dp)
-        compose.onNodeWithText("Next page").assertIsDisplayed()
+        compose.onNodeWithText("Next page").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -281,7 +314,7 @@ class MediaViewerScreenTest {
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
         compose
-            .onNodeWithText("Download this quality")
+            .onNodeWithText("Download Low")
             .performScrollTo()
             .assertIsDisplayed()
             .assertIsEnabled()
