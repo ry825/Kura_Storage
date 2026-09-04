@@ -69,6 +69,55 @@ class AuthScreenTest {
     }
 
     @Test
+    fun storedUsernameIsPrefilledButPasswordIsEmptyAfterSessionEnds() {
+        val state = mutableStateOf<AuthUiState>(AuthUiState.Form(registration = false))
+        compose.setContent {
+            KuraStorageTheme { AuthScreen(state.value, { _, _ -> }, {}, {}) }
+        }
+        compose.onNodeWithTag("username-field").performTextInput("old-user")
+        compose.onNodeWithTag("password-field").performTextInput("old-secret")
+
+        compose.runOnIdle { state.value = AuthUiState.Loading }
+        compose.runOnIdle {
+            state.value = AuthUiState.Form(registration = false, username = "member")
+        }
+
+        compose.onNodeWithTag("username-field").assertTextContains("member")
+        val password =
+            compose
+                .onNodeWithTag("password-field")
+                .fetchSemanticsNode()
+                .config[SemanticsProperties.EditableText]
+                .text
+        assertEquals("", password)
+    }
+
+    @Test
+    fun endedSessionReasonIsShownOnActionableSignInForm() {
+        compose.setContent {
+            KuraStorageTheme {
+                AuthScreen(
+                    AuthUiState.Form(
+                        registration = false,
+                        username = "member",
+                        error = ApiError(ErrorCode.REFRESH_TOKEN_REUSED, "request-7", 401),
+                    ),
+                    { _, _ -> },
+                    {},
+                    {},
+                )
+            }
+        }
+
+        compose.onAllNodesWithText("Sign in").assertCountEquals(2)
+        compose.onNodeWithText("Sign-in failed").assertIsDisplayed()
+        compose
+            .onNodeWithText(
+                "This session ended because its security token was reused. Enter your password to sign in again.",
+            ).assertIsDisplayed()
+    }
+
+    @Test
     fun submittingDisablesASecondSubmissionAndRetainsFieldsOnError() {
         val state = mutableStateOf<AuthUiState>(AuthUiState.Form(registration = false))
         var calls = 0

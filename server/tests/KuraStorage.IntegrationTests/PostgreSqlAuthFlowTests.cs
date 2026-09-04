@@ -62,6 +62,15 @@ public sealed class PostgreSqlAuthFlowTests(PostgreSqlAuthFlowFixture fixture)
         Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
         var registeredTokens = await ReadTokensAsync(registration);
         Assert.Equal(userId, registeredTokens.UserId);
+        int registeredDeviceCount;
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var registrationDatabase = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            registeredDeviceCount = await registrationDatabase.Devices.CountAsync(device => device.UserId == userId);
+            var registeredDevice = await registrationDatabase.Devices.SingleAsync(
+                device => device.Id == registeredTokens.DeviceId);
+            Assert.Equal(DeviceStatus.Active, registeredDevice.Status);
+        }
 
         using var login = await client.PostAsJsonAsync(
             "/api/v1/auth/login",
@@ -130,12 +139,38 @@ public sealed class PostgreSqlAuthFlowTests(PostgreSqlAuthFlowFixture fixture)
             });
         Assert.Equal(HttpStatusCode.Unauthorized, refreshAfterLogout.StatusCode);
         await AssertErrorAsync(refreshAfterLogout, "AUTHENTICATION_REQUIRED");
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var logoutDatabase = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.Equal(
+                registeredDeviceCount,
+                await logoutDatabase.Devices.CountAsync(device => device.UserId == userId));
+            var loggedOutDevice = await logoutDatabase.Devices.SingleAsync(
+                device => device.Id == registeredTokens.DeviceId);
+            Assert.Equal(DeviceStatus.Active, loggedOutDevice.Status);
+            var now = DateTimeOffset.UtcNow;
+            Assert.False(
+                await logoutDatabase.RefreshSessions.AnyAsync(
+                    session => session.DeviceId == registeredTokens.DeviceId &&
+                        session.UsedAt == null &&
+                        session.RevokedAt == null &&
+                        session.ReplacedBySessionId == null &&
+                        session.ExpiresAt > now));
+        }
 
         using var thirdLogin = await client.PostAsJsonAsync(
             "/api/v1/auth/login",
             new { username = "alice", password = fixture.Password, deviceId = registeredTokens.DeviceId });
         var thirdLoginTokens = await ReadTokensAsync(thirdLogin);
         Assert.Equal(userId, thirdLoginTokens.UserId);
+        Assert.Equal(registeredTokens.DeviceId, thirdLoginTokens.DeviceId);
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var reloginDatabase = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            Assert.Equal(
+                registeredDeviceCount,
+                await reloginDatabase.Devices.CountAsync(device => device.UserId == userId));
+        }
         await using (var scope = fixture.Factory.Services.CreateAsyncScope())
         {
             var identity = scope.ServiceProvider.GetRequiredService<IdentityService>();
@@ -155,6 +190,7 @@ public sealed class PostgreSqlAuthFlowTests(PostgreSqlAuthFlowFixture fixture)
                 refreshToken = thirdLoginTokens.RefreshToken,
             });
         Assert.Equal(HttpStatusCode.Forbidden, refreshAfterRevocation.StatusCode);
+        await AssertErrorAsync(refreshAfterRevocation, "DEVICE_REVOKED");
 
         var forbiddenLogValues = new[]
         {

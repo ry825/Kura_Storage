@@ -528,7 +528,12 @@ SSIDとBSSIDは外部Wi-Fiで自動バックアップを許可するポリシー
 - 暗号文、IV、必要な付随情報だけをアプリ専用領域へ保存する。
 - Android自動バックアップと端末移行から除外する。
 - Access Tokenは原則メモリだけで保持する。
-- ログアウト、Device失効、登録失敗時に対象秘密情報を削除する。
+- Preferences DataStoreでは、端末登録Metadata（Device ID、前回Username）とSession Metadata（User ID、Role、Refresh Token有効期限）を論理的に分離する。Refresh Token本体はDataStoreへ保存しない。
+- 通常ログアウト、Refresh Token期限切れ、Session失効、Token再利用検知では、暗号化Refresh Token、Session Metadata、メモリSessionだけを削除し、非秘密の端末登録Metadataを保持する。
+- Device失効、登録失敗、不正な端末登録Metadata検出時は、Refresh Token、Session Metadata、端末登録Metadataをすべて削除する。
+- 保存済みDevice IDはPassword、User所有関係、Device状態のServer検証と組み合わせて再ログインにだけ使用し、単独で認証・認可の根拠にしない。
+
+起動時は端末登録とSessionを独立して評価する。端末登録がなければLocal Direct限定の登録Flow、端末登録がありSessionがなければPassword入力を伴う`Sign in`、両方があればRefreshを試行する。Session系Errorは`Sign in`へ、Device失効だけは再登録Flowへ収束させる。旧版LogoutですでにDevice IDが消去された端末は復元不能なため、更新後の初回に限り再登録する。
 
 ### 7.6 MVP後: 自動バックアップ実行モデル
 
@@ -836,6 +841,18 @@ sequenceDiagram
 6. 必要権限を満たす場合だけHDDへアクセスする。
 
 Access Tokenが署名上有効でも、User無効化、Device失効、Session失効の場合は拒否する。
+
+### 11.2.1 通常ログアウトと再ログイン
+
+1. Androidは現在のAccess Token、Device ID、Refresh TokenでLogout APIを呼ぶ。
+2. Serverは現在のRefresh Session系列を失効し、DeviceをACTIVEのまま保持する。
+3. AndroidはLogout APIの成否にかかわらず、メモリSession、暗号化Refresh Token、Session Metadata、Session scopeのDI container、Back Stack、Media・Backup UI状態を破棄する。
+4. Androidは端末登録MetadataのDevice IDと前回Usernameを保持する。
+5. 次回起動時は`Register this device`ではなく`Sign in`を表示し、Passwordを保存・初期入力しない。
+6. Androidは保持したDevice IDでLogin APIを呼び、ServerはPassword、DeviceのUser所有関係、Device ACTIVEを検証して新しいSessionを作成する。
+7. 同じDeviceレコードを再利用し、通常ログアウトと再ログインによってDevice件数を増やさない。
+
+Refresh Token期限切れ、Session失効、Token再利用検知、Keystore内Token喪失も、端末登録Metadataが有効なら手順5の`Sign in`へ収束する。`DEVICE_REVOKED`の場合だけ端末登録Metadataも破棄し、Local Direct限定の再登録Flowへ戻す。
 
 ### 11.3 MVP後: 写真派生データ
 

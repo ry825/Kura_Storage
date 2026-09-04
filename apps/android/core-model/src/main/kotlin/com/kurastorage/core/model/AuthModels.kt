@@ -19,6 +19,17 @@ data class AuthSession(
     val userId: String = "00000000-0000-0000-0000-000000000000",
 )
 
+data class DeviceRegistrationMetadata(
+    val deviceId: DeviceId,
+    val username: String?,
+)
+
+data class SessionMetadata(
+    val userId: String,
+    val refreshTokenExpiresAt: Instant,
+    val role: UserRole,
+)
+
 data class StoredCredential(
     val deviceId: DeviceId,
     val refreshToken: String,

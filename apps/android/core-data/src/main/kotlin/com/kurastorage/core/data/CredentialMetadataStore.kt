@@ -1,58 +1,113 @@
 package com.kurastorage.core.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.kurastorage.core.model.DeviceId
+import com.kurastorage.core.model.DeviceRegistrationMetadata
+import com.kurastorage.core.model.SessionMetadata
 import com.kurastorage.core.model.UserRole
 import kotlinx.coroutines.flow.first
 import java.time.Instant
+import java.util.UUID
 
-private val Context.credentialDataStore by preferencesDataStore(name = "credential_metadata")
-
-data class CredentialMetadata(
-    val deviceId: DeviceId,
-    val refreshTokenExpiresAt: Instant,
-    val username: String?,
-    val role: UserRole = UserRole.MEMBER,
-    val userId: String = "00000000-0000-0000-0000-000000000000",
-)
+internal val Context.credentialDataStore by preferencesDataStore(name = "credential_metadata")
 
 interface CredentialMetadataStore {
-    suspend fun read(): CredentialMetadata?
+    suspend fun readRegistration(): DeviceRegistrationMetadata?
 
-    suspend fun write(metadata: CredentialMetadata)
+    suspend fun writeRegistration(metadata: DeviceRegistrationMetadata)
 
-    suspend fun clear()
+    suspend fun readSession(): SessionMetadata?
+
+    suspend fun writeSession(metadata: SessionMetadata)
+
+    suspend fun clearSession()
+
+    suspend fun clearRegistration()
 }
 
 class DataStoreCredentialMetadataStore(
     private val context: Context,
 ) : CredentialMetadataStore {
     @Suppress("ReturnCount")
-    override suspend fun read(): CredentialMetadata? {
+    override suspend fun readRegistration(): DeviceRegistrationMetadata? {
         val values = context.credentialDataStore.data.first()
-        val deviceId = values[DEVICE_ID]?.let(::DeviceId) ?: return null
-        val expiresAt = values[REFRESH_EXPIRES_AT]?.let(Instant::parse) ?: return null
-        val role = values[ROLE]?.let { runCatching { UserRole.valueOf(it) }.getOrNull() } ?: UserRole.MEMBER
-        val userId = values[USER_ID] ?: return null
-        return CredentialMetadata(deviceId, expiresAt, values[LAST_USERNAME], role, userId)
+        val rawDeviceId = values[DEVICE_ID]
+        if (rawDeviceId == null) {
+            if (values.containsRegistrationOrSessionData()) clearRegistration()
+            return null
+        }
+        if (!isUuid(rawDeviceId)) {
+            clearRegistration()
+            return null
+        }
+        val deviceId = DeviceId(rawDeviceId)
+        return DeviceRegistrationMetadata(deviceId, values[LAST_USERNAME])
     }
 
-    override suspend fun write(metadata: CredentialMetadata) {
+    override suspend fun writeRegistration(metadata: DeviceRegistrationMetadata) {
+        require(isUuid(metadata.deviceId.value)) { "Device ID must be a UUID" }
+        context.credentialDataStore.edit { values ->
+            values[DEVICE_ID] = metadata.deviceId.value
+            metadata.username?.let { values[LAST_USERNAME] = it } ?: values.remove(LAST_USERNAME)
+        }
+    }
+
+    @Suppress("ReturnCount")
+    override suspend fun readSession(): SessionMetadata? {
+        val values = context.credentialDataStore.data.first()
+        val expiresAt =
+            values[REFRESH_EXPIRES_AT]
+                ?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                ?: return null
+        val roleValue = values[ROLE]
+        val role =
+            if (roleValue == null) {
+                UserRole.MEMBER
+            } else {
+                runCatching { UserRole.valueOf(roleValue) }.getOrNull() ?: return null
+            }
+        val userId = values[USER_ID]?.takeIf(::isUuid) ?: return null
+        return SessionMetadata(userId, expiresAt, role)
+    }
+
+    override suspend fun writeSession(metadata: SessionMetadata) {
+        require(isUuid(metadata.userId)) { "User ID must be a UUID" }
         context.credentialDataStore.edit { values ->
             values[USER_ID] = metadata.userId
-            values[DEVICE_ID] = metadata.deviceId.value
             values[REFRESH_EXPIRES_AT] = metadata.refreshTokenExpiresAt.toString()
-            metadata.username?.let { values[LAST_USERNAME] = it } ?: values.remove(LAST_USERNAME)
             values[ROLE] = metadata.role.name
         }
     }
 
-    override suspend fun clear() {
-        context.credentialDataStore.edit { it.clear() }
+    override suspend fun clearSession() {
+        context.credentialDataStore.edit { values ->
+            values.remove(USER_ID)
+            values.remove(REFRESH_EXPIRES_AT)
+            values.remove(ROLE)
+        }
     }
+
+    override suspend fun clearRegistration() {
+        context.credentialDataStore.edit { values ->
+            values.remove(DEVICE_ID)
+            values.remove(LAST_USERNAME)
+            values.remove(USER_ID)
+            values.remove(REFRESH_EXPIRES_AT)
+            values.remove(ROLE)
+        }
+    }
+
+    private fun isUuid(value: String): Boolean = runCatching { UUID.fromString(value) }.isSuccess
+
+    private fun Preferences.containsRegistrationOrSessionData(): Boolean =
+        this[LAST_USERNAME] != null ||
+            this[USER_ID] != null ||
+            this[REFRESH_EXPIRES_AT] != null ||
+            this[ROLE] != null
 
     private companion object {
         val DEVICE_ID = stringPreferencesKey("device_id")

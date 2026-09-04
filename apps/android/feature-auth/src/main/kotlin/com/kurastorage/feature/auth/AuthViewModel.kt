@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.kurastorage.core.data.AuthenticationRepository
 import com.kurastorage.core.model.ApiError
 import com.kurastorage.core.model.ConnectionRoute
+import com.kurastorage.core.model.DeviceRegistrationMetadata
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.KuraStorageException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,9 +48,14 @@ class AuthViewModel(
     fun load() {
         mutableState.value = AuthUiState.Loading
         viewModelScope.launch {
+            val registration = repository.storedRegistration()
+            if (registration == null) {
+                mutableState.value = registrationState()
+                return@launch
+            }
             val credential = repository.storedCredential()
             if (credential == null) {
-                mutableState.value = registrationState()
+                mutableState.value = signInState(registration)
                 return@launch
             }
             mutableState.value =
@@ -57,7 +63,7 @@ class AuthViewModel(
                     repository.refresh()
                     AuthUiState.Authenticated
                 } catch (error: KuraStorageException.Api) {
-                    AuthUiState.Error(error.error)
+                    refreshFailure(registration, error.error)
                 } catch (_: KuraStorageException) {
                     AuthUiState.Error(unknownError())
                 }
@@ -101,6 +107,28 @@ class AuthViewModel(
             AuthUiState.RequiresLocalDirect
         }
 
+    private fun signInState(
+        registration: DeviceRegistrationMetadata,
+        error: ApiError? = null,
+    ): AuthUiState.Form =
+        AuthUiState.Form(
+            registration = false,
+            username = registration.username.orEmpty(),
+            error = error,
+        )
+
+    private fun refreshFailure(
+        registration: DeviceRegistrationMetadata,
+        error: ApiError,
+    ): AuthUiState =
+        when (error.code) {
+            ErrorCode.DEVICE_REVOKED -> registrationState()
+            ErrorCode.AUTHENTICATION_REQUIRED,
+            ErrorCode.REFRESH_TOKEN_REUSED,
+            -> signInState(registration, error)
+            else -> AuthUiState.Error(error)
+        }
+
     private fun submitFailure(
         form: AuthUiState.Form,
         username: String,
@@ -108,7 +136,7 @@ class AuthViewModel(
     ): AuthUiState =
         when (error.code) {
             ErrorCode.DEVICE_REGISTRATION_REQUIRES_LOCAL_DIRECT -> AuthUiState.RequiresLocalDirect
-            ErrorCode.DEVICE_REVOKED, ErrorCode.REFRESH_TOKEN_REUSED -> AuthUiState.Error(error)
+            ErrorCode.DEVICE_REVOKED -> registrationState()
             else -> form.copy(username = username, submitting = false, error = error)
         }
 

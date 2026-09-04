@@ -1188,13 +1188,25 @@ SSIDやBSSIDは`LOCAL_DIRECT`の判定条件に使用しない。同一IPサブ�
 **責務**
 
 - 登録済みDeviceのログイン、Token更新、ログアウトを実行する。
-- Android内に有効な`deviceId`とRefresh Tokenがない場合、`LOCAL_DIRECT`でDeviceRegistrationCoordinatorを開始する。
+- Android内に有効な端末登録Metadataの`deviceId`がない場合だけ、`LOCAL_DIRECT`でDeviceRegistrationCoordinatorを開始する。
+- `deviceId`がありRefresh Credentialがない場合は、保持したDevice IDを使うPasswordログインを要求する。
 - ZeroTier経由では新規Device登録を開始しない。
 - Access Tokenをメモリ中心で扱う。
 - Refresh TokenをSecureCredentialStoreで保護して保存する。
 - Refresh Token更新時に`deviceId`を補助情報として送信しても、Token自体の検証を認証根拠とする。
-- DeviceまたはSession失効時にローカルTokenを削除し、再ログイン画面へ遷移させる。
+- 通常ログアウト、Refresh Token期限切れ、Session失効、Token再利用検知では、ローカルTokenとSession Metadataだけを削除し、端末登録Metadataを保持して再ログイン画面へ遷移させる。
+- `DEVICE_REVOKED`または端末登録Metadata不正時は、ローカルToken、Session Metadata、端末登録Metadataを削除して再登録Flowへ遷移させる。
 - Token再利用検知とUserセキュリティロックのエラーを専用状態へ変換する。
+
+起動時の認証状態は次の順で評価する。
+
+| 端末登録Metadata | Refresh Credential | 表示・処理 |
+| --- | --- | --- |
+| なし | なし | `LOCAL_DIRECT`なら初回Device登録、それ以外はLocal Direct接続案内 |
+| あり | なし | 前回Usernameを初期入力した`Sign in`。Passwordは常に空 |
+| あり | 有効 | Refreshを試行し、成功時は認証済み画面 |
+| あり | 期限切れ・Session失効 | Session情報だけを破棄し`Sign in` |
+| あり | Device失効 | 全認証・登録状態を破棄し再登録Flow |
 
 ### 6.1.4 FileRepository
 
@@ -1268,9 +1280,11 @@ Roomに次を保存する。
 
 - Android Keystore内に取り出し不可のAES-256鍵を生成する。StrongBox対応端末ではStrongBox-backed鍵を優先し、非対応時はhardware-backed Keystore、さらに利用できない場合は標準Keystoreへフォールバックする。
 - Refresh TokenもKeystoreで保護し、Roomや通常のSharedPreferencesへ平文保存しない。
-- `deviceId`と固定API Hostnameなど、KuraStorage自身に必要な非秘密設定を保存する。
+- `deviceId`、前回Username、固定API Hostnameなど、KuraStorage自身に必要な非秘密設定をTokenとは別の端末登録Metadataとして保存する。
+- User ID、Role、Refresh Token有効期限をSession Metadataとして保存し、端末登録Metadataとは独立して削除できるようにする。
 - アプリ再インストールまたはデータ消去後は未登録状態として扱う。
-- ログアウト、Device失効、登録失敗時に対象秘密情報を安全に削除する。
+- 通常ログアウト、Session失効、Token期限切れ、Token再利用検知時はRefresh TokenとSession Metadataを安全に削除し、端末登録Metadataを保持する。
+- Device失効、登録失敗、端末登録Metadata不正時はRefresh Token、Session Metadata、端末登録Metadataをすべて削除する。
 
 ## 6.2 バックエンド
 
@@ -1867,7 +1881,7 @@ Access Tokenは15分、Refresh Tokenは発行または前回ローテーショ�
 
 #### `POST /api/v1/auth/logout`
 
-現在のRefresh Sessionを失効する。
+現在のRefresh Session系列を失効する。Device自体はACTIVEのまま保持し、同じUserのPasswordと同じ`deviceId`を使う後続Loginで新しいRefresh Sessionを作成できる。Androidは応答成否にかかわらずローカルSession秘密値を削除するが、非秘密の端末登録Metadataは保持する。
 
 ### 8.4 ファイル一覧・詳細
 
@@ -2302,6 +2316,33 @@ sequenceDiagram
 
 ZeroTier経由の未登録Device登録は拒否する。ZeroTierへ接続できても、User、Device、Refresh Sessionの確認とファイル単位認可を省略しない。
 
+### 登録済み端末のログアウトと再ログイン
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as 利用者
+    participant App as Androidアプリ
+    participant API as KuraStorage API
+    participant DB as PostgreSQL
+
+    User->>App: ログアウト
+    App->>API: Access Token・Device ID・Refresh TokenでLogout
+    API->>DB: 現在のRefresh Session系列を失効
+    API-->>App: 204 No Content
+    App->>App: Token・Session Metadata・前Session状態を破棄
+    App->>App: Device ID・前回Usernameを保持
+    User->>App: アプリを再起動
+    App-->>User: Sign in（Username初期入力、Password空）
+    User->>App: Passwordを入力
+    App->>API: 保持Device IDでLogin
+    API->>DB: Password・所有User・Device ACTIVEを検証しSession作成
+    API-->>App: 同じDevice ID・新Token
+    App-->>User: ホーム画面を表示
+```
+
+Logout APIが通信失敗してもAndroid側のSession秘密値は破棄する。Session期限切れまたは失効も同じ`Sign in`へ収束させ、`DEVICE_REVOKED`の場合だけ端末登録Metadataも破棄して再登録Flowへ戻す。通常ログアウトと再ログインでは`register-device`を呼ばず、Device件数を増やさない。
+
 ## 9.2 低画質写真の閲覧
 
 **この図で分かること:** READYキャッシュがあればそのまま配信し、なければ元画像から低画質版を生成する。低画質を選んだ要求で元画像本体をクライアントへ送信しない。
@@ -2487,8 +2528,9 @@ stateDiagram-v2
     RemoteGuidance --> ConnectionCheck: 別アプリ確認後に再確認
 
     Login --> Home: 認証成功
-    Login --> ConnectionCheck: Device無効・到達不可
-    Home --> Login: Session失効
+    Login --> ConnectionCheck: 到達不可
+    Home --> Login: Logout・Session失効・Token期限切れ
+    Login --> FirstRegistration: Device失効・LOCAL_DIRECT
     Home --> ConnectionCheck: 接続喪失
 ```
 

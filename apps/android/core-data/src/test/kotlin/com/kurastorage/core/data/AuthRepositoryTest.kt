@@ -3,8 +3,10 @@ package com.kurastorage.core.data
 import com.kurastorage.core.model.ApiError
 import com.kurastorage.core.model.ConnectionRoute
 import com.kurastorage.core.model.DeviceId
+import com.kurastorage.core.model.DeviceRegistrationMetadata
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.KuraStorageException
+import com.kurastorage.core.model.SessionMetadata
 import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.network.AuthenticationApi
 import com.kurastorage.core.network.LoginRequestDto
@@ -19,7 +21,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -27,28 +31,20 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class AuthRepositoryTest {
     @Test
-    fun `registration is allowed only on local direct`() =
+    fun `registration is local only and persists registration with session`() =
         runTest {
             val fixture = Fixture()
-            val result =
-                fixture.repository.register(
-                    ConnectionRoute.LOCAL_DIRECT,
-                    "family",
-                    "secret",
-                    "Android",
-                )
+
+            val result = fixture.repository.register(ConnectionRoute.LOCAL_DIRECT, "family", "secret", "Android")
+
             assertEquals(DeviceId(DEVICE_ID), result.deviceId)
-            assertEquals(USER_ID, result.userId)
-            assertEquals(UserRole.ADMIN, result.role)
-            assertEquals(UserRole.ADMIN, fixture.repository.role())
+            assertEquals(registration(), fixture.metadataStore.registration)
+            assertEquals(sessionMetadata(), fixture.metadataStore.session)
+            assertEquals("refresh-1", fixture.tokenStore.token)
+            assertEquals(1, fixture.api.registerCount)
 
             runCatching {
-                fixture.repository.register(
-                    ConnectionRoute.REMOTE_SECURE,
-                    "family",
-                    "secret",
-                    "Android",
-                )
+                fixture.repository.register(ConnectionRoute.REMOTE_SECURE, "family", "secret", "Android")
             }.onSuccess { error("Remote registration unexpectedly succeeded") }
         }
 
@@ -79,66 +75,201 @@ class AuthRepositoryTest {
             assertEquals(1, fixture.api.refreshCount.get())
             assertEquals(24, invocations.get())
             assertEquals(UserRole.ADMIN, fixture.repository.role())
-            assertEquals(UserRole.ADMIN, fixture.metadataStore.metadata?.role)
+            assertEquals(UserRole.ADMIN, fixture.metadataStore.session?.role)
         }
 
     @Test
-    fun `device revoked clears encrypted token and metadata`() =
+    fun `logout clears session secrets but retains registration`() =
         runTest {
-            val fixture = Fixture()
-            fixture.seedCredential()
-            fixture.api.loginError =
-                KuraStorageException.Api(ApiError(ErrorCode.DEVICE_REVOKED, "request-7", 403))
-
-            runCatching { fixture.repository.login("family", "secret") }
-
-            assertNull(fixture.tokenStore.token)
-            assertNull(fixture.metadataStore.metadata)
-        }
-
-    @Test
-    fun `logout clears role with encrypted token and metadata`() =
-        runTest {
-            val fixture = Fixture()
-            fixture.seedCredential()
-            fixture.repository.login("family", "secret")
+            val fixture = authenticatedFixture()
 
             fixture.repository.logout()
 
-            assertNull(fixture.repository.role())
-            assertNull(fixture.tokenStore.token)
-            assertNull(fixture.metadataStore.metadata)
+            assertLoggedOutWithRegistration(fixture)
+            assertEquals(DEVICE_ID, fixture.api.lastLogoutRequest?.deviceId)
+            assertEquals("refresh-1", fixture.api.lastLogoutRequest?.refreshToken)
         }
 
     @Test
-    fun `keystore loss clears unusable credential metadata`() =
+    fun `logout network failure still clears session secrets and retains registration`() =
+        runTest {
+            val fixture = authenticatedFixture()
+            fixture.api.logoutError = KuraStorageException.Network(IOException("offline"))
+
+            val result = runCatching { fixture.repository.logout() }
+
+            assertTrue(result.isFailure)
+            assertLoggedOutWithRegistration(fixture)
+        }
+
+    @Test
+    fun `login after logout reuses device without registering again`() =
+        runTest {
+            val fixture = authenticatedFixture()
+            fixture.repository.logout()
+
+            fixture.repository.login("family", "new-secret")
+
+            assertEquals(DEVICE_ID, fixture.api.lastLoginRequest?.deviceId)
+            assertEquals(0, fixture.api.registerCount)
+            assertEquals(DeviceId(DEVICE_ID), fixture.repository.deviceId())
+        }
+
+    @Test
+    fun `expired session clears only session credential`() =
+        runTest {
+            val fixture = Fixture()
+            fixture.seedCredential(expiry = Instant.parse("2026-07-25T00:00:00Z"))
+
+            assertNull(fixture.repository.storedCredential())
+
+            assertLoggedOutWithRegistration(fixture)
+        }
+
+    @Test
+    fun `missing encrypted token clears only session credential`() =
+        runTest {
+            val fixture = Fixture()
+            fixture.seedCredential(token = null)
+
+            assertNull(fixture.repository.storedCredential())
+
+            assertLoggedOutWithRegistration(fixture)
+        }
+
+    @Test
+    fun `keystore loss clears only session credential`() =
         runTest {
             val fixture = Fixture()
             fixture.seedCredential()
             fixture.tokenStore.readError = KuraStorageException.CredentialUnavailable()
 
             assertNull(fixture.repository.storedCredential())
-            assertNull(fixture.metadataStore.metadata)
+
+            assertLoggedOutWithRegistration(fixture)
         }
 
     @Test
-    fun `credential persistence failure clears partially written token`() =
+    fun `authentication required during refresh retains registration`() =
+        assertSessionRefreshFailureRetainsRegistration(ErrorCode.AUTHENTICATION_REQUIRED)
+
+    @Test
+    fun `refresh token reuse retains registration`() {
+        assertSessionRefreshFailureRetainsRegistration(ErrorCode.REFRESH_TOKEN_REUSED)
+    }
+
+    @Test
+    fun `device revoked during login clears registration and session`() =
         runTest {
             val fixture = Fixture()
-            fixture.metadataStore.writeError = IllegalStateException("storage unavailable")
+            fixture.seedCredential()
+            fixture.api.loginError = apiError(ErrorCode.DEVICE_REVOKED)
+
+            runCatching { fixture.repository.login("family", "secret") }
+
+            assertAllCredentialsCleared(fixture)
+        }
+
+    @Test
+    fun `device revoked during refresh clears registration and session`() =
+        runTest {
+            val fixture = Fixture()
+            fixture.seedCredential()
+            fixture.api.refreshError = apiError(ErrorCode.DEVICE_REVOKED)
+
+            runCatching { fixture.repository.refresh() }
+
+            assertAllCredentialsCleared(fixture)
+        }
+
+    @Test
+    fun `invalid stored device ID clears registration and session`() =
+        runTest {
+            val fixture = Fixture()
+            fixture.seedCredential()
+            fixture.metadataStore.registration =
+                DeviceRegistrationMetadata(
+                    deviceId = DeviceId("not-a-uuid"),
+                    username = "family",
+                )
+
+            assertNull(fixture.repository.storedRegistration())
+
+            assertAllCredentialsCleared(fixture)
+        }
+
+    @Test
+    fun `login response for another device is rejected without losing registration`() =
+        runTest {
+            val fixture = Fixture()
+            fixture.seedCredential()
+            fixture.api.loginResponse = token("1", deviceId = OTHER_DEVICE_ID)
+
+            val result = runCatching { fixture.repository.login("family", "secret") }
+
+            assertTrue(result.exceptionOrNull() is KuraStorageException.InvalidServerResponse)
+            assertLoggedOutWithRegistration(fixture)
+        }
+
+    @Test
+    fun `refresh response for another user is rejected without losing registration`() =
+        runTest {
+            val fixture = Fixture()
+            fixture.seedCredential()
+            fixture.api.refreshResponse = token("2", userId = OTHER_USER_ID)
+
+            val result = runCatching { fixture.repository.refresh() }
+
+            assertTrue(result.exceptionOrNull() is KuraStorageException.InvalidServerResponse)
+            assertLoggedOutWithRegistration(fixture)
+        }
+
+    @Test
+    fun `registration persistence failure clears partial credentials`() =
+        runTest {
+            val fixture = Fixture()
+            fixture.metadataStore.writeSessionError = IllegalStateException("storage unavailable")
 
             runCatching {
-                fixture.repository.register(
-                    ConnectionRoute.LOCAL_DIRECT,
-                    "family",
-                    "secret",
-                    "Android",
-                )
+                fixture.repository.register(ConnectionRoute.LOCAL_DIRECT, "family", "secret", "Android")
             }
 
-            assertNull(fixture.tokenStore.token)
-            assertNull(fixture.metadataStore.metadata)
+            assertAllCredentialsCleared(fixture)
         }
+
+    private fun assertSessionRefreshFailureRetainsRegistration(code: ErrorCode) =
+        runTest {
+            val fixture = Fixture()
+            fixture.seedCredential()
+            fixture.api.refreshError = apiError(code)
+
+            runCatching { fixture.repository.refresh() }
+
+            assertLoggedOutWithRegistration(fixture)
+        }
+
+    private suspend fun authenticatedFixture(): Fixture =
+        Fixture().also {
+            it.seedCredential()
+            it.repository.login("family", "secret")
+        }
+
+    private fun assertLoggedOutWithRegistration(fixture: Fixture) {
+        assertNull(fixture.repository.accessToken())
+        assertNull(fixture.repository.role())
+        assertNull(fixture.repository.userId())
+        assertNull(fixture.repository.deviceId())
+        assertNull(fixture.tokenStore.token)
+        assertNull(fixture.metadataStore.session)
+        assertEquals(registration(), fixture.metadataStore.registration)
+    }
+
+    private fun assertAllCredentialsCleared(fixture: Fixture) {
+        assertNull(fixture.repository.accessToken())
+        assertNull(fixture.tokenStore.token)
+        assertNull(fixture.metadataStore.session)
+        assertNull(fixture.metadataStore.registration)
+    }
 
     private class Fixture {
         val api = FakeAuthenticationApi()
@@ -149,57 +280,82 @@ class AuthRepositoryTest {
                 api,
                 metadataStore,
                 tokenStore,
-                Clock.fixed(Instant.parse("2026-07-26T00:00:00Z"), ZoneOffset.UTC),
+                Clock.fixed(NOW, ZoneOffset.UTC),
             )
 
-        fun seedCredential() {
-            metadataStore.metadata =
-                CredentialMetadata(
-                    DeviceId(DEVICE_ID),
-                    Instant.parse("2026-07-27T00:00:00Z"),
-                    "family",
-                    UserRole.ADMIN,
-                )
-            tokenStore.token = "refresh-0"
+        fun seedCredential(
+            expiry: Instant = EXPIRY,
+            token: String? = "refresh-0",
+        ) {
+            metadataStore.registration = registration()
+            metadataStore.session = sessionMetadata(expiry)
+            tokenStore.token = token
         }
     }
 
     private class FakeAuthenticationApi : AuthenticationApi {
         val refreshCount = AtomicInteger()
-        var loginError: KuraStorageException.Api? = null
+        var registerCount = 0
+        var loginError: KuraStorageException? = null
+        var refreshError: KuraStorageException? = null
+        var logoutError: KuraStorageException? = null
+        var loginResponse = token("1")
+        var refreshResponse = token("2")
+        var lastLoginRequest: LoginRequestDto? = null
+        var lastLogoutRequest: LogoutRequestDto? = null
 
-        override suspend fun registerDevice(request: RegisterDeviceRequestDto) = token("1")
+        override suspend fun registerDevice(request: RegisterDeviceRequestDto): TokenResponseDto {
+            registerCount++
+            return token("1")
+        }
 
         override suspend fun login(request: LoginRequestDto): TokenResponseDto {
+            lastLoginRequest = request
             loginError?.let { throw it }
-            return token("1")
+            return loginResponse
         }
 
         override suspend fun refresh(request: RefreshRequestDto): TokenResponseDto {
             refreshCount.incrementAndGet()
             delay(20)
-            return token("2")
+            refreshError?.let { throw it }
+            return refreshResponse
         }
 
         override suspend fun logout(
             accessToken: String,
             request: LogoutRequestDto,
-        ) = Unit
+        ) {
+            lastLogoutRequest = request
+            logoutError?.let { throw it }
+        }
     }
 
     private class FakeMetadataStore : CredentialMetadataStore {
-        var metadata: CredentialMetadata? = null
-        var writeError: Throwable? = null
+        var registration: DeviceRegistrationMetadata? = null
+        var session: SessionMetadata? = null
+        var writeSessionError: Throwable? = null
 
-        override suspend fun read() = metadata
+        override suspend fun readRegistration() = registration
 
-        override suspend fun write(metadata: CredentialMetadata) {
-            writeError?.let { throw it }
-            this.metadata = metadata
+        override suspend fun writeRegistration(metadata: DeviceRegistrationMetadata) {
+            registration = metadata
         }
 
-        override suspend fun clear() {
-            metadata = null
+        override suspend fun readSession() = session
+
+        override suspend fun writeSession(metadata: SessionMetadata) {
+            writeSessionError?.let { throw it }
+            session = metadata
+        }
+
+        override suspend fun clearSession() {
+            session = null
+        }
+
+        override suspend fun clearRegistration() {
+            registration = null
+            session = null
         }
     }
 
@@ -222,18 +378,31 @@ class AuthRepositoryTest {
     }
 
     private companion object {
-        const val DEVICE_ID = "11111111-1111-1111-1111-111111111111"
-        const val USER_ID = "22222222-2222-2222-2222-222222222222"
+        const val DEVICE_ID = "11111111-1111-4111-8111-111111111111"
+        const val OTHER_DEVICE_ID = "11111111-1111-4111-8111-111111111112"
+        const val USER_ID = "22222222-2222-4222-8222-222222222222"
+        const val OTHER_USER_ID = "22222222-2222-4222-8222-222222222223"
+        val NOW: Instant = Instant.parse("2026-07-26T00:00:00Z")
+        val EXPIRY: Instant = Instant.parse("2026-07-27T00:00:00Z")
 
-        fun token(suffix: String) =
-            TokenResponseDto(
-                userId = USER_ID,
-                deviceId = DEVICE_ID,
-                accessToken = "access-$suffix",
-                refreshToken = "refresh-$suffix",
-                accessTokenExpiresAt = "2026-07-26T01:00:00Z",
-                refreshTokenExpiresAt = "2026-07-27T00:00:00Z",
-                role = "ADMIN",
-            )
+        fun registration() = DeviceRegistrationMetadata(DeviceId(DEVICE_ID), "family")
+
+        fun sessionMetadata(expiry: Instant = EXPIRY) = SessionMetadata(USER_ID, expiry, UserRole.ADMIN)
+
+        fun apiError(code: ErrorCode) = KuraStorageException.Api(ApiError(code, "request-7", 401))
+
+        fun token(
+            suffix: String,
+            deviceId: String = DEVICE_ID,
+            userId: String = USER_ID,
+        ) = TokenResponseDto(
+            userId = userId,
+            deviceId = deviceId,
+            accessToken = "access-$suffix",
+            refreshToken = "refresh-$suffix",
+            accessTokenExpiresAt = "2026-07-26T01:00:00Z",
+            refreshTokenExpiresAt = EXPIRY.toString(),
+            role = "ADMIN",
+        )
     }
 }
