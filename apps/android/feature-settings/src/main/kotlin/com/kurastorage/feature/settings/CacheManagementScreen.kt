@@ -56,7 +56,14 @@ fun CacheManagementScreen(
                 .PaddingValues(KuraTheme.spacing.md),
         verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.md),
     ) {
-        item { Text("Cache management", style = MaterialTheme.typography.headlineMedium) }
+        item {
+            Text(
+                "Cache management",
+                modifier = Modifier.testTag("cache-title"),
+                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.headlineMedium,
+            )
+        }
         if (state.loading && state.status == null) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         state.error?.let { message ->
             item {
