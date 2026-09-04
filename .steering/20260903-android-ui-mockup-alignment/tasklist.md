@@ -513,8 +513,8 @@
   - [x] `./scripts/ci/verify-android.sh`、`:feature-settings:connectedDebugAndroidTest`、`:feature-backup:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
   - [x] Android 13実機相当のAPI 33 Emulatorと決定的fixtureでSettings、Backup overview/rule、Wi-Fi権限/登録、Quality保存、Admin Cacheのmanual cleanupを確認する（物理端末・実Serverの最終E2EはPR10へ引き継ぐ）。
   - [x] `docs/testing/YYYYMMDD-android-ui-pr9-settings-backup-cache.md`に`015`、`030`〜`036`のCapture、操作、意図的差分を記録する。
-- [ ] PR9を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR9完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] PR9を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR9完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -765,7 +765,26 @@
 
 ### PR9: Settings・Backup・Cache UI
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#57 Align Android settings, backup, and cache UI](https://github.com/ry825/Kura_Storage/pull/57)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Lint、ktlint、Detekt、Coverage、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。関連する`core-network`、`core-data`、`feature-settings`、`feature-backup`、`app`のJVM/Contract testも成功した。
+  - Android 13 / API 33 Emulatorで`:feature-settings:connectedDebugAndroidTest`成功（10/10）、`:feature-backup:connectedDebugAndroidTest`成功（11/11）、`:app:connectedDebugAndroidTest`成功（8/8）。`015`、`030`〜`036`の主要状態、Form、権限、Progress、Error、360dp、200%文字、横画面、Light/Dark、Semantics、決定的Captureを確認した。
+  - `git diff --check`成功。Self-reviewでCacheのstrict mapping、Admin/Member境界、401 refresh、403 fail-closed、UUID Idempotency key、通信結果不明時の同一key再送、Server権威のpolling停止、Session/Route破棄、機密値非記録を確認した。
+  - GitHub必須CI run `33859159653`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - 物理Android 13端末が未接続だったため、同一API levelのAPI 33 Emulatorと決定的Contract/Repository/ViewModel/Compose fixtureで表示・操作を代替した。物理端末と実Serverによるmanual cleanup、TalkBack、回転、通信断/再接続の最終E2EはPR10へ引き継ぐ。
+  - 参考UIの固定User名、Server名、件数、時刻、SSID/BSSIDを取り込まず、正式なSession、Repository/API、端末状態を表示した。VPN表記は正式設計の`ZeroTier`へ統一し、既存state所有とApp callback境界を保つためRule/Wi-Fi editorは一覧内のscroll可能な明示Formとした。
+- 追加タスクと理由:
+  - Cache集計の完全一致、未知enum、failure code、UUID/時刻/件数のstrict mapping、通信結果不明後のGETと同一key再送、Server権威のpolling停止を回帰テストへ追加した。PR8契約の安全境界と重要Coverage基準をAndroid側でも決定的に保証するためである。
+  - Backup/Quality/Cacheの200%文字、横画面、Light/Darkと状態別Semanticsを決定的fixtureへ追加した。Compact条件でもForm、取消し、主操作へ到達可能であることをPR9内で確認するためである。
+- 技術的に不要となったタスクと代替実装:
+  - 新規Server API、Server変更、新規Android依存は不要だった。PR8の正式APIと既存の認証更新、Session service、Navigation、Compose componentを再利用した。
+  - 正式10 GiB対象外のThumbnail合算と、Server契約にない失敗一括retryは追加せず、許可されたREADY内訳とrun状態だけを表示した。
+- 後続への引継ぎ:
+  - PR10でAndroid 13物理端末と実Serverを使用し、SettingsからAdmin Cache manual cleanup、通信断/再接続、pending/running/completed/failed、Backup rule/Wi-Fi/Quality保存を最終確認する。
+  - PR10でTalkBack、回転、IME、200%文字、Light/Dark、全36画面のEvidenceと実機E2Eを完了する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成と必須CIは成功している。
 
 ### PR10: 全体Adaptive・Accessibility・実機E2E
 
