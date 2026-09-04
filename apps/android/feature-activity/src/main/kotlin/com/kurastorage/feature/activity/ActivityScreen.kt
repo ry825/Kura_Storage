@@ -2,21 +2,24 @@
 
 package com.kurastorage.feature.activity
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,9 +40,12 @@ import com.kurastorage.core.model.ActivityEditKind
 import com.kurastorage.core.model.ActivityItem
 import com.kurastorage.core.model.ActivityShareAction
 import com.kurastorage.core.model.UserActivityType
-import com.kurastorage.core.ui.EmptyState
-import com.kurastorage.core.ui.ErrorState
-import com.kurastorage.core.ui.LoadingState
+import com.kurastorage.core.ui.KuraTheme
+import com.kurastorage.core.ui.accessibility.kuraHeading
+import com.kurastorage.core.ui.components.KuraCard
+import com.kurastorage.core.ui.components.KuraStatus
+import com.kurastorage.core.ui.components.KuraStatusBadge
+import com.kurastorage.core.ui.components.KuraStatusPanel
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -53,39 +59,57 @@ fun ActivityScreen(
     onLoadMore: () -> Unit,
     onOpenTarget: (ActivityItem) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("Back") }
-            Text("Activity", style = MaterialTheme.typography.headlineSmall)
-            TextButton(onClick = onRefresh, enabled = !state.refreshing) { Text("Refresh") }
-        }
-        LazyColumn(
-            Modifier.weight(1f).testTag("activity-list"),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(
+            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(KuraTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
         ) {
-            when {
-                state.loading -> {
-                    item { LoadingState("Loading activity") }
-                    item { ActivityFilters(state.filter, onFilter) }
-                }
-                state.error != null && state.items.isEmpty() -> {
-                    item { ErrorState(state.error.message, state.error.requestId, onRefresh) }
-                    item { ActivityFilters(state.filter, onFilter) }
-                }
-                state.items.isEmpty() -> {
-                    item { EmptyState("No activity to show.") }
-                    item { ActivityFilters(state.filter, onFilter) }
-                }
-                else -> {
-                    item { ActivityFilters(state.filter, onFilter) }
-                    itemsIndexed(state.items, key = { index, item -> "$index-${item.stableKey}" }) { _, item ->
-                        ActivityRow(item, onOpenTarget)
-                    }
-                    state.error?.let { error -> item { Text(error.message, color = MaterialTheme.colorScheme.error) } }
-                    if (state.canLoadMore) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onBack) { Text("Back") }
+                Text("Activity", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.headlineSmall)
+                TextButton(onClick = onRefresh, enabled = !state.refreshing) { Text("Refresh") }
+            }
+            LazyColumn(
+                Modifier.weight(1f).testTag("activity-list"),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                when {
+                    state.loading -> {
                         item {
-                            Button(onClick = onLoadMore, enabled = !state.loadingMore, modifier = Modifier.testTag("activity-load-more")) {
-                                Text(if (state.loadingMore) "Loading" else "Load more")
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                            KuraStatusPanel("Loading activity", "Fetching your latest activity.", KuraStatus.INFO)
+                        }
+                        item { ActivityFilters(state.filter, onFilter) }
+                    }
+                    state.error != null && state.items.isEmpty() -> {
+                        item {
+                            KuraStatusPanel("Activity could not be loaded", state.error.message, KuraStatus.ERROR) {
+                                TextButton(onClick = onRefresh) { Text("Try again") }
+                            }
+                        }
+                        item { ActivityFilters(state.filter, onFilter) }
+                    }
+                    state.items.isEmpty() -> {
+                        item { KuraStatusPanel("No activity to show.", "Successful file actions will appear here.", KuraStatus.INFO) }
+                        item { ActivityFilters(state.filter, onFilter) }
+                    }
+                    else -> {
+                        item { ActivityFilters(state.filter, onFilter) }
+                        itemsIndexed(state.items, key = { _, item -> item.stableKey }) { _, item ->
+                            ActivityRow(item, onOpenTarget)
+                        }
+                        state.error?.let { error ->
+                            item { Text(error.message, color = MaterialTheme.colorScheme.error) }
+                        }
+                        if (state.canLoadMore) {
+                            item {
+                                Button(
+                                    onClick = onLoadMore,
+                                    enabled = !state.loadingMore,
+                                    modifier = Modifier.testTag("activity-load-more"),
+                                ) {
+                                    Text(if (state.loadingMore) "Loading" else "Load more")
+                                }
                             }
                         }
                     }
@@ -125,14 +149,9 @@ private fun ActivityRow(
 ) {
     val openable = item.targetEntryId != null
     val formatter = rememberActivityFormatter()
-    Surface(
-        tonalElevation = 1.dp,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 72.dp)
-                .clickable(enabled = openable) { onOpenTarget(item) }
-                .testTag("activity-item-${item.stableKey}"),
+    KuraCard(
+        onClick = { onOpenTarget(item) }.takeIf { openable },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp).testTag("activity-item-${item.stableKey}"),
     ) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             ActivityTypeIcon(item.type)
@@ -144,9 +163,9 @@ private fun ActivityRow(
                 Text("Owner: ${item.ownerDisplayName}")
                 Text(formatter.format(item.occurredAt), style = MaterialTheme.typography.bodySmall)
                 if (openable) {
-                    Text("Open current item", color = MaterialTheme.colorScheme.primary)
+                    KuraStatusBadge("Open current item", KuraStatus.INFO)
                 } else {
-                    Text("Snapshot only — current item is unavailable", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    KuraStatusBadge("Snapshot only — current item is unavailable", KuraStatus.NEUTRAL)
                 }
             }
         }

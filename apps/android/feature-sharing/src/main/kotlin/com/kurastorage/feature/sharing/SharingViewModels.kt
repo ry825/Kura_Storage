@@ -12,6 +12,7 @@ import com.kurastorage.core.model.ShareCandidate
 import com.kurastorage.core.model.ShareItem
 import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.ShareScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,8 @@ class SharingListViewModel(
     private val mutableState = MutableStateFlow(SharingListState())
     val state: StateFlow<SharingListState> = mutableState.asStateFlow()
     private var pager = newPager()
+    private var requestJob: Job? = null
+    private var generation = 0L
 
     init {
         refresh()
@@ -58,6 +61,8 @@ class SharingListViewModel(
     }
 
     private fun resetAndRefresh() {
+        generation++
+        requestJob?.cancel()
         pager = newPager()
         refresh()
     }
@@ -69,17 +74,24 @@ class SharingListViewModel(
         }
 
     private fun load(block: suspend () -> com.kurastorage.core.model.SharePage) {
+        val activeGeneration = ++generation
+        requestJob?.cancel()
         mutableState.update { it.copy(loading = true, error = null) }
-        viewModelScope.launch {
-            runCatching { block() }
-                .onSuccess { page ->
-                    mutableState.update {
-                        it.copy(loading = false, items = page.items, canLoadMore = page.hasNextPage)
+        requestJob =
+            viewModelScope.launch {
+                runCatching { block() }
+                    .onSuccess { page ->
+                        if (generation == activeGeneration) {
+                            mutableState.update {
+                                it.copy(loading = false, items = page.items, canLoadMore = page.hasNextPage)
+                            }
+                        }
+                    }.onFailure { failure ->
+                        if (generation == activeGeneration && failure !is kotlinx.coroutines.CancellationException) {
+                            mutableState.update { it.copy(loading = false, error = failure.userMessage()) }
+                        }
                     }
-                }.onFailure { failure ->
-                    mutableState.update { it.copy(loading = false, error = failure.userMessage()) }
-                }
-        }
+            }
     }
 }
 

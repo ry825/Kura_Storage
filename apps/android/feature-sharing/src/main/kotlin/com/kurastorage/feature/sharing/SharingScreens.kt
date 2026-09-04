@@ -9,14 +9,16 @@
 
 package com.kurastorage.feature.sharing
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -27,16 +29,30 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
+import com.kurastorage.core.model.PermissionSource
 import com.kurastorage.core.model.ShareItem
 import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.ShareScope
+import com.kurastorage.core.ui.KuraTheme
+import com.kurastorage.core.ui.accessibility.kuraHeading
+import com.kurastorage.core.ui.components.KuraCard
+import com.kurastorage.core.ui.components.KuraFileEntryRow
+import com.kurastorage.core.ui.components.KuraStatus
+import com.kurastorage.core.ui.components.KuraStatusPanel
 
 @Composable
 fun SharingScreen(
@@ -49,47 +65,54 @@ fun SharingScreen(
     onOpenTarget: (ShareItem) -> Unit,
     onManage: (ShareItem) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onBack) { Text("Back") }
-            Button(onClick = onRefresh, enabled = !state.loading) { Text("Refresh") }
-        }
-        Text("Shared", style = MaterialTheme.typography.headlineSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterButton("Received", state.scope == ShareScope.RECEIVED) { onScope(ShareScope.RECEIVED) }
-            FilterButton("Owned", state.scope == ShareScope.OWNED) { onScope(ShareScope.OWNED) }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterButton("All", state.targetType == null) { onType(null) }
-            FilterButton("Folders", state.targetType == FileEntryType.FOLDER) { onType(FileEntryType.FOLDER) }
-            FilterButton("Files", state.targetType == FileEntryType.FILE) { onType(FileEntryType.FILE) }
-        }
-        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("sharing-loading"))
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (!state.loading && state.items.isEmpty()) Text("No shared items.", Modifier.testTag("sharing-empty"))
-        LazyColumn(Modifier.weight(1f)) {
-            items(state.items, key = ShareItem::id) { share ->
-                Column(
-                    Modifier.fillMaxWidth().clickable { onOpenTarget(share) }.padding(vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Text("${share.entryType}: ${share.name}", style = MaterialTheme.typography.titleMedium)
-                    Text("Owner: ${share.owner.displayName}")
-                    Text("Permission: ${share.permission}")
-                    Text(
-                        if (share.entryType ==
-                            FileEntryType.FOLDER
-                        ) {
-                            "Applies to this folder and descendants"
-                        } else {
-                            "Applies only to this file"
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(
+            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(KuraTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = onBack) { Text("Back") }
+                Text("Shared", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.headlineSmall)
+                TextButton(onClick = onRefresh, enabled = !state.loading) { Text("Refresh") }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterButton("Received", state.scope == ShareScope.RECEIVED) { onScope(ShareScope.RECEIVED) }
+                FilterButton("Owned", state.scope == ShareScope.OWNED) { onScope(ShareScope.OWNED) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterButton("All", state.targetType == null) { onType(null) }
+                FilterButton("Folders", state.targetType == FileEntryType.FOLDER) { onType(FileEntryType.FOLDER) }
+                FilterButton("Files", state.targetType == FileEntryType.FILE) { onType(FileEntryType.FILE) }
+            }
+            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("sharing-loading"))
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (!state.loading && state.items.isEmpty()) Text("No shared items.", Modifier.testTag("sharing-empty"))
+            LazyColumn(Modifier.weight(1f)) {
+                items(state.items, key = ShareItem::id) { share ->
+                    KuraFileEntryRow(
+                        name = share.name,
+                        entryType = share.entryType,
+                        mimeType = null,
+                        ownerName = share.owner.displayName,
+                        permission = share.permission,
+                        permissionSource = if (state.scope == ShareScope.OWNED) PermissionSource.OWNER else PermissionSource.DIRECT,
+                        updatedAt = share.updatedAt,
+                        status = FileEntryStatus.ACTIVE,
+                        contextLine =
+                            if (share.entryType == FileEntryType.FOLDER) {
+                                "Applies to this folder and descendants"
+                            } else {
+                                "Applies only to this file"
+                            },
+                        onClick = { onOpenTarget(share) },
+                        modifier = Modifier.testTag("shared-entry-${share.id}"),
+                        trailing = {
+                            if (share.canManage) TextButton(onClick = { onManage(share) }) { Text("Manage") }
                         },
                     )
-                    if (share.canManage) TextButton(onClick = { onManage(share) }) { Text("Sharing settings") }
                 }
-                HorizontalDivider()
+                if (state.canLoadMore) item { Button(onClick = onLoadMore) { Text("Load more") } }
             }
-            if (state.canLoadMore) item { Button(onClick = onLoadMore) { Text("Load more") } }
         }
     }
 }
@@ -117,24 +140,39 @@ fun SharingSettingsScreen(
     onConfirm: () -> Unit,
     onDismissConfirmation: () -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onBack) { Text("Back") }
-            Button(onClick = onRefresh, enabled = !state.loading && !state.submitting) { Text("Refresh") }
+    var candidateQuery by remember { mutableStateOf("") }
+    val visibleCandidates =
+        state.candidates.filter { candidate ->
+            candidate.displayName.contains(candidateQuery.trim(), ignoreCase = true) &&
+                state.share?.members?.none { it.userId == candidate.userId } != false
         }
-        Text("Sharing settings", style = MaterialTheme.typography.headlineSmall)
-        Text(state.targetName, style = MaterialTheme.typography.titleLarge)
-        Text(
-            if (state.targetType ==
-                FileEntryType.FOLDER
-            ) {
-                "Permissions are inherited by descendants."
-            } else {
-                "Permissions apply only to this file."
-            },
+    Column(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .verticalScroll(rememberScrollState())
+            .padding(KuraTheme.spacing.md),
+        verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(onClick = onBack) { Text("Back") }
+            Text("Sharing settings", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.headlineSmall)
+            TextButton(onClick = onRefresh, enabled = !state.loading && !state.submitting) { Text("Refresh") }
+        }
+        KuraCard {
+            Text(state.targetName, style = MaterialTheme.typography.titleLarge)
+            Text(if (state.targetType == FileEntryType.FOLDER) "Folder share" else "File share")
+            Text("Owner: ${state.share?.owner?.displayName ?: "Confirmed when sharing is loaded"}")
+        }
+        KuraStatusPanel(
+            title = if (state.targetType == FileEntryType.FOLDER) "Inherited scope" else "File-only scope",
+            message =
+                if (state.targetType == FileEntryType.FOLDER) {
+                    "These permissions apply to this folder and its descendants."
+                } else {
+                    "These permissions apply only to this file. Inherited access cannot be weakened here."
+                },
+            status = KuraStatus.INFO,
         )
         if (state.loading || state.submitting) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
@@ -143,6 +181,7 @@ fun SharingSettingsScreen(
             Text("This share is no longer available. Return to the latest shared list.")
             return@Column
         }
+        Text("Current family members", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.titleMedium)
         state.share?.members?.forEach { member ->
             Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                 Text(member.displayName)
@@ -164,11 +203,18 @@ fun SharingSettingsScreen(
             HorizontalDivider()
         }
         Text("Add family member", style = MaterialTheme.typography.titleMedium)
-        state.candidates
-            .filter { candidate -> state.share?.members?.none { it.userId == candidate.userId } != false }
-            .forEach { candidate ->
-                FilterButton(candidate.displayName, state.selectedUserId == candidate.userId) { onCandidate(candidate.userId) }
-            }
+        OutlinedTextField(
+            value = candidateQuery,
+            onValueChange = { candidateQuery = it },
+            enabled = !state.submitting,
+            label = { Text("Search family") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().testTag("share-candidate-search"),
+        )
+        visibleCandidates.forEach { candidate ->
+            FilterButton(candidate.displayName, state.selectedUserId == candidate.userId) { onCandidate(candidate.userId) }
+        }
+        Text("Permission", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.titleMedium)
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -178,6 +224,7 @@ fun SharingSettingsScreen(
                 FilterButton(permission.name, state.selectedPermission == permission) { onPermission(permission) }
             }
         }
+        Text(permissionDescription(state.selectedPermission))
         Button(
             onClick = onSubmitMember,
             enabled = state.selectedUserId != null && !state.submitting,
@@ -190,8 +237,18 @@ fun SharingSettingsScreen(
     state.confirmation?.let { confirmation ->
         val message =
             when (confirmation) {
-                Confirmation.REMOVE_MEMBER -> "Remove this family member from the share?"
-                Confirmation.DELETE_SHARE -> "Remove this share for every member?"
+                Confirmation.REMOVE_MEMBER ->
+                    if (state.targetType == FileEntryType.FOLDER) {
+                        "Remove this family member from this folder share and its descendants?"
+                    } else {
+                        "Remove this family member from this file share?"
+                    }
+                Confirmation.DELETE_SHARE ->
+                    if (state.targetType == FileEntryType.FOLDER) {
+                        "Remove this share for every member, including inherited access to descendants?"
+                    } else {
+                        "Remove this file share for every member?"
+                    }
                 Confirmation.GRANT_MANAGER -> "Grant Manager permission? This person can manage sharing."
             }
         AlertDialog(
@@ -207,3 +264,12 @@ fun SharingSettingsScreen(
         )
     }
 }
+
+private fun permissionDescription(permission: SharePermission): String =
+    when (permission) {
+        SharePermission.VIEWER -> "Viewer: can view and download content."
+        SharePermission.CONTRIBUTOR -> "Contributor: can add files and folders to a shared folder."
+        SharePermission.EDITOR -> "Editor: can rename, move, edit, and move content to Trash."
+        SharePermission.MANAGER -> "Manager: can also add, change, and remove sharing members."
+        SharePermission.UNKNOWN -> "Unknown permission cannot be saved."
+    }

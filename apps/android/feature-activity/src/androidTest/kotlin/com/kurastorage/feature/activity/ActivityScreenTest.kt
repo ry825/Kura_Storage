@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -16,6 +17,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.kurastorage.core.model.ActivityDeleteKind
@@ -77,7 +79,8 @@ class ActivityScreenTest {
             state.value =
                 ActivityUiState(error = ActivityUiError("Offline", com.kurastorage.core.model.ErrorCategory.CONNECTION))
         }
-        compose.onNodeWithText("Offline").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("activity-list").performScrollToNode(hasText("Offline"))
+        compose.onNodeWithText("Offline").assertIsDisplayed()
         compose.runOnIdle {
             state.value = ActivityUiState(items = listOf(item().copy(type = UserActivityType.UNKNOWN, detail = ActivityDetail.Unsupported)))
         }
