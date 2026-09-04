@@ -943,6 +943,9 @@ private fun KuraStorageApp(
                     },
                     onHistory = { navController.navigate("${AppDestination.TEXT_HISTORY.route}/$fileId") },
                     onReload = textViewModel::load,
+                    onSaveAndExit = textViewModel::saveAndExit,
+                    onExitAfterSaveConsumed = textViewModel::consumeExitAfterSave,
+                    onEndEdit = textViewModel::endEditing,
                 )
             }
             composable(

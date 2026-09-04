@@ -34,11 +34,14 @@ data class TextEditorUiState(
     val canEdit: Boolean = false,
     val conflict: TextConflict? = null,
     val diff: List<LineDiff> = emptyList(),
+    val diffTruncated: Boolean = false,
+    val conflictReloadFailed: Boolean = false,
     val errorCode: ErrorCode? = null,
     val requestId: String? = null,
     val showDiscardConfirmation: Boolean = false,
     val draftPersisted: Boolean = true,
     val forceOverwriteAvailable: Boolean = false,
+    val exitAfterSave: Boolean = false,
 )
 
 @Suppress("TooManyFunctions")
@@ -94,6 +97,12 @@ class TextEditorViewModel(
         mutableState.value = current.copy(phase = TextEditorPhase.EDITING)
     }
 
+    fun endEditing() {
+        val current = mutableState.value
+        if (current.phase !in setOf(TextEditorPhase.EDITING, TextEditorPhase.SAVED, TextEditorPhase.ERROR)) return
+        mutableState.value = current.copy(phase = TextEditorPhase.VIEWING)
+    }
+
     fun updateDraft(value: String) {
         val current = mutableState.value
         if (!current.canEdit || current.phase !in EDITABLE_PHASES) return
@@ -108,6 +117,8 @@ class TextEditorViewModel(
                 draftPersisted = persisted,
                 conflict = null,
                 diff = emptyList(),
+                diffTruncated = false,
+                conflictReloadFailed = false,
             )
     }
 
@@ -146,6 +157,8 @@ class TextEditorViewModel(
                             canEdit = true,
                             conflict = null,
                             diff = emptyList(),
+                            diffTruncated = false,
+                            conflictReloadFailed = false,
                         )
                 } catch (error: Throwable) {
                     if (generation != requestGeneration) return@launch
@@ -156,6 +169,17 @@ class TextEditorViewModel(
                     }
                 }
             }
+    }
+
+    fun saveAndExit() {
+        val current = mutableState.value
+        if (!current.dirty || !current.canEdit) return
+        mutableState.value = current.copy(showDiscardConfirmation = false, exitAfterSave = true)
+        save()
+    }
+
+    fun consumeExitAfterSave() {
+        mutableState.value = mutableState.value.copy(exitAfterSave = false)
     }
 
     fun reloadAfterConflict() {
@@ -171,6 +195,8 @@ class TextEditorViewModel(
                 dirty = false,
                 conflict = null,
                 diff = emptyList(),
+                diffTruncated = false,
+                conflictReloadFailed = false,
             )
     }
 
@@ -203,9 +229,15 @@ class TextEditorViewModel(
                         phase = TextEditorPhase.CONFLICT,
                         conflict = conflict,
                         diff = BoundedLineDiff.compare(current.content, snapshot.draft),
+                        diffTruncated = BoundedLineDiff.isTruncated(current.content, snapshot.draft),
+                        conflictReloadFailed = false,
                         errorCode = ErrorCode.FILE_VERSION_CONFLICT,
                     )
-            }.onFailure { error -> if (generation == requestGeneration) mutableState.value = snapshot.mergeError(error) }
+            }.onFailure { error ->
+                if (generation == requestGeneration) {
+                    mutableState.value = snapshot.mergeError(error).copy(conflictReloadFailed = true)
+                }
+            }
     }
 
     private fun restoredDraft(document: TextDocument): String? =
@@ -239,7 +271,13 @@ class TextEditorViewModel(
 
     private fun TextEditorUiState.mergeError(error: Throwable): TextEditorUiState {
         val api = error as? KuraStorageException.Api
-        return copy(phase = TextEditorPhase.ERROR, errorCode = api?.error?.code ?: ErrorCode.UNKNOWN, requestId = api?.error?.requestId)
+        val code = api?.error?.code ?: ErrorCode.UNKNOWN
+        return copy(
+            phase = TextEditorPhase.ERROR,
+            canEdit = canEdit && code != ErrorCode.FILE_NOT_FOUND,
+            errorCode = code,
+            requestId = api?.error?.requestId,
+        )
     }
 
     private fun Throwable.isVersionConflict() = (this as? KuraStorageException.Api)?.error?.code == ErrorCode.FILE_VERSION_CONFLICT

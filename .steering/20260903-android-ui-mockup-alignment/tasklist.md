@@ -363,35 +363,35 @@
 
 ### 7.1 開始条件・Editor
 
-- [ ] PR7の開始条件を満たす。
-  - [ ] PR6が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`から短命Branchを作成し、Text editor/history、dirty/compare/restore状態、Navigation、Testを確認する。
-- [ ] `020-text-editor.png`を基準にText editorを再構築する。
-  - [ ] Back、File名、閲覧/編集、Save、dirty、encoding、version、history導線を表示する。
-  - [ ] ViewerとEditorの文字コントラスト、行間、キーボード/IME、Focus、長文Scrollを整える。
-  - [ ] Viewer/Editor利用中のLoading、Read-only、Saving、Saved、Error、Session喪失を判別できる。
-  - [ ] 未保存で離脱する場合は保存/破棄/取消しを確認し、回転/Process recreationの承認済み上限内で下書きを保つ。
+- [x] PR7の開始条件を満たす。
+  - [x] PR6が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`から短命Branchを作成し、Text editor/history、dirty/compare/restore状態、Navigation、Testを確認する。
+- [x] `020-text-editor.png`を基準にText editorを再構築する。
+  - [x] Back、File名、閲覧/編集、Save、dirty、encoding、version、history導線を表示する。
+  - [x] ViewerとEditorの文字コントラスト、行間、キーボード/IME、Focus、長文Scrollを整える。
+  - [x] Viewer/Editor利用中のLoading、Read-only、Saving、Saved、Error、Session喪失を判別できる。
+  - [x] 未保存で離脱する場合は保存/破棄/取消しを確認し、回転/Process recreationの承認済み上限内で下書きを保つ。
 
 ### 7.2 競合・履歴・復元
 
-- [ ] Text conflict UIを再構築する。
-  - [ ] 409競合で最新再読込、有界行比較、別名Uploadを表示し、強制上書きを提供しない。
-  - [ ] 比較上限超過、最新版再取得失敗、権限低下を操作可能な文言で表示する。
-- [ ] Version historyとpreview/restore UIをDesign systemに統一する。
-  - [ ] 50件Paging、version、作成日時、Size、作成者情報の許可範囲、Loading/Empty/Errorを表示する。
-  - [ ] 選択中1件だけのpreview、取消し、権限再評価、最新Version再取得後のRestore確認を表示する。
-  - [ ] Session/File/refresh/preview generationの古い応答で現在画面を上書きしない。
+- [x] Text conflict UIを再構築する。
+  - [x] 409競合で最新再読込、有界行比較、別名Uploadを表示し、強制上書きを提供しない。
+  - [x] 比較上限超過、最新版再取得失敗、権限低下を操作可能な文言で表示する。
+- [x] Version historyとpreview/restore UIをDesign systemに統一する。
+  - [x] 50件Paging、version、作成日時、Size、作成者情報の許可範囲、Loading/Empty/Errorを表示する。
+  - [x] 選択中1件だけのpreview、取消し、権限再評価、最新Version再取得後のRestore確認を表示する。
+  - [x] Session/File/refresh/preview generationの古い応答で現在画面を上書きしない。
 
 ### 7.3 PR7テスト・検証・完了
 
-- [ ] TextのJVM/Compose testを更新する。
-  - [ ] `020`の閲覧、編集、dirty、save、離脱確認、read-only、error、Semanticsを検証する。
-  - [ ] 競合、行比較、別名保存、履歴Paging、preview、restore、古い応答の無視を回帰テストする。
-  - [ ] 長文、360dp、200%文字、横画面、IME表示時の主操作到達性を検証する。
-- [ ] PR7の自動・実機検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`、`:feature-text:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
-  - [ ] Android 13実機で編集、回転、dirty離脱、競合、比較、別名保存、履歴、Restoreを確認する。
-  - [ ] `docs/testing/YYYYMMDD-android-ui-pr7-text.md`に`020`と履歴/競合のCapture、操作、意図的差分を記録する。
+- [x] TextのJVM/Compose testを更新する。
+  - [x] `020`の閲覧、編集、dirty、save、離脱確認、read-only、error、Semanticsを検証する。
+  - [x] 競合、行比較、別名保存、履歴Paging、preview、restore、古い応答の無視を回帰テストする。
+  - [x] 長文、360dp、200%文字、横画面、IME表示時の主操作到達性を検証する。
+- [x] PR7の自動・実機検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`、`:feature-text:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
+  - [x] Android 13実機相当のAPI 33 Emulatorで編集、回転、dirty離脱、競合、比較、別名保存、履歴、Restoreを決定的fixtureで確認する（物理端末が未接続のため、物理端末の最終確認はPR10で実施する）。
+  - [x] `docs/testing/20260904-android-ui-pr7-text.md`に`020`と履歴/競合のCapture fixture、操作、意図的差分を記録する。
 - [ ] PR7を完了する。
   - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR7完了記録、記録Commitの再Pushを完了して報告・停止する。
 

@@ -499,6 +499,7 @@ fun KuraConfirmationDialog(
     modifier: Modifier = Modifier,
     destructive: Boolean = false,
     dismissLabel: String = "Cancel",
+    confirmEnabled: Boolean = true,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -514,9 +515,9 @@ fun KuraConfirmationDialog(
         },
         confirmButton = {
             if (destructive) {
-                KuraDestructiveButton(confirmLabel, onConfirm)
+                KuraDestructiveButton(confirmLabel, onConfirm, enabled = confirmEnabled)
             } else {
-                KuraPrimaryButton(confirmLabel, onConfirm)
+                KuraPrimaryButton(confirmLabel, onConfirm, enabled = confirmEnabled)
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(dismissLabel) } },
