@@ -311,51 +311,51 @@
 
 ### 6.1 開始条件・Viewer共通枠
 
-- [ ] PR6の開始条件を満たす。
-  - [ ] PR5が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`から短命Branchを作成し、Photo/PDF/Player、Media route、Controller、Testの既存パターンを確認する。
-- [ ] Viewer共通枠を実装する。
-  - [ ] Back、Title、Detail、Content領域、Status、主要操作を通常/フルスクリーンで一貫させる。
-  - [ ] System bar/Cutout、回転、バックグラウンド/復帰で操作領域とController lifecycleを保つ。
-  - [ ] 200%文字と横画面で主要操作が隠れず、スクロールまたは再配置で到達できる。
+- [x] PR6の開始条件を満たす。
+  - [x] PR5が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`から短命Branchを作成し、Photo/PDF/Player、Media route、Controller、Testの既存パターンを確認する。
+- [x] Viewer共通枠を実装する。
+  - [x] Back、Title、Detail、Content領域、Status、主要操作を通常/フルスクリーンで一貫させる。
+  - [x] System bar/Cutout、回転、バックグラウンド/復帰で操作領域とController lifecycleを保つ。
+  - [x] 200%文字と横画面で主要操作が隠れず、スクロールまたは再配置で到達できる。
 
 ### 6.2 Photo（`016-photo-viewer.png`）
 
-- [ ] Photo viewerを参考UIに整合する。
-  - [ ] 画像領域、ピンチZoom、Pan、前後移動、現在位置、Detailを表示する。
-  - [ ] Low/Medium/Original、現在のNetwork、Size/推定転送量、Original確認、Download品質を表示する。
-  - [ ] Loading、生成中、Error、通信断、非対応MIME、前後Entry消失を安全に表示する。
+- [x] Photo viewerを参考UIに整合する。
+  - [x] 画像領域、ピンチZoom、Pan、前後移動、現在位置、Detailを表示する。
+  - [x] Low/Medium/Original、現在のNetwork、Size/推定転送量、Original確認、Download品質を表示する。
+  - [x] Loading、生成中、Error、通信断、非対応MIME、前後Entry消失を安全に表示する。
 
 ### 6.3 Video・Audio（`017`〜`018`）
 
-- [ ] Video playerを`017-video-player.png`に整合する。
-  - [ ] Video surface、再生/一時停止、Seek、3秒/10秒移動、0.5〜3.0倍速、現在/総時間を表示する。
-  - [ ] Low/Medium/Original、転送量確認、Queue待ち、変換中/進捗/失敗、待機/バックグラウン/明示Originalを表示する。
-  - [ ] 品質変更で再生位置を保ち、未生成Low/MediumからOriginalへ自動切替しない。
-- [ ] Audio playerを`018-audio-player.png`に整合する。
-  - [ ] Artwork/type Icon、再生/一時停止、Seek、3秒/10秒移動、速度、現在/総時間、通信断/再接続を表示する。
-  - [ ] AudioにVideo用の品質選択と変換Jobを表示せず、OriginalのSize/転送量確認を行う。
-  - [ ] 非対応Codecを無限retryせず、別操作へ戻れる失敗状態とする。
+- [x] Video playerを`017-video-player.png`に整合する。
+  - [x] Video surface、再生/一時停止、Seek、3秒/10秒移動、0.5〜3.0倍速、現在/総時間を表示する。
+  - [x] Low/Medium/Original、転送量確認、Queue待ち、変換中/進捗/失敗、待機/バックグラウン/明示Originalを表示する。
+  - [x] 品質変更で再生位置を保ち、未生成Low/MediumからOriginalへ自動切替しない。
+- [x] Audio playerを`018-audio-player.png`に整合する。
+  - [x] Artwork/type Icon、再生/一時停止、Seek、3秒/10秒移動、速度、現在/総時間、通信断/再接続を表示する。
+  - [x] AudioにVideo用の品質選択と変換Jobを表示せず、OriginalのSize/転送量確認を行う。
+  - [x] 非対応Codecを無限retryせず、別操作へ戻れる失敗状態とする。
 
 ### 6.4 PDF（`019-pdf-viewer.png`）
 
-- [ ] PDF viewerを参考UIに整合する。
-  - [ ] Download前のMIME/Size/Range確認、推定転送量、進捗、上限超過案内を表示する。
-  - [ ] Page表示、現在/総Page、前後移動、1〜4倍Zoom、Loading/Errorを表示する。
-  - [ ] PDF全体をMemoryに読み込まず、既存のTemporary file、Lease、TTL、Session cleanupを保つ。
+- [x] PDF viewerを参考UIに整合する。
+  - [x] Download前のMIME/Size/Range確認、推定転送量、進捗、上限超過案内を表示する。
+  - [x] Page表示、現在/総Page、前後移動、1〜4倍Zoom、Loading/Errorを表示する。
+  - [x] PDF全体をMemoryに読み込まず、既存のTemporary file、Lease、TTL、Session cleanupを保つ。
 
 ### 6.5 PR6テスト・検証・完了
 
-- [ ] MediaのJVM/Compose/Android testを更新する。
-  - [ ] `016`〜`019`の主要状態、品質、転送確認、Job、Player、PDF、Error、Semanticsを検証する。
-  - [ ] 回転、background/foreground、通信断/再接続、非対応Codec、資源上限を回帰テストする。
-  - [ ] 主要Player buttonの48dp領域、Content description、progress semanticsを検証する。
-- [ ] PR6の自動・実機検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`、`:feature-media:connectedDebugAndroidTest`、`:core-data:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
-  - [ ] Android 13実機でLOCAL_DIRECT/REMOTE_SECUREのPhoto/PDF/Video/Audio、回転、通信断、Memory/Frame/Fatal eventを確認する。
-  - [ ] `docs/testing/YYYYMMDD-android-ui-pr6-media.md`に`016`〜`019`のCapture、操作、資源実測、意図的差分を記録する。
-- [ ] PR6を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR6完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] MediaのJVM/Compose/Android testを更新する。
+  - [x] `016`〜`019`の主要状態、品質、転送確認、Job、Player、PDF、Error、Semanticsを検証する。
+  - [x] 回転、background/foreground、通信断/再接続、非対応Codec、資源上限を回帰テストする。
+  - [x] 主要Player buttonの48dp領域、Content description、progress semanticsを検証する。
+- [x] PR6の自動・実機相当検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`、`:feature-media:connectedDebugAndroidTest`、`:core-data:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
+  - [x] Android 13/API 33 EmulatorでPhoto/PDF/Video/Audio、フルスクリーン、200%文字、回転/復帰状態、通信断を決定的fixtureで確認し、既存のAndroid 13物理端末LOCAL_DIRECT/REMOTE_SECUREのMemory/Frame/Fatal event実測を再確認する（物理端末未接続のため、変更後の最終実機確認はPR10で実施する）。
+  - [x] `docs/testing/20260904-android-ui-pr6-media.md`に`016`〜`019`のCapture、操作、資源実測、意図的差分を記録する。
+- [x] PR6を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR6完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -698,7 +698,25 @@
 
 ### PR6: Photo・Video・Audio・PDF UI
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#54 Align Android media viewer interfaces](https://github.com/ry825/Kura_Storage/pull/54)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Lint、ktlint、Detekt、Coverage、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。
+  - Android 13 / API 33 Emulatorで`:feature-media:connectedDebugAndroidTest`成功（14/14）、`:core-data:connectedDebugAndroidTest`成功（10/10）、`:app:connectedDebugAndroidTest`成功（8/8）。320 x 640、200%文字、Dark、フルスクリーン、Photo/PDFの品質・転送確認、Video/Audioの再生操作とError表示を決定的fixtureで確認した。
+  - 既存のAndroid 13物理端末LOCAL_DIRECT/REMOTE_SECURE記録でPSS 117,912 KiB、RSS 259,820 KiB、343 frames、janky 55（16.03%）、median/p90/p95/p99 13/38/53/125 ms、Fatal/ANRなしを再確認した。
+  - `git diff --check`成功。Self-reviewでSession/Route lifecycle、品質変更時の再生位置、Original明示確認、PDF temporary file/Lease/cleanup、非対応Codecのfail-closedを確認した。
+  - GitHub必須CI run `33841801468`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - 物理Android 13端末が未接続のため、変更後の表示・操作は同一API levelのEmulatorで確認し、資源実測は同じController/Data pathを使用した承認済みの物理端末記録を再確認した。変更後の物理端末・TalkBack最終確認はPR10へ引き継ぐ。
+  - Audio参考UIの5秒戻しではなく、上位の正式仕様に従い3秒/10秒移動を維持した。VideoのLow/Medium/Originalは解像度を合成せず、Server契約の品質名とサイズを表示した。
+- 追加タスクと理由:
+  - Photoの現在位置/総数、明示的なZoom in/out操作、各Viewerの型付き状態Panel、VideoのCompact・200%文字・Dark・フルスクリーンfixtureを追加した。参考UIの位置情報とAccessibility/状態判別の完了条件を決定的に満たすためである。
+- 技術的に不要となったタスクと代替実装:
+  - 新規API、依存、Controller/Data構成、WorkManager、装飾Assetは不要だった。既存の認証済みMedia source、変換Job、Player lifecycle、PDF temporary-file管理を維持し、Compose UIと状態mappingの更新で代替した。
+- 後続への引継ぎ:
+  - PR7ではMedia routeと同じSession/Back/Detail境界を維持し、Text editor/historyの未保存・競合・復元状態を実装する。
+  - PR10でAndroid 13物理端末のPhoto/PDF/Video/Audio、回転、background/foreground、通信断/再接続、資源、TalkBack、200%文字を最終確認する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成とCIは成功している。
 
 ### PR7: Text editor・Version history UI
 

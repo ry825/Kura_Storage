@@ -115,6 +115,7 @@ internal fun MediaPlayerRoute(
             activity?.requestedOrientation =
                 if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         },
+        fullscreen = fullscreen,
         videoSurface = {
             if (kind == MediaKind.VIDEO) MediaVideoSurface(engine, Modifier.fillMaxSize())
         },
