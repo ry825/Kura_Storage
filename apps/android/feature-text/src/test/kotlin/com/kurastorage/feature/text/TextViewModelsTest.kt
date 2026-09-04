@@ -58,6 +58,10 @@ class TextViewModelsTest {
             editor.beginEditing()
             editor.updateDraft("updated")
             assertTrue(editor.state.value.dirty)
+            editor.endEditing()
+            assertEquals(TextEditorPhase.VIEWING, editor.state.value.phase)
+            assertEquals("updated", editor.state.value.draft)
+            editor.beginEditing()
             assertTrue(editor.requestExit())
             editor.save()
 
@@ -98,6 +102,28 @@ class TextViewModelsTest {
         }
 
     @Test
+    fun `failed latest-version retrieval keeps the conflict draft and exposes recovery state`() =
+        runTest(dispatcher) {
+            val repository = FakeTextRepository().apply { saveConflict = true }
+            val viewModel =
+                TextEditorViewModel(
+                    "file",
+                    FakeFiles(file(SharePermission.EDITOR)),
+                    repository,
+                    SavedStateHandle(),
+                )
+            viewModel.beginEditing()
+            viewModel.updateDraft("local draft")
+            repository.currentFailure = KuraStorageException.Network(java.io.IOException("offline"))
+            viewModel.save()
+
+            assertEquals(TextEditorPhase.ERROR, viewModel.state.value.phase)
+            assertTrue(viewModel.state.value.conflictReloadFailed)
+            assertEquals("local draft", viewModel.state.value.draft)
+            assertTrue(viewModel.state.value.dirty)
+        }
+
+    @Test
     fun `saved state is bounded and restored only for the matching base version`() =
         runTest(dispatcher) {
             val handle = SavedStateHandle()
@@ -127,6 +153,9 @@ class TextViewModelsTest {
             viewModel.updateDraft("😀".repeat(262_145))
             viewModel.save()
             assertEquals(ErrorCode.TEXT_SIZE_LIMIT_EXCEEDED, viewModel.state.value.errorCode)
+            viewModel.endEditing()
+            assertEquals(TextEditorPhase.VIEWING, viewModel.state.value.phase)
+            viewModel.beginEditing()
             assertTrue(viewModel.requestExit())
             viewModel.dismissDiscardConfirmation()
             assertFalse(viewModel.state.value.showDiscardConfirmation)
@@ -134,6 +163,29 @@ class TextViewModelsTest {
             viewModel.discardChanges()
             assertFalse(viewModel.state.value.dirty)
             assertFalse(viewModel.state.value.showDiscardConfirmation)
+        }
+
+    @Test
+    fun `save and exit waits for a successful save before emitting navigation state`() =
+        runTest(dispatcher) {
+            val repository = FakeTextRepository()
+            val viewModel =
+                TextEditorViewModel(
+                    "file",
+                    FakeFiles(file(SharePermission.EDITOR)),
+                    repository,
+                    SavedStateHandle(),
+                )
+            viewModel.beginEditing()
+            viewModel.updateDraft("leave after save")
+            viewModel.requestExit()
+            viewModel.saveAndExit()
+
+            assertEquals(TextEditorPhase.SAVED, viewModel.state.value.phase)
+            assertTrue(viewModel.state.value.exitAfterSave)
+            assertFalse(viewModel.state.value.showDiscardConfirmation)
+            viewModel.consumeExitAfterSave()
+            assertFalse(viewModel.state.value.exitAfterSave)
         }
 
     @Test
@@ -223,9 +275,11 @@ class TextViewModelsTest {
             editor.save()
             assertEquals(TextEditorPhase.ERROR, editor.state.value.phase)
             assertEquals(ErrorCode.FILE_NOT_FOUND, editor.state.value.errorCode)
+            assertFalse(editor.state.value.canEdit)
             assertEquals(null, repository.lastSave)
 
             files.entry = file(SharePermission.EDITOR)
+            editor.load()
             editor.updateDraft("retry")
             editor.save()
             assertEquals(TextEditorPhase.SAVED, editor.state.value.phase)

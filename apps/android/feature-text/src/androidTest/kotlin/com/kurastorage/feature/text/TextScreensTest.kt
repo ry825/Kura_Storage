@@ -1,6 +1,8 @@
 package com.kurastorage.feature.text
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -11,6 +13,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.Density
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.FileVersionChangeKind
 import com.kurastorage.core.model.FileVersionItem
@@ -59,6 +64,7 @@ class TextScreensTest {
                         canEdit = true,
                         conflict = TextConflict("local", 1, document("server", 2)),
                         diff = BoundedLineDiff.compare("server", "local"),
+                        diffTruncated = true,
                     ),
                 onBack = {},
                 onRequestExit = { true },
@@ -75,8 +81,9 @@ class TextScreensTest {
         compose.onNodeWithContentDescription("Text file content editor").assertIsDisplayed()
         compose.onNodeWithTag("reload-conflict").assertHasClickAction()
         compose.onNodeWithTag("save-as-copy").assertHasClickAction()
-        compose.onNodeWithText("− server / + local", substring = true).assertIsDisplayed()
-        compose.onNodeWithText("Force overwrite", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("− server / + local", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Comparison limit reached").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Force overwrite").assertDoesNotExist()
     }
 
     @Test
@@ -106,7 +113,75 @@ class TextScreensTest {
         }
         compose.onNodeWithContentDescription("Text file content editor").assertIsDisplayed()
         compose.onNodeWithTag("save-text").assertIsEnabled()
-        compose.onNodeWithText("RATE_LIMIT_EXCEEDED").assertIsDisplayed()
+        compose.onNodeWithText("RATE_LIMIT_EXCEEDED", substring = true).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun dirty_exit_offers_save_discard_and_cancel() {
+        var saveAndExit = false
+        var discarded = false
+        compose.setContent {
+            TextEditorScreen(
+                state =
+                    TextEditorUiState(
+                        document = document(),
+                        draft = "unsaved",
+                        phase = TextEditorPhase.EDITING,
+                        dirty = true,
+                        canEdit = true,
+                        showDiscardConfirmation = true,
+                    ),
+                onBack = {},
+                onRequestExit = { true },
+                onDismissDiscard = {},
+                onDiscard = { discarded = true },
+                onBeginEdit = {},
+                onDraftChange = {},
+                onSave = {},
+                onReloadConflict = {},
+                onSaveAsCopy = {},
+                onHistory = {},
+                onSaveAndExit = { saveAndExit = true },
+            )
+        }
+
+        compose.onNodeWithText("Save and leave").performClick()
+        compose.runOnIdle { assertTrue(saveAndExit) }
+        compose.onNodeWithText("Discard").performClick()
+        compose.runOnIdle { assertTrue(discarded) }
+        compose.onNodeWithText("Cancel").assertHasClickAction()
+    }
+
+    @Test
+    fun compact_two_hundred_percent_text_keeps_editor_status_and_save_reachable() {
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                TextEditorScreen(
+                    state =
+                        TextEditorUiState(
+                            document = document("line\n".repeat(80)),
+                            draft = "changed\n".repeat(80),
+                            phase = TextEditorPhase.EDITING,
+                            dirty = true,
+                            canEdit = true,
+                        ),
+                    onBack = {},
+                    onRequestExit = { true },
+                    onDismissDiscard = {},
+                    onDiscard = {},
+                    onBeginEdit = {},
+                    onDraftChange = {},
+                    onSave = {},
+                    onReloadConflict = {},
+                    onSaveAsCopy = {},
+                    onHistory = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag("text-dirty").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("save-text").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -146,7 +221,7 @@ class TextScreensTest {
         compose.onNodeWithTag("history-list").assertIsDisplayed()
         compose.onNodeWithText("The current version changed", substring = true).assertIsDisplayed()
         compose.onNodeWithText("External change").assertIsDisplayed()
-        compose.onNodeWithTag("history-load-more").assertIsNotEnabled()
+        compose.onNodeWithTag("history-load-more").performScrollTo().assertIsNotEnabled()
     }
 
     @Test

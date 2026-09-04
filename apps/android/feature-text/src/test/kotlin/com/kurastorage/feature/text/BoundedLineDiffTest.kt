@@ -15,5 +15,6 @@ class BoundedLineDiffTest {
 
         assertEquals(BoundedLineDiff.MAX_LINES, result.size)
         assertTrue(result.all { (it.current?.length ?: 0) <= BoundedLineDiff.MAX_LINE_CHARS })
+        assertTrue(BoundedLineDiff.isTruncated(content, "$content\nextra"))
     }
 }

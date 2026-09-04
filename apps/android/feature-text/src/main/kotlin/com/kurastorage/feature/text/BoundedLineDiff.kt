@@ -47,5 +47,14 @@ object BoundedLineDiff {
         }
     }
 
+    fun isTruncated(vararg values: String): Boolean =
+        values.any { value ->
+            var lines = 0
+            value.lineSequence().any { line ->
+                lines += 1
+                lines > MAX_LINES || line.length > MAX_LINE_CHARS
+            }
+        }
+
     private fun bound(value: String): String = value.take(MAX_LINE_CHARS)
 }

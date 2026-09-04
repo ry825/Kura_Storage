@@ -27,8 +27,10 @@ data class VersionHistoryUiState(
     val hasNextPage: Boolean = false,
     val current: TextDocument? = null,
     val canRestore: Boolean = false,
+    val previewLoading: Boolean = false,
     val preview: TextDocument? = null,
     val previewDiff: List<LineDiff>? = null,
+    val previewDiffTruncated: Boolean = false,
     val restoreConfirmationVersion: Long? = null,
     val restoring: Boolean = false,
     val restoreConflict: Boolean = false,
@@ -69,6 +71,10 @@ class VersionHistoryViewModel(
                 restoreConflict = false,
                 errorCode = null,
                 requestId = null,
+                previewLoading = false,
+                preview = null,
+                previewDiff = null,
+                previewDiffTruncated = false,
             )
         listJob =
             viewModelScope.launch {
@@ -89,6 +95,7 @@ class VersionHistoryViewModel(
                             hasNextPage = page.hasNextPage,
                             preview = null,
                             previewDiff = null,
+                            previewDiffTruncated = false,
                         )
                 }.onFailure { error -> if (ticket == generation) updateError(error) }
             }
@@ -118,6 +125,7 @@ class VersionHistoryViewModel(
     fun preview(version: Long) {
         previewJob?.cancel()
         val ticket = ++previewGeneration
+        mutableState.value = mutableState.value.copy(previewLoading = true, errorCode = null, requestId = null)
         previewJob =
             viewModelScope.launch {
                 runCatching { text.version(fileId, version) }
@@ -127,7 +135,10 @@ class VersionHistoryViewModel(
                         mutableState.value =
                             mutableState.value.copy(
                                 preview = preview,
+                                previewLoading = false,
                                 previewDiff = current?.let { BoundedLineDiff.compare(preview.content, it.content) },
+                                previewDiffTruncated =
+                                    current?.let { BoundedLineDiff.isTruncated(preview.content, it.content) } ?: false,
                                 errorCode = null,
                                 requestId = null,
                             )
@@ -138,7 +149,13 @@ class VersionHistoryViewModel(
     fun dismissPreview() {
         previewJob?.cancel()
         previewGeneration += 1
-        mutableState.value = mutableState.value.copy(preview = null, previewDiff = null)
+        mutableState.value =
+            mutableState.value.copy(
+                previewLoading = false,
+                preview = null,
+                previewDiff = null,
+                previewDiffTruncated = false,
+            )
     }
 
     fun requestRestore(version: Long) {
@@ -147,13 +164,16 @@ class VersionHistoryViewModel(
         previewGeneration += 1
         mutableState.value =
             mutableState.value.copy(
+                previewLoading = false,
                 preview = null,
                 previewDiff = null,
+                previewDiffTruncated = false,
                 restoreConfirmationVersion = version,
             )
     }
 
     fun dismissRestore() {
+        if (mutableState.value.restoring) return
         mutableState.value = mutableState.value.copy(restoreConfirmationVersion = null)
     }
 
@@ -168,6 +188,7 @@ class VersionHistoryViewModel(
                 try {
                     val latestFile = files.detail(fileId)
                     if (!canEditText(latestFile.permission, latestFile.permissionSource)) {
+                        mutableState.value = mutableState.value.copy(canRestore = false)
                         throw KuraStorageException.Api(
                             com.kurastorage.core.model
                                 .ApiError(ErrorCode.FILE_NOT_FOUND, null, 403),
@@ -205,6 +226,7 @@ class VersionHistoryViewModel(
                 refreshing = false,
                 loadingMore = false,
                 restoring = false,
+                previewLoading = false,
                 errorCode = api?.error?.code ?: ErrorCode.UNKNOWN,
                 requestId = api?.error?.requestId,
             )
