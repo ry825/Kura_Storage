@@ -565,8 +565,10 @@ KuraStorage.Infrastructure/
 │   ├── Configurations/
 │   │   ├── FileDerivativeConfiguration.cs
 │   │   ├── MediaJobConfiguration.cs
-│   │   └── DerivativeLeaseConfiguration.cs
+│   │   ├── DerivativeLeaseConfiguration.cs
+│   │   └── MediaCleanupRunConfiguration.cs
 │   ├── Migrations/<timestamp>_AddMediaDerivativeFoundation.cs
+│   ├── Migrations/<timestamp>_AddMediaCleanupRuns.cs
 │   ├── PostgreSqlMediaJobQueue.cs
 │   ├── PostgreSqlMediaRepository.cs
 │   ├── PostgreSqlMediaHeartbeat.cs
@@ -579,6 +581,8 @@ KuraStorage.Infrastructure/
 ```
 
 Workerの生成Loopと清掃Loopはそれぞれ`Workers/MediaGenerationWorker.cs`、`Workers/MediaCleanupWorker.cs`へ置き、清掃のApplication Serviceは`Application/Media/MediaCleanupService.cs`へ置く。対応Testは`KuraStorage.Domain.Tests/MediaDerivativeTests.cs`、`KuraStorage.Application.Tests/MediaContractRulesTests.cs`、`MediaCleanupServiceTests.cs`、`MediaCleanupWorkerTests.cs`、`ConfigurationValidationTests.cs`、`KuraStorage.IntegrationTests/MediaPersistenceTests.cs`、`MediaCleanupPersistenceTests.cs`、`DerivativeStoreTests.cs`、`MediaProcessRunnerTests.cs`、`ExternalMediaGeneratorTests.cs`、`ExternalMediaToolIntegrationTests.cs`、`MediaApiTests.cs`、`LeasedMediaResultTests.cs`へ置く。
+
+Admin Cache状態と永続手動清掃は`Domain/Media/MediaCleanupRun.cs`、`Application/Media/AdminMediaCacheService.cs`、既存`Application/Abstractions/MediaAbstractions.cs`、`Infrastructure/Persistence/PostgreSqlMediaCleanupRepository.cs`、`Infrastructure/Persistence/Configurations/MediaCleanupRunConfiguration.cs`、`Worker/Workers/MediaCleanupWorker.cs`に分離する。APIは`KuraStorage.Api/Program.cs`のAdmin限定Endpointにとどめる。Domain状態遷移、Application契約、Worker、PostgreSQL/Migration、API認可のTestを各既存Test projectへ配置する。
 
 ### 6.3 配置ルール
 

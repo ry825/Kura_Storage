@@ -61,6 +61,8 @@ public sealed class KuraStorageDbContext(DbContextOptions<KuraStorageDbContext> 
 
     public DbSet<DerivativeLease> DerivativeLeases => Set<DerivativeLease>();
 
+    public DbSet<MediaCleanupRun> MediaCleanupRuns => Set<MediaCleanupRun>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(KuraStorageDbContext).Assembly);

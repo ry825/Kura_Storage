@@ -10,6 +10,10 @@ public sealed class MediaCleanupOptions
 
     public int FailureBackoffMinutes { get; init; } = 5;
 
+    public int ManualRunPollSeconds { get; init; } = 5;
+
+    public int RunLeaseMinutes { get; init; } = 15;
+
     public int BatchSize { get; init; } = 100;
 
     public long CacheHighWatermarkBytes { get; init; } = 10_737_418_240;
@@ -18,6 +22,9 @@ public sealed class MediaCleanupOptions
 
     public int TerminalJobRetentionDays { get; init; } = 7;
 }
+
+public sealed class MediaCleanupStorageUnavailableException()
+    : IOException("Derivative storage is unavailable for cleanup.");
 
 public sealed record MediaCleanupResult(
     bool AcquiredLock,
@@ -49,7 +56,7 @@ public sealed class MediaCleanupService(
         var started = Stopwatch.GetTimestamp();
         if (await storageGuard.InspectAsync(StorageIntent.Delete, cancellationToken) != StorageStatus.Available)
         {
-            throw new IOException("Derivative storage is unavailable for cleanup.");
+            throw new MediaCleanupStorageUnavailableException();
         }
 
         await using var cleanupLock = await repository.TryAcquireCleanupLockAsync(cancellationToken);

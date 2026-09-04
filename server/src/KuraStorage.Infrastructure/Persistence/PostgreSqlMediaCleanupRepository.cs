@@ -1,6 +1,8 @@
 using System.Data;
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Media;
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Media;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -9,6 +11,257 @@ namespace KuraStorage.Infrastructure.Persistence;
 public sealed class PostgreSqlMediaCleanupRepository(KuraStorageDbContext database) : IMediaCleanupRepository
 {
     private const long CleanupLockKey = 5_427_781_528_102_636_112;
+    private const long ScheduledRunLockKey = 5_427_781_528_102_636_113;
+
+    public async Task<MediaCacheSnapshot> GetCacheSnapshotAsync(CancellationToken cancellationToken)
+    {
+        var cache = await database.FileDerivatives
+            .AsNoTracking()
+            .Where(item => item.Status == DerivativeStatus.Ready &&
+                (item.DerivativeType == DerivativeType.ImageLow ||
+                 item.DerivativeType == DerivativeType.ImageMedium ||
+                 item.DerivativeType == DerivativeType.VideoLow ||
+                 item.DerivativeType == DerivativeType.VideoMedium))
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                ImageLow = group.Where(item => item.DerivativeType == DerivativeType.ImageLow).Sum(item => (long?)item.Size) ?? 0,
+                ImageMedium = group.Where(item => item.DerivativeType == DerivativeType.ImageMedium).Sum(item => (long?)item.Size) ?? 0,
+                VideoLow = group.Where(item => item.DerivativeType == DerivativeType.VideoLow).Sum(item => (long?)item.Size) ?? 0,
+                VideoMedium = group.Where(item => item.DerivativeType == DerivativeType.VideoMedium).Sum(item => (long?)item.Size) ?? 0,
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        var jobs = await database.MediaJobs
+            .AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                Queued = group.Count(job => job.Status == MediaJobStatus.Queued),
+                Running = group.Count(job => job.Status == MediaJobStatus.Running),
+                Failed = group.Count(job => job.Status == MediaJobStatus.Failed),
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        var runs = await database.MediaCleanupRuns
+            .AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                Pending = group.Count(run => run.Status == MediaCleanupRunStatus.Pending),
+                Running = group.Count(run => run.Status == MediaCleanupRunStatus.Running),
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        return new MediaCacheSnapshot(
+            cache?.ImageLow ?? 0,
+            cache?.ImageMedium ?? 0,
+            cache?.VideoLow ?? 0,
+            cache?.VideoMedium ?? 0,
+            jobs?.Queued ?? 0,
+            jobs?.Running ?? 0,
+            jobs?.Failed ?? 0,
+            runs?.Pending ?? 0,
+            runs?.Running ?? 0);
+    }
+
+    public Task<MediaCleanupRun?> FindLatestRunAsync(CancellationToken cancellationToken) =>
+        database.MediaCleanupRuns
+            .AsNoTracking()
+            .OrderByDescending(run => run.RequestedAt)
+            .ThenByDescending(run => run.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<MediaCleanupRequestPersistenceResult> CreateOrGetManualRunAsync(
+        Guid requestingAdminUserId,
+        string idempotencyKeyHash,
+        string requestFingerprintHash,
+        DateTimeOffset requestedAt,
+        CancellationToken cancellationToken)
+    {
+        var existing = await FindManualRunAsync(requestingAdminUserId, idempotencyKeyHash, cancellationToken);
+        if (existing is not null)
+        {
+            return new MediaCleanupRequestPersistenceResult(existing, existing.RequestFingerprintHash != requestFingerprintHash);
+        }
+
+        var created = MediaCleanupRun.CreateManual(
+            Guid.NewGuid(), requestingAdminUserId, idempotencyKeyHash, requestFingerprintHash, requestedAt);
+        database.MediaCleanupRuns.Add(created);
+        try
+        {
+            await database.SaveChangesAsync(cancellationToken);
+            return new MediaCleanupRequestPersistenceResult(created, false);
+        }
+        catch (DbUpdateException)
+        {
+            database.ChangeTracker.Clear();
+            existing = await FindManualRunAsync(requestingAdminUserId, idempotencyKeyHash, cancellationToken);
+            if (existing is null)
+            {
+                throw;
+            }
+
+            return new MediaCleanupRequestPersistenceResult(existing, existing.RequestFingerprintHash != requestFingerprintHash);
+        }
+    }
+
+    public async Task<MediaCleanupRun?> EnsureScheduledRunAsync(
+        DateTimeOffset now,
+        TimeSpan interval,
+        CancellationToken cancellationToken)
+    {
+        if (interval <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(interval));
+        }
+
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        await database.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({ScheduledRunLockKey});",
+            cancellationToken);
+        var active = await database.MediaCleanupRuns
+            .AsNoTracking()
+            .Where(run => run.Trigger == MediaCleanupTrigger.Scheduled &&
+                (run.Status == MediaCleanupRunStatus.Pending || run.Status == MediaCleanupRunStatus.Running))
+            .OrderBy(run => run.RequestedAt)
+            .ThenBy(run => run.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (active is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return active;
+        }
+
+        var latestRequestedAt = await database.MediaCleanupRuns
+            .AsNoTracking()
+            .Where(run => run.Trigger == MediaCleanupTrigger.Scheduled)
+            .MaxAsync(run => (DateTimeOffset?)run.RequestedAt, cancellationToken);
+        if (latestRequestedAt is not null && latestRequestedAt > now.Subtract(interval))
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return null;
+        }
+
+        var created = MediaCleanupRun.CreateScheduled(Guid.NewGuid(), now);
+        database.MediaCleanupRuns.Add(created);
+        await database.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return created;
+    }
+
+    public async Task<MediaCleanupRun?> ClaimNextRunAsync(
+        Guid workerToken,
+        DateTimeOffset now,
+        DateTimeOffset leaseExpiresAt,
+        CancellationToken cancellationToken)
+    {
+        if (workerToken == Guid.Empty || leaseExpiresAt <= now)
+        {
+            throw new ArgumentException("A worker token and future lease are required.");
+        }
+
+        var connection = (NpgsqlConnection)database.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        await using var command = new NpgsqlCommand(
+            """
+            WITH candidate AS (
+                SELECT id
+                FROM media_cleanup_runs
+                WHERE status = 'PENDING'
+                   OR (status = 'RUNNING' AND lease_expires_at <= @now)
+                ORDER BY CASE WHEN trigger = 'MANUAL' THEN 0 ELSE 1 END, requested_at, id
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            )
+            UPDATE media_cleanup_runs AS run
+            SET status = 'RUNNING', worker_token = @worker_token, lease_expires_at = @lease_expires_at,
+                started_at = COALESCE(started_at, @now), completed_at = NULL, failure_code = NULL
+            FROM candidate
+            WHERE run.id = candidate.id
+            RETURNING run.id;
+            """,
+            connection,
+            transaction);
+        command.Parameters.AddWithValue("worker_token", workerToken);
+        command.Parameters.AddWithValue("now", now);
+        command.Parameters.AddWithValue("lease_expires_at", leaseExpiresAt);
+        var scalar = await command.ExecuteScalarAsync(cancellationToken);
+        var claimedId = scalar is Guid id ? id : (Guid?)null;
+        await transaction.CommitAsync(cancellationToken);
+        database.ChangeTracker.Clear();
+        return claimedId is null
+            ? null
+            : await database.MediaCleanupRuns.AsNoTracking().SingleAsync(run => run.Id == claimedId, cancellationToken);
+    }
+
+    public async Task<bool> ReleaseRunAsync(
+        Guid runId,
+        Guid workerToken,
+        CancellationToken cancellationToken)
+    {
+        var updated = await database.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE media_cleanup_runs
+            SET status = 'PENDING', worker_token = NULL, lease_expires_at = NULL
+            WHERE id = {runId} AND status = 'RUNNING' AND worker_token = {workerToken};
+            """,
+            cancellationToken);
+        database.ChangeTracker.Clear();
+        return updated == 1;
+    }
+
+    public async Task<bool> CompleteRunAsync(
+        Guid runId,
+        Guid workerToken,
+        DateTimeOffset completedAt,
+        MediaCleanupResult result,
+        CancellationToken cancellationToken)
+    {
+        var status = result.FailureCount == 0 ? "COMPLETED" : "FAILED";
+        var failureCode = result.FailureCount == 0 ? null : "PARTIAL_DELETE_FAILURE";
+        var examined = checked(result.DeletedCount + result.FailureCount);
+        var updated = await database.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE media_cleanup_runs
+            SET status = {status}, worker_token = NULL, lease_expires_at = NULL, completed_at = {completedAt},
+                examined_count = {examined}, deleted_count = {result.DeletedCount}, released_bytes = {result.DeletedBytes},
+                failure_count = {result.FailureCount}, remaining_cache_bytes = {result.RemainingCacheBytes},
+                failure_code = {failureCode}
+            WHERE id = {runId} AND status = 'RUNNING' AND worker_token = {workerToken};
+            """,
+            cancellationToken);
+        database.ChangeTracker.Clear();
+        return updated == 1;
+    }
+
+    public async Task<bool> FailRunAsync(
+        Guid runId,
+        Guid workerToken,
+        DateTimeOffset completedAt,
+        MediaCleanupFailureCode failureCode,
+        CancellationToken cancellationToken)
+    {
+        var code = failureCode switch
+        {
+            MediaCleanupFailureCode.StorageUnavailable => "STORAGE_UNAVAILABLE",
+            MediaCleanupFailureCode.PartialDeleteFailure => "PARTIAL_DELETE_FAILURE",
+            MediaCleanupFailureCode.CleanupFailed => "CLEANUP_FAILED",
+            _ => throw new ArgumentOutOfRangeException(nameof(failureCode)),
+        };
+        var updated = await database.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE media_cleanup_runs
+            SET status = 'FAILED', worker_token = NULL, lease_expires_at = NULL, completed_at = {completedAt},
+                failure_count = GREATEST(failure_count, 1), failure_code = {code}
+            WHERE id = {runId} AND status = 'RUNNING' AND worker_token = {workerToken};
+            """,
+            cancellationToken);
+        database.ChangeTracker.Clear();
+        return updated == 1;
+    }
 
     public async Task<IAsyncDisposable?> TryAcquireCleanupLockAsync(CancellationToken cancellationToken)
     {
@@ -211,6 +464,18 @@ public sealed class PostgreSqlMediaCleanupRepository(KuraStorageDbContext databa
         database.ChangeTracker.Clear();
         return candidates;
     }
+
+    private Task<MediaCleanupRun?> FindManualRunAsync(
+        Guid requestingAdminUserId,
+        string idempotencyKeyHash,
+        CancellationToken cancellationToken) =>
+        database.MediaCleanupRuns
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                run => run.Trigger == MediaCleanupTrigger.Manual &&
+                    run.RequestedByAdminUserId == requestingAdminUserId &&
+                    run.IdempotencyKeyHash == idempotencyKeyHash,
+                cancellationToken);
 
     private static void ValidateBatchSize(int batchSize)
     {

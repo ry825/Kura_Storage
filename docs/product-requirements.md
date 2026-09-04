@@ -1152,6 +1152,25 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 
 **優先度**: P0（必須）
 
+### 7.11.4 管理者向けCache状態と手動清掃
+
+**ユーザーストーリー**
+
+管理者として、再生成可能な低・中画質Cacheの使用量と清掃状態を確認し、APIを長時間占有せず安全に手動清掃を要求したい。
+
+**受け入れ条件**
+
+- [x] Adminは低・中画質のREADY Cache合計、Image/VideoとLow/Mediumの内訳、10 GiB上限、6 GiB清掃目標、生成Queueの待機/実行/失敗件数、最新Cleanup runを取得できる
+- [x] Thumbnail/PDF thumbnail、生成中、または有効Lease中の個別情報を10 GiB対象量へ合算せず、File名、物理Path、User名、Job入力を管理APIから公開しない
+- [x] 手動清掃要求はAdminと有効なDevice/Sessionに限定し、必須のUUID形式`Idempotency-Key`で永続Runを登録して`202 Accepted`を返す
+- [x] HTTP Request内でCache削除全体を実行せず、独立Workerがpending runをclaimして既存の清掃ServiceとGlobal advisory lockを再利用する
+- [x] 同一Admin・同一`Idempotency-Key`・同一payloadの再送は同じRunへ収束し、異なpayloadへのKey再利用は拒否する
+- [x] 通信結果不明後の同一Key再送と状態再取得で、pending/running/completed/failedの権威状態と同じRun IDを復元できる
+- [x] Worker停止、Process強制終了、DB中断後は期限切れrunning leaseを回収し、冪等な清掃と最終Run状態へ収束する
+- [x] scheduled/manualの同時要求、lock取得不可、Storage unavailable、一部Cache削除失敗で元Fileを変更せず、重複清掃を防ぎながら再試行可能性を保つ
+
+**優先度**: P0（必須）
+
 ## 7.12 P1: 初期リリース後の重要機能
 
 ### 7.12.1 Webアプリ

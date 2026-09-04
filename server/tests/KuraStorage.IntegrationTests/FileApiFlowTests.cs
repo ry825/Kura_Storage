@@ -1451,6 +1451,117 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
     }
 
     [Fact]
+    public async Task AdminMediaCache_AcceptsOnePersistentRunAndEnforcesAdminSessionBoundary()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var admin = await fixture.CreateAuthenticatedClientAsync(
+            $"cache-admin-{suffix}",
+            "cache-admin-password",
+            UserRole.Admin);
+        using var adminClient = admin.Client;
+
+        using (var missingKey = await adminClient.PostAsync(
+            "/api/v1/admin/media-cache/cleanup-requests", null))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, missingKey.StatusCode);
+            Assert.Contains(FileErrorCodes.ValidationFailed, await missingKey.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+
+        using (var malformed = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/media-cache/cleanup-requests"))
+        {
+            malformed.Headers.Add("Idempotency-Key", "plaintext-not-a-uuid");
+            using var malformedResponse = await adminClient.SendAsync(malformed);
+            Assert.Equal(HttpStatusCode.BadRequest, malformedResponse.StatusCode);
+        }
+
+        var idempotencyKey = Guid.NewGuid().ToString("D");
+        Guid firstRunId;
+        using (var first = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/media-cache/cleanup-requests"))
+        {
+            first.Headers.Add("Idempotency-Key", idempotencyKey);
+            using var accepted = await adminClient.SendAsync(first);
+            Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+            using var body = await JsonDocument.ParseAsync(await accepted.Content.ReadAsStreamAsync());
+            firstRunId = body.RootElement.GetProperty("id").GetGuid();
+            Assert.Equal("MANUAL", body.RootElement.GetProperty("trigger").GetString());
+            Assert.Equal("PENDING", body.RootElement.GetProperty("status").GetString());
+        }
+
+        using (var replay = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/media-cache/cleanup-requests"))
+        {
+            replay.Headers.Add("Idempotency-Key", idempotencyKey);
+            using var accepted = await adminClient.SendAsync(replay);
+            Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+            using var body = await JsonDocument.ParseAsync(await accepted.Content.ReadAsStreamAsync());
+            Assert.Equal(firstRunId, body.RootElement.GetProperty("id").GetGuid());
+        }
+
+        using (var status = await adminClient.GetAsync("/api/v1/admin/media-cache"))
+        {
+            status.EnsureSuccessStatusCode();
+            var responseText = await status.Content.ReadAsStringAsync();
+            using var body = JsonDocument.Parse(responseText);
+            Assert.Equal(10_737_418_240, body.RootElement.GetProperty("highWatermarkBytes").GetInt64());
+            Assert.Equal(6_442_450_944, body.RootElement.GetProperty("lowWatermarkBytes").GetInt64());
+            Assert.True(body.RootElement.GetProperty("pendingRunCount").GetInt32() >= 1);
+            Assert.Equal(firstRunId, body.RootElement.GetProperty("lastCleanupRun").GetProperty("id").GetGuid());
+            Assert.DoesNotContain(idempotencyKey, responseText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("relativePath", responseText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("fileName", responseText, StringComparison.OrdinalIgnoreCase);
+        }
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var persisted = await database.MediaCleanupRuns
+                .AsNoTracking()
+                .Where(run => run.Id == firstRunId)
+                .SingleAsync();
+            Assert.Equal(64, persisted.IdempotencyKeyHash?.Length);
+            Assert.DoesNotContain(idempotencyKey, persisted.IdempotencyKeyHash!, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var member = await fixture.CreateAuthenticatedClientAsync(
+            $"cache-member-{suffix}",
+            "cache-member-password");
+        using (member.Client)
+        using (var forbiddenGet = await member.Client.GetAsync("/api/v1/admin/media-cache"))
+        using (var forbiddenPost = await SendCleanupRequestAsync(member.Client, Guid.NewGuid().ToString("D")))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, forbiddenGet.StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, forbiddenPost.StatusCode);
+        }
+
+        using (var anonymous = fixture.Factory.CreateClient())
+        using (var unauthorized = await anonymous.GetAsync("/api/v1/admin/media-cache"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+        }
+
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(admin.AccessToken);
+        var userId = Guid.Parse(token.Subject);
+        var deviceId = Guid.Parse(token.Claims.Single(claim => claim.Type == "device_id").Value);
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IdentityService>().RevokeDeviceAsync(
+                userId,
+                deviceId,
+                "admin-media-cache-test",
+                CancellationToken.None);
+        }
+
+        using (var revoked = await SendCleanupRequestAsync(adminClient, Guid.NewGuid().ToString("D")))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
+        }
+
+        Assert.DoesNotContain(
+            fixture.LogMessages,
+            message => message.Contains(idempotencyKey, StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("plaintext-not-a-uuid", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task MissingEndpoints_EnforceProtocolStateOwnershipAndDatabaseOnlyDeletion()
     {
         var authenticated = await fixture.CreateAuthenticatedClientAsync("missing-owner", "missing-password");
@@ -1582,6 +1693,13 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
     {
         var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/trash/{fileId}");
         request.Headers.Add("Idempotency-Key", key);
+        return client.SendAsync(request);
+    }
+
+    private static Task<HttpResponseMessage> SendCleanupRequestAsync(HttpClient client, string idempotencyKey)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/media-cache/cleanup-requests");
+        request.Headers.Add("Idempotency-Key", idempotencyKey);
         return client.SendAsync(request);
     }
 

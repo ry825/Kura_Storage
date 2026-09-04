@@ -10,6 +10,49 @@ public interface IMediaJobRunner
 
 public interface IMediaCleanupRepository
 {
+    Task<Media.MediaCacheSnapshot> GetCacheSnapshotAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new Media.MediaCacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0));
+
+    Task<MediaCleanupRun?> FindLatestRunAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<MediaCleanupRun?>(null);
+
+    Task<Media.MediaCleanupRequestPersistenceResult> CreateOrGetManualRunAsync(
+        Guid requestingAdminUserId,
+        string idempotencyKeyHash,
+        string requestFingerprintHash,
+        DateTimeOffset requestedAt,
+        CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    Task<MediaCleanupRun?> EnsureScheduledRunAsync(
+        DateTimeOffset now,
+        TimeSpan interval,
+        CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    Task<MediaCleanupRun?> ClaimNextRunAsync(
+        Guid workerToken,
+        DateTimeOffset now,
+        DateTimeOffset leaseExpiresAt,
+        CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    Task<bool> ReleaseRunAsync(
+        Guid runId,
+        Guid workerToken,
+        CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    Task<bool> CompleteRunAsync(
+        Guid runId,
+        Guid workerToken,
+        DateTimeOffset completedAt,
+        Media.MediaCleanupResult result,
+        CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    Task<bool> FailRunAsync(
+        Guid runId,
+        Guid workerToken,
+        DateTimeOffset completedAt,
+        MediaCleanupFailureCode failureCode,
+        CancellationToken cancellationToken) => throw new NotSupportedException();
+
     Task<IAsyncDisposable?> TryAcquireCleanupLockAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<MediaCleanupCandidate>> ClaimExpiredAsync(
