@@ -302,8 +302,8 @@
   - [x] `./scripts/ci/verify-android.sh`、`:feature-sharing:connectedDebugAndroidTest`、`:feature-search:connectedDebugAndroidTest`、`:feature-activity:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
   - [x] Android 13実機相当のAPI 33 EmulatorでRecent、Shared、Category、Search、Share設定、Favorites、Tags、Activityを決定的Compose fixtureで確認する（物理端末が未接続のため、物理端末の最終確認はPR10で実施する）。
   - [x] `docs/testing/20260904-android-ui-pr5-discovery-sharing.md`にCapture、権限、Navigation、意図的差分を記録する。
-- [ ] PR5を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR5完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] PR5を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR5完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -672,7 +672,29 @@
 
 ### PR5: Recent・Sharing・Category・Search・Organization・Activity
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#53 Align Android discovery and sharing UI](https://github.com/ry825/Kura_Storage/pull/53)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Lint、ktlint、Detekt、Coverage、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。
+  - Android 13 / API 33 Emulatorで`:feature-search:connectedDebugAndroidTest`成功（11/11）、`:feature-sharing:connectedDebugAndroidTest`成功（6/6）、`:feature-activity:connectedDebugAndroidTest`成功（2/2）、`:app:connectedDebugAndroidTest`成功（8/8）。320 x 640、200%文字、Dark、決定的Capture、Filter、権限、Error、Navigation到達性を確認した。
+  - `git diff --check`成功。Self-reviewでFeature間直接依存の非追加、既存Search APIの再利用、最新権限のNavigation境界、Unknown/Missingのfail-closed、stable key、古い応答の破棄を確認した。
+  - GitHub必須CI run `33838311301`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - Favoriteは正式Search APIにfilter契約がないため、読み込み済みPageの不完全な絞り込みを作らず、server-backed Favorites画面への導線で代替した。
+  - Categoryは専用APIやFeatureを追加せず、既存Search Route/RepositoryにMIME categoryを設定し、共通Entry rowで表示した。
+  - 物理Android 13端末が未接続だったため、同一API levelのAPI 33 Emulatorと決定的Compose fixtureで代替した。物理端末の最終確認はPR10へ引き継ぐ。
+- 追加タスクと理由:
+  - RecentとShared一覧にrequest generation guardを追加した。Filter変更やRefresh後に古い応答が現在の一覧を上書きしない完了条件を明示的に保証するためである。
+  - 共通`KuraFileEntryRow`とdisabled semanticsを`core-ui`に追加した。Search/Recent/Shared/Favorites間でmetadata表示とfail-closed操作を一致させるためである。
+  - 200%文字の初回fixtureでActivityのError操作がCompact画面の表示範囲外になる問題を検出し、scroll可能な状態表示に変更して再検証した。
+- 技術的に不要となったタスクと代替実装:
+  - Search内のFavorite filterは対応するServer契約がないため実装せず、全件をserver-backedで取得するFavorites画面への導線で代替した。
+  - Category専用Server APIとFeature moduleは不要と判断し、正式Search契約とApp callbackの再利用で代替した。
+- 後続への引継ぎ:
+  - PR6/PR7では共通Entry rowからApp callbackで既存Media/Text Routeへ渡す境界と、Unknown/Missing/権限喪失時のfail-closedを維持する。
+  - PR8/PR9のCache/Settings実装では、共有権限や状態の内部値をUIで合成せずServer応答を権威とする。
+  - PR10でAndroid 13物理端末、TalkBack、回転、200%文字、実ServerのRecent/Shared/Search/Sharing/Organization/Activity E2Eを最終確認する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成とCIは成功している。
 
 ### PR6: Photo・Video・Audio・PDF UI
 
