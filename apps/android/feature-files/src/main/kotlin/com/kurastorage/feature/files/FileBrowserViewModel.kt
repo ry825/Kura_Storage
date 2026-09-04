@@ -51,6 +51,12 @@ data class FileBrowserState(
     val currentFolder: FileEntry? = null,
     val personalRoot: Boolean = true,
     val historySyncError: String? = null,
+    val breadcrumbs: List<BrowserBreadcrumb> = listOf(BrowserBreadcrumb(null, "My files")),
+)
+
+data class BrowserBreadcrumb(
+    val id: String?,
+    val label: String,
 )
 
 data class MissingIndexDeleteState(
@@ -175,7 +181,12 @@ class FileBrowserViewModel(
         if (entry.entryType == FileEntryType.FOLDER && entry.status == FileEntryStatus.ACTIVE && !trashMode) {
             folderStack.addLast(entry.id)
             pager = pager(entry.id)
-            mutableState.update { it.copy(currentFolder = entry) }
+            mutableState.update {
+                it.copy(
+                    currentFolder = entry,
+                    breadcrumbs = it.breadcrumbs + BrowserBreadcrumb(entry.id, entry.name),
+                )
+            }
             refresh()
         } else {
             select(entry)
@@ -194,6 +205,7 @@ class FileBrowserViewModel(
         if (trashMode || folderStack.size <= 1) return false
         folderStack.removeLast()
         pager = pager(folderStack.last())
+        mutableState.update { it.copy(breadcrumbs = it.breadcrumbs.dropLast(1)) }
         folderStack.last()?.let(::loadCurrentFolder)
         refresh()
         return true
@@ -697,7 +709,15 @@ class FileBrowserViewModel(
     private fun loadCurrentFolder(parentId: String) {
         viewModelScope.launch {
             runCatching { files.detail(parentId) }.onSuccess { folder ->
-                mutableState.update { state -> state.copy(currentFolder = folder) }
+                mutableState.update { state ->
+                    val trail =
+                        if (state.breadcrumbs.lastOrNull()?.id == folder.id) {
+                            state.breadcrumbs.dropLast(1) + BrowserBreadcrumb(folder.id, folder.name)
+                        } else {
+                            listOf(BrowserBreadcrumb(null, "My files"), BrowserBreadcrumb(folder.id, folder.name))
+                        }
+                    state.copy(currentFolder = folder, breadcrumbs = trail)
+                }
             }
         }
     }

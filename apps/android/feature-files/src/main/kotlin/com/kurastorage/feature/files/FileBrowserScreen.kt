@@ -4,32 +4,40 @@
     "LongMethod",
     "LongParameterList",
     "CyclomaticComplexMethod",
+    "MaxLineLength",
     "TooManyFunctions",
 )
 
 package com.kurastorage.feature.files
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,6 +50,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kurastorage.core.model.ErrorCode
@@ -56,7 +67,16 @@ import com.kurastorage.core.model.UploadState
 import com.kurastorage.core.model.filePermissionCapabilities
 import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.core.ui.ErrorState
+import com.kurastorage.core.ui.KuraTheme
 import com.kurastorage.core.ui.LoadingState
+import com.kurastorage.core.ui.accessibility.kuraHeading
+import com.kurastorage.core.ui.components.KuraCard
+import com.kurastorage.core.ui.components.KuraCardVariant
+import com.kurastorage.core.ui.components.KuraStatus
+import com.kurastorage.core.ui.components.KuraStatusBadge
+import com.kurastorage.core.ui.components.KuraStatusPanel
+import com.kurastorage.core.ui.icons.KuraFileType
+import com.kurastorage.core.ui.icons.KuraFileTypeIcon
 import androidx.compose.foundation.lazy.grid.items as gridItems
 
 @Composable
@@ -103,9 +123,13 @@ fun FileBrowserScreen(
     onOrganization: (String) -> Unit = {},
     onOpenMedia: (FileEntry) -> Unit = {},
     onOpenText: (FileEntry) -> Unit = {},
+    onSearch: () -> Unit = {},
     thumbnail: @Composable (FileEntry, Modifier) -> Unit = { entry, modifier ->
         Box(modifier, contentAlignment = Alignment.Center) {
-            Text(if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File")
+            KuraFileTypeIcon(
+                type = KuraFileType.from(entry.mimeType, entry.entryType == FileEntryType.FOLDER),
+                contentDescription = fileTypeLabel(entry),
+            )
         }
     },
 ) {
@@ -117,110 +141,133 @@ fun FileBrowserScreen(
     if (state.error != null && state.entries.isEmpty() && state.transfer == null) {
         return ErrorState(state.error.message, state.error.requestId, onRefresh)
     }
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        AdminStoragePanel(adminStorageState, onRefreshAdminStorage, onOpenTrashFromWarning)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onBack) { Text("Back") }
-            Button(onClick = onRefresh) { Text("Refresh") }
+    val visibleEntries = state.entries
+    val currentCapabilities =
+        state.currentFolder?.let {
+            filePermissionCapabilities(it.permission, it.permissionSource)
+        } ?: filePermissionCapabilities(
+            if (state.personalRoot) SharePermission.MANAGER else SharePermission.UNKNOWN,
+            if (state.personalRoot) PermissionSource.OWNER else PermissionSource.UNKNOWN,
+        )
+    val folderTitle =
+        when {
+            trashMode -> "Trash"
+            state.currentFolder != null -> state.currentFolder.name
+            state.personalRoot -> "My files"
+            else -> "Shared folder"
         }
-        val currentCapabilities =
-            state.currentFolder?.let {
-                filePermissionCapabilities(it.permission, it.permissionSource)
-            } ?: filePermissionCapabilities(
-                if (state.personalRoot) SharePermission.MANAGER else SharePermission.UNKNOWN,
-                if (state.personalRoot) PermissionSource.OWNER else PermissionSource.UNKNOWN,
+    val breadcrumbTrail =
+        state.breadcrumbs.let { breadcrumbs ->
+            val currentFolder = state.currentFolder
+            if (!trashMode && currentFolder != null && breadcrumbs.none { it.id == currentFolder.id }) {
+                breadcrumbs + BrowserBreadcrumb(currentFolder.id, currentFolder.name)
+            } else {
+                breadcrumbs
+            }
+        }
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(
+            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = KuraTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+        ) {
+            BrowserHeader(
+                title = folderTitle,
+                trashMode = trashMode,
+                gridMode = gridMode,
+                onBack = onBack,
+                onRefresh = onRefresh,
+                onSearch = onSearch,
+                onList = { gridMode = false },
+                onGrid = { gridMode = true },
             )
-        if (!trashMode && currentCapabilities.canCreate) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { showCreate = true }) { Text("New folder") }
-                Button(onClick = onChooseUpload) { Text("Upload") }
-            }
-        }
-        val folderTitle =
-            when {
-                trashMode -> "Trash"
-                state.currentFolder != null -> state.currentFolder.name
-                state.personalRoot -> "My files"
-                else -> "Shared folder"
-            }
-        Text(folderTitle, style = MaterialTheme.typography.headlineSmall)
-        if (!trashMode) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { gridMode = false }, enabled = gridMode) { Text("List") }
-                OutlinedButton(onClick = { gridMode = true }, enabled = !gridMode) { Text("Grid") }
-            }
-        }
-        if (!trashMode && !state.personalRoot) {
-            state.currentFolder?.let { folder ->
-                Text("Owner: ${folder.owner.displayName}")
-                Text("Permission: ${folder.permission} (${folder.permissionSource})")
-                folder.shareTargetId?.let {
-                    Text("Shared from folder: ${shareTargetLabel(it, state.currentFolder)}")
+            Text(
+                "Location: ${if (trashMode) "Trash" else breadcrumbTrail.joinToString(" / ") { it.label }}",
+                modifier = Modifier.testTag("file-breadcrumb"),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            AdminStoragePanel(adminStorageState, onRefreshAdminStorage, onOpenTrashFromWarning)
+            if (!trashMode && currentCapabilities.canCreate) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm)) {
+                    OutlinedButton(onClick = { showCreate = true }, modifier = Modifier.weight(1f)) { Text("New folder") }
+                    FloatingActionButton(
+                        onClick = onChooseUpload,
+                        modifier = Modifier.testTag("upload-fab"),
+                    ) { Text("Upload") }
                 }
             }
-        }
-        state.placementResult?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-        state.error?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
-        if (state.entries.isEmpty()) {
-            Box(
-                Modifier.fillMaxWidth().weight(1f),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(if (trashMode) "Trash is empty." else "This folder is empty.")
-            }
-        } else if (gridMode && !trashMode) {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(144.dp),
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                gridItems(state.entries, key = { it.id }) { entry ->
-                    Column(
-                        Modifier.clickable { onOpen(entry) }.padding(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        thumbnail(entry, Modifier.fillMaxWidth().heightIn(min = 96.dp, max = 144.dp))
-                        Text(entry.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (entry.shareTargetId != null || entry.permissionSource == PermissionSource.INHERITED) {
-                            Text("Shared", style = MaterialTheme.typography.labelSmall)
-                        }
-                        missingStatusText(entry)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                        TextButton(onClick = { onShowDetails(entry) }) { Text("Actions") }
-                    }
-                }
-                if (state.canLoadMore) item { Button(onClick = onLoadMore) { Text("Load more") } }
-            }
-        } else {
-            LazyColumn(Modifier.weight(1f)) {
-                items(state.entries, key = { it.id }) { entry ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { onOpen(entry) }.padding(vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        thumbnail(entry, Modifier.size(48.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("${if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File"}: ${entry.name}")
-                            Text("Owner: ${entry.owner.displayName} • Permission: ${entry.permission}")
-                            if (entry.permissionSource == PermissionSource.INHERITED) {
-                                Text("Shared from: ${shareTargetLabel(entry.shareTargetId, state.currentFolder)}")
-                            }
-                            missingStatusText(entry)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                        }
-                        if (!trashMode) {
-                            TextButton(onClick = { onShowDetails(entry) }) { Text("Actions") }
-                        } else {
-                            Text(if (entry.entryType == FileEntryType.FILE) "${entry.size} B" else "")
+            if (!trashMode && !state.personalRoot) {
+                state.currentFolder?.let { folder ->
+                    KuraCard {
+                        Text("Owner: ${folder.owner.displayName}")
+                        Text("Permission: ${folder.permission} (${folder.permissionSource})")
+                        folder.shareTargetId?.let {
+                            Text("Shared from folder: ${shareTargetLabel(it, state.currentFolder)}")
                         }
                     }
                 }
-                if (state.canLoadMore) {
-                    item { Button(onClick = onLoadMore) { Text("Load more") } }
+            }
+            state.placementResult?.let {
+                KuraStatusPanel("Updated", it, KuraStatus.SUCCESS, Modifier.testTag("placement-result"))
+            }
+            state.error?.let {
+                KuraStatusPanel(
+                    title = if (it.code == ErrorCode.RECOVERY_REQUIRED) "Recovery required" else "Files could not be updated",
+                    message = it.message,
+                    status = KuraStatus.ERROR,
+                    action = { TextButton(onClick = onRefresh) { Text("Try again") } },
+                )
+            }
+            if (visibleEntries.isEmpty()) {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    KuraStatusPanel(
+                        title = if (trashMode) "Trash is empty." else "This folder is empty.",
+                        message = "There is nothing to show here yet.",
+                        status = KuraStatus.NEUTRAL,
+                    )
+                }
+            } else if (gridMode && !trashMode) {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(144.dp),
+                    modifier = Modifier.weight(1f).testTag("file-grid"),
+                    contentPadding = PaddingValues(bottom = KuraTheme.spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+                ) {
+                    gridItems(visibleEntries, key = { it.id }) { entry ->
+                        FileGridItem(entry, onOpen, onShowDetails, thumbnail)
+                    }
+                    if (state.canLoadMore) item(key = "load-more") { Button(onClick = onLoadMore) { Text("Load more") } }
+                }
+            } else {
+                val folders = visibleEntries.filter { it.entryType == FileEntryType.FOLDER }
+                val files = visibleEntries.filter { it.entryType == FileEntryType.FILE }
+                LazyColumn(
+                    modifier = Modifier.weight(1f).testTag("file-list"),
+                    contentPadding = PaddingValues(bottom = KuraTheme.spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+                ) {
+                    if (folders.isNotEmpty()) {
+                        item(key = "folder-section") {
+                            Text("Folders", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.titleLarge)
+                        }
+                        items(folders, key = { "folder-${it.id}" }) { entry ->
+                            FileListItem(entry, trashMode, state.currentFolder, onOpen, onShowDetails, thumbnail)
+                        }
+                    }
+                    if (files.isNotEmpty()) {
+                        item(key = "file-section") {
+                            Text("Files", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.titleLarge)
+                        }
+                        items(files, key = { "file-${it.id}" }) { entry ->
+                            FileListItem(entry, trashMode, state.currentFolder, onOpen, onShowDetails, thumbnail)
+                        }
+                    }
+                    if (state.canLoadMore) item(key = "load-more") { Button(onClick = onLoadMore) { Text("Load more") } }
                 }
             }
+            TransferPanel(state.transfer, onCancelTransfer, onRetryTransfer, onOpenDownload)
         }
-        TransferPanel(state.transfer, onCancelTransfer, onRetryTransfer, onOpenDownload)
     }
     if (showCreate) {
         NameDialog(
@@ -237,17 +284,63 @@ fun FileBrowserScreen(
             onDismissRequest = onDismissDetail,
             title = { Text(entry.name) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("${entry.entryType} • ${entry.size} bytes\nUpdated ${entry.updatedAt}")
-                    Text("Owner: ${entry.owner.displayName}")
-                    Text("Permission: ${entry.permission} (${entry.permissionSource})")
-                    if (entry.permissionSource == PermissionSource.INHERITED) {
-                        Text("Shared from folder: ${shareTargetLabel(entry.shareTargetId, state.currentFolder)}")
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    KuraCard {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            KuraFileTypeIcon(
+                                KuraFileType.from(entry.mimeType, entry.entryType == FileEntryType.FOLDER),
+                                contentDescription = fileTypeLabel(entry),
+                            )
+                            Column {
+                                Text(fileTypeLabel(entry), style = MaterialTheme.typography.titleMedium)
+                                Text("MIME type: ${entry.mimeType ?: "Unknown"}", style = MaterialTheme.typography.bodySmall)
+                                missingStatusText(entry)?.let { KuraStatusBadge(it, missingStatusStyle(entry.status)) }
+                                entry.missingLastCheckedAt?.let { Text("最終確認: $it", style = MaterialTheme.typography.bodySmall) }
+                            }
+                        }
                     }
-                    missingStatusText(entry)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (entry.isUnsupportedFile()) {
+                        KuraStatusPanel(
+                            title = "Unsupported file",
+                            message = unsupportedReason(entry),
+                            status = KuraStatus.WARNING,
+                        )
+                    }
+                    KuraCard {
+                        Text("File information", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.titleMedium)
+                        Text("Owner: ${entry.owner.displayName}")
+                        Text("Permission: ${entry.permission} (${entry.permissionSource})")
+                        Text("Name: ${entry.name}")
+                        Text(
+                            if (entry.entryType == FileEntryType.FILE) {
+                                "Size: ${formatBytes(entry.size)}"
+                            } else {
+                                "Items: unavailable"
+                            },
+                        )
+                        Text("Created: ${entry.createdAt}")
+                        Text("Updated: ${entry.updatedAt}")
+                        Text("Storage: ${if (trashMode) "KuraStorage Trash" else "Dedicated KuraStorage storage"}")
+                        if (entry.permissionSource == PermissionSource.INHERITED) {
+                            Text("Shared from folder: ${shareTargetLabel(entry.shareTargetId, state.currentFolder)}")
+                        }
+                        entry.missingDetectedAt?.let { Text("検出日時: $it") }
+                        if (trashMode) {
+                            entry.trashedAt?.let { Text("Moved to Trash: $it") }
+                            Text(state.retention?.text ?: "Automatic deletion time is unavailable.")
+                        }
+                    }
                     state.historySyncError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                    entry.missingLastCheckedAt?.let { Text("最終確認: $it") }
-                    if (trashMode) Text(state.retention?.text ?: "Automatic deletion time is unavailable.")
+                    KuraCard {
+                        Text("Available actions", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.titleMedium)
+                        Text(detailActionSummary(entry, trashMode))
+                    }
                     if (!trashMode &&
                         entry.status in
                         setOf(
@@ -262,6 +355,12 @@ fun FileBrowserScreen(
                         ) {
                             Text("Favorites and tags")
                         }
+                    }
+                    if (
+                        entry.status == FileEntryStatus.ACTIVE &&
+                        (entry.permission == SharePermission.UNKNOWN || entry.permissionSource == PermissionSource.UNKNOWN)
+                    ) {
+                        Text("Some actions are unavailable because current permission information is unknown.")
                     }
                 }
             },
@@ -406,6 +505,141 @@ fun FileBrowserScreen(
     }
 }
 
+@Composable
+private fun BrowserHeader(
+    title: String,
+    trashMode: Boolean,
+    gridMode: Boolean,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onSearch: () -> Unit,
+    onList: () -> Unit,
+    onGrid: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "Back" }) { Text("Back") }
+            Text(title, modifier = Modifier.weight(1f).kuraHeading(), style = MaterialTheme.typography.headlineSmall)
+            TextButton(onClick = onRefresh, modifier = Modifier.semantics { contentDescription = "Refresh files" }) {
+                Text("Refresh")
+            }
+        }
+        if (!trashMode) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedButton(onClick = onSearch, modifier = Modifier.weight(1f)) { Text("Search") }
+                OutlinedButton(onClick = onList, enabled = gridMode, modifier = Modifier.weight(1f)) { Text("List") }
+                OutlinedButton(onClick = onGrid, enabled = !gridMode, modifier = Modifier.weight(1f)) { Text("Grid") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FileListItem(
+    entry: FileEntry,
+    trashMode: Boolean,
+    currentFolder: FileEntry?,
+    onOpen: (FileEntry) -> Unit,
+    onShowDetails: (FileEntry) -> Unit,
+    thumbnail: @Composable (FileEntry, Modifier) -> Unit,
+) {
+    KuraCard(
+        modifier = Modifier.testTag("entry-${entry.id}"),
+        variant = if (entry.status == FileEntryStatus.ACTIVE) KuraCardVariant.DEFAULT else KuraCardVariant.WARNING,
+        onClick = { onOpen(entry) },
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            thumbnail(entry, Modifier.size(56.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xxs)) {
+                Text(
+                    "${if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File"}: ${entry.name}",
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(entryMetadata(entry), style = MaterialTheme.typography.bodySmall)
+                Text("Owner: ${entry.owner.displayName} • Permission: ${entry.permission}", style = MaterialTheme.typography.bodySmall)
+                if (entry.shareTargetId != null || entry.permissionSource == PermissionSource.INHERITED) {
+                    Text(
+                        "Shared from: ${shareTargetLabel(entry.shareTargetId, currentFolder)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                missingStatusText(entry)?.let {
+                    KuraStatusBadge(it, missingStatusStyle(entry.status), Modifier.testTag("entry-status-${entry.id}"))
+                }
+            }
+            if (!trashMode) {
+                TextButton(
+                    onClick = { onShowDetails(entry) },
+                    modifier = Modifier.semantics { contentDescription = "More actions for ${entry.name}" },
+                ) { Text("Actions") }
+            } else {
+                Text(if (entry.entryType == FileEntryType.FILE) formatBytes(entry.size) else "Folder")
+            }
+        }
+    }
+}
+
+@Composable
+private fun FileGridItem(
+    entry: FileEntry,
+    onOpen: (FileEntry) -> Unit,
+    onShowDetails: (FileEntry) -> Unit,
+    thumbnail: @Composable (FileEntry, Modifier) -> Unit,
+) {
+    KuraCard(
+        modifier = Modifier.testTag("grid-entry-${entry.id}"),
+        variant = if (entry.status == FileEntryStatus.ACTIVE) KuraCardVariant.DEFAULT else KuraCardVariant.WARNING,
+        onClick = { onOpen(entry) },
+    ) {
+        thumbnail(entry, Modifier.fillMaxWidth().heightIn(min = 88.dp, max = 128.dp))
+        Text(entry.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+        Text(entryMetadata(entry), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+        if (entry.shareTargetId != null || entry.permissionSource == PermissionSource.INHERITED) {
+            KuraStatusBadge("Shared", KuraStatus.INFO)
+        }
+        missingStatusText(entry)?.let { KuraStatusBadge(it, missingStatusStyle(entry.status)) }
+        TextButton(
+            onClick = { onShowDetails(entry) },
+            modifier = Modifier.semantics { contentDescription = "More actions for ${entry.name}" },
+        ) { Text("Actions") }
+    }
+}
+
+private fun entryMetadata(entry: FileEntry): String =
+    if (entry.entryType == FileEntryType.FOLDER) {
+        "Folder • Items unavailable • Updated ${entry.updatedAt}"
+    } else {
+        "${fileTypeLabel(entry)} • ${formatBytes(entry.size)} • Updated ${entry.updatedAt}"
+    }
+
+private fun fileTypeLabel(entry: FileEntry): String =
+    if (entry.entryType == FileEntryType.FOLDER) {
+        "Folder"
+    } else {
+        KuraFileType.from(entry.mimeType, false).accessibilityLabel
+    }
+
+private fun missingStatusStyle(status: FileEntryStatus): KuraStatus =
+    when (status) {
+        FileEntryStatus.MISSING_CANDIDATE -> KuraStatus.WARNING
+        FileEntryStatus.MISSING, FileEntryStatus.UNKNOWN -> KuraStatus.ERROR
+        else -> KuraStatus.NEUTRAL
+    }
+
 private fun missingStatusText(entry: FileEntry): String? =
     when (entry.status) {
         FileEntryStatus.MISSING -> "ファイルが見つかりません"
@@ -417,7 +651,59 @@ private fun missingStatusText(entry: FileEntry): String? =
 private fun FileEntry.isMediaPreview(): Boolean {
     val activeFile = entryType == FileEntryType.FILE && status == FileEntryStatus.ACTIVE
     return activeFile &&
-        (SupportedMediaMimeTypes.isPhoto(mimeType) || SupportedMediaMimeTypes.isPdf(mimeType))
+        (
+            SupportedMediaMimeTypes.isPhoto(mimeType) ||
+                SupportedMediaMimeTypes.isPdf(mimeType) ||
+                SupportedMediaMimeTypes.isVideo(mimeType) ||
+                SupportedMediaMimeTypes.isAudio(mimeType)
+        )
+}
+
+private fun FileEntry.isUnsupportedFile(): Boolean =
+    entryType == FileEntryType.FILE &&
+        status == FileEntryStatus.ACTIVE &&
+        !isMediaPreview() &&
+        !SupportedTextMimeTypes.isSupported(mimeType)
+
+private fun unsupportedReason(entry: FileEntry): String =
+    if (entry.mimeType.isNullOrBlank()) {
+        "The file type is unknown, so KuraStorage will not try to open it in the app. Download it only if you trust the file."
+    } else {
+        "${entry.mimeType} cannot be opened in KuraStorage. You can download it and choose a compatible external app."
+    }
+
+@Suppress("ReturnCount")
+private fun detailActionSummary(
+    entry: FileEntry,
+    trashMode: Boolean,
+): String {
+    val capabilities = filePermissionCapabilities(entry.permission, entry.permissionSource)
+    if (entry.status == FileEntryStatus.UNKNOWN) return "No actions are available until the app understands this file state."
+    if (entry.status == FileEntryStatus.MISSING) {
+        return if (capabilities.canManageTrash) {
+            "Recheck or remove the missing index entry."
+        } else {
+            "No destructive actions are allowed."
+        }
+    }
+    if (entry.status == FileEntryStatus.MISSING_CANDIDATE) return "Recheck the file before any content operation."
+    if (trashMode) {
+        return if (capabilities.canManageTrash) {
+            "Restore or permanently delete this item."
+        } else {
+            "Only the owner can manage Trash."
+        }
+    }
+    val actions =
+        buildList {
+            if (entry.isMediaPreview() || SupportedTextMimeTypes.isSupported(entry.mimeType)) add("Open")
+            if (entry.entryType == FileEntryType.FILE && capabilities.canDownload) add("Download")
+            if (capabilities.canRename) add("Rename")
+            if (capabilities.canMove) add("Move")
+            if (capabilities.canManageShare) add("Share")
+            if (capabilities.canTrash) add("Move to Trash")
+        }
+    return actions.takeIf { it.isNotEmpty() }?.joinToString() ?: "No actions are available with the current permission."
 }
 
 @Composable
@@ -432,9 +718,15 @@ private fun MissingIndexDeleteDialog(
         title = { Text("一覧から削除しますか？") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("対象: ${state.target.name}")
+                Text("元ファイルはHDD上に存在しません。")
+                Text("管理情報、共有情報、同期情報、サムネイル、プレビューキャッシュを削除します。")
                 Text("KuraStorageの索引だけを削除します。HDD上のファイルは削除しません。")
                 if (state.target.entryType == FileEntryType.FOLDER) {
                     Text("欠損している配下項目も一覧から削除されます。")
+                }
+                if (state.resultUnknown) {
+                    Text("結果を確認できませんでした。一覧を更新してServerの状態を確認してください。")
                 }
                 state.error?.let {
                     Text(it.message, color = MaterialTheme.colorScheme.error)
@@ -475,11 +767,8 @@ fun AdminStoragePanel(
                 TextButton(onClick = onRefresh) { Text("Refresh storage status") }
             }
         status?.capacityWarning == true ->
-            Column(
-                Modifier.fillMaxWidth().testTag("capacity-warning").padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text("Storage capacity warning", style = MaterialTheme.typography.titleMedium)
+            KuraCard(modifier = Modifier.testTag("capacity-warning"), variant = KuraCardVariant.WARNING) {
+                Text("Storage capacity warning", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.titleMedium)
                 Text("Available: ${formatBytes(status.availableBytes)}")
                 Text("Warning threshold: ${formatBytes(status.capacityWarningThresholdBytes)}")
                 Text("Trash estimate: ${formatBytes(status.trashBytes)}")
@@ -487,14 +776,11 @@ fun AdminStoragePanel(
                 val latest = status.lastPurgeRun
                 Text("Latest cleanup: ${latest?.status ?: "not available"}")
                 latest?.let {
-                    Text(
-                        "Cleanup examined/deleted/errors: " +
-                            "${it.examinedRootCount}/${it.deletedRootCount}/${it.errorCount}",
-                    )
+                    Text("Cleanup examined/deleted/errors: ${it.examinedRootCount}/${it.deletedRootCount}/${it.errorCount}")
                     Text("Cleanup released: ${formatBytes(it.releasedBytes)}")
                 }
                 Text("The 30-day retention period is not shortened. Delete unneeded trash manually or expand storage.")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm)) {
                     Button(onClick = onOpenTrash) { Text("Open Trash") }
                     TextButton(onClick = onRefresh) { Text("Refresh") }
                 }
@@ -616,7 +902,13 @@ private fun MovePickerDialog(
         title = { Text("Move ${state.target.name}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Server folder selection", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.titleMedium)
+                Text("My files / ${state.currentFolderName}", modifier = Modifier.testTag("move-breadcrumb"))
                 Text("Destination: ${state.currentFolderName}")
+                KuraStatusBadge(
+                    if (state.destinationWritable) "Writable destination" else "Read-only destination",
+                    if (state.destinationWritable) KuraStatus.SUCCESS else KuraStatus.WARNING,
+                )
                 if (state.currentFolderId == state.target.parentId) {
                     Text("This is the current folder.", color = MaterialTheme.colorScheme.secondary)
                 }
@@ -640,13 +932,20 @@ private fun MovePickerDialog(
                                 enabled = state.canOpen(folder) && !state.submitting,
                                 modifier = Modifier.testTag("move-folder-${folder.id}"),
                             ) {
-                                Text(
-                                    if (state.canOpen(folder)) {
-                                        "Folder: ${folder.name}"
-                                    } else {
-                                        "Folder: ${folder.name} (unavailable)"
-                                    },
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    KuraFileTypeIcon(KuraFileType.FOLDER, contentDescription = "Folder")
+                                    Text(
+                                        if (state.canOpen(folder)) {
+                                            "Folder: ${folder.name}"
+                                        } else {
+                                            "Folder: ${folder.name} (unavailable)"
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -677,57 +976,68 @@ private fun TransferPanel(
     onOpenDownload: (String) -> Unit,
 ) {
     var confirmCancel by remember { mutableStateOf(false) }
-    when (event) {
-        is TransferEvent.Progress -> {
-            val fraction = event.totalBytes?.takeIf { it > 0 }?.let { event.transferredBytes.toFloat() / it }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (fraction == null) LinearProgressIndicator() else LinearProgressIndicator({ fraction })
-                Text("${event.transferredBytes} / ${event.totalBytes ?: "?"} bytes")
-                TextButton(onClick = onCancel) { Text("Cancel") }
-            }
-        }
-        is TransferEvent.UploadStatus -> {
-            val operation = event.operation
-            val fraction =
-                if (operation.size > 0) operation.confirmedOffset.toFloat() / operation.size else 0f
-            Column(
-                Modifier.fillMaxWidth().testTag("upload-status"),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                LinearProgressIndicator({ fraction.coerceIn(0f, 1f) }, Modifier.fillMaxWidth())
-                Text(operation.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${operation.confirmedOffset} / ${operation.size} bytes")
-                Text(event.message ?: operation.state.uploadLabel())
-                if (event.canRetry) {
-                    Button(onClick = onRetry, modifier = Modifier.testTag("resume-upload")) {
-                        Text("Resume from confirmed position")
+    if (event != null) {
+        KuraCard(
+            modifier =
+                Modifier
+                    .testTag("transfer-status")
+                    .semantics { stateDescription = transferStateDescription(event) },
+        ) {
+            Text("Transfer status", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.titleMedium)
+            when (event) {
+                is TransferEvent.Progress -> {
+                    val fraction = event.totalBytes?.takeIf { it > 0 }?.let { event.transferredBytes.toFloat() / it }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Downloading")
+                        if (fraction == null) LinearProgressIndicator() else LinearProgressIndicator({ fraction })
+                        Text("${event.transferredBytes} / ${event.totalBytes ?: "?"} bytes")
+                        TextButton(onClick = onCancel) { Text("Cancel") }
                     }
                 }
-                if (operation.state in
-                    setOf(
-                        UploadState.PREPARING,
-                        UploadState.CREATING_SESSION,
-                        UploadState.UPLOADING,
-                        UploadState.PAUSED,
-                    )
-                ) {
-                    TextButton(onClick = { confirmCancel = true }, modifier = Modifier.testTag("cancel-upload")) {
-                        Text("Cancel upload")
+                is TransferEvent.UploadStatus -> {
+                    val operation = event.operation
+                    val fraction =
+                        if (operation.size > 0) operation.confirmedOffset.toFloat() / operation.size else 0f
+                    Column(
+                        Modifier.fillMaxWidth().testTag("upload-status"),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        LinearProgressIndicator({ fraction.coerceIn(0f, 1f) }, Modifier.fillMaxWidth())
+                        Text(operation.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${operation.confirmedOffset} / ${operation.size} bytes")
+                        Text(event.message ?: operation.state.uploadLabel())
+                        if (event.canRetry) {
+                            Button(onClick = onRetry, modifier = Modifier.testTag("resume-upload")) {
+                                Text("Resume from confirmed position")
+                            }
+                        }
+                        if (operation.state in
+                            setOf(
+                                UploadState.PREPARING,
+                                UploadState.CREATING_SESSION,
+                                UploadState.UPLOADING,
+                                UploadState.PAUSED,
+                            )
+                        ) {
+                            TextButton(onClick = { confirmCancel = true }, modifier = Modifier.testTag("cancel-upload")) {
+                                Text("Cancel upload")
+                            }
+                        }
                     }
+                }
+                is TransferEvent.Failed -> {
+                    Text("Transfer failed.", color = MaterialTheme.colorScheme.error)
+                    Text("The server result was not assumed successful. Retry to recheck or resume the same transfer.")
+                    if (event.partialFileRemoved == false) Text("The partial download could not be removed.")
+                    Button(onClick = onRetry) { Text("Retry transfer") }
+                }
+                is TransferEvent.UploadCompleted -> Text("Upload completed.")
+                is TransferEvent.DownloadCompleted -> {
+                    Text("Download completed.")
+                    Button(onClick = { onOpenDownload(event.destinationUri) }) { Text("Open") }
                 }
             }
         }
-        is TransferEvent.Failed -> {
-            Text("Transfer failed.", color = MaterialTheme.colorScheme.error)
-            if (event.partialFileRemoved == false) Text("The partial download could not be removed.")
-            Button(onClick = onRetry) { Text("Retry transfer") }
-        }
-        is TransferEvent.UploadCompleted -> Text("Upload completed.")
-        is TransferEvent.DownloadCompleted -> {
-            Text("Download completed.")
-            Button(onClick = { onOpenDownload(event.destinationUri) }) { Text("Open") }
-        }
-        null -> Unit
     }
     if (confirmCancel) {
         AlertDialog(
@@ -748,10 +1058,19 @@ private fun TransferPanel(
     }
 }
 
+private fun transferStateDescription(event: TransferEvent): String =
+    when (event) {
+        is TransferEvent.Progress -> "Download in progress"
+        is TransferEvent.UploadStatus -> event.operation.state.uploadLabel()
+        is TransferEvent.Failed -> "Transfer failed"
+        is TransferEvent.UploadCompleted -> "Upload completed"
+        is TransferEvent.DownloadCompleted -> "Download completed"
+    }
+
 private fun UploadState.uploadLabel() =
     when (this) {
-        UploadState.PREPARING -> "Preparing and checking the selected file"
-        UploadState.CREATING_SESSION -> "Creating resumable upload"
+        UploadState.PREPARING -> "Preparing and calculating the SHA-256 hash"
+        UploadState.CREATING_SESSION -> "Waiting for a resumable upload session"
         UploadState.UPLOADING -> "Uploading"
         UploadState.PAUSED -> "Upload paused; received bytes are safe on the server"
         UploadState.VERIFYING -> "Verifying the completed file"

@@ -29,16 +29,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -49,7 +56,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -80,6 +86,15 @@ import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.core.ui.AppDestination
 import com.kurastorage.core.ui.KuraStorageTheme
+import com.kurastorage.core.ui.KuraTheme
+import com.kurastorage.core.ui.accessibility.kuraHeading
+import com.kurastorage.core.ui.components.KuraCard
+import com.kurastorage.core.ui.components.KuraCardVariant
+import com.kurastorage.core.ui.components.KuraStatus
+import com.kurastorage.core.ui.components.KuraStatusBadge
+import com.kurastorage.core.ui.components.KuraStatusPanel
+import com.kurastorage.core.ui.icons.KuraFileType
+import com.kurastorage.core.ui.icons.KuraFileTypeIcon
 import com.kurastorage.feature.activity.ActivityScreen
 import com.kurastorage.feature.activity.ActivityViewModel
 import com.kurastorage.feature.auth.AuthScreen
@@ -521,6 +536,7 @@ private fun KuraStorageApp(
                     adminStorageViewModel = storageViewModel,
                     trashMode = false,
                     onOpenTrash = { navController.navigate(AppDestination.TRASH.route) },
+                    onSearch = { navController.navigate(AppDestination.SEARCH.route) },
                     onExit = { navController.popBackStack() },
                     onShare = { entry -> navController.navigate(settingsRoute("new", entry.id, entry.entryType, entry.name)) },
                     onOrganization = { entryId -> navController.navigate(organizationRoute(entryId)) },
@@ -1170,6 +1186,7 @@ private fun FileRoute(
     adminStorageViewModel: AdminStorageViewModel?,
     trashMode: Boolean,
     onOpenTrash: () -> Unit,
+    onSearch: () -> Unit = {},
     onExit: () -> Unit,
     onShare: (FileEntry) -> Unit,
     onOrganization: (String) -> Unit,
@@ -1273,10 +1290,11 @@ private fun FileRoute(
         onOpenText = { entry ->
             if (onOpenText(entry)) viewModel.dismissDetail()
         },
+        onSearch = onSearch,
         thumbnail = { entry, modifier ->
             if (media == null) {
                 Box(modifier, contentAlignment = Alignment.Center) {
-                    Text(if (entry.entryType == FileEntryType.FOLDER) "Folder" else "File")
+                    KuraFileTypeIcon(KuraFileType.from(entry.mimeType, entry.entryType == FileEntryType.FOLDER))
                 }
             } else {
                 FileThumbnail(entry, media.scopeId, media.imageLoader, modifier)
@@ -1304,6 +1322,10 @@ private fun BackupDestinationPicker(
     var entries by remember { mutableStateOf<List<FileEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showCreate by remember { mutableStateOf(false) }
+    var createName by remember { mutableStateOf("") }
+    var creating by remember { mutableStateOf(false) }
+    var createError by remember { mutableStateOf<String?>(null) }
     val stack = remember { ArrayDeque<FileEntry?>().apply { addLast(null) } }
     val scope = rememberCoroutineScope()
 
@@ -1337,52 +1359,150 @@ private fun BackupDestinationPicker(
         }
     }
     LaunchedEffect(Unit) { load(null) }
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Choose server folder", style = MaterialTheme.typography.headlineMedium)
-        Text(current?.name ?: "My files")
-        Text("Only a currently writable folder can be selected. Access is checked again when the rule is saved and each backup runs.")
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (loading) Text("Loading folders…")
-        LazyColumn(Modifier.weight(1f)) {
-            items(entries, key = { it.id }) { folder ->
-                OutlinedButton(
-                    onClick = {
-                        stack.addLast(folder)
-                        load(folder)
-                    },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 4.dp),
-                ) { Text(folder.name, maxLines = 2) }
-            }
-        }
-        if (current == null) {
-            Button(
-                onClick = {
-                    personalRootId?.let { onSelected(SelectedBackupDestination(it, "My files")) }
-                },
-                enabled = personalRootId != null && !loading,
-            ) { Text("Use My files") }
-        } else {
-            val folder = requireNotNull(current)
-            val writable = filePermissionCapabilities(folder.permission, folder.permissionSource).canCreate
-            Button(
-                onClick = { onSelected(SelectedBackupDestination(folder.id, folder.name)) },
-                enabled = writable && !loading,
-            ) { Text("Use this folder") }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = {
+    val writable =
+        current?.let { filePermissionCapabilities(it.permission, it.permissionSource).canCreate }
+            ?: (personalRootId != null)
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(
+            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(KuraTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = {
                     if (stack.size > 1) {
                         stack.removeLast()
                         load(stack.last())
                     } else {
                         onBack()
                     }
-                },
-                modifier = Modifier.heightIn(min = 48.dp),
-            ) { Text("Back") }
-            OutlinedButton(onClick = { load(current) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Refresh") }
+                }) { Text("Back") }
+                Text(
+                    "Choose server folder",
+                    modifier = Modifier.weight(1f).kuraHeading(),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                TextButton(onClick = { load(current) }, enabled = !loading && !creating) { Text("Refresh") }
+            }
+            Text(
+                stack.joinToString(" / ") { it?.name ?: "My files" },
+                style = MaterialTheme.typography.labelLarge,
+            )
+            KuraStatusPanel(
+                title = if (writable) "Writable destination" else "Read-only destination",
+                message =
+                    "Only a currently writable folder can be selected. Access is checked again when the rule is saved and each backup runs.",
+                status = if (writable) KuraStatus.SUCCESS else KuraStatus.WARNING,
+            )
+            error?.let {
+                KuraStatusPanel("Server folders could not be loaded", it, KuraStatus.ERROR) {
+                    TextButton(onClick = { load(current) }) { Text("Try again") }
+                }
+            }
+            if (loading) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text("Loading folders…")
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm)) {
+                OutlinedButton(
+                    onClick = {
+                        createName = ""
+                        createError = null
+                        showCreate = true
+                    },
+                    enabled = writable && !loading && !creating,
+                    modifier = Modifier.weight(1f),
+                ) { Text("New folder") }
+                Button(
+                    onClick = {
+                        if (current == null) {
+                            personalRootId?.let { onSelected(SelectedBackupDestination(it, "My files")) }
+                        } else {
+                            val folder = requireNotNull(current)
+                            onSelected(SelectedBackupDestination(folder.id, folder.name))
+                        }
+                    },
+                    enabled = writable && !loading && !creating,
+                    modifier = Modifier.weight(1f),
+                ) { Text(if (current == null) "Use My files" else "Use this folder") }
+            }
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs)) {
+                items(entries, key = { it.id }) { folder ->
+                    val canCreate = filePermissionCapabilities(folder.permission, folder.permissionSource).canCreate
+                    KuraCard(
+                        variant = if (canCreate) KuraCardVariant.DEFAULT else KuraCardVariant.WARNING,
+                        onClick = {
+                            stack.addLast(folder)
+                            load(folder)
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            KuraFileTypeIcon(KuraFileType.FOLDER)
+                            Column(Modifier.weight(1f)) {
+                                Text(folder.name, maxLines = 2, style = MaterialTheme.typography.titleMedium)
+                                Text("${folder.owner.displayName} • ${folder.permission} (${folder.permissionSource})")
+                            }
+                            KuraStatusBadge(
+                                if (canCreate) "Writable" else "Read only",
+                                if (canCreate) KuraStatus.SUCCESS else KuraStatus.WARNING,
+                            )
+                        }
+                    }
+                }
+            }
         }
+    }
+    if (showCreate) {
+        AlertDialog(
+            onDismissRequest = { if (!creating) showCreate = false },
+            title = { Text("Create server folder") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm)) {
+                    Text("Create inside ${current?.name ?: "My files"}.")
+                    OutlinedTextField(
+                        value = createName,
+                        onValueChange = {
+                            createName = it
+                            createError = null
+                        },
+                        label = { Text("Folder name") },
+                        enabled = !creating,
+                        singleLine = true,
+                    )
+                    createError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (creating) LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (creating || createName.isBlank()) return@Button
+                        val parentId = current?.id ?: personalRootId ?: return@Button
+                        creating = true
+                        scope.launch {
+                            runCatching { files.createFolder(parentId, createName) }
+                                .onSuccess {
+                                    showCreate = false
+                                    createName = ""
+                                    load(current)
+                                }.onFailure {
+                                    createError = "Folder could not be created. Check the name and current permission."
+                                }
+                            creating = false
+                        }
+                    },
+                    enabled = createName.isNotBlank() && !creating,
+                ) { Text(if (creating) "Creating…" else "Create") }
+            },
+            dismissButton = { TextButton(onClick = { showCreate = false }, enabled = !creating) { Text("Cancel") } },
+        )
     }
 }
 

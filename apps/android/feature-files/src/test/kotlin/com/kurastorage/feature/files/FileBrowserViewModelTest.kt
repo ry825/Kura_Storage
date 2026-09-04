@@ -36,6 +36,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.IOException
@@ -77,6 +78,27 @@ class FileBrowserViewModelTest {
             assertFalse(viewModel.state.value.loading)
             assertEquals(emptyList<FileEntry>(), viewModel.state.value.entries)
             assertNull(viewModel.state.value.error)
+        }
+
+    @Test
+    fun `folder navigation maintains a stable breadcrumb trail`() =
+        runTest(dispatcher) {
+            val viewModel = FileBrowserViewModel(FakeFiles(), FakeTransfers())
+            val album = folder("album", "root", "Family photos")
+
+            viewModel.open(album)
+            assertEquals(
+                listOf("My files", "Family photos"),
+                viewModel.state.value.breadcrumbs
+                    .map { it.label },
+            )
+
+            assertTrue(viewModel.back())
+            assertEquals(
+                listOf("My files"),
+                viewModel.state.value.breadcrumbs
+                    .map { it.label },
+            )
         }
 
     @Test

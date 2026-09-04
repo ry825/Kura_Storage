@@ -191,56 +191,56 @@
 
 ### 4.1 開始条件・File共通表示
 
-- [ ] PR4の開始条件を満たす。
-  - [ ] PR3が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`から短命Branchを作成し、`FileBrowserScreen`、各Dialog、Transfer、Admin storage、Thumbnail slot、Testを確認する。
-- [ ] File/Folderの共通表示を実装する。
-  - [ ] Thumbnail/File type Icon、名前、更新日時、Size/項目数、共有、権限、MISSING、overflowの表示を共通化する。
-  - [ ] List/Gridで情報量を切り替え、Thumbnailがない場合もレイアウトを安定させる。
-  - [ ] 1,000件でLazy描画、安定key、Thumbnailの元File非取得、Scroll中の不要な再composeを確認する。
+- [x] PR4の開始条件を満たす。
+  - [x] PR3が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`から短命Branchを作成し、`FileBrowserScreen`、各Dialog、Transfer、Admin storage、Thumbnail slot、Testを確認する。
+- [x] File/Folderの共通表示を実装する。
+  - [x] Thumbnail/File type Icon、名前、更新日時、Size/項目数、共有、権限、MISSING、overflowの表示を共通化する（項目数は現行API契約に存在しないため、Folderでは取得不能であることを明示する）。
+  - [x] List/Gridで情報量を切り替え、Thumbnailがない場合もレイアウトを安定させる。
+  - [x] 1,000件でLazy描画、安定key、Thumbnailの元File非取得、Scroll中の不要な再composeを確認する。
 
 ### 4.2 File一覧・詳細（`010`、`021`〜`023`）
 
-- [ ] `010-my-files.png`を基準にFile browserを再構築する。
-  - [ ] Top bar、現在位置/Breadcrumb、Folder section、File section、Search、overflow、Upload FABを配置する。
-  - [ ] Folder作成、Upload、Open、Detail、Rename、Move、Share、Organization、Trashを権限に応じて表示する。
-  - [ ] Root/下位Folder、Paging、Refresh、Loading、Empty、Error、Recovery requiredを明確に表示する。
-- [ ] `021-unsupported-file.png`を基準に非対応File表示を実装する。
-  - [ ] File type、MIME、Size、非対応理由、Download/外部操作を正式仕様の許可範囲で表示する。
-  - [ ] Unknown MIME/statusで危険操作を有効にしない。
-- [ ] `022-file-details.png`と`023-folder-details.png`を基準にDetailを実装する。
-  - [ ] Header card、metadata card、action cardに分け、名前、MIME/type、Size、日時、Owner、共有元、権限、保存場所、状態を表示する。
-  - [ ] FileのOpen/DownloadとFile/FolderのMove/Rename/Share/Trashを対象と権限に応じて表示する。
-  - [ ] 実行不可理由を不明にしたまま無効化せず、必要な説明を表示する。
+- [x] `010-my-files.png`を基準にFile browserを再構築する。
+  - [x] Top bar、現在位置/Breadcrumb、Folder section、File section、Search、overflow、Upload FABを配置する。
+  - [x] Folder作成、Upload、Open、Detail、Rename、Move、Share、Organization、Trashを権限に応じて表示する。
+  - [x] Root/下位Folder、Paging、Refresh、Loading、Empty、Error、Recovery requiredを明確に表示する。
+- [x] `021-unsupported-file.png`を基準に非対応File表示を実装する。
+  - [x] File type、MIME、Size、非対応理由、Download/外部操作を正式仕様の許可範囲で表示する。
+  - [x] Unknown MIME/statusで危険操作を有効にしない。
+- [x] `022-file-details.png`と`023-folder-details.png`を基準にDetailを実装する。
+  - [x] Header card、metadata card、action cardに分け、名前、MIME/type、Size、日時、Owner、共有元、権限、保存場所、状態を表示する。
+  - [x] FileのOpen/DownloadとFile/FolderのMove/Rename/Share/Trashを対象と権限に応じて表示する。
+  - [x] 実行不可理由を不明にしたまま無効化せず、必要な説明を表示する。
 
 ### 4.3 Destination・Transfer・Trash・Missing（`026`〜`029`）
 
-- [ ] `026-server-folder-selection.png`を基準にServer Folder pickerを再構築する。
-  - [ ] Breadcrumb、作成可能Folder、現在の選択、選択確定、Loading/Errorを表示する。
-  - [ ] 所有/直接共有/継承共有の現在権限を使い、作成権限のないFolderを確定できない。
-- [ ] `027-transfer-status.png`を基準にTransfer状態を再構築する。
-  - [ ] 待機、Hash計算、Upload、Download、一時停止、再開、完了、失敗、取消しの状態とProgressを表示する。
-  - [ ] 通信結果不明時は成功を合成せず、同一Session/Idempotency keyの再取得・再開へ案内する。
-- [ ] `028-trash.png`を基準にTrashを再構築する。
-  - [ ] Trash日時、Server算出の保持期限、Restore、完全削除、管理者容量警告を表示する。
-  - [ ] File/Folderの完全削除で対象と不可逆性を表示し、二重送信と通信結果不明を安全に処理する。
-- [ ] `029-missing-files.png`を基準にMissing項目を再構築する。
-  - [ ] `MISSING_CANDIDATE`を「Fileを確認中」、`MISSING`を「Fileが見つかりません」、Unknownを更新必要として表示する。
-  - [ ] File名、検出日時、最終確認日時を表示し、物理Pathを表示しない。
-  - [ ] 再確認の二重送信を防ぎ、確定Missingだけに対象・削除範囲を明記した索引削除を提供する。
+- [x] `026-server-folder-selection.png`を基準にServer Folder pickerを再構築する。
+  - [x] Breadcrumb、作成可能Folder、現在の選択、選択確定、Loading/Errorを表示する。
+  - [x] 所有/直接共有/継承共有の現在権限を使い、作成権限のないFolderを確定できない。
+- [x] `027-transfer-status.png`を基準にTransfer状態を再構築する。
+  - [x] 待機、Hash計算、Upload、Download、一時停止、再開、完了、失敗、取消しの状態とProgressを表示する。
+  - [x] 通信結果不明時は成功を合成せず、同一Session/Idempotency keyの再取得・再開へ案内する。
+- [x] `028-trash.png`を基準にTrashを再構築する。
+  - [x] Trash日時、Server算出の保持期限、Restore、完全削除、管理者容量警告を表示する。
+  - [x] File/Folderの完全削除で対象と不可逆性を表示し、二重送信と通信結果不明を安全に処理する。
+- [x] `029-missing-files.png`を基準にMissing項目を再構築する。
+  - [x] `MISSING_CANDIDATE`を「Fileを確認中」、`MISSING`を「Fileが見つかりません」、Unknownを更新必要として表示する。
+  - [x] File名、検出日時、最終確認日時を表示し、物理Pathを表示しない。
+  - [x] 再確認の二重送信を防ぎ、確定Missingだけに対象・削除範囲を明記した索引削除を提供する。
 
 ### 4.4 PR4テスト・検証・完了
 
-- [ ] File画面群のJVM/Compose testを更新する。
-  - [ ] `010`、`021`〜`023`、`026`〜`029`の主要状態、権限、操作、Dialog、Error、Semanticsを検証する。
-  - [ ] List/Grid、Thumbnail fallback、長いFile名、360dp、200%文字、横画面を検証する。
-  - [ ] Member/Owner/Manager/Viewer/Unknownの操作可否、完全削除、Missing索引削除を回帰テストする。
-- [ ] PR4の自動・実機検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`、`:feature-files:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
-  - [ ] Android 13実機でList/Grid、Folder遷移、Detail、Upload/Download、Rename/Move、Trash/Restore/Purge、Missingを確認する。
-  - [ ] `docs/testing/YYYYMMDD-android-ui-pr4-files.md`に対象MockupのCapture、操作、意図的差分、大量一覧の結果を記録する。
-- [ ] PR4を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR4完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] File画面群のJVM/Compose testを更新する。
+  - [x] `010`、`021`〜`023`、`026`〜`029`の主要状態、権限、操作、Dialog、Error、Semanticsを検証する。
+  - [x] List/Grid、Thumbnail fallback、長いFile名、360dp、200%文字、横画面を検証する。
+  - [x] Member/Owner/Manager/Viewer/Unknownの操作可否、完全削除、Missing索引削除を回帰テストする。
+- [x] PR4の自動・実機相当検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`、`:feature-files:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
+  - [x] Android 13実機相当のAPI 33 EmulatorでList/Grid、Folder遷移、Detail、Upload/Download、Rename/Move、Trash/Restore/Purge、Missingを確認する（物理端末が未接続のため決定的Compose fixtureで代替し、物理端末の最終確認はPR10で実施する）。
+  - [x] `docs/testing/20260904-android-ui-pr4-files.md`に対象MockupのCapture、操作、意図的差分、大量一覧の結果を記録する。
+- [x] PR4を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR4完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -647,7 +647,28 @@
 
 ### PR4: File browser・Detail・Transfer・Trash・Missing
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#52 Rebuild Android file management screens](https://github.com/ry825/Kura_Storage/pull/52)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Lint、ktlint、Detekt、Coverage、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。
+  - Android 13 / API 33 Emulatorで`:feature-files:connectedDebugAndroidTest`成功（23/23）、`:app:connectedDebugAndroidTest`成功（8/8）。List/Grid、権限別操作、Detail、非対応File、Move、Transfer、Trash/Purge、Missing、360dp、200%文字、Dark、横画面、1,000件Lazy表示の決定的fixtureを確認した。
+  - `git diff --check`成功。Self-reviewでBreadcrumb、Search境界、direct/inherited権限、Unknown状態のfail-closed、索引削除範囲、Dialog scroll、Thumbnail fallbackを確認した。
+  - GitHub必須CI run `33835560354`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - 物理Android 13端末が未接続だったため、同一API levelのAPI 33 Emulatorと決定的Compose fixtureで代替した。物理端末での最終確認は計画済みのPR10へ引き継ぐ。
+  - 現行`FileEntry`/一覧APIにFolder項目数がないため、値を合成せず「取得不能」と明示した。Searchは読み込み済みPageだけを絞り込まず、既存のServer-backed Search Routeへ接続した。
+  - 320 x 640 dpでの初回fixtureによりDetail上部の優先情報が画面外になる問題を検出し、状態/MIME/非対応理由を上位へ移動してDetail本文をscroll可能にした後、23件を再実行した。
+- 追加タスクと理由:
+  - Browserの階層位置を正確に維持する`BrowserBreadcrumb` stateとJVM回帰テストを追加した。Mockupの現在位置要件を、下位Folderでも安定して満たすためである。
+  - Backup destination pickerにも同じowner・permission source・writable guard・Folder作成表示を適用した。`026`のServer Folder pickerがMoveとBackupで異なる安全性を持たないようにするためである。
+- 技術的に不要となったタスクと代替実装:
+  - 非対応Fileの自動外部Openは安全なURI/Intent契約がないため追加せず、現在権限で許可されたDownloadを安全な代替操作とした。
+  - Folder項目数のServer/API拡張はPR4のUI範囲外かつ現行契約にないため追加せず、取得不能表示で代替した。
+- 後続への引継ぎ:
+  - PR5では本PRのEntry metadata/type fallback/permission表示をFeature間直接依存なしでRecent、Shared、Category、Search、Favorites、Activityへ展開する。
+  - PR6/PR7ではDetailから既存のMedia/Text Routeへ渡す境界と、非対応/Unknownでのfail-closedを維持する。
+  - PR10でAndroid 13物理端末、TalkBack、回転、200%文字、実Serverを使うUpload/Download/Move/Trash/Missing E2Eを最終確認する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成とCIは成功している。
 
 ### PR5: Recent・Sharing・Category・Search・Organization・Activity
 
