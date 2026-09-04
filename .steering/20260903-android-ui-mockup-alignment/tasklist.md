@@ -569,8 +569,8 @@
 - [x] 正式文書を最終実装へ整合する。
   - [x] `product-requirements`、`functional-design`、`architecture-design`、`repository-structure`、`development-guidelines`に矛盾、古いPath、実装と異なる契約が残っていない。
   - [x] `docs/ui/`の参考画像自体をProduction assetとして複製していない。
-- [ ] PR10を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR10完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] PR10を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR10完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 - [ ] PR10 Merge後に全体完了処理を行う。
   - [ ] PR1〜PR10がすべて`main`へMergeされている。
@@ -789,7 +789,27 @@
 
 ### PR10: 全体Adaptive・Accessibility・実機E2E
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#58 Complete Android UI adaptive and physical-device validation](https://github.com/ry825/Kura_Storage/pull/58)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Coverage、ktlint、Detekt、Android Lint、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。変更後sourceの全module `connectedDebugAndroidTest --max-workers=1`をAndroid 13 / API 33物理端末で再実行し、879 tasksを10分03秒で完了した。app 8、core-data 10、core-database 11、core-ui 5、activity 2、auth 6、backup 11、connection 5、files 23、media 14、search 11、settings 10、sharing 6、text 8がすべて成功した。
+  - `./scripts/ci/verify-server.sh`成功（Domain 135、Application 353、Integration 229、失敗0）。`verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`、`git diff --check`も成功した。
+  - 実Server `0.13.0-pr10-rc1`とAndroid 13物理端末でLOCAL_DIRECT、ZeroTier REMOTE_SECURE、offline/復旧、Login/Device登録、Home、5項目Navigation、Files、Shared、Search、Text、Upload、Settings、Backup、Quality、Admin Cache manual cleanupを確認した。縦横、360dp、cutout、System font 160%、TalkBack、Light/Dark、background/foregroundを確認し、正確な200%文字は同じ物理端末上の決定的Compose fixtureで補完した。
+  - 実機性能は131 framesでmedian/p90/p95/p99 15/23/32/65 ms、janky 9.16%、PSS 107,847 KiB、RSS 226,332 KiBだった。現行PIDのANR、Crash、StrictMode、Fatal、主要network例外は0件だった。
+  - GitHub必須CI run `33868812903`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - 実機Dark themeでCache titleと共通Section headingの低コントラストを検出したため、`onBackground`を明示し、Dark theme pixel regression testを追加して実機とfocused/full connected suiteで再確認した。
+  - 対象物理端末のSystem font設定は160%が上限だったため、160%をSystem UIで確認し、要求する200%は同じAPI 33物理端末上で`fontScale = 2.0`の決定的Compose fixtureを実行した。
+  - Formal docs 5文書は現行実装と整合しており、VPNの記述は将来候補またはLegacy mockup filenameの説明だけだった。Cache契約、Android module/pathにも差分がないため正式文書変更は不要だった。
+- 追加タスクと理由:
+  - Cache titleと共通Section headingのDark theme contrast修正、およびpixel回帰testを追加した。最終物理端末確認で発見した可読性問題を同一PR内で解消するためである。
+  - 36画面の最終追跡表、11枚の物理端末Capture、frame/memory/log実測を`docs/testing/20260904-android-ui-pr10-final-e2e.md`へ追加した。PR1〜PR9の決定的証跡と最終実機結果を一箇所から追跡可能にするためである。
+- 技術的に不要となったタスク、理由、代替実装:
+  - 正式文書の内容変更は監査で矛盾がなかったため不要だった。変更を作らず、監査対象と結果をPR10記録へ明記することで代替した。
+  - 物理端末System UIでの200%指定はOEM上限160%のため実行不能だった。160%の実機確認と、同一端末での200% Compose fixtureに置き換えた。
+- 後続への引継ぎ:
+  - PR #58を`main`へMergeし、必須CI成功を確認した後にのみsteeringモード3-Bを使用する。PR1〜PR10のMergeとtasklist全体の未完了項目0件を確認して全体振り返りを記録する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成と必須CIは成功している。
 
 ---
 
