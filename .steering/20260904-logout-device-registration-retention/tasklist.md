@@ -157,11 +157,11 @@
   - [x] 変更をCommitし、作業BranchをRemoteへPushする。
   - [x] 目的、対象タスク、変更内容、Test結果、影響・未実施事項を英語で記載したPull Requestを`main`向けに作成する。
   - [x] 必須CIが成功し、Pull RequestをMergeせずに停止する。
-- [ ] steeringスキルのモード3-AでPR1完了記録を本ファイルへ追加する。
+- [x] steeringスキルのモード3-AでPR1完了記録を本ファイルへ追加する。
   - [x] 完了日、Pull Request番号/URL、実施した自動・実機確認、計画との差分、追加タスク、不要化タスク、引継ぎ事項を記録する。
   - [x] 該当しない項目にも「なし」と記載する。
-  - [ ] 完了記録をCommit・Pushし、作成済みPull Requestへ反映されたことを確認する。
-- [ ] 全タスク完了後にsteeringスキルのモード3-Bで全体振り返りを記録する。
+  - [x] 完了記録をCommit・Pushし、作成済みPull Requestへ反映されたことを確認する。
+- [x] 全タスク完了後にsteeringスキルのモード3-Bで全体振り返りを記録する。
 
 ---
 
@@ -182,4 +182,34 @@
 
 ## 全体振り返り
 
-全タスクとPR1完了記録が完了した後、steeringスキルのモード3-Bに従ってここへ記録する。
+### 実装完了日
+
+2026-09-05
+
+### 目標の達成状況
+
+通常Logout後もDevice登録を保持し、次回起動で再登録ではなくPassword入力による再Loginを求める目標を達成した。Password、Token、Role、User IDなどのSession情報はLogout時に破棄し、Device失効時には再登録Flowへ戻る境界も自動Testと実機E2Eで確認した。
+
+### 計画と実績の差分
+
+Android側のCredential保存、Repository、起動状態遷移、UI、Test、正式文書を1つのPull Requestで更新する計画どおり完了した。Server Production code、DB Migration、新規依存Libraryの変更はない。追加タスクと技術的に不要化したタスクはない。
+
+### 主な設計判断
+
+Device IDとUsernameを長期的なDevice登録メタデータ、User ID・Refresh Token有効期限・Roleを短期的なSessionメタデータとして分離した。通常Logoutは後者だけを破棄し、ServerがDevice失効を確定した場合と登録メタデータが不正な場合に限り両方を破棄することで、利便性と失効処理を両立した。
+
+### 検証と完了判定
+
+ローカルのAndroid・Server・Security検証、Android実機接続Test、実Serverを使った3回のLogout・再起動・再Login、Device失効シナリオ、GitHub Actionsの必須CIをすべて成功させた。E2E用に作成したUserと登録データはDB、Filesystem、Android端末から削除し、残存数0を確認した。
+
+### 技術的な学び
+
+Device登録とLogin Sessionを1つのCredentialとして一括消去すると、LogoutとDevice失効の意味が混同する。保存Modelと破棄APIを独立させ、起動時に「未登録」「登録済み・未Login」「Login済み」を別状態として復元することで、例外経路を含む動作が明確になる。
+
+### プロセス上の改善点
+
+実機E2Eでは、UI表示だけでなく各操作前後のDevice件数、Device同一性、Refresh Session数をServer側で照合したことで、再登録が隠れて発生していないことを判定できた。今後の認証E2Eでも、Client状態とServer状態を対にした確認を標準とする。
+
+### 残存事項
+
+PR #59のReviewとMergeは後続作業とし、本作業ではMergeしない。旧版ですでにLogout済みの端末に限り、消去済みのDevice登録メタデータは復元できないため、初回だけ再登録が必要となる。その他の未完了実装・検証タスクはなし。
