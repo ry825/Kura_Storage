@@ -354,8 +354,8 @@
   - [x] `./scripts/ci/verify-android.sh`、`:feature-media:connectedDebugAndroidTest`、`:core-data:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
   - [x] Android 13/API 33 EmulatorでPhoto/PDF/Video/Audio、フルスクリーン、200%文字、回転/復帰状態、通信断を決定的fixtureで確認し、既存のAndroid 13物理端末LOCAL_DIRECT/REMOTE_SECUREのMemory/Frame/Fatal event実測を再確認する（物理端末未接続のため、変更後の最終実機確認はPR10で実施する）。
   - [x] `docs/testing/20260904-android-ui-pr6-media.md`に`016`〜`019`のCapture、操作、資源実測、意図的差分を記録する。
-- [ ] PR6を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR6完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] PR6を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR6完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -698,7 +698,25 @@
 
 ### PR6: Photo・Video・Audio・PDF UI
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#54 Align Android media viewer interfaces](https://github.com/ry825/Kura_Storage/pull/54)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Lint、ktlint、Detekt、Coverage、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。
+  - Android 13 / API 33 Emulatorで`:feature-media:connectedDebugAndroidTest`成功（14/14）、`:core-data:connectedDebugAndroidTest`成功（10/10）、`:app:connectedDebugAndroidTest`成功（8/8）。320 x 640、200%文字、Dark、フルスクリーン、Photo/PDFの品質・転送確認、Video/Audioの再生操作とError表示を決定的fixtureで確認した。
+  - 既存のAndroid 13物理端末LOCAL_DIRECT/REMOTE_SECURE記録でPSS 117,912 KiB、RSS 259,820 KiB、343 frames、janky 55（16.03%）、median/p90/p95/p99 13/38/53/125 ms、Fatal/ANRなしを再確認した。
+  - `git diff --check`成功。Self-reviewでSession/Route lifecycle、品質変更時の再生位置、Original明示確認、PDF temporary file/Lease/cleanup、非対応Codecのfail-closedを確認した。
+  - GitHub必須CI run `33841801468`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - 物理Android 13端末が未接続のため、変更後の表示・操作は同一API levelのEmulatorで確認し、資源実測は同じController/Data pathを使用した承認済みの物理端末記録を再確認した。変更後の物理端末・TalkBack最終確認はPR10へ引き継ぐ。
+  - Audio参考UIの5秒戻しではなく、上位の正式仕様に従い3秒/10秒移動を維持した。VideoのLow/Medium/Originalは解像度を合成せず、Server契約の品質名とサイズを表示した。
+- 追加タスクと理由:
+  - Photoの現在位置/総数、明示的なZoom in/out操作、各Viewerの型付き状態Panel、VideoのCompact・200%文字・Dark・フルスクリーンfixtureを追加した。参考UIの位置情報とAccessibility/状態判別の完了条件を決定的に満たすためである。
+- 技術的に不要となったタスクと代替実装:
+  - 新規API、依存、Controller/Data構成、WorkManager、装飾Assetは不要だった。既存の認証済みMedia source、変換Job、Player lifecycle、PDF temporary-file管理を維持し、Compose UIと状態mappingの更新で代替した。
+- 後続への引継ぎ:
+  - PR7ではMedia routeと同じSession/Back/Detail境界を維持し、Text editor/historyの未保存・競合・復元状態を実装する。
+  - PR10でAndroid 13物理端末のPhoto/PDF/Video/Audio、回転、background/foreground、通信断/再接続、資源、TalkBack、200%文字を最終確認する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成とCIは成功している。
 
 ### PR7: Text editor・Version history UI
 
