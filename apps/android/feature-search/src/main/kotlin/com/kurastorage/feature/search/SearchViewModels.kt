@@ -193,6 +193,8 @@ class RecentFilesViewModel(
     private val mutableState = MutableStateFlow(RecentFilesUiState())
     val state: StateFlow<RecentFilesUiState> = mutableState.asStateFlow()
     private val pager = RecentFilePager(repository)
+    private var requestJob: Job? = null
+    private var generation = 0L
 
     init {
         refresh(initial = true)
@@ -200,22 +202,30 @@ class RecentFilesViewModel(
 
     fun refresh(initial: Boolean = false) {
         if (mutableState.value.loading || mutableState.value.refreshing || mutableState.value.loadingMore) return
+        generation++
+        val activeGeneration = generation
+        requestJob?.cancel()
         mutableState.update { it.copy(loading = initial, refreshing = !initial, error = null) }
-        viewModelScope.launch {
-            runCatching { pager.refresh() }
-                .onSuccess { page ->
-                    mutableState.update {
-                        it.copy(
-                            items = page.items,
-                            loading = false,
-                            refreshing = false,
-                            canLoadMore = page.hasNextPage,
-                        )
+        requestJob =
+            viewModelScope.launch {
+                runCatching { pager.refresh() }
+                    .onSuccess { page ->
+                        if (generation == activeGeneration) {
+                            mutableState.update {
+                                it.copy(
+                                    items = page.items,
+                                    loading = false,
+                                    refreshing = false,
+                                    canLoadMore = page.hasNextPage,
+                                )
+                            }
+                        }
+                    }.onFailure { failure ->
+                        if (generation == activeGeneration && failure !is kotlinx.coroutines.CancellationException) {
+                            mutableState.update { it.copy(loading = false, refreshing = false, error = failure.toUiError()) }
+                        }
                     }
-                }.onFailure { failure ->
-                    mutableState.update { it.copy(loading = false, refreshing = false, error = failure.toUiError()) }
-                }
-        }
+            }
     }
 
     fun loadMore() {
@@ -228,16 +238,22 @@ class RecentFilesViewModel(
             return
         }
         mutableState.update { it.copy(loadingMore = true, error = null) }
-        viewModelScope.launch {
-            runCatching { pager.loadNext() }
-                .onSuccess { page ->
-                    mutableState.update {
-                        it.copy(items = page.items, loadingMore = false, canLoadMore = page.hasNextPage)
+        val activeGeneration = generation
+        requestJob =
+            viewModelScope.launch {
+                runCatching { pager.loadNext() }
+                    .onSuccess { page ->
+                        if (generation == activeGeneration) {
+                            mutableState.update {
+                                it.copy(items = page.items, loadingMore = false, canLoadMore = page.hasNextPage)
+                            }
+                        }
+                    }.onFailure { failure ->
+                        if (generation == activeGeneration && failure !is kotlinx.coroutines.CancellationException) {
+                            mutableState.update { it.copy(loadingMore = false, error = failure.toUiError()) }
+                        }
                     }
-                }.onFailure { failure ->
-                    mutableState.update { it.copy(loadingMore = false, error = failure.toUiError()) }
-                }
-        }
+            }
     }
 
     fun open(

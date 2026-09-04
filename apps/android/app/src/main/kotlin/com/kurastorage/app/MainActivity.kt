@@ -674,6 +674,14 @@ private fun KuraStorageApp(
                     shareOptions = shareOptions,
                     tagOptions = tagOptions,
                     onManageTags = { navController.navigate(AppDestination.TAGS.route) },
+                    categoryMode = requestedCategory,
+                    onClear = {
+                        searchViewModel.updateInput(
+                            com.kurastorage.core.model
+                                .SearchInput(),
+                        )
+                    },
+                    onFavorites = { navController.navigate(AppDestination.FAVORITES.route) },
                 )
             }
             composable(AppDestination.RECENT_FILES.route) {

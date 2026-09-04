@@ -9,11 +9,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
@@ -32,6 +34,7 @@ import com.kurastorage.core.model.SearchInput
 import com.kurastorage.core.model.SearchResultItem
 import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.TagItem
+import com.kurastorage.core.ui.KuraStorageTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -120,12 +123,14 @@ class SearchScreensTest {
                 )
             }
         }
-        compose.onNodeWithText("Unavailable: MISSING").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("search-result-$ID"))
+        compose.onNodeWithText("File missing", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("search-result-$ID").performClick()
         compose.runOnIdle { assertFalse(searchOpened) }
 
         compose.runOnIdle { showRecent.value = true }
-        compose.onNodeWithText("Unavailable: MISSING").assertIsDisplayed()
+        compose.onNodeWithTag("recent-results").performScrollToNode(hasTestTag("recent-result-$ID"))
+        compose.onNodeWithText("File missing", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithText("report.pdf").performClick()
         compose.runOnIdle { assertFalse(recentOpened) }
     }
@@ -137,21 +142,23 @@ class SearchScreensTest {
         compose.setContent {
             val density = LocalDensity.current.density
             CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 2f)) {
-                Box(
-                    Modifier.requiredSize(
-                        width = if (landscape.value) 360.dp else 280.dp,
-                        height = if (landscape.value) 280.dp else 360.dp,
-                    ),
-                ) {
-                    SearchScreen(
-                        state.value,
-                        {},
-                        { state.value = state.value.copy(input = it) },
-                        {},
-                        {},
-                        {},
-                        {},
-                    )
+                KuraStorageTheme(darkTheme = true) {
+                    Box(
+                        Modifier.requiredSize(
+                            width = if (landscape.value) 360.dp else 280.dp,
+                            height = if (landscape.value) 280.dp else 360.dp,
+                        ),
+                    ) {
+                        SearchScreen(
+                            state.value,
+                            {},
+                            { state.value = state.value.copy(input = it) },
+                            {},
+                            {},
+                            {},
+                            {},
+                        )
+                    }
                 }
             }
         }
@@ -169,6 +176,8 @@ class SearchScreensTest {
         compose.runOnIdle { landscape.value = true }
         compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("updated-from"))
         compose.onNodeWithTag("updated-from").assertIsDisplayed()
+        val capture = compose.onRoot().captureToImage()
+        assertTrue(capture.width > 0 && capture.height > 0)
     }
 
     @Test
@@ -212,13 +221,46 @@ class SearchScreensTest {
         compose.runOnIdle {
             search.value = SearchUiState(hasSearched = true, error = SearchUiError("Network error", ErrorCategory.CONNECTION))
         }
-        compose.onNodeWithText("Network error").assertIsDisplayed()
+        compose.onNodeWithText("Network error").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { search.value = SearchUiState() }
         compose.onNodeWithTag("search-query").performTextInput("\u65e5本 %_\\")
         compose.runOnIdle { assertEquals("\u65e5本 %_\\", search.value.input.query) }
 
         compose.runOnIdle { showRecent.value = true }
         compose.onNodeWithText("No recently opened files.").assertIsDisplayed()
+    }
+
+    @Test
+    fun categoryModeUsesSearchContractAndClearAndFavoritesRemainReachable() {
+        val state = mutableStateOf(SearchUiState(input = SearchInput(fileCategory = SearchFileCategory.IMAGE)))
+        var cleared = false
+        var favorites = false
+        compose.setContent {
+            SearchScreen(
+                state = state.value,
+                onBack = {},
+                onInput = { state.value = state.value.copy(input = it) },
+                onSearch = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onOpen = {},
+                categoryMode = SearchFileCategory.IMAGE,
+                onClear = { cleared = true },
+                onFavorites = { favorites = true },
+            )
+        }
+
+        compose.onNodeWithText("Photo files").assertIsDisplayed()
+        compose.onNodeWithText("VIDEO").performScrollTo().performClick()
+        compose.onNodeWithTag("search-results").performScrollToNode(hasText("Clear"))
+        compose.onNodeWithText("Clear").performClick()
+        compose.onNodeWithTag("search-results").performScrollToNode(hasText("Browse favorites"))
+        compose.onNodeWithText("Browse favorites").performClick()
+        compose.runOnIdle {
+            assertEquals(SearchFileCategory.VIDEO, state.value.input.fileCategory)
+            assertTrue(cleared)
+            assertTrue(favorites)
+        }
     }
 
     private companion object {

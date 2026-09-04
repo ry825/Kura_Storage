@@ -248,62 +248,62 @@
 
 ### 5.1 開始条件・共通Entry連携
 
-- [ ] PR5の開始条件を満たす。
-  - [ ] PR4が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`から短命Branchを作成し、Sharing/Search/Organization/ActivityのScreen、UiState、Navigation callback、Testを確認する。
-- [ ] PR4のEntry表示パターンをSharing/Search/Recent/Favorites/Activityで再利用する。
-  - [ ] Feature間の直接依存を追加せず、IDとApp callbackだけでFile/Folderへ遷移する。
-  - [ ] Owner、Permission/Source、共有元、更新日時、MissingをSearch共通metadataから表示する。
+- [x] PR5の開始条件を満たす。
+  - [x] PR4が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`から短命Branchを作成し、Sharing/Search/Organization/ActivityのScreen、UiState、Navigation callback、Testを確認する。
+- [x] PR4のEntry表示パターンをSharing/Search/Recent/Favorites/Activityで再利用する。
+  - [x] Feature間の直接依存を追加せず、IDとApp callbackだけでFile/Folderへ遷移する。
+  - [x] Owner、Permission/Source、共有元、更新日時、MissingをSearch共通metadataから表示する。
 
 ### 5.2 Recent・Shared・Category・Search（`011`〜`014`）
 
-- [ ] `011-recent-files.png`を基準にRecentを再構築する。
-  - [ ] 開いた時刻ごとの階層、Thumbnail/type、metadata、Paging、Refresh、Empty/Errorを表示する。
-  - [ ] 古いPage/Session応答で現在一覧を上書きしない既存挙動を保つ。
-- [ ] `012-shared-files.png`を基準にShared一覧を再構築する。
-  - [ ] 所有/受信Filter、File/Folder、Owner、Permission、継承元、Paging、Empty/Errorを表示する。
-  - [ ] 開く時に最新詳細と権限を再取得するNavigation境界を保つ。
-- [ ] `013-category-browser.png`を基準にCategory browserを実装する。
-  - [ ] 既存Search契約のMIME categoryを再利用し、Photo、Video、Audio、Documentを一覧化する。
-  - [ ] 新しいServer APIやFeature間直接依存を作らず、HomeのCategory選択から対応Filterで開く。
-  - [ ] Paging、Refresh、Empty/Error、Unknown MIMEを表示する。
-- [ ] `014-search.png`を基準にSearchを再構築する。
-  - [ ] Query、type、owner、date、size、status、Favorite、TagのFilterと、検索/クリア操作を階層化する。
-  - [ ] 不正Inputを対象Fieldの近くに表示し、結果、Paging、Refresh、Loading、Empty、Errorと混同しない。
-  - [ ] 200%文字と360dp時にFilterと結果の主操作へ到達できる。
+- [x] `011-recent-files.png`を基準にRecentを再構築する。
+  - [x] 開いた時刻ごとの階層、Thumbnail/type、metadata、Paging、Refresh、Empty/Errorを表示する。
+  - [x] 古いPage/Session応答で現在一覧を上書きしない既存挙動を保つ。
+- [x] `012-shared-files.png`を基準にShared一覧を再構築する。
+  - [x] 所有/受信Filter、File/Folder、Owner、Permission、継承元、Paging、Empty/Errorを表示する。
+  - [x] 開く時に最新詳細と権限を再取得するNavigation境界を保つ。
+- [x] `013-category-browser.png`を基準にCategory browserを実装する。
+  - [x] 既存Search契約のMIME categoryを再利用し、Photo、Video、Audio、Documentを一覧化する。
+  - [x] 新しいServer APIやFeature間直接依存を作らず、HomeのCategory選択から対応Filterで開く。
+  - [x] Paging、Refresh、Empty/Error、Unknown MIMEを表示する。
+- [x] `014-search.png`を基準にSearchを再構築する。
+  - [x] Query、type、owner、date、size、status、TagのFilterと検索/クリア操作を階層化する。Favoriteは正式Search APIにfilterがないため、server-backed Favorites導線で代替する。
+  - [x] 不正Inputを対象Fieldの近くに表示し、結果、Paging、Refresh、Loading、Empty、Errorと混同しない。
+  - [x] 200%文字と360dp時にFilterと結果の主操作へ到達できる。
 
 ### 5.3 Sharing設定（`024`〜`025`）
 
-- [ ] `024-sharing-settings.png`を基準にSharing settingsを再構築する。
-  - [ ] 対象Entry、Owner、適用範囲、Member、Permission、継承、追加、変更、解除を表示する。
-  - [ ] Folder配下適用、File単体適用、共有全体解除の影響範囲をConfirmation dialogに表示する。
-  - [ ] Owner/Managerのみ変更可能とし、処理中の二重送信を防ぐ。
-- [ ] `025-share-permissions.png`を基準にMember/Permission選択を再構築する。
-  - [ ] 共有候補検索、選択済みMember、Permissionの説明、現在値、保存中/Errorを表示する。
-  - [ ] File共有に`CONTRIBUTOR`を表示せず、Unknown Permissionで保存できない。
+- [x] `024-sharing-settings.png`を基準にSharing settingsを再構築する。
+  - [x] 対象Entry、Owner、適用範囲、Member、Permission、継承、追加、変更、解除を表示する。
+  - [x] Folder配下適用、File単体適用、共有全体解除の影響範囲をConfirmation dialogに表示する。
+  - [x] Owner/Managerのみ変更可能とし、処理中の二重送信を防ぐ。
+- [x] `025-share-permissions.png`を基準にMember/Permission選択を再構築する。
+  - [x] 共有候補検索、選択済みMember、Permissionの説明、現在値、保存中/Errorを表示する。
+  - [x] File共有に`CONTRIBUTOR`を表示せず、Unknown Permissionで保存できない。
 
 ### 5.4 専用Mockupのない追加Feature
 
-- [ ] Favorites、Tags、Entry organizationをDesign systemに統一する。
-  - [ ] FavoritesはSearch/Recentと同じEntry row、Paging、Refresh、Empty/Errorを使う。
-  - [ ] TagsはSettings/Formパターンを使い、作成、Rename、Delete、validation、上限を表示する。
-  - [ ] Entry organizationはFavorite状態、本人Tag、処理中、通信結果不明後の再取得を表示する。
-- [ ] ActivityをDesign systemに統一する。
-  - [ ] Type filter、時刻、操作、対象のSnapshot、Paging、Refresh、Empty/Errorを表示する。
-  - [ ] 現在アクセス可能なTargetだけにNavigationを提供し、監査内部値を表示しない。
+- [x] Favorites、Tags、Entry organizationをDesign systemに統一する。
+  - [x] FavoritesはSearch/Recentと同じEntry row、Paging、Refresh、Empty/Errorを使う。
+  - [x] TagsはSettings/Formパターンを使い、作成、Rename、Delete、validation、上限を表示する。
+  - [x] Entry organizationはFavorite状態、本人Tag、処理中、通信結果不明後の再取得を表示する。
+- [x] ActivityをDesign systemに統一する。
+  - [x] Type filter、時刻、操作、対象のSnapshot、Paging、Refresh、Empty/Errorを表示する。
+  - [x] 現在アクセス可能なTargetだけにNavigationを提供し、監査内部値を表示しない。
 
 ### 5.5 PR5テスト・検証・完了
 
-- [ ] Sharing/Search/Organization/ActivityのJVM/Compose testを更新する。
-  - [ ] `011`〜`014`、`024`〜`025`と専用Mockupのない画面の主要状態、操作、Error、Semanticsを検証する。
-  - [ ] Sharing権限、Tag validation、Search filter、Unknown state、Targetアクセス不可を回帰テストする。
-  - [ ] Category browserが既存Search APIを使用し、専用APIを作らないことを確認する。
-- [ ] PR5の自動・実機検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`、`:feature-sharing:connectedDebugAndroidTest`、`:feature-search:connectedDebugAndroidTest`、`:feature-activity:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
-  - [ ] Android 13実機でRecent、Shared、Category、Search、Share設定、Favorites、Tags、Activityを確認する。
-  - [ ] `docs/testing/YYYYMMDD-android-ui-pr5-discovery-sharing.md`にCapture、権限、Navigation、意図的差分を記録する。
-- [ ] PR5を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR5完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] Sharing/Search/Organization/ActivityのJVM/Compose testを更新する。
+  - [x] `011`〜`014`、`024`〜`025`と専用Mockupのない画面の主要状態、操作、Error、Semanticsを検証する。
+  - [x] Sharing権限、Tag validation、Search filter、Unknown state、Targetアクセス不可を回帰テストする。
+  - [x] Category browserが既存Search APIを使用し、専用APIを作らないことを確認する。
+- [x] PR5の自動・実機相当検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`、`:feature-sharing:connectedDebugAndroidTest`、`:feature-search:connectedDebugAndroidTest`、`:feature-activity:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
+  - [x] Android 13実機相当のAPI 33 EmulatorでRecent、Shared、Category、Search、Share設定、Favorites、Tags、Activityを決定的Compose fixtureで確認する（物理端末が未接続のため、物理端末の最終確認はPR10で実施する）。
+  - [x] `docs/testing/20260904-android-ui-pr5-discovery-sharing.md`にCapture、権限、Navigation、意図的差分を記録する。
+- [x] PR5を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR5完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -672,7 +672,29 @@
 
 ### PR5: Recent・Sharing・Category・Search・Organization・Activity
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#53 Align Android discovery and sharing UI](https://github.com/ry825/Kura_Storage/pull/53)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Lint、ktlint、Detekt、Coverage、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。
+  - Android 13 / API 33 Emulatorで`:feature-search:connectedDebugAndroidTest`成功（11/11）、`:feature-sharing:connectedDebugAndroidTest`成功（6/6）、`:feature-activity:connectedDebugAndroidTest`成功（2/2）、`:app:connectedDebugAndroidTest`成功（8/8）。320 x 640、200%文字、Dark、決定的Capture、Filter、権限、Error、Navigation到達性を確認した。
+  - `git diff --check`成功。Self-reviewでFeature間直接依存の非追加、既存Search APIの再利用、最新権限のNavigation境界、Unknown/Missingのfail-closed、stable key、古い応答の破棄を確認した。
+  - GitHub必須CI run `33838311301`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - Favoriteは正式Search APIにfilter契約がないため、読み込み済みPageの不完全な絞り込みを作らず、server-backed Favorites画面への導線で代替した。
+  - Categoryは専用APIやFeatureを追加せず、既存Search Route/RepositoryにMIME categoryを設定し、共通Entry rowで表示した。
+  - 物理Android 13端末が未接続だったため、同一API levelのAPI 33 Emulatorと決定的Compose fixtureで代替した。物理端末の最終確認はPR10へ引き継ぐ。
+- 追加タスクと理由:
+  - RecentとShared一覧にrequest generation guardを追加した。Filter変更やRefresh後に古い応答が現在の一覧を上書きしない完了条件を明示的に保証するためである。
+  - 共通`KuraFileEntryRow`とdisabled semanticsを`core-ui`に追加した。Search/Recent/Shared/Favorites間でmetadata表示とfail-closed操作を一致させるためである。
+  - 200%文字の初回fixtureでActivityのError操作がCompact画面の表示範囲外になる問題を検出し、scroll可能な状態表示に変更して再検証した。
+- 技術的に不要となったタスクと代替実装:
+  - Search内のFavorite filterは対応するServer契約がないため実装せず、全件をserver-backedで取得するFavorites画面への導線で代替した。
+  - Category専用Server APIとFeature moduleは不要と判断し、正式Search契約とApp callbackの再利用で代替した。
+- 後続への引継ぎ:
+  - PR6/PR7では共通Entry rowからApp callbackで既存Media/Text Routeへ渡す境界と、Unknown/Missing/権限喪失時のfail-closedを維持する。
+  - PR8/PR9のCache/Settings実装では、共有権限や状態の内部値をUIで合成せずServer応答を権威とする。
+  - PR10でAndroid 13物理端末、TalkBack、回転、200%文字、実ServerのRecent/Shared/Search/Sharing/Organization/Activity E2Eを最終確認する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成とCIは成功している。
 
 ### PR6: Photo・Video・Audio・PDF UI
 
