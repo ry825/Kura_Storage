@@ -13,6 +13,7 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <ProjectReference Include="../../src/KuraStorage.Infrastructure/KuraStorage.Infrastructure.csproj" />
     <ProjectReference Include="../../src/KuraStorage.Api/KuraStorage.Api.csproj" />
+    <ProjectReference Include="../../src/KuraStorage.Worker/KuraStorage.Worker.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../../../contracts/fixtures/*.json" Link="ContractFixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

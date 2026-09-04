@@ -763,6 +763,10 @@ Media派生処理ではPostgreSQLをJob状態の正とし、同一派生デー�
 
 Cache清掃は固定PostgreSQL advisory lockでGlobal runを直列化し、期限切れは100件以下の安定Batch、容量超過は1件ずつclaim・削除・再集計する。LRUを一括claimしてLow watermarkを越えて削除してはならない。候補はDB索引から取得し、要求単位または清掃単位のHDD全走査を行わない。`DELETING`は通常候補に混在させず専用復旧経路で収束させ、物理削除失敗は元Fileへ影響させず再試行可能状態へ戻す。
 
+Admin手動Cache清掃はHTTP処理内で実行せず、必須UUID `Idempotency-Key`のSHA-256と固定payload fingerprintを持つ永続`MediaCleanupRun`を登録する。平文keyを記録せず、同一Admin/keyの冪等性をDB一意制約で保証する。Worker claimは`FOR UPDATE SKIP LOCKED`、lease、worker tokenを使い、完了・失敗更新は所有tokenの一致を条件にする。lease期限切れは再claimし、lock未取得はrunをpendingへ戻す。
+
+Cache管理ResponseはREADYの低・中画質派生データの集計、Job/Run件数、watermark、許可済みRun summaryだけとする。File名、物理/相対Path、User名、Job入力、Idempotency key、自由形式ErrorをResponse・Log・Metricに含めない。結合TestでAdmin/Member/未認証/失効Device、同一key再送、通信結果不明、生成/配信Lease除外、Worker停止後の回収を検証する。
+
 派生物の物理操作は`IDerivativeStore`を経由し、`derivatives/<owner>/<source>/<version>/<profile>/<type>.<ext>`と`derivative-temp/<job>/<attempt>.part`以外を生成しない。書込み前にStorage Guardを再確認し、期待Sizeを超えるStream、absolute path、traversal、symlink、特殊File、Root外移動、正式Pathの上書きを拒否する。DB更新と物理配置の間で停止しても、一時Fileまたは未参照の正式Fileとして後続回収できる順序を維持し、元ファイルを変更しない。
 
 ---

@@ -95,6 +95,8 @@ public sealed class ConfigurationValidationTests
     [InlineData("Media:JobHeartbeatSeconds", "120")]
     [InlineData("Media:DeliveryLeaseRenewalSeconds", "120")]
     [InlineData("Media:CacheHighWatermarkBytes", "6442450944")]
+    [InlineData("Media:CleanupManualPollSeconds", "0")]
+    [InlineData("Media:CleanupRunLeaseMinutes", "0")]
     [InlineData("Media:MaximumConcurrentMediaJobs", "2")]
     [InlineData("Media:MaximumConcurrentVideoJobs", "2")]
     public void MediaOptions_InvalidValue_IsRejected(string key, string value)

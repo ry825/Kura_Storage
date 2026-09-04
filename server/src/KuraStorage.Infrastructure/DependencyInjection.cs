@@ -115,7 +115,9 @@ public static class DependencyInjection
             .Validate(
                 options => options.CacheTtlHours > 0 && options.CacheHighWatermarkBytes > 0 &&
                     options.CacheLowWatermarkBytes > 0 && options.CacheLowWatermarkBytes < options.CacheHighWatermarkBytes &&
-                    options.CleanupIntervalMinutes > 0 && options.CleanupBatchSize is >= 1 and <= 500 &&
+                    options.CleanupIntervalMinutes > 0 && options.CleanupManualPollSeconds is >= 1 and <= 60 &&
+                    options.CleanupRunLeaseMinutes is >= 1 and <= 1440 &&
+                    options.CleanupBatchSize is >= 1 and <= 500 &&
                     options.TerminalJobRetentionDays > 0,
                 "Media cleanup settings are invalid.")
             .Validate(
@@ -219,6 +221,8 @@ public static class DependencyInjection
                 {
                     IntervalMinutes = configured.CleanupIntervalMinutes,
                     FailureBackoffMinutes = Math.Min(5, configured.CleanupIntervalMinutes),
+                    ManualRunPollSeconds = configured.CleanupManualPollSeconds,
+                    RunLeaseMinutes = configured.CleanupRunLeaseMinutes,
                     BatchSize = configured.CleanupBatchSize,
                     CacheHighWatermarkBytes = configured.CacheHighWatermarkBytes,
                     CacheLowWatermarkBytes = configured.CacheLowWatermarkBytes,
@@ -242,6 +246,7 @@ public static class DependencyInjection
         services.AddScoped<IMediaJobRunner>(serviceProvider => serviceProvider.GetRequiredService<MediaJobRunner>());
         services.AddScoped<MediaCleanupService>();
         services.AddScoped<IMediaCleanupService>(serviceProvider => serviceProvider.GetRequiredService<MediaCleanupService>());
+        services.AddScoped<AdminMediaCacheService>();
         services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IRefreshTokenService, RefreshTokenService>();

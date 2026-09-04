@@ -620,6 +620,52 @@ interface MediaJob {
 
 `MediaCleanupWorker`は起動時と既定30分周期に固定PostgreSQL advisory lockを取得し、同時清掃を1実行に限定する。期限切れCacheは最大100件を`expiresAt <= Server UTC now`でclaimする。容量清掃はREADYな低・中画質Cache合計が10 GiBを超えた場合だけ開始し、`lastAccessedAt`、`createdAt`、IDの安定順で1件ずつclaim・物理削除・再集計して6 GiB以下で停止する。Thumbnail、PENDING、RUNNING、有効Lease付き行は候補外とする。通常候補から除外する`DELETING`は専用復旧経路で再開し、物理削除失敗時はREADYへ戻して次回再試行する。terminal Media Jobは7日を超え、active retryが参照しない行だけを日次削除する。
 
+#### 管理者向けCache状態と永続Cleanup run
+
+```typescript
+type MediaCleanupTrigger = "SCHEDULED" | "MANUAL";
+type MediaCleanupRunStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+
+interface MediaCleanupRunSummary {
+  id: string;
+  trigger: MediaCleanupTrigger;
+  status: MediaCleanupRunStatus;
+  requestedAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  examinedCount: number;
+  deletedCount: number;
+  releasedBytes: number;
+  failureCount: number;
+  remainingCacheBytes?: number;
+  failureCode?: "STORAGE_UNAVAILABLE" | "PARTIAL_DELETE_FAILURE" | "CLEANUP_FAILED";
+}
+
+interface AdminMediaCacheStatus {
+  cacheBytes: number;
+  imageLowBytes: number;
+  imageMediumBytes: number;
+  videoLowBytes: number;
+  videoMediumBytes: number;
+  highWatermarkBytes: number;
+  lowWatermarkBytes: number;
+  queuedJobCount: number;
+  runningJobCount: number;
+  failedJobCount: number;
+  pendingRunCount: number;
+  runningRunCount: number;
+  lastCleanupRun?: MediaCleanupRunSummary;
+}
+```
+
+- `GET /api/v1/admin/media-cache`は`AdminOnly`で上記集計と最新Runを返す。Cache容量は`IMAGE_LOW`、`IMAGE_MEDIUM`、`VIDEO_LOW`、`VIDEO_MEDIUM`の`READY`行だけをDBで集計し、Thumbnail、PDF thumbnail、Path、File名、User名、Job入力、有効Leaseの個別値を返さない。Job件数は`media_jobs`の状態別集計とする。
+- `POST /api/v1/admin/media-cache/cleanup-requests`は空の要求bodyとUUID形式の`Idempotency-Key`を必須とし、Run summaryを`202 Accepted`で返す。APIはCache削除を実行せず、`media_cleanup_runs`へmanual/pending行を登録するだけとする。
+- Idempotency keyはUTF-8バイトのSHA-256 hexだけを保存し、平文をDB・Response・Log・Metricへ残さない。同一requesting Admin・key hashは部分Unique Indexで1行にし、固定payload fingerprintが一致する再送は既存Runを返し、異なpayload再利用は`409 IDEMPOTENCY_CONFLICT`とする。UUID不正は`400 VALIDATION_FAILED`とする。
+- Run作成、冪等再送判定、pending/stale-running claimはPostgreSQL Transactionと`FOR UPDATE SKIP LOCKED`を使う。claimはworker tokenとlease expiryを書き、状態確定は同じtokenを条件にする。Worker停止後はlease期限に到達した`RUNNING`を再claimし、既存の冪等Cleanupを再実行する。
+- Workerは既定5秒以下のpollでmanual runを先にclaimし、起動時と既定30分周期にscheduled runを登録する。どちらも`IMediaCleanupService`と固定advisory lockを使う。lock未取得はRunをpendingへ戻し、Storage unavailableは`FAILED/STORAGE_UNAVAILABLE`、一部削除失敗は`FAILED/PARTIAL_DELETE_FAILURE`、その他の境界例外は`FAILED/CLEANUP_FAILED`とし、自由形式の内部Errorを永続化しない。
+- scheduled/manualが同時に存在してもRun claimと既存advisory lockで清掃全体を1実行に収束させる。生成中または有効Derivative Lease中のCacheは従来どおり候補から除外する。
+- AndroidはPOSTごとにUUID keyを生成し、通信結果不明時は同じkeyとpayloadで再送する。受理後はGETを有界間隔でpollし、Serverが返す`PENDING/RUNNING/COMPLETED/FAILED`をそのまま表示する。Clientは通信失敗から清掃成功を合成しない。
+
 ### 5.5 転送と操作ジャーナル
 
 ```typescript

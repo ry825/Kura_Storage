@@ -28,6 +28,8 @@ public sealed class OpenApiContractTests
             "  /trash/{fileId}:",
             "  /files/{fileId}/restore:",
             "  /admin/storage:",
+            "  /admin/media-cache:",
+            "  /admin/media-cache/cleanup-requests:",
             "  /shares/candidates:",
             "  /shares:",
             "  /shares/{shareId}:",
@@ -76,6 +78,11 @@ public sealed class OpenApiContractTests
         Assert.Contains("purgeEligibleAt:", contract, StringComparison.Ordinal);
         Assert.Contains("AdminStorageStatus:", contract, StringComparison.Ordinal);
         Assert.Contains("TrashPurgeRunSummary:", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: getAdminMediaCacheStatus", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: requestAdminMediaCacheCleanup", contract, StringComparison.Ordinal);
+        Assert.Contains("AdminMediaCacheStatus:", contract, StringComparison.Ordinal);
+        Assert.Contains("MediaCleanupRunSummary:", contract, StringComparison.Ordinal);
+        Assert.Contains("PARTIAL_DELETE_FAILURE", contract, StringComparison.Ordinal);
         Assert.Contains("ShareCandidate:", contract, StringComparison.Ordinal);
         Assert.Contains("ShareMemberItem:", contract, StringComparison.Ordinal);
         Assert.Contains("ShareItem:", contract, StringComparison.Ordinal);

@@ -1206,6 +1206,10 @@ Worker本体、最大割当、画像処理、将来のLibrary差分を含む余�
 - 削除失敗は記録し、次回再試行する。
 - 固定PostgreSQL advisory lockで同時清掃を1実行にし、期限切れは最大100件、LRUは削除後に容量を再集計できるよう1件ずつ処理する。
 - Cache容量はDBのREADY行を集計し、HDD全走査を行わない。Workerは起動時と30分周期に実行し、terminal Media Jobは7日保持後に日次清掃する。
+- Admin Cache APIは`KuraStorage.Api`の`AdminOnly`境界で`AdminMediaCacheService`を呼び、`PostgreSqlMediaCleanupRepository`によるDB集計と永続Run登録だけを行う。HTTP Processは`IDerivativeStore`と`IMediaCleanupService`を介した物理削除を行わない。
+- `media_cleanup_runs`はmanual/scheduled、pending/running/completed/failed、requesting Admin ID、Idempotency key hash、payload fingerprint hash、worker token、lease、UTC日時、件数、解放Byte、残存Cache量、許可済みfailure codeを保持する。平文key、File名、物理Path、User表示名、自由形式Errorは保持しない。
+- Workerは`FOR UPDATE SKIP LOCKED`でmanual pendingとlease期限切れrunningをclaimし、worker token付き更新で最終状態を確定する。新規manual runの最大受理遅延を5秒以下とし、scheduled runは30分周期のDB状態として登録する。実際の清掃は共通`IMediaCleanupService`と固定PostgreSQL advisory lockが直列化する。
+- API/Worker/DBの境界は`AdminMediaCacheService -> IMediaCleanupRepository`と`MediaCleanupWorker -> IMediaCleanupService + IMediaCleanupRepository`に分ける。API統合Testで認証/認可/冪等性、PostgreSQL統合TestでMigration・集計・claim・lease回収・一意制約、Worker Testで復旧・ロック競合・失敗分類を検証する。
 
 ### 15.2 MVP後: サムネイル
 

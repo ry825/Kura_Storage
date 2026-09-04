@@ -42,6 +42,10 @@ public sealed class MediaOptions
 
     public int CleanupIntervalMinutes { get; init; } = 30;
 
+    public int CleanupManualPollSeconds { get; init; } = 5;
+
+    public int CleanupRunLeaseMinutes { get; init; } = 15;
+
     public int CleanupBatchSize { get; init; } = 100;
 
     public int TerminalJobRetentionDays { get; init; } = 7;

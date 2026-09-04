@@ -401,51 +401,51 @@
 
 ### 8.1 開始条件・正式文書
 
-- [ ] PR8の開始条件を満たす。
-  - [ ] PR7が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`から短命Branchを作成し、`IMediaCleanupService`、`PostgreSqlMediaCleanupRepository`、`MediaCleanupWorker`、Admin authorization、冪等Endpointの類似実装を確認する。
-- [ ] Cache管理契約を正式文書へ追加する。
-  - [ ] `docs/product-requirements.md`にAdmin状態取得、非同期手動清掃、重複要求、Worker復旧の受け入れ条件を追加する。
-  - [ ] `docs/functional-design.md`にEndpoint、DTO、Run状態、transaction、lease、Error、Android pollingを定義する。
-  - [ ] `docs/architecture-design.md`、`docs/repository-structure.md`、`docs/development-guidelines.md`へAPI/Worker/DB境界、配置、検証を反映する。
-  - [ ] `contracts/openapi/kurastorage-api.yaml`へ`GET /api/v1/admin/media-cache`と`POST /api/v1/admin/media-cache/cleanup-requests`を追加する。
+- [x] PR8の開始条件を満たす。
+  - [x] PR7が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`から短命Branchを作成し、`IMediaCleanupService`、`PostgreSqlMediaCleanupRepository`、`MediaCleanupWorker`、Admin authorization、冪等Endpointの類似実装を確認する。
+- [x] Cache管理契約を正式文書へ追加する。
+  - [x] `docs/product-requirements.md`にAdmin状態取得、非同期手動清掃、重複要求、Worker復旧の受け入れ条件を追加する。
+  - [x] `docs/functional-design.md`にEndpoint、DTO、Run状態、transaction、lease、Error、Android pollingを定義する。
+  - [x] `docs/architecture-design.md`、`docs/repository-structure.md`、`docs/development-guidelines.md`へAPI/Worker/DB境界、配置、検証を反映する。
+  - [x] `contracts/openapi/kurastorage-api.yaml`へ`GET /api/v1/admin/media-cache`と`POST /api/v1/admin/media-cache/cleanup-requests`を追加する。
 
 ### 8.2 Cache status・Cleanup run永続化
 
-- [ ] Cache status queryをTest firstで実装する。
-  - [ ] Low/MediumのREADY合計、Image/Video内訳、10GB上限、6GB目標、Queued/Running件数、Failed件数を集計する。
-  - [ ] Thumbnail/PDF thumbnailを10GB対象に合算せず、生成中またはLease中の個別情報を公開しない。
-  - [ ] File名、物理Path、User名、Job入力、内部Error詳細をResponse・Logに含めない。
-- [ ] `MediaCleanupRun`とMigrationをTest firstで実装する。
-  - [ ] Run ID、scheduled/manual trigger、pending/running/completed/failed、Idempotency key hash、requesting Admin、lease、日時、件数、解放Byte、失敗件数を保持する。
-  - [ ] 同一Admin/Idempotency keyの同一要求を1Runへ収束させ、異なるpayload再利用を拒否する。
-  - [ ] pending/running manual runを不要に並列化せず、scheduled/manualの同時Cleanupを既存advisory lockに収束させる。
-  - [ ] MigrationのUp/Down/再Up、既存Media data保持、一意制約、pending modelなしをPostgreSQLで検証する。
+- [x] Cache status queryをTest firstで実装する。
+  - [x] Low/MediumのREADY合計、Image/Video内訳、10GB上限、6GB目標、Queued/Running件数、Failed件数を集計する。
+  - [x] Thumbnail/PDF thumbnailを10GB対象に合算せず、生成中またはLease中の個別情報を公開しない。
+  - [x] File名、物理Path、User名、Job入力、内部Error詳細をResponse・Logに含めない。
+- [x] `MediaCleanupRun`とMigrationをTest firstで実装する。
+  - [x] Run ID、scheduled/manual trigger、pending/running/completed/failed、Idempotency key hash、requesting Admin、lease、日時、件数、解放Byte、失敗件数を保持する。
+  - [x] 同一Admin/Idempotency keyの同一要求を1Runへ収束させ、異なるpayload再利用を拒否する。
+  - [x] pending/running manual runを不要に並列化せず、scheduled/manualの同時Cleanupを既存advisory lockに収束させる。
+  - [x] MigrationのUp/Down/再Up、既存Media data保持、一意制約、pending modelなしをPostgreSQLで検証する。
 
 ### 8.3 Admin API・Worker復旧
 
-- [ ] Admin Cache APIをTest firstで実装する。
-  - [ ] GETはCache statusと最新Runを返し、POSTはUUID `Idempotency-Key`を必須として`202 Accepted`とRun状態を返す。
-  - [ ] Adminだけを許可し、Member、未認証、失効Device/Sessionを既存Error envelopeで拒否する。
-  - [ ] HTTP Request内でCleanup全体を実行せず、永続runの登録だけ行う。
-  - [ ] 通信結果不明後の同一Key再送とGET再取得で同じRunへ収束させる。
-- [ ] `MediaCleanupWorker`がmanual runを処理できるようにする。
-  - [ ] 未処理runを有界間隔でclaimし、既存`IMediaCleanupService`とadvisory lockを再利用する。
-  - [ ] 定期Cleanupもrun結果を記録し、最終清掃日時をAPI ProcessのMemoryに依存させない。
-  - [ ] Worker停止、Process kill、DB中断後のrunning leaseを回収し、冪等な清掃と最終状態へ収束させる。
-  - [ ] Storage unavailable、一部File削除失敗、lock取得不可を区別し、元Fileに影響させず再試行可能性を保つ。
+- [x] Admin Cache APIをTest firstで実装する。
+  - [x] GETはCache statusと最新Runを返し、POSTはUUID `Idempotency-Key`を必須として`202 Accepted`とRun状態を返す。
+  - [x] Adminだけを許可し、Member、未認証、失効Device/Sessionを既存Error envelopeで拒否する。
+  - [x] HTTP Request内でCleanup全体を実行せず、永続runの登録だけ行う。
+  - [x] 通信結果不明後の同一Key再送とGET再取得で同じRunへ収束させる。
+- [x] `MediaCleanupWorker`がmanual runを処理できるようにする。
+  - [x] 未処理runを有界間隔でclaimし、既存`IMediaCleanupService`とadvisory lockを再利用する。
+  - [x] 定期Cleanupもrun結果を記録し、最終清掃日時をAPI ProcessのMemoryに依存させない。
+  - [x] Worker停止、Process kill、DB中断後のrunning leaseを回収し、冪等な清掃と最終状態へ収束させる。
+  - [x] Storage unavailable、一部File削除失敗、lock取得不可を区別し、元Fileに影響させず再試行可能性を保つ。
 
 ### 8.4 PR8テスト・検証・完了
 
-- [ ] ServerのDomain/Application/Integration testを完了する。
-  - [ ] Cache集計、上限対象、Run状態遷移、冪等性、並列、lease回収、部分失敗、Worker再起動を検証する。
-  - [ ] Admin/Member/未認証/Device失効、不正Key、同一Key再送、通信結果不明のAPI結合テストを追加する。
-  - [ ] 生成中/使用中Cacheを削除せず、元FileとThumbnailへ影響しない実Storage/PostgreSQLテストを行う。
-- [ ] PR8の自動・運用検証を完了する。
-  - [ ] `./scripts/ci/verify-server.sh`、`verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`、format、Migration、OpenAPI、`git diff --check`が成功する。
-  - [ ] API/Worker/PostgreSQLを使った実際のmanual cleanupでpending→running→completed/failed、解放Byte、重複防止を確認する。
-  - [ ] Log/Response/MetricにFile名、物理Path、User入力、Token、Idempotency key平文が漏れないことを確認する。
-  - [ ] `docs/testing/YYYYMMDD-android-ui-pr8-cache-server.md`にAPI、Migration、Worker復旧、実測結果を記録する。
+- [x] ServerのDomain/Application/Integration testを完了する。
+  - [x] Cache集計、上限対象、Run状態遷移、冪等性、並列、lease回収、部分失敗、Worker再起動を検証する。
+  - [x] Admin/Member/未認証/Device失効、不正Key、同一Key再送、通信結果不明のAPI結合テストを追加する。
+  - [x] 生成中/使用中Cacheを削除せず、元FileとThumbnailへ影響しない実Storage/PostgreSQLテストを行う。
+- [x] PR8の自動・運用検証を完了する。
+  - [x] `./scripts/ci/verify-server.sh`、`verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`、format、Migration、OpenAPI、`git diff --check`が成功する。
+  - [x] API/Worker/PostgreSQLを使った実際のmanual cleanupでpending→running→completed/failed、解放Byte、重複防止を確認する。
+  - [x] Log/Response/MetricにFile名、物理Path、User入力、Token、Idempotency key平文が漏れないことを確認する。
+  - [x] `docs/testing/YYYYMMDD-android-ui-pr8-cache-server.md`にAPI、Migration、Worker復旧、実測結果を記録する。
 - [ ] PR8を完了する。
   - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR8完了記録、記録Commitの再Pushを完了して報告・停止する。
 
