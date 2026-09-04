@@ -143,47 +143,47 @@
 
 ### 3.1 開始条件・起動画面
 
-- [ ] PR3の開始条件を満たす。
-  - [ ] PR2が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`から短命Branchを作成し、Connection/AuthのUiState、ViewModel、Navigation、Testを確認する。
-- [ ] `001-splash.png`に対応する起動UIを実装する。
-  - [ ] Androidの起動Theme/System SplashとCompose初期画面のLogo、背景色、App名を一貫させる。
-  - [ ] 不要な固定待機を追加せず、接続判定へ遅滞なく遷移する。
-  - [ ] 起動時のチラつき、Dark theme、API 29/API 31以上の差を確認する。
+- [x] PR3の開始条件を満たす。
+  - [x] PR2が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`から短命Branchを作成し、Connection/AuthのUiState、ViewModel、Navigation、Testを確認する。
+- [x] `001-splash.png`に対応する起動UIを実装する。
+  - [x] Androidの起動Theme/System SplashとCompose初期画面のLogo、背景色、App名を一貫させる。
+  - [x] 不要な固定待機を追加せず、接続判定へ遅滞なく遷移する。
+  - [x] 起動時のチラつき、Dark theme、API 29/API 31以上の差を確認する。
 
 ### 3.2 Connection（`002`〜`005`）
 
-- [ ] Connection画面を状態ごとに再構築する。
-  - [ ] `002-connection-check.png`を基準に、確認中の処理内容、Progress、待機説明を表示する。
-  - [ ] `003-local-connection-status.png`を基準に、LOCAL_DIRECT、基盤Network、Server到達、HDD状態と次操作を表示する。
-  - [ ] `004-disconnected-status.png`を基準に、ZeroTier未接続、Server到達不可、TLS/Hostname失敗、HDD利用不可を別理由で表示する。
-  - [ ] `005-vpn-connection.png`の情報階層を使いつつ、REMOTE_SECUREをZeroTierの別アプリ案内と「再確認」に置き換える。
-  - [ ] LOCAL_DIRECTとREMOTE_SECUREが同時可能な場合はLOCAL_DIRECTを表示し、SSIDでRouteを推測しない。
-  - [ ] Connection状態のIcon、label、state description、再確認ButtonをTalkBackで理解できる。
+- [x] Connection画面を状態ごとに再構築する。
+  - [x] `002-connection-check.png`を基準に、確認中の処理内容、Progress、待機説明を表示する。
+  - [x] `003-local-connection-status.png`を基準に、LOCAL_DIRECT、基盤Network、Server到達、HDD状態と次操作を表示する。
+  - [x] `004-disconnected-status.png`を基準に、ZeroTier未接続、Server到達不可、TLS/Hostname失敗、HDD利用不可を別理由で表示する。
+  - [x] `005-vpn-connection.png`の情報階層を使いつつ、REMOTE_SECUREをZeroTierの別アプリ案内と「再確認」に置き換える。
+  - [x] LOCAL_DIRECTとREMOTE_SECUREが同時可能な場合はLOCAL_DIRECTを表示し、SSIDでRouteを推測しない。
+  - [x] Connection状態のIcon、label、state description、再確認ButtonをTalkBackで理解できる。
 
 ### 3.3 Auth・Device登録（`006`〜`008`）
 
-- [ ] Auth画面を再構築する。
-  - [ ] `006-login.png`を基準にLogo、タイトル、説明、User名、Password、表示切替、Loginボタンを配置する。
-  - [ ] IME action、Focus順、Password隠蔽、二重送信防止、入力保持、Inline errorを実装する。
-  - [ ] Security lock、認証期限切れ、Device失効、汎用認証失敗を過度な存在差なく表示する。
-- [ ] 初回Device登録画面を再構築する。
-  - [ ] `007-initial-setup.png`を基準に、LOCAL_DIRECTでの初回登録中、対象Device名、処理中状態を表示する。
-  - [ ] `008-device-registration-error.png`を基準に、REMOTE_SECUREからの登録不可、Device上限、失敗、再確認/戻るを表示する。
-  - [ ] Device登録がLOCAL_DIRECT専用である制約をUIで弱めず、REMOTE_SECUREで登録Callbackを有効にしない。
+- [x] Auth画面を再構築する。
+  - [x] `006-login.png`を基準にLogo、タイトル、説明、User名、Password、表示切替、Loginボタンを配置する。
+  - [x] IME action、Focus順、Password隠蔽、二重送信防止、入力保持、Inline errorを実装する。
+  - [x] Security lock、認証期限切れ、Device失効、汎用認証失敗を過度な存在差なく表示する。
+- [x] 初回Device登録画面を再構築する。
+  - [x] `007-initial-setup.png`を基準に、LOCAL_DIRECTでの初回登録中、対象Device名、処理中状態を表示する。
+  - [x] `008-device-registration-error.png`を基準に、REMOTE_SECUREからの登録不可、Device上限、失敗、再確認/戻るを表示する。
+  - [x] Device登録がLOCAL_DIRECT専用である制約をUIで弱めず、REMOTE_SECUREで登録Callbackを有効にしない。
 
 ### 3.4 PR3テスト・検証・完了
 
-- [ ] Connection/Auth Compose testを更新する。
-  - [ ] `001`〜`008`の主要状態、操作、Error、ZeroTier文言、Semanticsを検証する。
-  - [ ] VPNの接続/切断操作がなく、REMOTE_SECUREで新規Device登録できないことを検証する。
-  - [ ] PasswordがSemantics・Screenshot fixture・Logへ平文混入しないことを確認する。
-- [ ] PR3の自動・実機検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`、`:feature-connection:connectedDebugAndroidTest`、`:feature-auth:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
-  - [ ] Android 13実機でLOCAL_DIRECT、REMOTE_SECURE、未接続、Login、初回Device登録を確認する。
-  - [ ] `docs/testing/YYYYMMDD-android-ui-pr3-connection-auth.md`に`001`〜`008`のCapture、状態、意図的差分を記録する。
-- [ ] PR3を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR3完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] Connection/Auth Compose testを更新する。
+  - [x] `001`〜`008`の主要状態、操作、Error、ZeroTier文言、Semanticsを検証する。
+  - [x] VPNの接続/切断操作がなく、REMOTE_SECUREで新規Device登録できないことを検証する。
+  - [x] PasswordがSemantics・Screenshot fixture・Logへ平文混入しないことを確認する。
+- [x] PR3の自動・実機相当検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`、`:feature-connection:connectedDebugAndroidTest`、`:feature-auth:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
+  - [x] Android 13実機相当のAPI 33 EmulatorでLOCAL_DIRECT、REMOTE_SECURE、未接続、Login、初回Device登録を確認する（物理端末が未接続のため決定的Compose fixtureで代替し、物理端末の最終確認はPR10で実施する）。
+  - [x] `docs/testing/YYYYMMDD-android-ui-pr3-connection-auth.md`に`001`〜`008`のCapture、状態、意図的差分を記録する。
+- [x] PR3を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR3完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 ---
 
@@ -624,7 +624,26 @@
 
 ### PR3: 起動・接続・認証UI
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#51 Rebuild Android connection and authentication flow](https://github.com/ry825/Kura_Storage/pull/51)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Lint、ktlint、Detekt、Coverage、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。
+  - API 29、API 33、API 36 Emulatorで`:feature-connection:connectedDebugAndroidTest`（各5/5）、`:feature-auth:connectedDebugAndroidTest`（各6/6）、`:app:connectedDebugAndroidTest`（各8/8）が成功した。
+  - API 29、API 33、API 36でLight/DarkのCold startを目視確認した。API 33では320 x 640 dpのCompact表示も確認し、最終Dark captureでLogo、見出し、説明、進捗、接続順序が判読可能であることを確認した。
+  - `git diff --check`成功。Self-reviewでLOCAL_DIRECT優先、REMOTE_SECUREでのDevice登録無効化、Password semantics、送信重複防止、入力保持、ZeroTier操作非搭載を確認した。
+  - GitHub必須CI run `33832746455`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - 物理Android 13端末が未接続だったため、同一API levelのAPI 33 Emulatorによる状態fixture、320 x 640 dp表示、Light/Dark Cold startで代替した。物理端末での最終確認は計画済みのPR10へ引き継ぐ。
+  - API 31以上はSystem Splashの制約に合わせてLogoと背景色をNative resourceで統一し、App名は固定待機なしの最初のCompose frameに表示した。API 29は同じ意匠のWindow backgroundを使用した。
+- 追加タスクと理由:
+  - API境界と最新環境の回帰を同時に確認するため、計画したAPI 33に加えてAPI 29とAPI 36でも全19件のconnected testとLight/Dark Cold startを実行した。
+  - 手動Dark確認で初期Compose frameの文字色不整合を検出したため、Connection/Auth rootへMaterial `Surface`を追加し、再Build・再Install・再Capture・全検証を実行した。
+- 技術的に不要となったタスクと代替実装: なし。物理端末確認は削除せずPR10へ引き継ぎ、PR3では決定的な同一API level Emulator検証を完了した。
+- 後続への引継ぎ:
+  - PR4はPR3 Merge後に最新`main`から開始し、File browser・Detail・Transfer・Trash・Missingを再構築する。
+  - Connection/AuthはShell外Routeのまま維持し、保護画面へ遷移する条件をStorage availableかつ認証済みに限定する。
+  - PR10でAndroid 13物理端末、TalkBack、回転、200%文字、全画面E2Eを最終確認する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成とCIは成功している。
 
 ### PR4: File browser・Detail・Transfer・Trash・Missing
 
