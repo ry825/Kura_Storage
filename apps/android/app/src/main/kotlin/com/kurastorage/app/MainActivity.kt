@@ -131,6 +131,8 @@ import com.kurastorage.feature.search.SearchScreen
 import com.kurastorage.feature.search.SearchViewModel
 import com.kurastorage.feature.search.TagsScreen
 import com.kurastorage.feature.search.TagsViewModel
+import com.kurastorage.feature.settings.CacheManagementScreen
+import com.kurastorage.feature.settings.CacheManagementViewModel
 import com.kurastorage.feature.settings.QualitySettingsScreen
 import com.kurastorage.feature.settings.QualitySettingsViewModel
 import com.kurastorage.feature.settings.SettingsHubScreen
@@ -351,9 +353,20 @@ private fun KuraStorageApp(
                     )
                 SettingsHubScreen(
                     isAdmin = current.authentication.role() == UserRole.ADMIN,
+                    accountStatus = if (current.authentication.role() == UserRole.ADMIN) "Administrator" else "Member",
+                    connectionStatus =
+                        if (route ==
+                            com.kurastorage.core.model.ConnectionRoute.LOCAL_DIRECT
+                        ) {
+                            "Local direct"
+                        } else {
+                            "External via ZeroTier"
+                        },
                     onConnection = { navController.navigate(AppDestination.CONNECTION.route) },
                     onMediaSettings = { navController.navigate(AppDestination.MEDIA_SETTINGS.route) },
                     onBackupSettings = { navController.navigate(AppDestination.BACKUP_SETTINGS.route) },
+                    onWifiSettings = { navController.navigate(AppDestination.BACKUP_WIFI.route) },
+                    onCacheManagement = { navController.navigate(AppDestination.CACHE_MANAGEMENT.route) },
                     onActivity = { navController.navigate(AppDestination.ACTIVITY.route) },
                     onTrash = { navController.navigate(AppDestination.TRASH.route) },
                     onLogout = {
@@ -382,7 +395,28 @@ private fun KuraStorageApp(
                 val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
                 QualitySettingsScreen(
                     state = settingsState,
-                    onSelect = settingsViewModel::update,
+                    onSelect = settingsViewModel::select,
+                    onSave = settingsViewModel::save,
+                    onReset = settingsViewModel::reset,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(AppDestination.CACHE_MANAGEMENT.route) {
+                val current = services
+                if (current == null) {
+                    navController.navigateToConnection()
+                    return@composable
+                }
+                val model: CacheManagementViewModel =
+                    viewModel(
+                        key = "cache-management-${current.sessionId}",
+                        factory = simpleViewModelFactory { CacheManagementViewModel(current.adminMediaCache) },
+                    )
+                val state by model.state.collectAsStateWithLifecycle()
+                CacheManagementScreen(
+                    state = state,
+                    onRefresh = model::refresh,
+                    onCleanup = model::requestCleanup,
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -485,7 +519,9 @@ private fun KuraStorageApp(
                     state = state,
                     onRefresh = model::refreshCurrent,
                     onRequestPermission = { permissions.launch(it.toTypedArray()) },
-                    onRegister = model::register,
+                    onRegister = { name, restrictBssid, metered, enabled ->
+                        model.register(name, restrictBssid, metered, enabled)
+                    },
                     onSave = model::save,
                     onDelete = model::delete,
                     onOpenAppSettings = {

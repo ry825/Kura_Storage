@@ -1,8 +1,11 @@
 package com.kurastorage.feature.backup
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -11,6 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -84,7 +88,7 @@ class BackupScreensTest {
                 state = BackupWifiState(loading = false, currentWifi = CurrentWifiResult.PermissionRequired(setOf("wifi"))),
                 onRefresh = {},
                 onRequestPermission = {},
-                onRegister = { _, _, _ -> },
+                onRegister = { _, _, _, _ -> },
                 onSave = {},
                 onDelete = {},
                 onOpenAppSettings = {},
@@ -108,7 +112,7 @@ class BackupScreensTest {
                     ),
                 onRefresh = {},
                 onRequestPermission = {},
-                onRegister = { _, _, _ -> registrations += 1 },
+                onRegister = { _, _, _, _ -> registrations += 1 },
                 onSave = {},
                 onDelete = {},
                 onOpenAppSettings = {},
@@ -130,7 +134,9 @@ class BackupScreensTest {
             val density = LocalDensity.current.density
             CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 2f)) {
                 MaterialTheme(colorScheme = darkColorScheme()) {
-                    BackupSettingsScreen({}, {}, {}, {})
+                    Box(Modifier.size(width = 800.dp, height = 360.dp)) {
+                        BackupSettingsScreen({}, {}, {}, {})
+                    }
                 }
             }
         }
@@ -206,6 +212,56 @@ class BackupScreensTest {
         assertEquals(0, deletions)
         compose.onNodeWithText("Delete rule").performClick()
         assertEquals(1, deletions)
+    }
+
+    @Test
+    fun ruleEditorShowsFormalSourceDestinationPolicyAndEnabledState() {
+        compose.setContent {
+            BackupRulesScreen(
+                state = BackupRulesState(loading = false),
+                selectedSource = null,
+                selectedDestination = null,
+                onPickSafSource = {},
+                onPickDestination = {},
+                onRequestMediaPermission = {},
+                onSave = { _, _, _ -> },
+                onToggle = { _, _ -> },
+                onDelete = {},
+                onSelectionsConsumed = {},
+                onBack = {},
+            )
+        }
+
+        compose.onNodeWithText("Add rule").performClick()
+        compose.onNodeWithText("Device source").assertIsDisplayed()
+        compose.onNodeWithText("Choose server folder").assertHasClickAction()
+        compose.onNodeWithText("Local or allowed Wi-Fi + ZeroTier").assertIsDisplayed()
+        compose.onNodeWithText("Rule enabled").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Device deletions do not delete server files.", substring = true).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun trustedWifiShowsCurrentIdentityAndPolicyBoundary() {
+        compose.setContent {
+            BackupWifiScreen(
+                state =
+                    BackupWifiState(
+                        loading = false,
+                        currentWifi = CurrentWifiResult.Connected(ConnectedWifi("Fixture Wi-Fi", null, false)),
+                    ),
+                onRefresh = {},
+                onRequestPermission = {},
+                onRegister = { _, _, _, _ -> },
+                onSave = {},
+                onDelete = {},
+                onOpenAppSettings = {},
+                onBack = {},
+            )
+        }
+
+        compose.onNodeWithText("Currently connected Wi-Fi: Fixture Wi-Fi").assertIsDisplayed()
+        compose.onNodeWithText("never as server identity", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Enabled").assertIsDisplayed()
     }
 
     private fun rule() =

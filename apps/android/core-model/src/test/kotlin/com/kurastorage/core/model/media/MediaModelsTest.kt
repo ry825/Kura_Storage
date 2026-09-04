@@ -49,5 +49,9 @@ class MediaModelsTest {
         assertEquals(MediaVariant.IMAGE_MEDIUM, MediaVariant.fromWireValue("image-medium"))
         assertEquals(null, MediaVariant.fromWireValue("future"))
         assertEquals(MediaJobStatus.UNKNOWN, MediaJobStatus.fromWireValue("FUTURE"))
+        assertEquals(
+            listOf("IDLE", "BUFFERING", "READY", "ENDED", "FAILED"),
+            PlaybackState.entries.map { it.name },
+        )
     }
 }

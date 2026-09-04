@@ -19,9 +19,13 @@ import com.kurastorage.core.ui.components.KuraSectionHeader
 @Composable
 fun SettingsHubScreen(
     isAdmin: Boolean,
+    accountStatus: String,
+    connectionStatus: String,
     onConnection: () -> Unit,
     onMediaSettings: () -> Unit,
     onBackupSettings: () -> Unit,
+    onWifiSettings: () -> Unit,
+    onCacheManagement: () -> Unit,
     onActivity: () -> Unit,
     onTrash: () -> Unit,
     onLogout: () -> Unit,
@@ -32,13 +36,23 @@ fun SettingsHubScreen(
         verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.md),
     ) {
         item {
-            Text("Account, connection, storage, and background activity.", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "Account, connection, storage, and background activity.",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        }
+        item { KuraSectionHeader("Account") }
+        item {
+            KuraListRow(
+                headline = "Signed-in account",
+                supportingText = "$accountStatus · Server identity and permissions for this session",
+            )
         }
         item { KuraSectionHeader("Connection") }
         item {
             KuraListRow(
                 headline = "Connection status",
-                supportingText = "Check local direct or ZeroTier connectivity",
+                supportingText = "$connectionStatus · Check route, TLS, and server reachability",
                 onClick = onConnection,
             )
         }
@@ -46,8 +60,15 @@ fun SettingsHubScreen(
         item {
             KuraListRow(
                 headline = "Automatic backup",
-                supportingText = "Status, rules, and allowed Wi-Fi",
+                supportingText = "View current progress, waiting reasons, rules, and one-way policy",
                 onClick = onBackupSettings,
+            )
+        }
+        item {
+            KuraListRow(
+                headline = "Trusted Wi-Fi",
+                supportingText = "Review allowed external Wi-Fi and permission state",
+                onClick = onWifiSettings,
             )
         }
         item {
@@ -69,8 +90,8 @@ fun SettingsHubScreen(
             item {
                 KuraListRow(
                     headline = "Cache management",
-                    supportingText = "Available when server cache management is configured",
-                    enabled = false,
+                    supportingText = "View ready cache usage and request safe cleanup",
+                    onClick = onCacheManagement,
                 )
             }
         }
@@ -81,7 +102,7 @@ fun SettingsHubScreen(
                 onClick = onActivity,
             )
         }
-        item { KuraSectionHeader("Account") }
+        item { KuraSectionHeader("Session") }
         item {
             KuraDestructiveButton(
                 label = "Log out",

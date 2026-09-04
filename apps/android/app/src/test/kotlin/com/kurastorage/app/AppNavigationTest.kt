@@ -19,6 +19,7 @@ class AppNavigationTest {
         assertEquals(TopLevelDestination.SEARCH, topLevelDestinationFor("search?category={category}"))
         assertEquals(TopLevelDestination.SETTINGS, topLevelDestinationFor(AppDestination.SETTINGS.route))
         assertNull(topLevelDestinationFor(AppDestination.AUTHENTICATION.route))
+        assertNull(topLevelDestinationFor(AppDestination.CACHE_MANAGEMENT.route))
         assertNull(topLevelDestinationFor("${AppDestination.PHOTO_VIEWER.route}/{contextId}/{fileId}"))
         assertNull(topLevelDestinationFor(null))
     }

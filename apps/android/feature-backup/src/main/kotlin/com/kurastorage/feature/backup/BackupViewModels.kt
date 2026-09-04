@@ -137,6 +137,7 @@ data class BackupRuleInput(
     val networkMode: BackupNetworkMode,
     val requiresChargingForInitialRun: Boolean,
     val minimumBatteryPercent: Int,
+    val enabled: Boolean = true,
 )
 
 data class BackupRulesState(
@@ -167,18 +168,20 @@ class BackupRulesViewModel(
         onSaved: () -> Unit = {},
     ) = action {
         if (existing == null) {
-            repository.create(
-                scope,
-                CreateBackupRuleCommand(
-                    input.sourceType,
-                    input.sourceLocator,
-                    input.displayName,
-                    input.remoteFolderId,
-                    input.networkMode,
-                    input.requiresChargingForInitialRun,
-                    input.minimumBatteryPercent,
-                ),
-            )
+            val created =
+                repository.create(
+                    scope,
+                    CreateBackupRuleCommand(
+                        input.sourceType,
+                        input.sourceLocator,
+                        input.displayName,
+                        input.remoteFolderId,
+                        input.networkMode,
+                        input.requiresChargingForInitialRun,
+                        input.minimumBatteryPercent,
+                    ),
+                )
+            if (!input.enabled) repository.setEnabled(scope, created.id, false)
         } else {
             repository.save(
                 scope,
@@ -190,6 +193,7 @@ class BackupRulesViewModel(
                     networkMode = input.networkMode,
                     requiresChargingForInitialRun = input.requiresChargingForInitialRun,
                     minimumBatteryPercent = input.minimumBatteryPercent,
+                    enabled = input.enabled,
                 ),
             )
         }
@@ -247,8 +251,10 @@ class BackupWifiViewModel(
         displayName: String,
         restrictToBssid: Boolean,
         treatAsMetered: Boolean,
+        enabled: Boolean = true,
     ) = action {
-        repository.registerCurrent(scope, displayName, restrictToBssid, treatAsMetered)
+        val policy = repository.registerCurrent(scope, displayName, restrictToBssid, treatAsMetered)
+        if (!enabled) repository.save(scope, policy.copy(enabled = false))
         refreshCurrent()
     }
 

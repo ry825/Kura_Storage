@@ -14,7 +14,8 @@ import kotlinx.coroutines.launch
 data class QualitySettingsState(
     val preferences: QualityPreferences = QualityPreferences(),
     val loading: Boolean = true,
-    val saving: NetworkQualityContext? = null,
+    val saving: Boolean = false,
+    val dirty: Boolean = false,
     val error: String? = null,
 )
 
@@ -22,6 +23,7 @@ class QualitySettingsViewModel(
     private val store: QualityPreferenceStore,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(QualitySettingsState())
+    private var persisted = QualityPreferences()
     val state: StateFlow<QualitySettingsState> = mutableState.asStateFlow()
 
     init {
@@ -29,7 +31,10 @@ class QualitySettingsViewModel(
             mutableState.value =
                 runCatching { store.read() }
                     .fold(
-                        onSuccess = { QualitySettingsState(preferences = it, loading = false) },
+                        onSuccess = {
+                            persisted = it
+                            QualitySettingsState(preferences = it, loading = false)
+                        },
                         onFailure = {
                             QualitySettingsState(loading = false, error = "Quality settings could not be loaded")
                         },
@@ -37,21 +42,51 @@ class QualitySettingsViewModel(
         }
     }
 
+    fun select(
+        context: NetworkQualityContext,
+        quality: MediaQuality,
+    ) {
+        if (mutableState.value.loading || mutableState.value.saving) return
+        val next = mutableState.value.preferences.withQuality(context, quality)
+        mutableState.value = mutableState.value.copy(preferences = next, dirty = next != persisted, error = null)
+    }
+
+    fun save() {
+        if (mutableState.value.loading || mutableState.value.saving || !mutableState.value.dirty) return
+        persist(mutableState.value.preferences)
+    }
+
+    fun reset() {
+        if (mutableState.value.loading || mutableState.value.saving) return
+        val defaults = QualityPreferences()
+        mutableState.value =
+            mutableState.value.copy(preferences = defaults, dirty = defaults != persisted, error = null)
+    }
+
+    /** Retained for non-UI callers that intentionally persist one context immediately. */
     fun update(
         context: NetworkQualityContext,
         quality: MediaQuality,
     ) {
-        if (mutableState.value.saving != null) return
+        if (mutableState.value.loading || mutableState.value.saving) return
+        persist(mutableState.value.preferences.withQuality(context, quality))
+    }
+
+    private fun persist(preferences: QualityPreferences) {
         viewModelScope.launch {
-            mutableState.value = mutableState.value.copy(saving = context, error = null)
-            runCatching { store.update(context, quality) }
-                .onSuccess {
-                    val preferences = mutableState.value.preferences.withQuality(context, quality)
-                    mutableState.value = mutableState.value.copy(preferences = preferences, saving = null)
-                }.onFailure {
-                    mutableState.value =
-                        mutableState.value.copy(saving = null, error = "Quality setting could not be saved")
+            mutableState.value = mutableState.value.copy(saving = true, error = null)
+            runCatching {
+                NetworkQualityContext.entries.forEach { context ->
+                    val next = preferences.qualityFor(context)
+                    if (persisted.qualityFor(context) != next) store.update(context, next)
                 }
+            }.onSuccess {
+                persisted = preferences
+                mutableState.value = mutableState.value.copy(preferences = preferences, saving = false, dirty = false)
+            }.onFailure {
+                mutableState.value =
+                    mutableState.value.copy(saving = false, error = "Quality setting could not be saved")
+            }
         }
     }
 }

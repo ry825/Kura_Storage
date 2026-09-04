@@ -25,6 +25,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -138,6 +139,7 @@ fun BackupOverviewScreen(
             }
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (state.loading) Text("Loading backup status…")
         Text("File history", style = MaterialTheme.typography.titleLarge)
         if (!state.loading && state.items.isEmpty()) Text("No backup history yet.")
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -171,6 +173,11 @@ private fun BackupHistoryRow(
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Text(item.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(item.lifecycleState.label())
+        if (item.size > 0 && item.lifecycleState == SyncLifecycleState.UPLOADING) {
+            val progress = (item.confirmedOffset.toFloat() / item.size).coerceIn(0f, 1f)
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().testTag("backup-item-progress"))
+            Text("${(progress * PERCENT_SCALE).toInt()}% · ${item.confirmedOffset} of ${item.size} bytes")
+        }
         item.waitReason.takeUnless { it == BackupWaitReason.NONE }?.let { Text("Waiting: ${it.label()}") }
         item.failureReason.takeUnless { it == BackupFailureReason.NONE }?.let {
             Text("Failure: ${it.label()}. ${it.nextAction()}", color = MaterialTheme.colorScheme.error)
@@ -215,9 +222,19 @@ fun BackupRulesScreen(
             items(state.rules, key = { it.id.value }) { rule ->
                 Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                     Text(rule.displayName, style = MaterialTheme.typography.titleMedium)
-                    Text("${rule.sourceType.label()} • ${rule.networkMode.label()} • minimum battery ${rule.minimumBatteryPercent}%")
+                    Text("Source: ${rule.sourceType.label()}")
+                    Text("Server destination: Selected server folder")
+                    Text("${rule.networkMode.label()} • minimum battery ${rule.minimumBatteryPercent}%")
+                    Text(
+                        "Last state: " +
+                            when {
+                                !rule.enabled -> "Disabled"
+                                rule.pausedAt != null -> "Paused"
+                                else -> "Enabled and waiting for the next scan"
+                            },
+                    )
                     if (rule.sourceType == BackupSourceType.SAF_TREE) {
-                        Text("If device folder access is lost, choose Edit and re-select the folder.")
+                        Text("Source permission: retained access is checked when scanning. Re-select the folder if access is lost.")
                     }
                     Text("If server access changes, choose Edit and re-select an allowed destination.")
                     if (rule.pausedAt != null) Text("Paused")
@@ -304,6 +321,7 @@ private fun RuleEditorDialog(
     var mode by rememberSaveable { mutableStateOf(existing?.networkMode ?: BackupNetworkMode.LOCAL_DIRECT_ONLY) }
     var battery by rememberSaveable { mutableIntStateOf(existing?.minimumBatteryPercent ?: DEFAULT_MINIMUM_BATTERY_PERCENT) }
     var charging by rememberSaveable { mutableStateOf(existing?.requiresChargingForInitialRun ?: true) }
+    var enabled by rememberSaveable { mutableStateOf(existing?.enabled ?: true) }
     LaunchedEffect(selectedSource) {
         selectedSource?.let {
             sourceType = BackupSourceType.SAF_TREE
@@ -366,11 +384,22 @@ private fun RuleEditorDialog(
                     Checkbox(checked = charging, onCheckedChange = { charging = it })
                     Text("Require charging for the initial backup")
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Rule enabled", Modifier.weight(1f))
+                    Switch(checked = enabled, onCheckedChange = { enabled = it })
+                }
+                Text(
+                    "This is one-way backup. Device deletions do not delete server files. After force-stop, open KuraStorage to resume scheduled work.",
+                )
             }
         },
         confirmButton = {
             Button(
-                onClick = { onSave(BackupRuleInput(sourceType, sourceLocator, sourceName, destinationId, mode, charging, battery)) },
+                onClick = {
+                    onSave(
+                        BackupRuleInput(sourceType, sourceLocator, sourceName, destinationId, mode, charging, battery, enabled),
+                    )
+                },
                 enabled = !saving && sourceLocator.isNotBlank() && sourceName.isNotBlank() && destinationId.isNotBlank(),
             ) { Text("Save") }
         },
@@ -379,6 +408,7 @@ private fun RuleEditorDialog(
 }
 
 private const val MINIMUM_BATTERY_PERCENT = 0
+private const val PERCENT_SCALE = 100
 private const val DEFAULT_MINIMUM_BATTERY_PERCENT = 20
 private const val MAXIMUM_BATTERY_PERCENT = 100
 
@@ -387,7 +417,7 @@ fun BackupWifiScreen(
     state: BackupWifiState,
     onRefresh: () -> Unit,
     onRequestPermission: (Set<String>) -> Unit,
-    onRegister: (String, Boolean, Boolean) -> Unit,
+    onRegister: (String, Boolean, Boolean, Boolean) -> Unit,
     onSave: (ExternalWifiPolicy) -> Unit,
     onDelete: (ExternalWifiPolicy) -> Unit,
     onOpenAppSettings: () -> Unit,
@@ -396,6 +426,7 @@ fun BackupWifiScreen(
     var name by rememberSaveable { mutableStateOf("") }
     var restrictBssid by rememberSaveable { mutableStateOf(false) }
     var metered by rememberSaveable { mutableStateOf(false) }
+    var enabled by rememberSaveable { mutableStateOf(true) }
     var confirmRegistration by rememberSaveable { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<ExternalWifiPolicy?>(null) }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -411,6 +442,10 @@ fun BackupWifiScreen(
             Checkbox(metered, { metered = it })
             Text("Treat as metered (automatic backup disabled)")
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Enabled", Modifier.weight(1f))
+            Switch(checked = enabled && !metered, onCheckedChange = { enabled = it }, enabled = !metered)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = { confirmRegistration = true },
@@ -420,12 +455,18 @@ fun BackupWifiScreen(
             OutlinedButton(onClick = onRefresh) { Text("Refresh") }
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (state.saving) Text("Saving Wi-Fi policy…")
         LazyColumn(Modifier.weight(1f)) {
             items(state.policies, key = { it.id.value }) { policy ->
                 Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                     Text(policy.displayName, style = MaterialTheme.typography.titleMedium)
                     Text("Wi-Fi name: ${policy.normalizedSsid}")
                     Text(if (policy.normalizedBssid == null) "All access points with this Wi-Fi name" else "Restricted to one access point")
+                    val connected = state.currentWifi as? CurrentWifiResult.Connected
+                    val matchesCurrent =
+                        connected?.wifi?.ssid == policy.normalizedSsid &&
+                            (policy.normalizedBssid == null || connected.wifi.bssid == policy.normalizedBssid)
+                    Text(if (matchesCurrent) "Matches the currently connected Wi-Fi" else "Not the current Wi-Fi")
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Allowed", Modifier.weight(1f))
                         Switch(policy.enabled, { onSave(policy.copy(enabled = it)) }, enabled = !state.saving && !policy.treatAsMetered)
@@ -458,7 +499,7 @@ fun BackupWifiScreen(
             confirmButton = {
                 Button(onClick = {
                     confirmRegistration = false
-                    onRegister(name, restrictBssid, metered)
+                    onRegister(name, restrictBssid, metered, enabled && !metered)
                 }) { Text("Allow current Wi-Fi") }
             },
             dismissButton = { TextButton(onClick = { confirmRegistration = false }) { Text("Cancel") } },
@@ -509,7 +550,11 @@ private fun WifiAvailability(
     settings: () -> Unit,
 ) {
     when (current) {
-        is CurrentWifiResult.Connected -> Text("Connected Wi-Fi is available to register.")
+        is CurrentWifiResult.Connected ->
+            Column {
+                Text("Currently connected Wi-Fi: ${current.wifi.ssid}")
+                Text("This identity is used only for backup policy matching, never as server identity.")
+            }
         is CurrentWifiResult.PermissionRequired ->
             Column {
                 Text(
@@ -578,11 +623,12 @@ private fun SyncLifecycleState.label() = name.lowercase().replace('_', ' ').repl
 private fun BackupWaitReason.label() =
     when (this) {
         BackupWaitReason.NONE -> "none"
-        BackupWaitReason.NETWORK, BackupWaitReason.ALLOWED_WIFI -> "an allowed connection"
+        BackupWaitReason.NETWORK -> "network connectivity"
+        BackupWaitReason.ALLOWED_WIFI -> "a trusted external Wi-Fi and ZeroTier"
         BackupWaitReason.BATTERY -> "battery"
         BackupWaitReason.CHARGING -> "charging"
         BackupWaitReason.AUTHENTICATION -> "sign-in"
-        BackupWaitReason.STORAGE -> "server storage"
+        BackupWaitReason.STORAGE -> "server HDD availability"
         BackupWaitReason.SOURCE_PERMISSION -> "source permission"
         BackupWaitReason.SERVER_RECONCILIATION -> "server confirmation"
     }
