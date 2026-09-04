@@ -167,7 +167,7 @@ class KuraComponentsTest {
     @Test
     fun headingsIconsSelectionAndTouchTargetsAreAccessible() {
         compose.setContent {
-            KuraStorageTheme {
+            KuraStorageTheme(darkTheme = true) {
                 androidx.compose.foundation.layout.Column {
                     KuraSectionHeader("Files")
                     KuraLogo(contentDescription = "KuraStorage logo")
@@ -181,6 +181,15 @@ class KuraComponentsTest {
         }
 
         compose.onNodeWithText("Files").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        val heading = compose.onNodeWithText("Files").captureToImage().toPixelMap()
+        val brightestHeadingPixel =
+            (0 until heading.height).maxOf { y ->
+                (0 until heading.width).maxOf { x ->
+                    val color = heading[x, y]
+                    (color.red + color.green + color.blue) / 3f
+                }
+            }
+        assertTrue("Dark theme section heading must remain visibly brighter than its background", brightestHeadingPixel > 0.45f)
         compose.onNodeWithContentDescription("KuraStorage logo").assertContentDescriptionEquals("KuraStorage logo")
         compose.onNodeWithContentDescription("PDF document").assertIsDisplayed()
         compose.onNodeWithContentDescription("Open actions").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)

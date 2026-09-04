@@ -3,6 +3,7 @@ package com.kurastorage.feature.settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -22,6 +23,7 @@ import com.kurastorage.core.model.media.MediaCleanupRun
 import com.kurastorage.core.model.media.MediaCleanupRunStatus
 import com.kurastorage.core.model.media.MediaCleanupTrigger
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.time.Instant
@@ -73,6 +75,15 @@ class CacheManagementScreenTest {
         compose.onNodeWithText("Administrator access required").assertIsDisplayed()
         compose.onNodeWithText("No management action was performed.", substring = true).assertIsDisplayed()
         compose.onAllNodesWithText("Clean up now").assertCountEquals(0)
+        val title = compose.onNodeWithTag("cache-title").captureToImage().toPixelMap()
+        val brightestPixel =
+            (0 until title.height).maxOf { y ->
+                (0 until title.width).maxOf { x ->
+                    val color = title[x, y]
+                    (color.red + color.green + color.blue) / 3f
+                }
+            }
+        assertTrue("Dark theme title must remain visibly brighter than its background", brightestPixel > 0.45f)
     }
 
     @Test

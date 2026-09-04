@@ -522,54 +522,55 @@
 
 ### 10.1 開始条件・36画面追跡
 
-- [ ] PR10の開始条件を満たす。
-  - [ ] PR9が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`から短命Branchを作成し、PR1〜PR9の完了記録、`docs/testing/`、残存未対応を確認する。
-- [ ] `001`〜`036`のMockup追跡表を最終化する。
-  - [ ] すべての番号にProduction owner、対象状態、自動Test、手動Capture、意図的差分が記録されている。
-  - [ ] 参考UIのないFavorites、Tags、Entry organization、Activity、確認DialogのDesign system整合も記録する。
-  - [ ] サンプル値固定、木々装飾、VPN操作、背景画像化、未実装ボタンが残っていない。
+- [x] PR10の開始条件を満たす。
+  - [x] PR9が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`から短命Branchを作成し、PR1〜PR9の完了記録、`docs/testing/`、残存未対応を確認する。
+- [x] `001`〜`036`のMockup追跡表を最終化する。
+  - [x] すべての番号にProduction owner、対象状態、自動Test、手動Capture、意図的差分が記録されている。
+  - [x] 参考UIのないFavorites、Tags、Entry organization、Activity、確認DialogのDesign system整合も記録する。
+  - [x] サンプル値固定、木々装飾、VPN操作、背景画像化、未実装ボタンが残っていない。
 
 ### 10.2 Adaptive・Accessibility最終検証
 
-- [ ] 全主要画面のAdaptive layoutを最終確認する。
-  - [ ] 360dp幅、一般的な縦画面、横画面、System bar/Cutoutで欠落、重なり、意図しない横切れがない。
-  - [ ] 通常文字と200%文字拡大で、主要操作、Error、危険操作の取消しへ到達できる。
-  - [ ] IME、Dialog、Snackbar、FAB、Bottom navigationがContentと操作不能な形で重ならない。
-- [ ] TalkBackと非色依存を最終確認する。
-  - [ ] 画面Title、Section heading、現在状態、List item、Form、Error、主/補助操作を意味のある順序で読み上げる。
-  - [ ] Icon-only operationにContent description、選択にselected/state description、Progressにprogress semanticsがある。
-  - [ ] Success、Warning、Error、Permission、Offlineを色だけでなく、labelとIcon/形状で識別できる。
-  - [ ] 主要操作のタップ領域が48dp相当以上で、Focus trapや不要な連続読み上げがない。
-- [ ] 文字とコントラストを最終確認する。
-  - [ ] User向け用語、ZeroTier表記、File/Folder/Backupの文言が画面間で一貫している。
-  - [ ] Light/Darkの本文、補足、Button、Status、Outlineが必要なコントラストを持つ。
-  - [ ] Internal code、物理Path、Token、SSID/BSSIDの非公開値をUser向け表示とSemanticsに出さない。
+- [x] 全主要画面のAdaptive layoutを最終確認する。
+  - [x] 360dp幅、一般的な縦画面、横画面、System bar/Cutoutで欠落、重なり、意図しない横切れがない。
+  - [x] 通常文字と200%文字拡大で、主要操作、Error、危険操作の取消しへ到達できる。
+  - [x] IME、Dialog、Snackbar、FAB、Bottom navigationがContentと操作不能な形で重ならない。
+- [x] TalkBackと非色依存を最終確認する。
+  - [x] 画面Title、Section heading、現在状態、List item、Form、Error、主/補助操作を意味のある順序で読み上げる。
+  - [x] Icon-only operationにContent description、選択にselected/state description、Progressにprogress semanticsがある。
+  - [x] Success、Warning、Error、Permission、Offlineを色だけでなく、labelとIcon/形状で識別できる。
+  - [x] 主要操作のタップ領域が48dp相当以上で、Focus trapや不要な連続読み上げがない。
+- [x] 文字とコントラストを最終確認する。
+  - [x] 実機Dark themeで検出したCache管理画面Title・Section headingの低コントラストを修正し、回帰Testを追加する。
+  - [x] User向け用語、ZeroTier表記、File/Folder/Backupの文言が画面間で一貫している。
+  - [x] Light/Darkの本文、補足、Button、Status、Outlineが必要なコントラストを持つ。
+  - [x] Internal code、物理Path、Token、SSID/BSSIDの非公開値をUser向け表示とSemanticsに出さない。
 
 ### 10.3 全自動テスト・実機E2E
 
-- [ ] Repository全体の自動検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`、`./scripts/ci/verify-server.sh`、`verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`、`git diff --check`が成功する。
-  - [ ] Android 13実機/API 33 Emulatorで`./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が全Moduleで成功する。
-  - [ ] Coverage、ktlint、detekt、Android Lint、SBOM、Debug/Release相当Build、AndroidTest APK assemblyの必須gateを満たす。
-- [ ] Android 13物理端末で主要E2Eを完了する。
-  - [ ] 起動→LOCAL_DIRECT/REMOTE_SECURE→Login/Device登録→Homeの表示と遷移を確認する。
-  - [ ] Bottom navigation、File/Folder、Upload/Download、Detail、Share、Search/Recent/Category/Favorite/Tag/Activityを確認する。
-  - [ ] Photo/PDF/Video/Audio/Text、品質変更、競合、回転、background/foreground、通信断/再接続を確認する。
-  - [ ] Settings、Backup rule/Wi-Fi/Progress、Quality、Admin Cacheのmanual cleanupを確認する。
-  - [ ] 360dp相当、横画面、200%文字、TalkBack、Light/Darkの対象表を完了する。
-  - [ ] Frame、Memory、ANR、Crash、StrictMode、Fatal log、ネットワークの明らかな回帰がない。
+- [x] Repository全体の自動検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`、`./scripts/ci/verify-server.sh`、`verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`、`git diff --check`が成功する。
+  - [x] Android 13実機/API 33 Emulatorで`./apps/android/gradlew -p apps/android connectedDebugAndroidTest --max-workers=1`が全Moduleで成功する。
+  - [x] Coverage、ktlint、detekt、Android Lint、SBOM、Debug/Release相当Build、AndroidTest APK assemblyの必須gateを満たす。
+- [x] Android 13物理端末で主要E2Eを完了する。
+  - [x] 起動→LOCAL_DIRECT/REMOTE_SECURE→Login/Device登録→Homeの表示と遷移を確認する。
+  - [x] Bottom navigation、File/Folder、Upload/Download、Detail、Share、Search/Recent/Category/Favorite/Tag/Activityを確認する。
+  - [x] Photo/PDF/Video/Audio/Text、品質変更、競合、回転、background/foreground、通信断/再接続を確認する。
+  - [x] Settings、Backup rule/Wi-Fi/Progress、Quality、Admin Cacheのmanual cleanupを確認する。
+  - [x] 360dp相当、横画面、200%文字、TalkBack、Light/Darkの対象表を完了する。
+  - [x] Frame、Memory、ANR、Crash、StrictMode、Fatal log、ネットワークの明らかな回帰がない。
 
 ### 10.4 文書・最終完了
 
-- [ ] `docs/testing/YYYYMMDD-android-ui-pr10-final-e2e.md`を作成する。
-  - [ ] 36画面対応表、端末/API、方向、文字倍率、Theme、TalkBack、E2E手順、スクリーンショットを記録する。
-  - [ ] 意図的差分、計画と実装の差分、実測値、残存不具合がないことを記録する。
-- [ ] 正式文書を最終実装へ整合する。
-  - [ ] `product-requirements`、`functional-design`、`architecture-design`、`repository-structure`、`development-guidelines`に矛盾、古いPath、実装と異なる契約が残っていない。
-  - [ ] `docs/ui/`の参考画像自体をProduction assetとして複製していない。
-- [ ] PR10を完了する。
-  - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR10完了記録、記録Commitの再Pushを完了して報告・停止する。
+- [x] `docs/testing/YYYYMMDD-android-ui-pr10-final-e2e.md`を作成する。
+  - [x] 36画面対応表、端末/API、方向、文字倍率、Theme、TalkBack、E2E手順、スクリーンショットを記録する。
+  - [x] 意図的差分、計画と実装の差分、実測値、残存不具合がないことを記録する。
+- [x] 正式文書を最終実装へ整合する。
+  - [x] `product-requirements`、`functional-design`、`architecture-design`、`repository-structure`、`development-guidelines`に矛盾、古いPath、実装と異なる契約が残っていない。
+  - [x] `docs/ui/`の参考画像自体をProduction assetとして複製していない。
+- [x] PR10を完了する。
+  - [x] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR10完了記録、記録Commitの再Pushを完了して報告・停止する。
 
 - [ ] PR10 Merge後に全体完了処理を行う。
   - [ ] PR1〜PR10がすべて`main`へMergeされている。
@@ -788,7 +789,27 @@
 
 ### PR10: 全体Adaptive・Accessibility・実機E2E
 
-未完了。
+- 完了日: 2026-09-04
+- Pull Request: [#58 Complete Android UI adaptive and physical-device validation](https://github.com/ry825/Kura_Storage/pull/58)
+- Test・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`成功（1,387 tasks、Build、JVM test、Coverage、ktlint、Detekt、Android Lint、Debug/Release APK、AndroidTest APK、CycloneDX SBOMを含む）。変更後sourceの全module `connectedDebugAndroidTest --max-workers=1`をAndroid 13 / API 33物理端末で再実行し、879 tasksを10分03秒で完了した。app 8、core-data 10、core-database 11、core-ui 5、activity 2、auth 6、backup 11、connection 5、files 23、media 14、search 11、settings 10、sharing 6、text 8がすべて成功した。
+  - `./scripts/ci/verify-server.sh`成功（Domain 135、Application 353、Integration 229、失敗0）。`verify-config.sh`、`verify-security.sh`、`verify-deployment.sh`、`git diff --check`も成功した。
+  - 実Server `0.13.0-pr10-rc1`とAndroid 13物理端末でLOCAL_DIRECT、ZeroTier REMOTE_SECURE、offline/復旧、Login/Device登録、Home、5項目Navigation、Files、Shared、Search、Text、Upload、Settings、Backup、Quality、Admin Cache manual cleanupを確認した。縦横、360dp、cutout、System font 160%、TalkBack、Light/Dark、background/foregroundを確認し、正確な200%文字は同じ物理端末上の決定的Compose fixtureで補完した。
+  - 実機性能は131 framesでmedian/p90/p95/p99 15/23/32/65 ms、janky 9.16%、PSS 107,847 KiB、RSS 226,332 KiBだった。現行PIDのANR、Crash、StrictMode、Fatal、主要network例外は0件だった。
+  - GitHub必須CI run `33868812903`のAndroid、Server、Config、Securityがすべて成功した。
+- 計画と実装の差分:
+  - 実機Dark themeでCache titleと共通Section headingの低コントラストを検出したため、`onBackground`を明示し、Dark theme pixel regression testを追加して実機とfocused/full connected suiteで再確認した。
+  - 対象物理端末のSystem font設定は160%が上限だったため、160%をSystem UIで確認し、要求する200%は同じAPI 33物理端末上で`fontScale = 2.0`の決定的Compose fixtureを実行した。
+  - Formal docs 5文書は現行実装と整合しており、VPNの記述は将来候補またはLegacy mockup filenameの説明だけだった。Cache契約、Android module/pathにも差分がないため正式文書変更は不要だった。
+- 追加タスクと理由:
+  - Cache titleと共通Section headingのDark theme contrast修正、およびpixel回帰testを追加した。最終物理端末確認で発見した可読性問題を同一PR内で解消するためである。
+  - 36画面の最終追跡表、11枚の物理端末Capture、frame/memory/log実測を`docs/testing/20260904-android-ui-pr10-final-e2e.md`へ追加した。PR1〜PR9の決定的証跡と最終実機結果を一箇所から追跡可能にするためである。
+- 技術的に不要となったタスク、理由、代替実装:
+  - 正式文書の内容変更は監査で矛盾がなかったため不要だった。変更を作らず、監査対象と結果をPR10記録へ明記することで代替した。
+  - 物理端末System UIでの200%指定はOEM上限160%のため実行不能だった。160%の実機確認と、同一端末での200% Compose fixtureに置き換えた。
+- 後続への引継ぎ:
+  - PR #58を`main`へMergeし、必須CI成功を確認した後にのみsteeringモード3-Bを使用する。PR1〜PR10のMergeとtasklist全体の未完了項目0件を確認して全体振り返りを記録する。
+  - CycloneDX生成時の`androidx.media3:media3-ui-compose:1.11.0` effective-POM warningは既存の非fatal警告で、SBOM生成と必須CIは成功している。
 
 ---
 

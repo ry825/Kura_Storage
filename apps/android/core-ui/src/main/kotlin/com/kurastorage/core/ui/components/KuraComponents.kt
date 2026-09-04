@@ -152,6 +152,7 @@ fun KuraSectionHeader(
         Text(
             text = text,
             modifier = Modifier.weight(1f).kuraHeading(),
+            color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.titleLarge,
         )
         action?.invoke()
