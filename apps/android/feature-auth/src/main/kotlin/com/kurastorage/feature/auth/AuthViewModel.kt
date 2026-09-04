@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.kurastorage.core.data.AuthenticationRepository
 import com.kurastorage.core.model.ApiError
 import com.kurastorage.core.model.ConnectionRoute
+import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.KuraStorageException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,17 +18,17 @@ sealed interface AuthUiState {
     data class Form(
         val registration: Boolean,
         val username: String = "",
+        val deviceName: String = "",
+        val submitting: Boolean = false,
+        val error: ApiError? = null,
     ) : AuthUiState
 
     data object RequiresLocalDirect : AuthUiState
-
-    data object Submitting : AuthUiState
 
     data object Authenticated : AuthUiState
 
     data class Error(
         val error: ApiError,
-        val registration: Boolean,
     ) : AuthUiState
 }
 
@@ -48,12 +49,7 @@ class AuthViewModel(
         viewModelScope.launch {
             val credential = repository.storedCredential()
             if (credential == null) {
-                mutableState.value =
-                    if (route == ConnectionRoute.LOCAL_DIRECT) {
-                        AuthUiState.Form(true)
-                    } else {
-                        AuthUiState.RequiresLocalDirect
-                    }
+                mutableState.value = registrationState()
                 return@launch
             }
             mutableState.value =
@@ -61,16 +57,9 @@ class AuthViewModel(
                     repository.refresh()
                     AuthUiState.Authenticated
                 } catch (error: KuraStorageException.Api) {
-                    AuthUiState.Error(error.error, registration = false)
+                    AuthUiState.Error(error.error)
                 } catch (_: KuraStorageException) {
-                    AuthUiState.Error(
-                        ApiError(
-                            code = com.kurastorage.core.model.ErrorCode.UNKNOWN,
-                            requestId = null,
-                            statusCode = null,
-                        ),
-                        registration = false,
-                    )
+                    AuthUiState.Error(unknownError())
                 }
         }
     }
@@ -80,7 +69,8 @@ class AuthViewModel(
         password: String,
     ) {
         val form = mutableState.value as? AuthUiState.Form ?: return
-        mutableState.value = AuthUiState.Submitting
+        if (form.submitting) return
+        mutableState.value = form.copy(username = username, submitting = true, error = null)
         viewModelScope.launch {
             try {
                 if (form.registration) {
@@ -90,17 +80,9 @@ class AuthViewModel(
                 }
                 mutableState.value = AuthUiState.Authenticated
             } catch (error: KuraStorageException.Api) {
-                mutableState.value = AuthUiState.Error(error.error, form.registration)
+                mutableState.value = submitFailure(form, username, error.error)
             } catch (_: KuraStorageException) {
-                mutableState.value =
-                    AuthUiState.Error(
-                        ApiError(
-                            code = com.kurastorage.core.model.ErrorCode.UNKNOWN,
-                            requestId = null,
-                            statusCode = null,
-                        ),
-                        form.registration,
-                    )
+                mutableState.value = form.copy(username = username, submitting = false, error = unknownError())
             }
         }
     }
@@ -111,4 +93,24 @@ class AuthViewModel(
             onComplete()
         }
     }
+
+    private fun registrationState(): AuthUiState =
+        if (route == ConnectionRoute.LOCAL_DIRECT) {
+            AuthUiState.Form(registration = true, deviceName = deviceName)
+        } else {
+            AuthUiState.RequiresLocalDirect
+        }
+
+    private fun submitFailure(
+        form: AuthUiState.Form,
+        username: String,
+        error: ApiError,
+    ): AuthUiState =
+        when (error.code) {
+            ErrorCode.DEVICE_REGISTRATION_REQUIRES_LOCAL_DIRECT -> AuthUiState.RequiresLocalDirect
+            ErrorCode.DEVICE_REVOKED, ErrorCode.REFRESH_TOKEN_REUSED -> AuthUiState.Error(error)
+            else -> form.copy(username = username, submitting = false, error = error)
+        }
+
+    private fun unknownError() = ApiError(ErrorCode.UNKNOWN, requestId = null, statusCode = null)
 }

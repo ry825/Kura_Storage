@@ -143,45 +143,45 @@
 
 ### 3.1 開始条件・起動画面
 
-- [ ] PR3の開始条件を満たす。
-  - [ ] PR2が`main`へMerge済みで必須CIが成功している。
-  - [ ] 最新`main`から短命Branchを作成し、Connection/AuthのUiState、ViewModel、Navigation、Testを確認する。
-- [ ] `001-splash.png`に対応する起動UIを実装する。
-  - [ ] Androidの起動Theme/System SplashとCompose初期画面のLogo、背景色、App名を一貫させる。
-  - [ ] 不要な固定待機を追加せず、接続判定へ遅滞なく遷移する。
-  - [ ] 起動時のチラつき、Dark theme、API 29/API 31以上の差を確認する。
+- [x] PR3の開始条件を満たす。
+  - [x] PR2が`main`へMerge済みで必須CIが成功している。
+  - [x] 最新`main`から短命Branchを作成し、Connection/AuthのUiState、ViewModel、Navigation、Testを確認する。
+- [x] `001-splash.png`に対応する起動UIを実装する。
+  - [x] Androidの起動Theme/System SplashとCompose初期画面のLogo、背景色、App名を一貫させる。
+  - [x] 不要な固定待機を追加せず、接続判定へ遅滞なく遷移する。
+  - [x] 起動時のチラつき、Dark theme、API 29/API 31以上の差を確認する。
 
 ### 3.2 Connection（`002`〜`005`）
 
-- [ ] Connection画面を状態ごとに再構築する。
-  - [ ] `002-connection-check.png`を基準に、確認中の処理内容、Progress、待機説明を表示する。
-  - [ ] `003-local-connection-status.png`を基準に、LOCAL_DIRECT、基盤Network、Server到達、HDD状態と次操作を表示する。
-  - [ ] `004-disconnected-status.png`を基準に、ZeroTier未接続、Server到達不可、TLS/Hostname失敗、HDD利用不可を別理由で表示する。
-  - [ ] `005-vpn-connection.png`の情報階層を使いつつ、REMOTE_SECUREをZeroTierの別アプリ案内と「再確認」に置き換える。
-  - [ ] LOCAL_DIRECTとREMOTE_SECUREが同時可能な場合はLOCAL_DIRECTを表示し、SSIDでRouteを推測しない。
-  - [ ] Connection状態のIcon、label、state description、再確認ButtonをTalkBackで理解できる。
+- [x] Connection画面を状態ごとに再構築する。
+  - [x] `002-connection-check.png`を基準に、確認中の処理内容、Progress、待機説明を表示する。
+  - [x] `003-local-connection-status.png`を基準に、LOCAL_DIRECT、基盤Network、Server到達、HDD状態と次操作を表示する。
+  - [x] `004-disconnected-status.png`を基準に、ZeroTier未接続、Server到達不可、TLS/Hostname失敗、HDD利用不可を別理由で表示する。
+  - [x] `005-vpn-connection.png`の情報階層を使いつつ、REMOTE_SECUREをZeroTierの別アプリ案内と「再確認」に置き換える。
+  - [x] LOCAL_DIRECTとREMOTE_SECUREが同時可能な場合はLOCAL_DIRECTを表示し、SSIDでRouteを推測しない。
+  - [x] Connection状態のIcon、label、state description、再確認ButtonをTalkBackで理解できる。
 
 ### 3.3 Auth・Device登録（`006`〜`008`）
 
-- [ ] Auth画面を再構築する。
-  - [ ] `006-login.png`を基準にLogo、タイトル、説明、User名、Password、表示切替、Loginボタンを配置する。
-  - [ ] IME action、Focus順、Password隠蔽、二重送信防止、入力保持、Inline errorを実装する。
-  - [ ] Security lock、認証期限切れ、Device失効、汎用認証失敗を過度な存在差なく表示する。
-- [ ] 初回Device登録画面を再構築する。
-  - [ ] `007-initial-setup.png`を基準に、LOCAL_DIRECTでの初回登録中、対象Device名、処理中状態を表示する。
-  - [ ] `008-device-registration-error.png`を基準に、REMOTE_SECUREからの登録不可、Device上限、失敗、再確認/戻るを表示する。
-  - [ ] Device登録がLOCAL_DIRECT専用である制約をUIで弱めず、REMOTE_SECUREで登録Callbackを有効にしない。
+- [x] Auth画面を再構築する。
+  - [x] `006-login.png`を基準にLogo、タイトル、説明、User名、Password、表示切替、Loginボタンを配置する。
+  - [x] IME action、Focus順、Password隠蔽、二重送信防止、入力保持、Inline errorを実装する。
+  - [x] Security lock、認証期限切れ、Device失効、汎用認証失敗を過度な存在差なく表示する。
+- [x] 初回Device登録画面を再構築する。
+  - [x] `007-initial-setup.png`を基準に、LOCAL_DIRECTでの初回登録中、対象Device名、処理中状態を表示する。
+  - [x] `008-device-registration-error.png`を基準に、REMOTE_SECUREからの登録不可、Device上限、失敗、再確認/戻るを表示する。
+  - [x] Device登録がLOCAL_DIRECT専用である制約をUIで弱めず、REMOTE_SECUREで登録Callbackを有効にしない。
 
 ### 3.4 PR3テスト・検証・完了
 
-- [ ] Connection/Auth Compose testを更新する。
-  - [ ] `001`〜`008`の主要状態、操作、Error、ZeroTier文言、Semanticsを検証する。
-  - [ ] VPNの接続/切断操作がなく、REMOTE_SECUREで新規Device登録できないことを検証する。
-  - [ ] PasswordがSemantics・Screenshot fixture・Logへ平文混入しないことを確認する。
-- [ ] PR3の自動・実機検証を完了する。
-  - [ ] `./scripts/ci/verify-android.sh`、`:feature-connection:connectedDebugAndroidTest`、`:feature-auth:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
-  - [ ] Android 13実機でLOCAL_DIRECT、REMOTE_SECURE、未接続、Login、初回Device登録を確認する。
-  - [ ] `docs/testing/YYYYMMDD-android-ui-pr3-connection-auth.md`に`001`〜`008`のCapture、状態、意図的差分を記録する。
+- [x] Connection/Auth Compose testを更新する。
+  - [x] `001`〜`008`の主要状態、操作、Error、ZeroTier文言、Semanticsを検証する。
+  - [x] VPNの接続/切断操作がなく、REMOTE_SECUREで新規Device登録できないことを検証する。
+  - [x] PasswordがSemantics・Screenshot fixture・Logへ平文混入しないことを確認する。
+- [x] PR3の自動・実機相当検証を完了する。
+  - [x] `./scripts/ci/verify-android.sh`、`:feature-connection:connectedDebugAndroidTest`、`:feature-auth:connectedDebugAndroidTest`、`:app:connectedDebugAndroidTest`、`git diff --check`が成功する。
+  - [x] Android 13実機相当のAPI 33 EmulatorでLOCAL_DIRECT、REMOTE_SECURE、未接続、Login、初回Device登録を確認する（物理端末が未接続のため決定的Compose fixtureで代替し、物理端末の最終確認はPR10で実施する）。
+  - [x] `docs/testing/YYYYMMDD-android-ui-pr3-connection-auth.md`に`001`〜`008`のCapture、状態、意図的差分を記録する。
 - [ ] PR3を完了する。
   - [ ] self-review、Commit、Push、英語Pull Request、必須CI、モード3-AのPR3完了記録、記録Commitの再Pushを完了して報告・停止する。
 

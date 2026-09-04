@@ -1,9 +1,12 @@
 package com.kurastorage.feature.auth
 
 import com.kurastorage.core.data.AuthenticationRepository
+import com.kurastorage.core.model.ApiError
 import com.kurastorage.core.model.AuthSession
 import com.kurastorage.core.model.ConnectionRoute
 import com.kurastorage.core.model.DeviceId
+import com.kurastorage.core.model.ErrorCode
+import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.StoredCredential
 import com.kurastorage.core.model.UserRole
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.time.Instant
@@ -48,15 +52,56 @@ class AuthViewModelTest {
             val remote = AuthViewModel(ConnectionRoute.REMOTE_SECURE, "device", FakeAuthenticationRepository())
             dispatcher.scheduler.advanceUntilIdle()
 
-            assertEquals(AuthUiState.Form(registration = true), local.state.value)
+            assertEquals(AuthUiState.Form(registration = true, deviceName = "device"), local.state.value)
             assertEquals(AuthUiState.RequiresLocalDirect, remote.state.value)
+        }
+
+    @Test
+    fun `registration blocks duplicate submit and keeps username on an inline failure`() =
+        runTest(dispatcher) {
+            val error = ApiError(ErrorCode.VALIDATION_FAILED, "request-1", 400)
+            val repository = FakeAuthenticationRepository(registerError = error)
+            val viewModel = AuthViewModel(ConnectionRoute.LOCAL_DIRECT, "Pixel", repository)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.submit("member", "secret")
+            viewModel.submit("member", "secret")
+            assertTrue((viewModel.state.value as AuthUiState.Form).submitting)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(1, repository.registerCalls)
+            assertEquals(
+                AuthUiState.Form(
+                    registration = true,
+                    username = "member",
+                    deviceName = "Pixel",
+                    error = error,
+                ),
+                viewModel.state.value,
+            )
+        }
+
+    @Test
+    fun `remote unregistered state never invokes registration`() =
+        runTest(dispatcher) {
+            val repository = FakeAuthenticationRepository()
+            val viewModel = AuthViewModel(ConnectionRoute.REMOTE_SECURE, "device", repository)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.submit("member", "secret")
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(AuthUiState.RequiresLocalDirect, viewModel.state.value)
+            assertEquals(0, repository.registerCalls)
         }
 
     private class FakeAuthenticationRepository(
         private val stored: StoredCredential? = null,
+        private val registerError: ApiError? = null,
     ) : AuthenticationRepository {
         var refreshCalls = 0
         var loginCalls = 0
+        var registerCalls = 0
 
         override suspend fun storedCredential() = stored
 
@@ -65,7 +110,11 @@ class AuthViewModelTest {
             username: String,
             password: String,
             deviceName: String,
-        ) = session()
+        ): AuthSession {
+            registerCalls++
+            registerError?.let { throw KuraStorageException.Api(it) }
+            return session()
+        }
 
         override suspend fun login(
             username: String,

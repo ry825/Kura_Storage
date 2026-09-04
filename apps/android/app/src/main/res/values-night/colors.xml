@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kura_splash_background">#101518</color>
+    <color name="kura_splash_icon_background">#101518</color>
+</resources>
