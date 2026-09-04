@@ -44,7 +44,7 @@ internal fun MediaPlayerRoute(
 ) {
     val playerViewModel: MediaPlayerViewModel =
         viewModel(
-            key = "player-${kind.name}-$fileId-${current.media.scopeId}",
+            key = "player-${kind.name}-$fileId-${current.sessionId}-${current.media.scopeId}",
             factory =
                 simpleViewModelFactory {
                     MediaPlayerViewModel(

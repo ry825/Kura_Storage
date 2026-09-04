@@ -96,6 +96,7 @@ enum class AppDestination(
     AUTHENTICATION("authentication"),
     HOME("home"),
     FILES("files"),
+    SETTINGS("settings"),
     TRASH("trash"),
     SHARING("sharing"),
     SHARING_SETTINGS("sharing-settings"),

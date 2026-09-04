@@ -35,8 +35,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -68,6 +66,7 @@ import com.kurastorage.core.model.ConnectionStatus
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
+import com.kurastorage.core.model.SearchFileCategory
 import com.kurastorage.core.model.ShareItem
 import com.kurastorage.core.model.ShareScope
 import com.kurastorage.core.model.SupportedTextMimeTypes
@@ -96,7 +95,6 @@ import com.kurastorage.feature.backup.SelectedBackupDestination
 import com.kurastorage.feature.backup.SelectedBackupSource
 import com.kurastorage.feature.connection.ConnectionScreen
 import com.kurastorage.feature.connection.ConnectionViewModel
-import com.kurastorage.feature.files.AdminStoragePanel
 import com.kurastorage.feature.files.AdminStorageState
 import com.kurastorage.feature.files.AdminStorageViewModel
 import com.kurastorage.feature.files.FileBrowserScreen
@@ -120,6 +118,7 @@ import com.kurastorage.feature.search.TagsScreen
 import com.kurastorage.feature.search.TagsViewModel
 import com.kurastorage.feature.settings.QualitySettingsScreen
 import com.kurastorage.feature.settings.QualitySettingsViewModel
+import com.kurastorage.feature.settings.SettingsHubScreen
 import com.kurastorage.feature.sharing.SharingListViewModel
 import com.kurastorage.feature.sharing.SharingScreen
 import com.kurastorage.feature.sharing.SharingSettingsScreen
@@ -213,879 +212,954 @@ private fun KuraStorageApp(
         }
     }
 
-    NavHost(
-        navController = navController,
-        startDestination = AppDestination.CONNECTION.route,
-    ) {
-        composable(AppDestination.CONNECTION.route) {
-            ConnectionScreen(
-                state = connectionState,
-                onRecheck = connectionViewModel::check,
-                onConnected = { state ->
-                    if (connected?.route != state.route || services == null) {
-                        services?.close()
-                        mediaContexts.clear()
-                        backupUi = null
-                        connected = state
-                        services = container.sessionServices(state.route)
-                    }
-                    navController.navigate(AppDestination.AUTHENTICATION.route) {
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
-        composable(AppDestination.AUTHENTICATION.route) {
-            val route = connected?.route
-            val authRepository = services?.authentication
-            if (route == null || authRepository == null) {
-                navController.navigate(AppDestination.CONNECTION.route)
-                return@composable
-            }
-            val authViewModel: AuthViewModel =
-                viewModel(
-                    key = route.name,
-                    factory =
-                        simpleViewModelFactory {
-                            AuthViewModel(route, Build.MODEL, authRepository)
-                        },
+    KuraStorageAppShell(navController = navController) { contentPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = AppDestination.CONNECTION.route,
+            modifier = Modifier.padding(contentPadding),
+        ) {
+            composable(AppDestination.CONNECTION.route) {
+                ConnectionScreen(
+                    state = connectionState,
+                    onRecheck = connectionViewModel::check,
+                    onConnected = { state ->
+                        val replaceSession = connected?.route != state.route || services == null
+                        if (replaceSession) {
+                            services?.close()
+                            mediaContexts.clear()
+                            backupUi = null
+                            connected = state
+                            services = container.sessionServices(state.route)
+                        }
+                        navController.navigate(AppDestination.AUTHENTICATION.route) {
+                            if (replaceSession) popUpTo(0)
+                            launchSingleTop = true
+                        }
+                    },
                 )
-            val authState by authViewModel.state.collectAsStateWithLifecycle()
-            AuthScreen(
-                state = authState,
-                onSubmit = authViewModel::submit,
-                onRetry = {
-                    navController.navigate(AppDestination.CONNECTION.route) {
-                        popUpTo(AppDestination.CONNECTION.route) { inclusive = true }
-                    }
-                },
-                onAuthenticated = {
-                    backupUi = container.backupUiServices(checkNotNull(services))
-                    navController.navigate(AppDestination.HOME.route) {
-                        popUpTo(AppDestination.AUTHENTICATION.route) { inclusive = true }
-                    }
-                },
-            )
-        }
-        composable(AppDestination.HOME.route) {
-            val current = services
-            val authRepository = current?.authentication
-            val route = connected?.route
-            if (current == null || authRepository == null || route == null) {
-                navController.navigate(AppDestination.CONNECTION.route)
-                return@composable
             }
-            val logoutViewModel: AuthViewModel =
-                viewModel(
-                    key = "logout-$route",
-                    factory =
-                        simpleViewModelFactory {
-                            AuthViewModel(route, Build.MODEL, authRepository)
-                        },
-                )
-            val storageViewModel =
-                if (authRepository.role() == UserRole.ADMIN) {
-                    viewModel<AdminStorageViewModel>(
-                        key = "home-storage-$route",
-                        factory = simpleViewModelFactory { AdminStorageViewModel(current.adminStorage) },
+            composable(AppDestination.AUTHENTICATION.route) {
+                val current = services
+                val route = connected?.route
+                if (route == null || current == null) {
+                    navController.navigateToConnection()
+                    return@composable
+                }
+                val authRepository = current.authentication
+                val authViewModel: AuthViewModel =
+                    viewModel(
+                        key = "auth-${current.sessionId}",
+                        factory =
+                            simpleViewModelFactory {
+                                AuthViewModel(route, Build.MODEL, authRepository)
+                            },
                     )
-                } else {
-                    null
-                }
-            val storageState = AdminStorageStateFor(storageViewModel)
-            HomeScreen(
-                connection = connected,
-                adminStorageState = storageState,
-                onRefreshAdminStorage = { storageViewModel?.refresh() },
-                onFiles = { navController.navigate(AppDestination.FILES.route) },
-                onShared = { navController.navigate(AppDestination.SHARING.route) },
-                onSearch = { navController.navigate(AppDestination.SEARCH.route) },
-                onRecent = { navController.navigate(AppDestination.RECENT_FILES.route) },
-                onActivity = { navController.navigate(AppDestination.ACTIVITY.route) },
-                onFavorites = { navController.navigate(AppDestination.FAVORITES.route) },
-                onTags = { navController.navigate(AppDestination.TAGS.route) },
-                onTrash = { navController.navigate(AppDestination.TRASH.route) },
-                onMediaSettings = { navController.navigate(AppDestination.MEDIA_SETTINGS.route) },
-                onBackupSettings = { navController.navigate(AppDestination.BACKUP_SETTINGS.route) },
-                onLogout = {
-                    logoutViewModel.logout {
-                        services?.close()
-                        mediaContexts.clear()
-                        services = null
-                        backupUi = null
-                        connected = null
-                        navController.navigate(AppDestination.CONNECTION.route) {
-                            popUpTo(0)
+                val authState by authViewModel.state.collectAsStateWithLifecycle()
+                AuthScreen(
+                    state = authState,
+                    onSubmit = authViewModel::submit,
+                    onRetry = navController::navigateToConnection,
+                    onAuthenticated = {
+                        backupUi = container.backupUiServices(checkNotNull(services))
+                        navController.navigate(AppDestination.HOME.route) {
+                            popUpTo(AppDestination.AUTHENTICATION.route) { inclusive = true }
                         }
-                    }
-                },
-            )
-        }
-        composable(AppDestination.MEDIA_SETTINGS.route) {
-            val current = services
-            if (current == null) {
-                navController.navigate(AppDestination.CONNECTION.route)
-                return@composable
+                    },
+                )
             }
-            val settingsViewModel: QualitySettingsViewModel =
-                viewModel(
-                    key = "media-quality-settings",
-                    factory = simpleViewModelFactory { QualitySettingsViewModel(current.qualityPreferences) },
-                )
-            val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
-            QualitySettingsScreen(
-                state = settingsState,
-                onSelect = settingsViewModel::update,
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(AppDestination.BACKUP_SETTINGS.route) {
-            if (backupUi == null) {
-                navController.navigate(AppDestination.CONNECTION.route)
-                return@composable
-            }
-            BackupSettingsScreen(
-                onOverview = { navController.navigate(AppDestination.BACKUP_OVERVIEW.route) },
-                onRules = { navController.navigate(AppDestination.BACKUP_RULES.route) },
-                onWifi = { navController.navigate(AppDestination.BACKUP_WIFI.route) },
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(AppDestination.BACKUP_OVERVIEW.route) {
-            val backup = backupUi ?: return@composable
-            val model: BackupOverviewViewModel =
-                viewModel(
-                    key = "backup-overview-${backup.scope.value}",
-                    factory =
-                        simpleViewModelFactory {
-                            BackupOverviewViewModel(backup.scope, backup.rules, backup.state, backup.coordinator)
-                        },
-                )
-            val state by model.state.collectAsStateWithLifecycle()
-            BackupOverviewScreen(
-                state = state,
-                onRunNow = model::runNow,
-                onPause = model::setPaused,
-                onRetry = { model.retry(it.id) },
-                onRetryAll = model::retryAllFailures,
-                onLoadMore = model::loadMore,
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(AppDestination.BACKUP_RULES.route) {
-            val backup = backupUi ?: return@composable
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val model: BackupRulesViewModel =
-                viewModel(
-                    key = "backup-rules-${backup.scope.value}",
-                    factory = simpleViewModelFactory { BackupRulesViewModel(backup.scope, backup.rules) },
-                )
-            val state by model.state.collectAsStateWithLifecycle()
-            val safPicker =
-                rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-                    if (uri != null) {
-                        runCatching {
-                            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        selectedBackupSource = SelectedBackupSource(uri.toString(), uri.lastPathSegment ?: "Device folder")
-                    }
+            composable(AppDestination.HOME.route) {
+                val current = services
+                val authRepository = current?.authentication
+                val route = connected?.route
+                val backup = backupUi
+                if (current == null || authRepository == null) {
+                    navController.navigateToConnection()
+                    return@composable
                 }
-            val mediaPermission =
-                rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                    if (!granted) Toast.makeText(context, "Media permission is required for this backup source.", Toast.LENGTH_LONG).show()
+                if (route == null || backup == null) {
+                    navController.navigateToConnection()
+                    return@composable
                 }
-            BackupRulesScreen(
-                state = state,
-                selectedSource = selectedBackupSource,
-                selectedDestination = selectedBackupDestination,
-                onPickSafSource = { safPicker.launch(null) },
-                onPickDestination = { navController.navigate(AppDestination.BACKUP_DESTINATION.route) },
-                onRequestMediaPermission = { type -> mediaPermission.launch(mediaPermissionFor(type)) },
-                onSave = { input, existing, onSaved -> model.save(input, existing, onSaved) },
-                onToggle = model::setEnabled,
-                onDelete = { model.delete(it.id) },
-                onSelectionsConsumed = {
-                    selectedBackupSource = null
-                    selectedBackupDestination = null
-                },
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(AppDestination.BACKUP_WIFI.route) {
-            val backup = backupUi ?: return@composable
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val model: BackupWifiViewModel =
-                viewModel(
-                    key = "backup-wifi-${backup.scope.value}",
-                    factory = simpleViewModelFactory { BackupWifiViewModel(backup.scope, backup.wifi) },
-                )
-            val state by model.state.collectAsStateWithLifecycle()
-            val permissions =
-                rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { model.refreshCurrent() }
-            BackupWifiScreen(
-                state = state,
-                onRefresh = model::refreshCurrent,
-                onRequestPermission = { permissions.launch(it.toTypedArray()) },
-                onRegister = model::register,
-                onSave = model::save,
-                onDelete = model::delete,
-                onOpenAppSettings = {
-                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
-                },
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(AppDestination.BACKUP_DESTINATION.route) {
-            val current = services ?: return@composable
-            BackupDestinationPicker(
-                files = current.files,
-                sharing = current.sharing,
-                onSelected = {
-                    selectedBackupDestination = it
-                    navController.popBackStack()
-                },
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(AppDestination.FILES.route) {
-            val current = services
-            if (current == null) {
-                navController.navigate(AppDestination.CONNECTION.route)
-                return@composable
-            }
-            val filesViewModel: FileBrowserViewModel =
-                viewModel(
-                    key = "files",
-                    factory =
-                        simpleViewModelFactory {
-                            FileBrowserViewModel(current.files, current.transfers, recentFiles = current.recentFiles)
-                        },
-                )
-            val storageViewModel =
-                if (current.authentication.role() == UserRole.ADMIN) {
-                    viewModel<AdminStorageViewModel>(
-                        key = "files-storage",
-                        factory = simpleViewModelFactory { AdminStorageViewModel(current.adminStorage) },
+                val homeViewModel: HomeViewModel =
+                    viewModel(
+                        key = "home-${current.sessionId}-${backup.scope.value}",
+                        factory =
+                            simpleViewModelFactory {
+                                HomeViewModel(current.recentFiles, backup.state, backup.scope)
+                            },
                     )
-                } else {
-                    null
-                }
-            FileRoute(
-                viewModel = filesViewModel,
-                adminStorageViewModel = storageViewModel,
-                trashMode = false,
-                onOpenTrash = { navController.navigate(AppDestination.TRASH.route) },
-                onExit = { navController.popBackStack() },
-                onShare = { entry -> navController.navigate(settingsRoute("new", entry.id, entry.entryType, entry.name)) },
-                onOrganization = { entryId -> navController.navigate(organizationRoute(entryId)) },
-                media = current.media,
-                onOpenMedia = { entry, entries ->
-                    mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
-                },
-                onOpenText = { entry -> textRoute(entry)?.let(navController::navigate) != null },
-                requestedDetailsId = mediaContexts.requestedDetailsId,
-                onDetailsConsumed = mediaContexts::consumeDetails,
-            )
-        }
-        composable(AppDestination.TRASH.route) {
-            val current = services
-            if (current == null) {
-                navController.navigate(AppDestination.CONNECTION.route)
-                return@composable
-            }
-            val trashViewModel: FileBrowserViewModel =
-                viewModel(
-                    key = "trash",
-                    factory =
-                        simpleViewModelFactory {
-                            FileBrowserViewModel(current.files, current.transfers, trashMode = true)
-                        },
-                )
-            FileRoute(
-                viewModel = trashViewModel,
-                adminStorageViewModel = null,
-                trashMode = true,
-                onOpenTrash = {},
-                onExit = { navController.popBackStack() },
-                onShare = {},
-                onOrganization = {},
-                media = null,
-            )
-        }
-        composable(AppDestination.SHARING.route) {
-            val current = services
-            if (current == null) {
-                navController.navigate(AppDestination.CONNECTION.route)
-                return@composable
-            }
-            val sharingViewModel: SharingListViewModel =
-                viewModel(
-                    key = "sharing-${connected?.route}",
-                    factory = simpleViewModelFactory { SharingListViewModel(current.sharing) },
-                )
-            val state by sharingViewModel.state.collectAsStateWithLifecycle()
-            SharingScreen(
-                state,
-                onBack = { navController.popBackStack() },
-                onScope = sharingViewModel::selectScope,
-                onType = sharingViewModel::selectTargetType,
-                onRefresh = sharingViewModel::refresh,
-                onLoadMore = sharingViewModel::loadMore,
-                onOpenTarget = { share ->
-                    navController.navigate("shared-entry/${share.targetEntryId}/${share.entryType.name}")
-                },
-                onManage = { share ->
-                    navController.navigate(settingsRoute(share.id, share.targetEntryId, share.entryType, share.name))
-                },
-            )
-        }
-        composable(AppDestination.SEARCH.route) {
-            val current = services
-            if (current == null) {
-                navController.navigate(AppDestination.CONNECTION.route)
-                return@composable
-            }
-            val searchViewModel: SearchViewModel =
-                viewModel(
-                    key = "search-${connected?.route}",
-                    factory = simpleViewModelFactory { SearchViewModel(current.search, current.files::detail) },
-                )
-            val state by searchViewModel.state.collectAsStateWithLifecycle()
-            var ownerOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
-            var shareOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
-            var tagOptions by remember { mutableStateOf(emptyList<com.kurastorage.core.model.TagItem>()) }
-            var filterOptionsGeneration by remember { mutableStateOf(0) }
-            LaunchedEffect(current, filterOptionsGeneration) {
-                runCatching {
-                    val personalOwners =
-                        current.files
-                            .list(null, page = 1, pageSize = 1)
-                            .items
-                            .map { it.owner }
-                    val received = loadAllReceivedShares(current.sharing)
-                    ownerOptions =
-                        (personalOwners + received.map { it.owner })
-                            .filter { it.id.isNotBlank() }
-                            .distinctBy { it.id }
-                            .map { SearchFilterOption(it.id, it.displayName) }
-                    shareOptions =
-                        received
-                            .distinctBy { it.targetEntryId }
-                            .map { SearchFilterOption(it.targetEntryId, it.name) }
-                    tagOptions = current.organization.listTags()
-                }
-            }
-            SearchScreen(
-                state = state,
-                onBack = { navController.popBackStack() },
-                onInput = searchViewModel::updateInput,
-                onSearch = searchViewModel::search,
-                onRefresh = {
-                    searchViewModel.refresh()
-                    filterOptionsGeneration++
-                },
-                onLoadMore = searchViewModel::loadMore,
-                onOpen = { item ->
-                    searchViewModel.open(item) { id, type -> navController.navigate(entryRoute(id, type)) }
-                },
-                ownerOptions = ownerOptions,
-                shareOptions = shareOptions,
-                tagOptions = tagOptions,
-                onManageTags = { navController.navigate(AppDestination.TAGS.route) },
-            )
-        }
-        composable(AppDestination.RECENT_FILES.route) {
-            val current = services
-            if (current == null) {
-                navController.navigate(AppDestination.CONNECTION.route)
-                return@composable
-            }
-            val recentViewModel: RecentFilesViewModel =
-                viewModel(
-                    key = "recent-${connected?.route}",
-                    factory = simpleViewModelFactory { RecentFilesViewModel(current.recentFiles, current.files::detail) },
-                )
-            val state by recentViewModel.state.collectAsStateWithLifecycle()
-            var shareOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
-            var shareOptionsGeneration by remember { mutableStateOf(0) }
-            LaunchedEffect(current, shareOptionsGeneration) {
-                runCatching {
-                    shareOptions =
-                        loadAllReceivedShares(current.sharing)
-                            .distinctBy { it.targetEntryId }
-                            .map { SearchFilterOption(it.targetEntryId, it.name) }
-                }
-            }
-            RecentFilesScreen(
-                state = state,
-                onBack = { navController.popBackStack() },
-                onRefresh = {
-                    recentViewModel.refresh()
-                    shareOptionsGeneration++
-                },
-                onLoadMore = recentViewModel::loadMore,
-                onOpen = { item ->
-                    recentViewModel.open(item) { id, type -> navController.navigate(entryRoute(id, type)) }
-                },
-                shareOptions = shareOptions,
-            )
-        }
-        composable(AppDestination.ACTIVITY.route) {
-            val current = services
-            if (current == null) {
-                navController.navigate(AppDestination.CONNECTION.route)
-                return@composable
-            }
-            val activityViewModel: ActivityViewModel =
-                viewModel(
-                    key = activityViewModelKey(current.sessionId),
-                    factory = simpleViewModelFactory { ActivityViewModel(current.activity) },
-                )
-            val state by activityViewModel.state.collectAsStateWithLifecycle()
-            ActivityScreen(
-                state = state,
-                onBack = { navController.popBackStack() },
-                onRefresh = activityViewModel::refresh,
-                onFilter = activityViewModel::selectFilter,
-                onLoadMore = activityViewModel::loadMore,
-                onOpenTarget = { item ->
-                    activityTargetRoute(item)?.let(navController::navigate)
-                },
-            )
-        }
-        composable(AppDestination.FAVORITES.route) {
-            val current = services ?: return@composable
-            val favoritesViewModel: FavoritesViewModel =
-                viewModel(
-                    key = "favorites-${connected?.route}",
-                    factory = simpleViewModelFactory { FavoritesViewModel(current.organization, current.files::detail) },
-                )
-            val state by favoritesViewModel.state.collectAsStateWithLifecycle()
-            var shareOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
-            var shareOptionsGeneration by remember { mutableStateOf(0) }
-            LaunchedEffect(current, shareOptionsGeneration) {
-                runCatching {
-                    shareOptions =
-                        loadAllReceivedShares(current.sharing)
-                            .distinctBy { it.targetEntryId }
-                            .map { SearchFilterOption(it.targetEntryId, it.name) }
-                }
-            }
-            FavoritesScreen(
-                state,
-                onBack = { navController.popBackStack() },
-                onRefresh = {
-                    favoritesViewModel.refresh()
-                    shareOptionsGeneration++
-                },
-                onLoadMore = favoritesViewModel::loadMore,
-                onOpen = { item ->
-                    favoritesViewModel.open(item) { entry -> navController.navigate(entryRoute(entry.id, entry.entryType)) }
-                },
-                shareOptions = shareOptions,
-            )
-        }
-        composable(AppDestination.TAGS.route) {
-            val current = services ?: return@composable
-            val tagsViewModel: TagsViewModel =
-                viewModel(
-                    key = "tags-${connected?.route}",
-                    factory = simpleViewModelFactory { TagsViewModel(current.organization) },
-                )
-            val state by tagsViewModel.state.collectAsStateWithLifecycle()
-            TagsScreen(
-                state,
-                onBack = { navController.popBackStack() },
-                onRefresh = tagsViewModel::refresh,
-                onCreate = tagsViewModel::create,
-                onRename = tagsViewModel::rename,
-                onDelete = tagsViewModel::delete,
-                onInput = tagsViewModel::input,
-                onConfirm = tagsViewModel::confirm,
-                onDismiss = tagsViewModel::dismiss,
-            )
-        }
-        composable(
-            route = "${AppDestination.ENTRY_ORGANIZATION.route}/{entryId}",
-            arguments = listOf(navArgument("entryId") { type = NavType.StringType }),
-        ) { backStackEntry ->
-            val current = services ?: return@composable
-            val entryId = checkNotNull(backStackEntry.arguments?.getString("entryId"))
-            val organizationViewModel: EntryOrganizationViewModel =
-                viewModel(
-                    key = "organization-$entryId-${connected?.route}",
-                    factory = simpleViewModelFactory { EntryOrganizationViewModel(entryId, current.organization, current.files::detail) },
-                )
-            val state by organizationViewModel.state.collectAsStateWithLifecycle()
-            EntryOrganizationScreen(
-                state,
-                onBack = { navController.popBackStack() },
-                onRefresh = organizationViewModel::refresh,
-                onToggleFavorite = organizationViewModel::toggleFavorite,
-                onToggleTag = organizationViewModel::toggleTag,
-                onManageTags = { navController.navigate(AppDestination.TAGS.route) },
-            )
-        }
-        composable(
-            route = "shared-entry/{entryId}/{entryType}",
-            arguments =
-                listOf(
-                    navArgument("entryId") { type = NavType.StringType },
-                    navArgument("entryType") { type = NavType.StringType },
-                ),
-        ) { backStackEntry ->
-            val current = services ?: return@composable
-            val entryId = checkNotNull(backStackEntry.arguments?.getString("entryId"))
-            val type = FileEntryType.valueOf(checkNotNull(backStackEntry.arguments?.getString("entryType")))
-            val filesViewModel: FileBrowserViewModel =
-                viewModel(
-                    key = "shared-entry-$entryId-${connected?.route}",
-                    factory =
-                        simpleViewModelFactory {
-                            FileBrowserViewModel(
-                                current.files,
-                                current.transfers,
-                                initialParentId = entryId.takeIf { type == FileEntryType.FOLDER },
-                                initialSelectionId = entryId.takeIf { type == FileEntryType.FILE },
-                                recentFiles = current.recentFiles,
-                            )
-                        },
-                )
-            FileRoute(
-                viewModel = filesViewModel,
-                adminStorageViewModel = null,
-                trashMode = false,
-                onOpenTrash = {},
-                onExit = { navController.popBackStack() },
-                onShare = { entry -> navController.navigate(settingsRoute("new", entry.id, entry.entryType, entry.name)) },
-                onOrganization = { entryId -> navController.navigate(organizationRoute(entryId)) },
-                media = current.media,
-                onOpenMedia = { entry, entries ->
-                    mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
-                },
-                onOpenText = { entry -> textRoute(entry)?.let(navController::navigate) != null },
-                requestedDetailsId = mediaContexts.requestedDetailsId,
-                onDetailsConsumed = mediaContexts::consumeDetails,
-            )
-        }
-        composable(
-            route = "${AppDestination.TEXT_EDITOR.route}/{fileId}",
-            arguments = listOf(navArgument("fileId") { type = NavType.StringType }),
-        ) { backStackEntry ->
-            val current = services ?: return@composable
-            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val scope = rememberCoroutineScope()
-            val textViewModel: TextEditorViewModel =
-                viewModel(
-                    key = textEditorViewModelKey(fileId, current.sessionId),
-                    factory =
-                        savedStateViewModelFactory { handle ->
-                            TextEditorViewModel(fileId, current.files, current.textFiles, handle)
-                        },
-                )
-            val state by textViewModel.state.collectAsStateWithLifecycle()
-            var copyRequest by remember { mutableStateOf<TextCopyRequest?>(null) }
-            val copyLauncher =
-                rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
-                    val request = copyRequest
-                    if (uri == null || request == null) {
-                        copyRequest = null
-                        return@rememberLauncherForActivityResult
-                    }
-                    scope.launch {
-                        runCatching {
-                            val bytes = request.content.toByteArray(Charsets.UTF_8)
-                            withContext(Dispatchers.IO) {
-                                checkNotNull(context.contentResolver.openOutputStream(uri, "w")).use { it.write(bytes) }
-                            }
-                            val operation =
-                                current.transfers.newUpload(
-                                    uri.toString(),
-                                    request.parentId,
-                                    request.name,
-                                    bytes.size.toLong(),
-                                    request.mimeType,
-                                )
-                            current.transfers.upload(operation).collect { event ->
-                                when (event) {
-                                    is TransferEvent.UploadCompleted ->
-                                        Toast.makeText(context, "Copy uploaded", Toast.LENGTH_SHORT).show()
-                                    is TransferEvent.Failed ->
-                                        Toast.makeText(context, "Copy upload failed", Toast.LENGTH_LONG).show()
-                                    else -> Unit
-                                }
-                            }
-                        }.onFailure {
-                            Toast.makeText(context, "Copy upload failed", Toast.LENGTH_LONG).show()
-                        }
-                        copyRequest = null
-                    }
-                }
-            TextEditorScreen(
-                state = state,
-                onBack = { navController.popBackStack() },
-                onRequestExit = textViewModel::requestExit,
-                onDismissDiscard = textViewModel::dismissDiscardConfirmation,
-                onDiscard = textViewModel::discardChanges,
-                onBeginEdit = textViewModel::beginEditing,
-                onDraftChange = textViewModel::updateDraft,
-                onSave = textViewModel::save,
-                onReloadConflict = textViewModel::reloadAfterConflict,
-                onSaveAsCopy = { content ->
-                    val file = state.file
-                    val parentId = file?.parentId
-                    if (file == null || parentId == null) {
-                        Toast.makeText(context, "Destination folder is unavailable", Toast.LENGTH_LONG).show()
+                val homeState by homeViewModel.state.collectAsStateWithLifecycle()
+                val storageViewModel =
+                    if (authRepository.role() == UserRole.ADMIN) {
+                        viewModel<AdminStorageViewModel>(
+                            key = "home-storage-${current.sessionId}",
+                            factory = simpleViewModelFactory { AdminStorageViewModel(current.adminStorage) },
+                        )
                     } else {
-                        val extension = file.name.substringAfterLast('.', "txt")
-                        val baseName = file.name.substringBeforeLast('.', file.name)
-                        copyRequest = TextCopyRequest(content, parentId, "$baseName-copy.$extension", file.mimeType ?: "text/plain")
-                        copyLauncher.launch(copyRequest?.name ?: "text-copy.txt")
+                        null
                     }
-                },
-                onHistory = { navController.navigate("${AppDestination.TEXT_HISTORY.route}/$fileId") },
-                onReload = textViewModel::load,
-            )
-        }
-        composable(
-            route = "${AppDestination.TEXT_HISTORY.route}/{fileId}",
-            arguments = listOf(navArgument("fileId") { type = NavType.StringType }),
-        ) { backStackEntry ->
-            val current = services ?: return@composable
-            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
-            val historyViewModel: VersionHistoryViewModel =
-                viewModel(
-                    key = "text-history-$fileId-${current.sessionId}",
-                    factory = simpleViewModelFactory { VersionHistoryViewModel(fileId, current.files, current.textFiles) },
+                val storageState = AdminStorageStateFor(storageViewModel)
+                HomeScreen(
+                    connection = connected,
+                    state = homeState,
+                    adminStorageState = storageState,
+                    onRefreshAdminStorage = { storageViewModel?.refresh() },
+                    onRefreshRecent = homeViewModel::refreshRecent,
+                    onFiles = { navController.navigateToTopLevel(TopLevelDestination.FILES) },
+                    onShared = { navController.navigateToTopLevel(TopLevelDestination.SHARING) },
+                    onSearch = { navController.navigateToTopLevel(TopLevelDestination.SEARCH) },
+                    onRecent = { navController.navigate(AppDestination.RECENT_FILES.route) },
+                    onCategory = { category -> navController.navigate(searchCategoryRoute(category)) },
+                    onOpenRecent = { recent ->
+                        val item = recent.metadata
+                        if (item.entryType != FileEntryType.UNKNOWN && item.status == FileEntryStatus.ACTIVE) {
+                            navController.navigate(entryRoute(item.id, item.entryType))
+                        }
+                    },
+                    onActivity = { navController.navigate(AppDestination.ACTIVITY.route) },
+                    onFavorites = { navController.navigate(AppDestination.FAVORITES.route) },
+                    onTags = { navController.navigate(AppDestination.TAGS.route) },
+                    onTrash = { navController.navigate(AppDestination.TRASH.route) },
                 )
-            val state by historyViewModel.state.collectAsStateWithLifecycle()
-            VersionHistoryScreen(
-                state = state,
-                onBack = { navController.popBackStack() },
-                onRefresh = historyViewModel::refresh,
-                onLoadMore = historyViewModel::loadMore,
-                onPreview = historyViewModel::preview,
-                onDismissPreview = historyViewModel::dismissPreview,
-                onRequestRestore = historyViewModel::requestRestore,
-                onDismissRestore = historyViewModel::dismissRestore,
-                onConfirmRestore = historyViewModel::confirmRestore,
-            )
-        }
-        composable(
-            route = "${AppDestination.PHOTO_VIEWER.route}/{contextId}/{fileId}",
-            arguments =
-                listOf(
-                    navArgument("contextId") { type = NavType.StringType },
-                    navArgument("fileId") { type = NavType.StringType },
-                ),
-        ) { backStackEntry ->
-            val current = services ?: return@composable
-            val route = connected?.route ?: return@composable
-            val contextId = checkNotNull(backStackEntry.arguments?.getString("contextId"))
-            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
-            val photoViewModel: PhotoViewerViewModel =
-                viewModel(
-                    key = "photo-$contextId-$fileId-${current.media.scopeId}",
-                    factory =
-                        simpleViewModelFactory {
-                            PhotoViewerViewModel(
-                                fileId,
-                                mediaContexts.fileIds(contextId),
-                                current.files,
-                                MediaViewerController(
-                                    current.media.repository,
-                                    current.media.qualityPreferences,
-                                    current.media.contextResolver,
-                                    current.media.confirmationPolicy,
-                                    route,
-                                    current.media.coroutineScope,
-                                ),
-                            )
-                        },
+            }
+            composable(AppDestination.SETTINGS.route) {
+                val current = services
+                val route = connected?.route
+                if (current == null || route == null) {
+                    navController.navigateToConnection()
+                    return@composable
+                }
+                val logoutViewModel: AuthViewModel =
+                    viewModel(
+                        key = "logout-${current.sessionId}",
+                        factory = simpleViewModelFactory { AuthViewModel(route, Build.MODEL, current.authentication) },
+                    )
+                SettingsHubScreen(
+                    isAdmin = current.authentication.role() == UserRole.ADMIN,
+                    onConnection = { navController.navigate(AppDestination.CONNECTION.route) },
+                    onMediaSettings = { navController.navigate(AppDestination.MEDIA_SETTINGS.route) },
+                    onBackupSettings = { navController.navigate(AppDestination.BACKUP_SETTINGS.route) },
+                    onActivity = { navController.navigate(AppDestination.ACTIVITY.route) },
+                    onTrash = { navController.navigate(AppDestination.TRASH.route) },
+                    onLogout = {
+                        logoutViewModel.logout {
+                            services?.close()
+                            mediaContexts.clear()
+                            services = null
+                            backupUi = null
+                            connected = null
+                            navController.navigateToConnection()
+                        }
+                    },
                 )
-            val photoState by photoViewModel.state.collectAsStateWithLifecycle()
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val downloadScope = rememberCoroutineScope()
-            var pendingMediaDownload by remember { mutableStateOf<MediaDownloadSelection?>(null) }
-            val mediaDownloadPicker =
-                rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-                    val selection = pendingMediaDownload
-                    pendingMediaDownload = null
-                    if (uri != null && selection != null) {
-                        downloadScope.launch {
-                            val succeeded =
-                                runCatching {
-                                    downloadMedia(context, current.media.downloader, uri, selection)
-                                }.isSuccess
+            }
+            composable(AppDestination.MEDIA_SETTINGS.route) {
+                val current = services
+                if (current == null) {
+                    navController.navigateToConnection()
+                    return@composable
+                }
+                val settingsViewModel: QualitySettingsViewModel =
+                    viewModel(
+                        key = "media-quality-settings-${current.sessionId}",
+                        factory = simpleViewModelFactory { QualitySettingsViewModel(current.qualityPreferences) },
+                    )
+                val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
+                QualitySettingsScreen(
+                    state = settingsState,
+                    onSelect = settingsViewModel::update,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(AppDestination.BACKUP_SETTINGS.route) {
+                if (backupUi == null) {
+                    navController.navigateToConnection()
+                    return@composable
+                }
+                BackupSettingsScreen(
+                    onOverview = { navController.navigate(AppDestination.BACKUP_OVERVIEW.route) },
+                    onRules = { navController.navigate(AppDestination.BACKUP_RULES.route) },
+                    onWifi = { navController.navigate(AppDestination.BACKUP_WIFI.route) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(AppDestination.BACKUP_OVERVIEW.route) {
+                val current = services ?: return@composable
+                val backup = backupUi ?: return@composable
+                val model: BackupOverviewViewModel =
+                    viewModel(
+                        key = "backup-overview-${current.sessionId}-${backup.scope.value}",
+                        factory =
+                            simpleViewModelFactory {
+                                BackupOverviewViewModel(backup.scope, backup.rules, backup.state, backup.coordinator)
+                            },
+                    )
+                val state by model.state.collectAsStateWithLifecycle()
+                BackupOverviewScreen(
+                    state = state,
+                    onRunNow = model::runNow,
+                    onPause = model::setPaused,
+                    onRetry = { model.retry(it.id) },
+                    onRetryAll = model::retryAllFailures,
+                    onLoadMore = model::loadMore,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(AppDestination.BACKUP_RULES.route) {
+                val current = services ?: return@composable
+                val backup = backupUi ?: return@composable
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val model: BackupRulesViewModel =
+                    viewModel(
+                        key = "backup-rules-${current.sessionId}-${backup.scope.value}",
+                        factory = simpleViewModelFactory { BackupRulesViewModel(backup.scope, backup.rules) },
+                    )
+                val state by model.state.collectAsStateWithLifecycle()
+                val safPicker =
+                    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+                        if (uri != null) {
+                            runCatching {
+                                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            selectedBackupSource = SelectedBackupSource(uri.toString(), uri.lastPathSegment ?: "Device folder")
+                        }
+                    }
+                val mediaPermission =
+                    rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                        if (!granted) {
                             Toast
                                 .makeText(
                                     context,
-                                    if (succeeded) "Download completed." else "Download failed.",
+                                    "Media permission is required for this backup source.",
                                     Toast.LENGTH_LONG,
                                 ).show()
                         }
                     }
-                }
-            PhotoViewerScreen(
-                state = photoState,
-                imageLoader = current.media.imageLoader,
-                scopeId = current.media.scopeId,
-                requestTicket = photoViewModel::requestTicket,
-                onImageReady = photoViewModel::contentReady,
-                onGenerating = photoViewModel::contentGenerating,
-                onImageFailed = photoViewModel::contentFailed,
-                onQuality = photoViewModel::selectQuality,
-                onConfirmOriginal = photoViewModel::confirmOriginal,
-                onPrevious = photoViewModel::previous,
-                onNext = photoViewModel::next,
-                onZoom = photoViewModel::setZoom,
-                onDetails = {
-                    photoState.file?.id?.let(mediaContexts::requestDetails)
-                    navController.popBackStack()
-                },
-                onDownload = {
-                    val file = photoState.file
-                    val ready = photoState.media?.loadState as? MediaLoadState.Ready
-                    if (file != null && ready != null) {
-                        pendingMediaDownload = MediaDownloadSelection(file.id, file.name, ready.source.variant)
-                        mediaDownloadPicker.launch(file.name)
-                    }
-                },
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(
-            route = "${AppDestination.PDF_VIEWER.route}/{fileId}",
-            arguments = listOf(navArgument("fileId") { type = NavType.StringType }),
-        ) { backStackEntry ->
-            val current = services ?: return@composable
-            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
-            val pdfViewModel: PdfViewerViewModel =
-                viewModel(
-                    key = "pdf-$fileId-${current.media.scopeId}",
-                    factory =
-                        simpleViewModelFactory {
-                            PdfViewerViewModel(fileId, current.files, current.media.repository, current.media.temporaryPdfStore)
-                        },
+                BackupRulesScreen(
+                    state = state,
+                    selectedSource = selectedBackupSource,
+                    selectedDestination = selectedBackupDestination,
+                    onPickSafSource = { safPicker.launch(null) },
+                    onPickDestination = {
+                        navController.navigate(AppDestination.BACKUP_DESTINATION.route)
+                    },
+                    onRequestMediaPermission = { type -> mediaPermission.launch(mediaPermissionFor(type)) },
+                    onSave = { input, existing, onSaved -> model.save(input, existing, onSaved) },
+                    onToggle = model::setEnabled,
+                    onDelete = { model.delete(it.id) },
+                    onSelectionsConsumed = {
+                        selectedBackupSource = null
+                        selectedBackupDestination = null
+                    },
+                    onBack = { navController.popBackStack() },
                 )
-            val pdfState by pdfViewModel.state.collectAsStateWithLifecycle()
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val downloadScope = rememberCoroutineScope()
-            var pendingPdfDownload by remember { mutableStateOf<MediaDownloadSelection?>(null) }
-            val pdfDownloadPicker =
-                rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-                    val selection = pendingPdfDownload
-                    pendingPdfDownload = null
-                    if (uri != null && selection != null) {
-                        downloadScope.launch {
-                            val succeeded =
-                                runCatching {
-                                    downloadMedia(context, current.media.downloader, uri, selection)
-                                }.isSuccess
-                            Toast
-                                .makeText(
-                                    context,
-                                    if (succeeded) "Download completed." else "Download failed.",
-                                    Toast.LENGTH_LONG,
-                                ).show()
+            }
+            composable(AppDestination.BACKUP_WIFI.route) {
+                val current = services ?: return@composable
+                val backup = backupUi ?: return@composable
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val model: BackupWifiViewModel =
+                    viewModel(
+                        key = "backup-wifi-${current.sessionId}-${backup.scope.value}",
+                        factory = simpleViewModelFactory { BackupWifiViewModel(backup.scope, backup.wifi) },
+                    )
+                val state by model.state.collectAsStateWithLifecycle()
+                val permissions =
+                    rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { model.refreshCurrent() }
+                BackupWifiScreen(
+                    state = state,
+                    onRefresh = model::refreshCurrent,
+                    onRequestPermission = { permissions.launch(it.toTypedArray()) },
+                    onRegister = model::register,
+                    onSave = model::save,
+                    onDelete = model::delete,
+                    onOpenAppSettings = {
+                        context.startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")),
+                        )
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(AppDestination.BACKUP_DESTINATION.route) {
+                val current = services ?: return@composable
+                BackupDestinationPicker(
+                    files = current.files,
+                    sharing = current.sharing,
+                    onSelected = {
+                        selectedBackupDestination = it
+                        navController.popBackStack()
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(AppDestination.FILES.route) {
+                val current = services
+                if (current == null) {
+                    navController.navigateToConnection()
+                    return@composable
+                }
+                val filesViewModel: FileBrowserViewModel =
+                    viewModel(
+                        key = "files-${current.sessionId}",
+                        factory =
+                            simpleViewModelFactory {
+                                FileBrowserViewModel(current.files, current.transfers, recentFiles = current.recentFiles)
+                            },
+                    )
+                val storageViewModel =
+                    if (current.authentication.role() == UserRole.ADMIN) {
+                        viewModel<AdminStorageViewModel>(
+                            key = "files-storage-${current.sessionId}",
+                            factory = simpleViewModelFactory { AdminStorageViewModel(current.adminStorage) },
+                        )
+                    } else {
+                        null
+                    }
+                FileRoute(
+                    viewModel = filesViewModel,
+                    adminStorageViewModel = storageViewModel,
+                    trashMode = false,
+                    onOpenTrash = { navController.navigate(AppDestination.TRASH.route) },
+                    onExit = { navController.popBackStack() },
+                    onShare = { entry -> navController.navigate(settingsRoute("new", entry.id, entry.entryType, entry.name)) },
+                    onOrganization = { entryId -> navController.navigate(organizationRoute(entryId)) },
+                    media = current.media,
+                    onOpenMedia = { entry, entries ->
+                        mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
+                    },
+                    onOpenText = { entry -> textRoute(entry)?.let(navController::navigate) != null },
+                    requestedDetailsId = mediaContexts.requestedDetailsId,
+                    onDetailsConsumed = mediaContexts::consumeDetails,
+                )
+            }
+            composable(AppDestination.TRASH.route) {
+                val current = services
+                if (current == null) {
+                    navController.navigateToConnection()
+                    return@composable
+                }
+                val trashViewModel: FileBrowserViewModel =
+                    viewModel(
+                        key = "trash-${current.sessionId}",
+                        factory =
+                            simpleViewModelFactory {
+                                FileBrowserViewModel(current.files, current.transfers, trashMode = true)
+                            },
+                    )
+                FileRoute(
+                    viewModel = trashViewModel,
+                    adminStorageViewModel = null,
+                    trashMode = true,
+                    onOpenTrash = {},
+                    onExit = { navController.popBackStack() },
+                    onShare = {},
+                    onOrganization = {},
+                    media = null,
+                )
+            }
+            composable(AppDestination.SHARING.route) {
+                val current = services
+                if (current == null) {
+                    navController.navigateToConnection()
+                    return@composable
+                }
+                val sharingViewModel: SharingListViewModel =
+                    viewModel(
+                        key = "sharing-${current.sessionId}",
+                        factory = simpleViewModelFactory { SharingListViewModel(current.sharing) },
+                    )
+                val state by sharingViewModel.state.collectAsStateWithLifecycle()
+                SharingScreen(
+                    state,
+                    onBack = { navController.popBackStack() },
+                    onScope = sharingViewModel::selectScope,
+                    onType = sharingViewModel::selectTargetType,
+                    onRefresh = sharingViewModel::refresh,
+                    onLoadMore = sharingViewModel::loadMore,
+                    onOpenTarget = { share ->
+                        navController.navigate("shared-entry/${share.targetEntryId}/${share.entryType.name}")
+                    },
+                    onManage = { share ->
+                        navController.navigate(settingsRoute(share.id, share.targetEntryId, share.entryType, share.name))
+                    },
+                )
+            }
+            composable(
+                route = "${AppDestination.SEARCH.route}?category={category}",
+                arguments =
+                    listOf(
+                        navArgument("category") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                    ),
+            ) { backStackEntry ->
+                val current = services
+                if (current == null) {
+                    navController.navigateToConnection()
+                    return@composable
+                }
+                val searchViewModel: SearchViewModel =
+                    viewModel(
+                        key = "search-${current.sessionId}",
+                        factory = simpleViewModelFactory { SearchViewModel(current.search, current.files::detail) },
+                    )
+                val state by searchViewModel.state.collectAsStateWithLifecycle()
+                val requestedCategory =
+                    backStackEntry.arguments
+                        ?.getString("category")
+                        ?.let { value -> SearchFileCategory.entries.firstOrNull { it.name == value } }
+                LaunchedEffect(requestedCategory) {
+                    if (requestedCategory != null) {
+                        searchViewModel.updateInput(state.input.copy(fileCategory = requestedCategory))
+                        searchViewModel.search()
+                    }
+                }
+                var ownerOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
+                var shareOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
+                var tagOptions by remember { mutableStateOf(emptyList<com.kurastorage.core.model.TagItem>()) }
+                var filterOptionsGeneration by remember { mutableStateOf(0) }
+                LaunchedEffect(current, filterOptionsGeneration) {
+                    runCatching {
+                        val personalOwners =
+                            current.files
+                                .list(null, page = 1, pageSize = 1)
+                                .items
+                                .map { it.owner }
+                        val received = loadAllReceivedShares(current.sharing)
+                        ownerOptions =
+                            (personalOwners + received.map { it.owner })
+                                .filter { it.id.isNotBlank() }
+                                .distinctBy { it.id }
+                                .map { SearchFilterOption(it.id, it.displayName) }
+                        shareOptions =
+                            received
+                                .distinctBy { it.targetEntryId }
+                                .map { SearchFilterOption(it.targetEntryId, it.name) }
+                        tagOptions = current.organization.listTags()
+                    }
+                }
+                SearchScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onInput = searchViewModel::updateInput,
+                    onSearch = searchViewModel::search,
+                    onRefresh = {
+                        searchViewModel.refresh()
+                        filterOptionsGeneration++
+                    },
+                    onLoadMore = searchViewModel::loadMore,
+                    onOpen = { item ->
+                        searchViewModel.open(item) { id, type -> navController.navigate(entryRoute(id, type)) }
+                    },
+                    ownerOptions = ownerOptions,
+                    shareOptions = shareOptions,
+                    tagOptions = tagOptions,
+                    onManageTags = { navController.navigate(AppDestination.TAGS.route) },
+                )
+            }
+            composable(AppDestination.RECENT_FILES.route) {
+                val current = services
+                if (current == null) {
+                    navController.navigateToConnection()
+                    return@composable
+                }
+                val recentViewModel: RecentFilesViewModel =
+                    viewModel(
+                        key = "recent-${current.sessionId}",
+                        factory = simpleViewModelFactory { RecentFilesViewModel(current.recentFiles, current.files::detail) },
+                    )
+                val state by recentViewModel.state.collectAsStateWithLifecycle()
+                var shareOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
+                var shareOptionsGeneration by remember { mutableStateOf(0) }
+                LaunchedEffect(current, shareOptionsGeneration) {
+                    runCatching {
+                        shareOptions =
+                            loadAllReceivedShares(current.sharing)
+                                .distinctBy { it.targetEntryId }
+                                .map { SearchFilterOption(it.targetEntryId, it.name) }
+                    }
+                }
+                RecentFilesScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onRefresh = {
+                        recentViewModel.refresh()
+                        shareOptionsGeneration++
+                    },
+                    onLoadMore = recentViewModel::loadMore,
+                    onOpen = { item ->
+                        recentViewModel.open(item) { id, type -> navController.navigate(entryRoute(id, type)) }
+                    },
+                    shareOptions = shareOptions,
+                )
+            }
+            composable(AppDestination.ACTIVITY.route) {
+                val current = services
+                if (current == null) {
+                    navController.navigateToConnection()
+                    return@composable
+                }
+                val activityViewModel: ActivityViewModel =
+                    viewModel(
+                        key = activityViewModelKey(current.sessionId),
+                        factory = simpleViewModelFactory { ActivityViewModel(current.activity) },
+                    )
+                val state by activityViewModel.state.collectAsStateWithLifecycle()
+                ActivityScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onRefresh = activityViewModel::refresh,
+                    onFilter = activityViewModel::selectFilter,
+                    onLoadMore = activityViewModel::loadMore,
+                    onOpenTarget = { item ->
+                        activityTargetRoute(item)?.let(navController::navigate)
+                    },
+                )
+            }
+            composable(AppDestination.FAVORITES.route) {
+                val current = services ?: return@composable
+                val favoritesViewModel: FavoritesViewModel =
+                    viewModel(
+                        key = "favorites-${current.sessionId}",
+                        factory = simpleViewModelFactory { FavoritesViewModel(current.organization, current.files::detail) },
+                    )
+                val state by favoritesViewModel.state.collectAsStateWithLifecycle()
+                var shareOptions by remember { mutableStateOf(emptyList<SearchFilterOption>()) }
+                var shareOptionsGeneration by remember { mutableStateOf(0) }
+                LaunchedEffect(current, shareOptionsGeneration) {
+                    runCatching {
+                        shareOptions =
+                            loadAllReceivedShares(current.sharing)
+                                .distinctBy { it.targetEntryId }
+                                .map { SearchFilterOption(it.targetEntryId, it.name) }
+                    }
+                }
+                FavoritesScreen(
+                    state,
+                    onBack = { navController.popBackStack() },
+                    onRefresh = {
+                        favoritesViewModel.refresh()
+                        shareOptionsGeneration++
+                    },
+                    onLoadMore = favoritesViewModel::loadMore,
+                    onOpen = { item ->
+                        favoritesViewModel.open(item) { entry -> navController.navigate(entryRoute(entry.id, entry.entryType)) }
+                    },
+                    shareOptions = shareOptions,
+                )
+            }
+            composable(AppDestination.TAGS.route) {
+                val current = services ?: return@composable
+                val tagsViewModel: TagsViewModel =
+                    viewModel(
+                        key = "tags-${current.sessionId}",
+                        factory = simpleViewModelFactory { TagsViewModel(current.organization) },
+                    )
+                val state by tagsViewModel.state.collectAsStateWithLifecycle()
+                TagsScreen(
+                    state,
+                    onBack = { navController.popBackStack() },
+                    onRefresh = tagsViewModel::refresh,
+                    onCreate = tagsViewModel::create,
+                    onRename = tagsViewModel::rename,
+                    onDelete = tagsViewModel::delete,
+                    onInput = tagsViewModel::input,
+                    onConfirm = tagsViewModel::confirm,
+                    onDismiss = tagsViewModel::dismiss,
+                )
+            }
+            composable(
+                route = "${AppDestination.ENTRY_ORGANIZATION.route}/{entryId}",
+                arguments = listOf(navArgument("entryId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val current = services ?: return@composable
+                val entryId = checkNotNull(backStackEntry.arguments?.getString("entryId"))
+                val organizationViewModel: EntryOrganizationViewModel =
+                    viewModel(
+                        key = "organization-$entryId-${current.sessionId}",
+                        factory =
+                            simpleViewModelFactory {
+                                EntryOrganizationViewModel(
+                                    entryId,
+                                    current.organization,
+                                    current.files::detail,
+                                )
+                            },
+                    )
+                val state by organizationViewModel.state.collectAsStateWithLifecycle()
+                EntryOrganizationScreen(
+                    state,
+                    onBack = { navController.popBackStack() },
+                    onRefresh = organizationViewModel::refresh,
+                    onToggleFavorite = organizationViewModel::toggleFavorite,
+                    onToggleTag = organizationViewModel::toggleTag,
+                    onManageTags = { navController.navigate(AppDestination.TAGS.route) },
+                )
+            }
+            composable(
+                route = "shared-entry/{entryId}/{entryType}",
+                arguments =
+                    listOf(
+                        navArgument("entryId") { type = NavType.StringType },
+                        navArgument("entryType") { type = NavType.StringType },
+                    ),
+            ) { backStackEntry ->
+                val current = services ?: return@composable
+                val entryId = checkNotNull(backStackEntry.arguments?.getString("entryId"))
+                val type = FileEntryType.valueOf(checkNotNull(backStackEntry.arguments?.getString("entryType")))
+                val filesViewModel: FileBrowserViewModel =
+                    viewModel(
+                        key = "shared-entry-$entryId-${current.sessionId}",
+                        factory =
+                            simpleViewModelFactory {
+                                FileBrowserViewModel(
+                                    current.files,
+                                    current.transfers,
+                                    initialParentId = entryId.takeIf { type == FileEntryType.FOLDER },
+                                    initialSelectionId = entryId.takeIf { type == FileEntryType.FILE },
+                                    recentFiles = current.recentFiles,
+                                )
+                            },
+                    )
+                FileRoute(
+                    viewModel = filesViewModel,
+                    adminStorageViewModel = null,
+                    trashMode = false,
+                    onOpenTrash = {},
+                    onExit = { navController.popBackStack() },
+                    onShare = { entry -> navController.navigate(settingsRoute("new", entry.id, entry.entryType, entry.name)) },
+                    onOrganization = { entryId -> navController.navigate(organizationRoute(entryId)) },
+                    media = current.media,
+                    onOpenMedia = { entry, entries ->
+                        mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
+                    },
+                    onOpenText = { entry -> textRoute(entry)?.let(navController::navigate) != null },
+                    requestedDetailsId = mediaContexts.requestedDetailsId,
+                    onDetailsConsumed = mediaContexts::consumeDetails,
+                )
+            }
+            composable(
+                route = "${AppDestination.TEXT_EDITOR.route}/{fileId}",
+                arguments = listOf(navArgument("fileId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val current = services ?: return@composable
+                val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val scope = rememberCoroutineScope()
+                val textViewModel: TextEditorViewModel =
+                    viewModel(
+                        key = textEditorViewModelKey(fileId, current.sessionId),
+                        factory =
+                            savedStateViewModelFactory { handle ->
+                                TextEditorViewModel(fileId, current.files, current.textFiles, handle)
+                            },
+                    )
+                val state by textViewModel.state.collectAsStateWithLifecycle()
+                var copyRequest by remember { mutableStateOf<TextCopyRequest?>(null) }
+                val copyLauncher =
+                    rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+                        val request = copyRequest
+                        if (uri == null || request == null) {
+                            copyRequest = null
+                            return@rememberLauncherForActivityResult
+                        }
+                        scope.launch {
+                            runCatching {
+                                val bytes = request.content.toByteArray(Charsets.UTF_8)
+                                withContext(Dispatchers.IO) {
+                                    checkNotNull(context.contentResolver.openOutputStream(uri, "w")).use { it.write(bytes) }
+                                }
+                                val operation =
+                                    current.transfers.newUpload(
+                                        uri.toString(),
+                                        request.parentId,
+                                        request.name,
+                                        bytes.size.toLong(),
+                                        request.mimeType,
+                                    )
+                                current.transfers.upload(operation).collect { event ->
+                                    when (event) {
+                                        is TransferEvent.UploadCompleted ->
+                                            Toast.makeText(context, "Copy uploaded", Toast.LENGTH_SHORT).show()
+                                        is TransferEvent.Failed ->
+                                            Toast.makeText(context, "Copy upload failed", Toast.LENGTH_LONG).show()
+                                        else -> Unit
+                                    }
+                                }
+                            }.onFailure {
+                                Toast.makeText(context, "Copy upload failed", Toast.LENGTH_LONG).show()
+                            }
+                            copyRequest = null
                         }
                     }
-                }
-            PdfViewerScreen(
-                state = pdfState,
-                onConfirm = pdfViewModel::confirm,
-                onPrevious = pdfViewModel::previous,
-                onNext = pdfViewModel::next,
-                onPage = pdfViewModel::selectPage,
-                onZoom = pdfViewModel::setZoom,
-                onViewport = pdfViewModel::setViewport,
-                onDownload = {
-                    pdfState.file?.let { file ->
-                        pendingPdfDownload = MediaDownloadSelection(file.id, file.name, MediaVariant.ORIGINAL)
-                        pdfDownloadPicker.launch(file.name)
-                    }
-                },
-                onBack = { navController.popBackStack() },
-                onDisposeViewer = pdfViewModel::closeDocument,
-            )
-        }
-        composable(
-            route = "${AppDestination.VIDEO_PLAYER.route}/{contextId}/{fileId}",
-            arguments =
-                listOf(
-                    navArgument("contextId") { type = NavType.StringType },
-                    navArgument("fileId") { type = NavType.StringType },
-                ),
-        ) { backStackEntry ->
-            val current = services ?: return@composable
-            val route = connected?.route ?: return@composable
-            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
-            MediaPlayerRoute(
-                fileId = fileId,
-                kind = MediaKind.VIDEO,
-                current = current,
-                route = route,
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(
-            route = "${AppDestination.AUDIO_PLAYER.route}/{contextId}/{fileId}",
-            arguments =
-                listOf(
-                    navArgument("contextId") { type = NavType.StringType },
-                    navArgument("fileId") { type = NavType.StringType },
-                ),
-        ) { backStackEntry ->
-            val current = services ?: return@composable
-            val route = connected?.route ?: return@composable
-            val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
-            MediaPlayerRoute(
-                fileId = fileId,
-                kind = MediaKind.AUDIO,
-                current = current,
-                route = route,
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(
-            route = "${AppDestination.SHARING_SETTINGS.route}/{shareId}/{targetEntryId}/{entryType}/{targetName}",
-            arguments =
-                listOf(
-                    navArgument("shareId") { type = NavType.StringType },
-                    navArgument("targetEntryId") { type = NavType.StringType },
-                    navArgument("entryType") { type = NavType.StringType },
-                    navArgument("targetName") { type = NavType.StringType },
-                ),
-        ) { backStackEntry ->
-            val current = services ?: return@composable
-            val arguments = checkNotNull(backStackEntry.arguments)
-            val shareId = arguments.getString("shareId").takeUnless { it == "new" }
-            val targetId = checkNotNull(arguments.getString("targetEntryId"))
-            val targetType = FileEntryType.valueOf(checkNotNull(arguments.getString("entryType")))
-            val targetName = Uri.decode(checkNotNull(arguments.getString("targetName")))
-            val settingsViewModel: SharingSettingsViewModel =
-                viewModel(
-                    key = "sharing-settings-${shareId ?: targetId}-${connected?.route}",
-                    factory =
-                        simpleViewModelFactory {
-                            SharingSettingsViewModel(current.sharing, targetId, targetType, targetName, shareId)
-                        },
+                TextEditorScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onRequestExit = textViewModel::requestExit,
+                    onDismissDiscard = textViewModel::dismissDiscardConfirmation,
+                    onDiscard = textViewModel::discardChanges,
+                    onBeginEdit = textViewModel::beginEditing,
+                    onDraftChange = textViewModel::updateDraft,
+                    onSave = textViewModel::save,
+                    onReloadConflict = textViewModel::reloadAfterConflict,
+                    onSaveAsCopy = { content ->
+                        val file = state.file
+                        val parentId = file?.parentId
+                        if (file == null || parentId == null) {
+                            Toast.makeText(context, "Destination folder is unavailable", Toast.LENGTH_LONG).show()
+                        } else {
+                            val extension = file.name.substringAfterLast('.', "txt")
+                            val baseName = file.name.substringBeforeLast('.', file.name)
+                            copyRequest = TextCopyRequest(content, parentId, "$baseName-copy.$extension", file.mimeType ?: "text/plain")
+                            copyLauncher.launch(copyRequest?.name ?: "text-copy.txt")
+                        }
+                    },
+                    onHistory = { navController.navigate("${AppDestination.TEXT_HISTORY.route}/$fileId") },
+                    onReload = textViewModel::load,
                 )
-            val state by settingsViewModel.state.collectAsStateWithLifecycle()
-            SharingSettingsScreen(
-                state,
-                onBack = { navController.popBackStack() },
-                onRefresh = settingsViewModel::refresh,
-                onCandidate = settingsViewModel::selectCandidate,
-                onPermission = settingsViewModel::selectPermission,
-                onSubmitMember = settingsViewModel::submitSelectedMember,
-                onChangePermission = settingsViewModel::changeMemberPermission,
-                onRemoveMember = settingsViewModel::requestMemberRemoval,
-                onDeleteShare = settingsViewModel::requestShareDeletion,
-                onConfirm = settingsViewModel::confirm,
-                onDismissConfirmation = settingsViewModel::dismissConfirmation,
-            )
+            }
+            composable(
+                route = "${AppDestination.TEXT_HISTORY.route}/{fileId}",
+                arguments = listOf(navArgument("fileId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val current = services ?: return@composable
+                val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+                val historyViewModel: VersionHistoryViewModel =
+                    viewModel(
+                        key = "text-history-$fileId-${current.sessionId}",
+                        factory = simpleViewModelFactory { VersionHistoryViewModel(fileId, current.files, current.textFiles) },
+                    )
+                val state by historyViewModel.state.collectAsStateWithLifecycle()
+                VersionHistoryScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onRefresh = historyViewModel::refresh,
+                    onLoadMore = historyViewModel::loadMore,
+                    onPreview = historyViewModel::preview,
+                    onDismissPreview = historyViewModel::dismissPreview,
+                    onRequestRestore = historyViewModel::requestRestore,
+                    onDismissRestore = historyViewModel::dismissRestore,
+                    onConfirmRestore = historyViewModel::confirmRestore,
+                )
+            }
+            composable(
+                route = "${AppDestination.PHOTO_VIEWER.route}/{contextId}/{fileId}",
+                arguments =
+                    listOf(
+                        navArgument("contextId") { type = NavType.StringType },
+                        navArgument("fileId") { type = NavType.StringType },
+                    ),
+            ) { backStackEntry ->
+                val current = services ?: return@composable
+                val route = connected?.route ?: return@composable
+                val contextId = checkNotNull(backStackEntry.arguments?.getString("contextId"))
+                val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+                val photoViewModel: PhotoViewerViewModel =
+                    viewModel(
+                        key = "photo-$contextId-$fileId-${current.sessionId}-${current.media.scopeId}",
+                        factory =
+                            simpleViewModelFactory {
+                                PhotoViewerViewModel(
+                                    fileId,
+                                    mediaContexts.fileIds(contextId),
+                                    current.files,
+                                    MediaViewerController(
+                                        current.media.repository,
+                                        current.media.qualityPreferences,
+                                        current.media.contextResolver,
+                                        current.media.confirmationPolicy,
+                                        route,
+                                        current.media.coroutineScope,
+                                    ),
+                                )
+                            },
+                    )
+                val photoState by photoViewModel.state.collectAsStateWithLifecycle()
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val downloadScope = rememberCoroutineScope()
+                var pendingMediaDownload by remember { mutableStateOf<MediaDownloadSelection?>(null) }
+                val mediaDownloadPicker =
+                    rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+                        val selection = pendingMediaDownload
+                        pendingMediaDownload = null
+                        if (uri != null && selection != null) {
+                            downloadScope.launch {
+                                val succeeded =
+                                    runCatching {
+                                        downloadMedia(context, current.media.downloader, uri, selection)
+                                    }.isSuccess
+                                Toast
+                                    .makeText(
+                                        context,
+                                        if (succeeded) "Download completed." else "Download failed.",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                            }
+                        }
+                    }
+                PhotoViewerScreen(
+                    state = photoState,
+                    imageLoader = current.media.imageLoader,
+                    scopeId = current.media.scopeId,
+                    requestTicket = photoViewModel::requestTicket,
+                    onImageReady = photoViewModel::contentReady,
+                    onGenerating = photoViewModel::contentGenerating,
+                    onImageFailed = photoViewModel::contentFailed,
+                    onQuality = photoViewModel::selectQuality,
+                    onConfirmOriginal = photoViewModel::confirmOriginal,
+                    onPrevious = photoViewModel::previous,
+                    onNext = photoViewModel::next,
+                    onZoom = photoViewModel::setZoom,
+                    onDetails = {
+                        photoState.file?.id?.let(mediaContexts::requestDetails)
+                        navController.popBackStack()
+                    },
+                    onDownload = {
+                        val file = photoState.file
+                        val ready = photoState.media?.loadState as? MediaLoadState.Ready
+                        if (file != null && ready != null) {
+                            pendingMediaDownload = MediaDownloadSelection(file.id, file.name, ready.source.variant)
+                            mediaDownloadPicker.launch(file.name)
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = "${AppDestination.PDF_VIEWER.route}/{fileId}",
+                arguments = listOf(navArgument("fileId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val current = services ?: return@composable
+                val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+                val pdfViewModel: PdfViewerViewModel =
+                    viewModel(
+                        key = "pdf-$fileId-${current.sessionId}-${current.media.scopeId}",
+                        factory =
+                            simpleViewModelFactory {
+                                PdfViewerViewModel(fileId, current.files, current.media.repository, current.media.temporaryPdfStore)
+                            },
+                    )
+                val pdfState by pdfViewModel.state.collectAsStateWithLifecycle()
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val downloadScope = rememberCoroutineScope()
+                var pendingPdfDownload by remember { mutableStateOf<MediaDownloadSelection?>(null) }
+                val pdfDownloadPicker =
+                    rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+                        val selection = pendingPdfDownload
+                        pendingPdfDownload = null
+                        if (uri != null && selection != null) {
+                            downloadScope.launch {
+                                val succeeded =
+                                    runCatching {
+                                        downloadMedia(context, current.media.downloader, uri, selection)
+                                    }.isSuccess
+                                Toast
+                                    .makeText(
+                                        context,
+                                        if (succeeded) "Download completed." else "Download failed.",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                            }
+                        }
+                    }
+                PdfViewerScreen(
+                    state = pdfState,
+                    onConfirm = pdfViewModel::confirm,
+                    onPrevious = pdfViewModel::previous,
+                    onNext = pdfViewModel::next,
+                    onPage = pdfViewModel::selectPage,
+                    onZoom = pdfViewModel::setZoom,
+                    onViewport = pdfViewModel::setViewport,
+                    onDownload = {
+                        pdfState.file?.let { file ->
+                            pendingPdfDownload = MediaDownloadSelection(file.id, file.name, MediaVariant.ORIGINAL)
+                            pdfDownloadPicker.launch(file.name)
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
+                    onDisposeViewer = pdfViewModel::closeDocument,
+                )
+            }
+            composable(
+                route = "${AppDestination.VIDEO_PLAYER.route}/{contextId}/{fileId}",
+                arguments =
+                    listOf(
+                        navArgument("contextId") { type = NavType.StringType },
+                        navArgument("fileId") { type = NavType.StringType },
+                    ),
+            ) { backStackEntry ->
+                val current = services ?: return@composable
+                val route = connected?.route ?: return@composable
+                val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+                MediaPlayerRoute(
+                    fileId = fileId,
+                    kind = MediaKind.VIDEO,
+                    current = current,
+                    route = route,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = "${AppDestination.AUDIO_PLAYER.route}/{contextId}/{fileId}",
+                arguments =
+                    listOf(
+                        navArgument("contextId") { type = NavType.StringType },
+                        navArgument("fileId") { type = NavType.StringType },
+                    ),
+            ) { backStackEntry ->
+                val current = services ?: return@composable
+                val route = connected?.route ?: return@composable
+                val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+                MediaPlayerRoute(
+                    fileId = fileId,
+                    kind = MediaKind.AUDIO,
+                    current = current,
+                    route = route,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = "${AppDestination.SHARING_SETTINGS.route}/{shareId}/{targetEntryId}/{entryType}/{targetName}",
+                arguments =
+                    listOf(
+                        navArgument("shareId") { type = NavType.StringType },
+                        navArgument("targetEntryId") { type = NavType.StringType },
+                        navArgument("entryType") { type = NavType.StringType },
+                        navArgument("targetName") { type = NavType.StringType },
+                    ),
+            ) { backStackEntry ->
+                val current = services ?: return@composable
+                val arguments = checkNotNull(backStackEntry.arguments)
+                val shareId = arguments.getString("shareId").takeUnless { it == "new" }
+                val targetId = checkNotNull(arguments.getString("targetEntryId"))
+                val targetType = FileEntryType.valueOf(checkNotNull(arguments.getString("entryType")))
+                val targetName = Uri.decode(checkNotNull(arguments.getString("targetName")))
+                val settingsViewModel: SharingSettingsViewModel =
+                    viewModel(
+                        key = "sharing-settings-${shareId ?: targetId}-${current.sessionId}",
+                        factory =
+                            simpleViewModelFactory {
+                                SharingSettingsViewModel(current.sharing, targetId, targetType, targetName, shareId)
+                            },
+                    )
+                val state by settingsViewModel.state.collectAsStateWithLifecycle()
+                SharingSettingsScreen(
+                    state,
+                    onBack = { navController.popBackStack() },
+                    onRefresh = settingsViewModel::refresh,
+                    onCandidate = settingsViewModel::selectCandidate,
+                    onPermission = settingsViewModel::selectPermission,
+                    onSubmitMember = settingsViewModel::submitSelectedMember,
+                    onChangePermission = settingsViewModel::changeMemberPermission,
+                    onRemoveMember = settingsViewModel::requestMemberRemoval,
+                    onDeleteShare = settingsViewModel::requestShareDeletion,
+                    onConfirm = settingsViewModel::confirm,
+                    onDismissConfirmation = settingsViewModel::dismissConfirmation,
+                )
+            }
         }
     }
 }
@@ -1324,51 +1398,14 @@ private fun mediaPermissionFor(sourceType: BackupSourceType): String =
         Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
-@Composable
-@Suppress("LongParameterList")
-fun HomeScreen(
-    connection: ConnectionStatus.Connected?,
-    adminStorageState: AdminStorageState = AdminStorageState(loading = false),
-    onRefreshAdminStorage: () -> Unit = {},
-    onFiles: () -> Unit,
-    onShared: () -> Unit = {},
-    onSearch: () -> Unit = {},
-    onRecent: () -> Unit = {},
-    onActivity: () -> Unit = {},
-    onFavorites: () -> Unit = {},
-    onTags: () -> Unit = {},
-    onMediaSettings: () -> Unit = {},
-    onBackupSettings: () -> Unit = {},
-    onTrash: () -> Unit,
-    onLogout: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-    ) {
-        Text("KuraStorage", style = MaterialTheme.typography.headlineMedium)
-        Text("Connection: ${connection?.route?.name ?: "UNKNOWN"}")
-        AdminStoragePanel(adminStorageState, onRefreshAdminStorage, onTrash)
-        Button(onClick = onFiles) { Text("My files") }
-        Button(onClick = onShared) { Text("Shared") }
-        Button(onClick = onSearch) { Text("Search") }
-        Button(onClick = onRecent) { Text("Recent files") }
-        Button(onClick = onActivity) { Text("Activity") }
-        Button(onClick = onFavorites) { Text("Favorites") }
-        Button(onClick = onTags) { Text("Tags") }
-        Button(onClick = onMediaSettings) { Text("Media quality") }
-        Button(onClick = onBackupSettings) { Text("Automatic backup") }
-        Button(onClick = onTrash) { Text("Trash") }
-        Button(onClick = onLogout) { Text("Log out") }
-    }
-}
-
 private fun settingsRoute(
     shareId: String,
     targetId: String,
     type: FileEntryType,
     name: String,
 ): String = "${AppDestination.SHARING_SETTINGS.route}/$shareId/$targetId/${type.name}/${Uri.encode(name)}"
+
+private fun searchCategoryRoute(category: SearchFileCategory): String = "${AppDestination.SEARCH.route}?category=${category.name}"
 
 private fun entryRoute(
     id: String,
