@@ -152,14 +152,14 @@
   - [x] 要件・設計・正式文書・実装・Testが一致し、通常LogoutとDevice失効の破棄範囲が逆転していない。
   - [x] Password・Token・実User情報・Device ID・秘密値・debug code・無関係な変更が含まれていない。
   - [x] 新しい依存Library、DB Migration、Server Production変更、不要な公開API変更が含まれていない。
-- [ ] PR1を作成し、必須CIを完了する。
+- [x] PR1を作成し、必須CIを完了する。
   - [x] 今回選択したPR1の実装・文書・Testタスクがすべて`[x]`になっている。
-  - [ ] 変更をCommitし、作業BranchをRemoteへPushする。
-  - [ ] 目的、対象タスク、変更内容、Test結果、影響・未実施事項を英語で記載したPull Requestを`main`向けに作成する。
-  - [ ] 必須CIが成功し、Pull RequestをMergeせずに停止する。
+  - [x] 変更をCommitし、作業BranchをRemoteへPushする。
+  - [x] 目的、対象タスク、変更内容、Test結果、影響・未実施事項を英語で記載したPull Requestを`main`向けに作成する。
+  - [x] 必須CIが成功し、Pull RequestをMergeせずに停止する。
 - [ ] steeringスキルのモード3-AでPR1完了記録を本ファイルへ追加する。
-  - [ ] 完了日、Pull Request番号/URL、実施した自動・実機確認、計画との差分、追加タスク、不要化タスク、引継ぎ事項を記録する。
-  - [ ] 該当しない項目にも「なし」と記載する。
+  - [x] 完了日、Pull Request番号/URL、実施した自動・実機確認、計画との差分、追加タスク、不要化タスク、引継ぎ事項を記録する。
+  - [x] 該当しない項目にも「なし」と記載する。
   - [ ] 完了記録をCommit・Pushし、作成済みPull Requestへ反映されたことを確認する。
 - [ ] 全タスク完了後にsteeringスキルのモード3-Bで全体振り返りを記録する。
 
@@ -167,7 +167,18 @@
 
 ## 各Pull Request完了記録
 
-PR作成後、steeringスキルのモード3-Aに従ってここへ記録する。
+### PR1: Android Logout後のDevice登録保持
+
+- 完了日: 2026-09-05
+- Pull Request: [#59 Retain Android device registration after logout](https://github.com/ry825/Kura_Storage/pull/59)
+- 主な変更: AndroidのDevice登録情報とLogin Session情報を分離し、通常LogoutではSessionだけを破棄するようにした。再起動後は前回Username入力済みのSign inを表示し、Passwordは保存しない。ServerからDevice失効が返った場合だけ登録情報も破棄し、再登録Flowへ戻す。関連する正式文書、単体・結合・実機Test、検証記録も更新した。
+- 実施した自動Test・Build・静的解析: ローカルで`./scripts/ci/verify-android.sh`、`./scripts/ci/verify-server.sh`、`./scripts/ci/verify-security.sh`、`git diff --check`が成功した。Server TestはDomain 135件、Application 353件、Integration 229件が成功した。GitHub Actions run `33881937221`でAndroid、Server、Security、Configがすべて成功した。
+- 実施した手動・実機確認: Android 13実機と実Serverで、Logout時のRefresh Session失効とDevice ACTIVE維持、強制終了・再起動後のSign in表示、Username保持、Password空、同一Deviceでの再LoginとFiles・共有・設定へのアクセスを確認した。Logout・再起動・再Loginを3回繰り返し、Device IDとDevice件数が不変であること、Logout後に保護画面や前Session状態へ戻れないこと、Server側Device失効後は再登録Flowへ戻ることを確認した。接続Testは`core-data` 14件、`feature-auth` 8件、`app` 9件が成功した。
+- Testデータ後始末: 作成したE2E専用User、Device、Session、File entry、Audit log、対応するUser保存ディレクトリ、端末の分離debug appと検証用一時ファイルをすべて削除し、DBとFilesystemに残存していないことを確認した。端末の無関係なデータと通常版KuraStorageのデータは変更していない。
+- 計画と実装の差分: 要求と設計の差分はなし。ServerのProduction codeとDB Migrationは変更せず、計画どおりAndroid側の資格情報境界と起動状態遷移を修正した。
+- 実装中に追加したタスクと理由: なし。
+- 技術的に不要になったタスク、理由、代替実装: なし。
+- 後続作業への引継ぎ事項: PR #59はMergeせず、Review待ちとする。旧版ですでにLogout済みでDevice登録メタデータが消去済みの端末は、本修正後の初回だけDevice再登録が必要となる。その他の引継ぎ事項はなし。
 
 ## 全体振り返り
 
