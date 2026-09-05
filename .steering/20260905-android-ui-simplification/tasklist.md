@@ -125,110 +125,110 @@
 
 ### 1. 実装前確認
 
-- [ ] PR 2の実装前状態を確認する。
-  - [ ] PR 1が`main`へMerge済みであることを確認する。
-  - [ ] `tasklist.md`を読み、PR 2だけを今回の実装範囲として選択する。
-  - [ ] 最新の`main`からPR 2用Branchを作成し、`git status`と既存差分を確認する。
-  - [ ] `docs/`のPhoto viewer、Quality、Media generation、SAF Download、Favorites/Tagsに関係する節を再確認する。
-  - [ ] `PhotoViewerScreen`、`MediaViewerController`、`KuraMediaFetcher`、`MediaContentDownloader`、Organization ViewModel、関連Testを確認する。
+- [x] PR 2の実装前状態を確認する。
+  - [x] PR 1が`main`へMerge済みであることを確認する。
+  - [x] `tasklist.md`を読み、PR 2だけを今回の実装範囲として選択する。
+  - [x] 最新の`main`からPR 2用Branchを作成し、`git status`と既存差分を確認する。
+  - [x] `docs/`のPhoto viewer、Quality、Media generation、SAF Download、Favorites/Tagsに関係する節を再確認する。
+  - [x] `PhotoViewerScreen`、`MediaViewerController`、`KuraMediaFetcher`、`MediaContentDownloader`、Organization ViewModel、関連Testを確認する。
 
 ### 2. Adaptive photo viewer
 
-- [ ] 写真を主役にしたadaptive Layoutを実装する。
-  - [ ] 固定360dp viewportを廃止し、利用可能領域へ追従させる。
-  - [ ] System bar、cutout、Toolbarを考慮し、Portrait/Landscapeで写真を欠けさせない。
-  - [ ] 大きな常設Cardを除去し、Back、位置、Favorite、Tags、Download、Quality、その他操作をcompact toolbarへ整理する。
-- [ ] 写真へ重ならない前後Navigationを実装する。
-  - [ ] Previous/Nextの大きなoverlay Buttonを除去する。
-  - [ ] 等倍時の水平方向Swipeを実装し、1gestureで1項目だけ移動する。
-  - [ ] Zoom中のPanを前後Swipeとして誤判定しない。
-  - [ ] 写真外にTalkBackから操作可能なcompact previous/nextを用意する。
-  - [ ] Zoom、Pan、Double tap、現在位置、前後Prefetch、Details往復を維持する。
+- [x] 写真を主役にしたadaptive Layoutを実装する。
+  - [x] 固定360dp viewportを廃止し、利用可能領域へ追従させる。
+  - [x] System bar、cutout、Toolbarを考慮し、Portrait/Landscapeで写真を欠けさせない。
+  - [x] 大きな常設Cardを除去し、Back、位置、Favorite、Tags、Download、Quality、その他操作をcompact toolbarへ整理する。
+- [x] 写真へ重ならない前後Navigationを実装する。
+  - [x] Previous/Nextの大きなoverlay Buttonを除去する。
+  - [x] 等倍時の水平方向Swipeを実装し、1gestureで1項目だけ移動する。
+  - [x] Zoom中のPanを前後Swipeとして誤判定しない。
+  - [x] 写真外にTalkBackから操作可能なcompact previous/nextを用意する。
+  - [x] Zoom、Pan、Double tap、現在位置、前後Prefetch、Details往復を維持する。
 
 ### 3. 写真画質State
 
-- [ ] Settingsの写真画質を確認Dialogなしで自動適用する。
-  - [ ] 写真用`Load original photo?` Dialogと確認待ちStateを削除する。
-  - [ ] 接続種別別のLow/Medium/Original設定をViewer初期variantへ適用する。
-  - [ ] Video/Audio等の既存転送確認Policyへ影響を与えない。
-- [ ] Viewer内Quality切替を実Requestと一致させる。
-  - [ ] Low、Medium、Original選択ごとに対応variantを再要求する。
-  - [ ] request generationで古い成功、生成完了、Errorによる巻き戻りを防ぐ。
-  - [ ] session scope、file ID、file version、variantを含む既存Cache keyを維持する。
-  - [ ] 希望画質ではなく実際に表示中のvariantとLoading先を簡潔に表示する。
-  - [ ] 生成中、Retry、失敗、File切替のStateを維持する。
+- [x] Settingsの写真画質を確認Dialogなしで自動適用する。
+  - [x] 写真用`Load original photo?` Dialogと確認待ちStateを削除する。
+  - [x] 接続種別別のLow/Medium/Original設定をViewer初期variantへ適用する。
+  - [x] Video/Audio等の既存転送確認Policyへ影響を与えない。
+- [x] Viewer内Quality切替を実Requestと一致させる。
+  - [x] Low、Medium、Original選択ごとに対応variantを再要求する。
+  - [x] request generationで古い成功、生成完了、Errorによる巻き戻りを防ぐ。
+  - [x] session scope、file ID、file version、variantを含む既存Cache keyを維持する。
+  - [x] 希望画質ではなく実際に表示中のvariantとLoading先を簡潔に表示する。
+  - [x] 生成中、Retry、失敗、File切替のStateを維持する。
 
 ### 4. Viewer内Favorite・Tags
 
-- [ ] Photo viewerへ既存Organization stateを接続する。
-  - [ ] appが現在File用の`EntryOrganizationViewModel`を保持し、表示StateとCallbackをViewerへ渡す。
-  - [ ] `feature-media`からOrganizationRepositoryを直接参照しない。
-  - [ ] File切替時にFavorite/Tag stateを正しいFileへ切り替える。
-- [ ] Favorite操作をViewer toolbarへ追加する。
-  - [ ] 追加/解除状態、pending、操作不能をIconとSemanticsへ反映する。
-  - [ ] Server成功応答後だけ表示Stateを更新し、結果不明を成功扱いしない。
-- [ ] Tags操作をViewer toolbarへ追加する。
-  - [ ] Bottom sheetで付与済み/利用可能Tagを表示する。
-  - [ ] Tag単位の追加/解除、pending、Error、Refreshを既存APIで処理する。
-  - [ ] 文字200%でもTag名と操作が欠けない。
+- [x] Photo viewerへ既存Organization stateを接続する。
+  - [x] appが現在File用の`EntryOrganizationViewModel`を保持し、表示StateとCallbackをViewerへ渡す。
+  - [x] `feature-media`からOrganizationRepositoryを直接参照しない。
+  - [x] File切替時にFavorite/Tag stateを正しいFileへ切り替える。
+- [x] Favorite操作をViewer toolbarへ追加する。
+  - [x] 追加/解除状態、pending、操作不能をIconとSemanticsへ反映する。
+  - [x] Server成功応答後だけ表示Stateを更新し、結果不明を成功扱いしない。
+- [x] Tags操作をViewer toolbarへ追加する。
+  - [x] Bottom sheetで付与済み/利用可能Tagを表示する。
+  - [x] Tag単位の追加/解除、pending、Error、Refreshを既存APIで処理する。
+  - [x] 文字200%でもTag名と操作が欠けない。
 
 ### 5. Original download
 
-- [ ] 現在の写真Download失敗箇所を実機と実Serverで特定し、検証記録へ残す。
-  - [ ] SAF URI選択、OutputStream open、variant request、HTTP応答、copy、close、完了通知を段階的に確認する。
-  - [ ] Token、SAF URI、絶対Path、個人File名を診断Logへ記録しない。
-- [ ] Photo viewerのDownloadをOriginal固定のstreaming保存へ修正する。
-  - [ ] 表示中variantと保存variantを分離し、常に`MediaVariant.ORIGINAL`をRequestする。
-  - [ ] `CreateDocument`へ元File名と具体的なMIME typeを渡す。
-  - [ ] 全体ByteArray化せずOutputStreamへcopyし、close完了後だけ成功通知する。
-  - [ ] Cancel、open失敗、容量不足、通信切断、認証/認可失効、Server失敗を成功扱いしない。
-  - [ ] 途中失敗時は作成済みURIの削除を試み、削除不能時は不完全Fileの可能性を表示する。
-  - [ ] File browserとPDFの既存DownloadおよびUploadを維持する。
+- [x] 現在の写真Download失敗箇所を実機と実Serverで特定し、検証記録へ残す。（変更前BuildでSAF保存先作成後、Server original 10,047,953 bytesに対して3.84 KiBの不完全Fileが残ることを確認し、OutputStream open後からcopy・closeまでの区間と特定。`evidence/pr2/README.md`）
+  - [x] SAF URI選択、OutputStream open、variant request、HTTP応答、copy、close、完了通知を段階的に確認する。
+  - [x] Token、SAF URI、絶対Path、個人File名を診断Logへ記録しない。
+- [x] Photo viewerのDownloadをOriginal固定のstreaming保存へ修正する。
+  - [x] 表示中variantと保存variantを分離し、常に`MediaVariant.ORIGINAL`をRequestする。
+  - [x] `CreateDocument`へ元File名と具体的なMIME typeを渡す。
+  - [x] 全体ByteArray化せずOutputStreamへcopyし、close完了後だけ成功通知する。
+  - [x] Cancel、open失敗、容量不足、通信切断、認証/認可失効、Server失敗を成功扱いしない。
+  - [x] 途中失敗時は作成済みURIの削除を試み、削除不能時は不完全Fileの可能性を表示する。
+  - [x] File browserとPDFの既存DownloadおよびUploadを維持する。
 
 ### 6. PR 2テスト・文書・検証
 
-- [ ] 写真Viewer、Quality、Organization、Downloadの自動Testを追加・更新する。
-  - [ ] Settings別初期variantと確認Dialog非表示をUnit/Compose Testする。
-  - [ ] Low/Medium/Original requestと古いgeneration破棄をUnit Testする。
-  - [ ] Cache keyのsession/file/version/variant分離を確認する。
-  - [ ] 非重畳previous/next、Swipe、Zoom/Pan競合、Toolbar semanticsをCompose Testする。
-  - [ ] Favorite/Tagの成功、pending、失敗、結果不明、File切替をTestする。
-  - [ ] Original固定、streaming、Cancel、open/copy/delete失敗をTestする。
-  - [ ] File browser/PDF DownloadとUploadの回帰Testを実行する。
-- [ ] MockWebServerでMedia契約を検証する。
-  - [ ] Low、Medium、Originalが正しいvariant requestになる。
-  - [ ] Response Content-Typeと生成中/Ready/Error処理が正しい。
-  - [ ] Request切替後に古い応答が表示Stateを上書きしない。
-- [ ] PR 2に対応する正式文書を更新する。
-  - [ ] `docs/product-requirements.md`の写真確認Dialog廃止、Viewer操作、Quality、Original download条件を更新する。
-  - [ ] `docs/functional-design.md`のViewer Layout、Swipe、Quality state、Favorite/Tags、SAF失敗処理を更新する。
-  - [ ] `docs/architecture-design.md`のgeneration、Cache/session、app調停を更新する。
-  - [ ] 必要な場合だけ`docs/repository-structure.md`と`docs/development-guidelines.md`を更新する。
-- [ ] PR 2の自動検証を完了する。
-  - [ ] 変更対象のUnit/Compose/MockWebServer Testが成功する。
-  - [ ] `./scripts/ci/verify-android.sh`が成功する。
-  - [ ] Serverコードを変更した場合だけ対象`dotnet test`と`./scripts/ci/verify-server.sh`が成功する。
-  - [ ] `git diff --check`が成功する。
-- [ ] PR 2を実機と実Serverで検証する。
-  - [ ] Viewer表示領域、Swipe、非重畳Navigation、Zoom/Pan/Double tap、前後移動を確認する。
-  - [ ] Viewer内FavoriteとTagの追加/解除、pending、Errorを確認する。
-  - [ ] Low/Medium/Originalのrequest variant、HTTP status、Content-Type、decoded寸法、byte sizeを比較する。
-  - [ ] Original download後のFileが開け、sizeまたはSHA-256がServer originalと一致する。
-  - [ ] Cancel、通信失敗、書込失敗で成功表示や不完全Fileの放置がないことを可能な範囲で確認する。
-  - [ ] 360dp、font 100%/200%、Portrait/Landscape、Light/Dark、TalkBackを確認する。
-  - [ ] 変更前後のPhoto viewer Screenshotを同条件で保存し比較する。
+- [x] 写真Viewer、Quality、Organization、Downloadの自動Testを追加・更新する。
+  - [x] Settings別初期variantと確認Dialog非表示をUnit/Compose Testする。
+  - [x] Low/Medium/Original requestと古いgeneration破棄をUnit Testする。
+  - [x] Cache keyのsession/file/version/variant分離を確認する。
+  - [x] 非重畳previous/next、Swipe、Zoom/Pan競合、Toolbar semanticsをCompose Testする。
+  - [x] Favorite/Tagの成功、pending、失敗、結果不明、File切替をTestする。
+  - [x] Original固定、streaming、Cancel、open/copy/delete失敗をTestする。
+  - [x] File browser/PDF DownloadとUploadの回帰Testを実行する。
+- [x] MockWebServerでMedia契約を検証する。
+  - [x] Low、Medium、Originalが正しいvariant requestになる。
+  - [x] Response Content-Typeと生成中/Ready/Error処理が正しい。
+  - [x] Request切替後に古い応答が表示Stateを上書きしない。
+- [x] PR 2に対応する正式文書を更新する。
+  - [x] `docs/product-requirements.md`の写真確認Dialog廃止、Viewer操作、Quality、Original download条件を更新する。
+  - [x] `docs/functional-design.md`のViewer Layout、Swipe、Quality state、Favorite/Tags、SAF失敗処理を更新する。
+  - [x] `docs/architecture-design.md`のgeneration、Cache/session、app調停を更新する。
+  - [x] 必要な場合だけ`docs/repository-structure.md`と`docs/development-guidelines.md`を更新する。（構成・開発規約の変更がないため更新不要）
+- [x] PR 2の自動検証を完了する。
+  - [x] 変更対象のUnit/Compose/MockWebServer Testが成功する。
+  - [x] `./scripts/ci/verify-android.sh`が成功する。
+  - [x] Serverコードを変更した場合だけ対象`dotnet test`と`./scripts/ci/verify-server.sh`が成功する。（Serverコード変更なし）
+  - [x] `git diff --check`が成功する。
+- [x] PR 2を実機と実Serverで検証する。（`evidence/pr2/README.md`）
+  - [x] Viewer表示領域、Swipe、非重畳Navigation、Zoom/Pan/Double tap、前後移動を確認する。
+  - [x] Viewer内FavoriteとTagの追加/解除、pending、Errorを確認する。
+  - [x] Low/Medium/Originalのrequest variant、HTTP status、Content-Type、decoded寸法、byte sizeを比較する。
+  - [x] Original download後のFileが開け、sizeまたはSHA-256がServer originalと一致する。
+  - [x] Cancel、通信失敗、書込失敗で成功表示や不完全Fileの放置がないことを可能な範囲で確認する。（Cancelは実機、通信・書込・削除失敗は自動Testで確認）
+  - [x] 360dp、font 100%/200%、Portrait/Landscape、Light/Dark、TalkBackを確認する。（文字200%等はAPI 33実機上のCompose fixtureとSemanticsを併用）
+  - [x] 変更前後のPhoto viewer Screenshotを同条件で保存し比較する。（公開基準と個人情報を含まない比較結果を`evidence/pr2/README.md`へ記録）
 
 ### 7. PR 2完了処理
 
-- [ ] PR 2の差分をセルフレビューする。
-  - [ ] PR 2の目的外変更、秘密情報、絶対Path、デバッグコード、不要依存がない。
-  - [ ] 実装、Test、実機記録、正式文書、Steeringの対応が取れている。
-- [ ] PR 2をCommit、Pushし、英語のPull Requestを作成する。
-  - [ ] 英語本文へ目的、対象Task、変更、Test結果、実機結果、影響、未実施事項を記載する。
-  - [ ] CI成功を確認し、Pull RequestはMergeしない。
-- [ ] `各Pull Request完了記録`へPR 2の実施結果を記載する。
-  - [ ] 完了日、PR番号/URL、Test、実機検証、計画差分、追加Task、取消Task、PR 3への引継ぎを記載する。
-  - [ ] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。
+- [x] PR 2の差分をセルフレビューする。
+  - [x] PR 2の目的外変更、秘密情報、絶対Path、デバッグコード、不要依存がない。
+  - [x] 実装、Test、実機記録、正式文書、Steeringの対応が取れている。
+- [x] PR 2をCommit、Pushし、英語のPull Requestを作成する。
+  - [x] 英語本文へ目的、対象Task、変更、Test結果、実機結果、影響、未実施事項を記載する。
+  - [x] CI成功を確認し、Pull RequestはMergeしない。
+- [x] `各Pull Request完了記録`へPR 2の実施結果を記載する。
+  - [x] 完了日、PR番号/URL、Test、実機検証、計画差分、追加Task、取消Task、PR 3への引継ぎを記載する。
+  - [x] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。
 
 ---
 
@@ -336,13 +336,20 @@
 
 ### PR 2
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析・手動確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したTaskと理由: 未記録
-- 技術的に不要になったTask、理由、代替実装: 未記録
-- 後続Pull Requestへの引継ぎ: 未記録
+- 完了日: 2026-09-05
+- Pull Request: [#61 Improve Android photo viewer and media actions](https://github.com/ry825/Kura_Storage/pull/61)
+- 実施したTest・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`: JDK 17・API 36 SDKで1,387タスク成功。Build、Unit Test、ktlint、detekt、Lintを含む。
+  - API 33実機のConnected Compose Test: `feature-media` 18件、`feature-search` 11件成功。API 33 Emulatorでは`core-data` 14件、`feature-files` 25件を含む関連回帰Testも成功。
+  - `git diff --check`: 成功。
+  - GitHub Actions: Android、Server、Config、Securityの4jobが成功。
+  - OPPO CPH2333 / Android API 33 / 360dpで、実ServerへZeroTier接続し、Viewer、Swipe、Zoom/Pan/Double tap、Favorite、Tags、Quality、Original download、SAF Cancelを確認。
+  - LowはHTTP 200・WebP・1280 x 853・137,516 bytes、MediumはHTTP 200・WebP・2560 x 1707・237,762 bytes、OriginalはHTTP 200・JPEG・5472 x 3648・10,047,953 bytesであることを確認。
+  - 端末保存FileとServer originalが10,047,953 bytesおよびSHA-256 `835be98e71267845b7a4f66469fcf96e3e0888899972ecc48d72f98b50469f14`で一致。詳細は`evidence/pr2/README.md`へ記録。
+- 計画と実装の差分: 機能スコープに差分なし。実データScreenshotは個人画像とFile名を含むためPRへ添付せず、公開モックを変更前基準として目視比較結果を記録した。実機メーカー制限でADB shellからfont scaleを変更できなかったため、文字200%は同じAPI 33実機上のCompose fontScale fixtureとSemanticsで確認した。
+- 実装中に追加したTaskと理由: 実機Zoom/Pan検証で拡大画像がViewer外へ描画される問題を検出したため、Photo canvasを独立したclip layerで囲み、Top app barと操作領域への描画はみ出しを防止した。変更前Downloadの3.84 KiB不完全Fileと修正後の段階別検証を再現可能な証跡として追加した。
+- 技術的に不要になったTask、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ: PR #61の`main`へのMergeを確認するまでPR 3を開始しない。PR 3ではFavoritesのThumbnail、直接Routing、Media navigation context、主要画面の横断UI・Accessibility仕上げを行う。
 
 ### PR 3
 

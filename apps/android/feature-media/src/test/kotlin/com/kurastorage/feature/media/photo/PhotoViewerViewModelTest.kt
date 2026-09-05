@@ -151,7 +151,6 @@ class PhotoViewerViewModelTest {
             )
 
             viewModel.selectQuality(MediaQuality.ORIGINAL)
-            viewModel.confirmOriginal()
             val original = checkNotNull(viewModel.requestTicket())
             viewModel.contentReady(original)
             assertTrue(

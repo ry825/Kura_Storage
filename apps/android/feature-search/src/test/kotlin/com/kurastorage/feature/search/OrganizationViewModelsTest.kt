@@ -34,6 +34,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.IOException
 import java.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -161,6 +162,52 @@ class OrganizationViewModelsTest {
             assertFalse(viewModel.state.value.pendingFavorite)
         }
 
+    @Test fun `unknown favorite result keeps authoritative state and exposes refresh guidance`() =
+        runTest(dispatcher) {
+            val repository =
+                FakeRepository().apply {
+                    mutationFailure = KuraStorageException.Network(IOException("response unknown"))
+                }
+            val viewModel = EntryOrganizationViewModel(ENTRY, repository, { file(it) })
+            advanceUntilIdle()
+
+            viewModel.toggleFavorite()
+            advanceUntilIdle()
+
+            assertFalse(checkNotNull(viewModel.state.value.organization).isFavorite)
+            assertFalse(viewModel.state.value.pendingFavorite)
+            assertEquals(
+                "The result is unknown. Refresh and try again.",
+                viewModel.state.value.error
+                    ?.message,
+            )
+        }
+
+    @Test fun `rapid tag taps issue one mutation and retain pending until server success`() =
+        runTest(dispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            val repository = FakeRepository().apply { tagGate = gate }
+            val viewModel = EntryOrganizationViewModel(ENTRY, repository, { file(it) })
+            advanceUntilIdle()
+            val tag = repository.tags.first()
+
+            viewModel.toggleTag(tag)
+            viewModel.toggleTag(tag)
+            runCurrent()
+
+            assertEquals(1, repository.mutations)
+            assertEquals(setOf(TAG), viewModel.state.value.pendingTagIds)
+            assertEquals(listOf(TAG), checkNotNull(viewModel.state.value.organization).tags.map { it.id })
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+            assertTrue(checkNotNull(viewModel.state.value.organization).tags.isEmpty())
+            assertTrue(
+                viewModel.state.value.pendingTagIds
+                    .isEmpty(),
+            )
+        }
+
     @Test fun `stale favorite selection fails closed and refreshes the list`() =
         runTest(dispatcher) {
             val repository = FakeRepository()
@@ -186,7 +233,9 @@ class OrganizationViewModelsTest {
         var entryStatus = FileEntryStatus.ACTIVE
         var mutations = 0
         var createFailure: Throwable? = null
+        var mutationFailure: Throwable? = null
         var favoriteGate: CompletableDeferred<Unit>? = null
+        var tagGate: CompletableDeferred<Unit>? = null
         val tagResponses = ArrayDeque<CompletableDeferred<List<TagItem>>>()
 
         override suspend fun listFavorites(
@@ -204,6 +253,7 @@ class OrganizationViewModelsTest {
         ): EntryOrganizationState {
             mutations++
             favoriteGate?.await()
+            mutationFailure?.let { throw it }
             organization = organization.copy(isFavorite = favorite)
             return organization
         }
@@ -250,6 +300,8 @@ class OrganizationViewModelsTest {
             attached: Boolean,
         ): EntryOrganizationState {
             mutations++
+            tagGate?.await()
+            mutationFailure?.let { throw it }
             organization =
                 organization.copy(
                     tags =

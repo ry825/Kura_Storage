@@ -898,10 +898,13 @@ sequenceDiagram
 Androidは`feature-media`、`feature-settings`と既存Core Moduleを使用する。写真・動画のLOW／MEDIUM／ORIGINAL、音声とPDFのORIGINALを同じ認証Sessionと接続経路別`OkHttpClient`から取得する。音声にLOW／MEDIUM派生や変換Jobを作らない。
 
 - Coilは`scopeId:fileId:fileVersion:variant`をCache keyにした独自認証Fetcherを使用する。Memory cacheはHeapの10%かつ最大64MiB、Disk cacheはSessionごとに最大256MiBとする。
+- 写真の画質変更ではrequest generationを増加させ、現在generationとFile ID、File version、variantが一致する応答だけを表示Stateへ反映する。generationはCoilのCache keyへ含めず、同一Session・File version・variantの有効Cacheを再利用する。
 - Media3は認証Header付き単一Range DataSourceを使用する。401時は既存の単一Flight Token refresh後に現在位置から1回だけ再構築し、再発時は再生を停止する。
 - Playerは動画・音声とも3秒／10秒の戻る・進む、0.5〜3.0倍速を提供する。Mobileでは5〜15秒Buffer、Wi-Fiでは15〜50秒Bufferを初期値とし、Playlistは1件だけにする。
 - 動画品質変更時は旧Sourceを新Sourceの準備完了まで保持し、現在位置、速度、再生状態を可能な範囲で復元する。低・中品質が未準備でも元画質へ自動Fallbackしない。
-- 写真・動画の元画質、元音声、PDF本文はHEADでSizeを確認し、利用者の承認前にContentを開始しない。
+- 写真の元画質はHEADでSizeを取得した後、接続種別別設定またはViewer内選択に従って確認DialogなしでContentを開始する。動画の元画質、元音声、PDF本文は従来どおりHEADでSizeを確認し、利用者の承認前にContentを開始しない。
+- 写真ViewerのFavorite／Tagは`app`が表示中File用の`EntryOrganizationViewModel`を組み立て、`feature-media`へRepositoryを渡さず表示StateとCallbackだけを渡す。File切替時はFile IDを含むViewModel keyで対象状態を分離する。
+- 写真のSAF保存は`core-data`のOriginal download coordinatorが表示variantから独立して`ORIGINAL`だけをStreaming copyする。OutputStream close後に成功を確定し、途中失敗とCoroutine cancellationでは作成済みURIの削除を試み、削除不能を別Outcomeとして`app`へ返す。
 - PDFはApp private一時領域へStreamingする。1 File 256MiB、Session合計512MiB、必要空き容量`Content-Length + 64MiB`、未参照TTL 1時間とする。超過時は既存SAF Downloadへ案内する。
 - 写真とPDFの表示Bitmapは1枚32MiB、長辺4096pxを上限とする。PDFは1 Pageずつ開き、Page、Bitmap、FileDescriptorをLifecycle終了時に閉じる。
 - Logout、Device／Session失効、接続Route変更でPlayer、Polling、Coil Session cache、PDF一時File、認証済みURLを破棄する。
