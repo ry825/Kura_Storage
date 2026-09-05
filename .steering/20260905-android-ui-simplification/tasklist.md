@@ -310,9 +310,9 @@
 - [x] PR 3をCommit、Pushし、英語のPull Requestを作成する。（PR #62）
   - [x] 英語本文へ目的、対象Task、変更、Test結果、実機結果、影響、未実施事項を記載する。（PR #62）
   - [x] CI成功を確認し、Pull RequestはMergeしない。（Android、Server、Config、Security成功）
-- [ ] `各Pull Request完了記録`へPR 3の実施結果を記載する。
+- [x] `各Pull Request完了記録`へPR 3の実施結果を記載する。
   - [x] 完了日、PR番号/URL、Test、実機検証、計画差分、追加Task、取消Task、全体完了への引継ぎを記載する。
-  - [ ] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。
+  - [x] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。（commit `225e9e7`）
 
 ---
 
@@ -376,24 +376,42 @@
 
 ### 実装完了日
 
-未完了
+2026-09-05
 
 ### 計画と実績の差分
 
-未記録
+- 計画どおり3つのPull Requestへ分割し、PR 1でFiles/Sharedとdetails、PR 2でPhoto Viewer・画質・Original download、PR 3でFavorites Thumbnail・直接Routing・横断UIを完了した。
+- Server API、Database schema、認可契約を増やさず、既存APIと派生Media契約の範囲で完了した。
+- 実データScreenshotは個人情報保護のためPRへ添付せず、公開Mockupと同条件の実機Captureを目視比較して結果だけを証跡へ記録した。
+- OPPO端末の`WRITE_SETTINGS`制限で実機の文字200%・Landscape切替ができなかったため、同じAPI 33系のCompose fixtureとEmulatorで補完した。
 
 ### 主な設計変更と理由
 
-未記録
+- File一覧の表示を共通Componentへ寄せ、Thumbnail、種類Icon、状態、権限Label、独立overflowを一貫したSemanticsと48dp操作領域で表現した。
+- Photo Viewerを利用可能領域へ追従するLayoutへ変更し、画像外のPrevious/Next、compact action、実際の表示画質を示す状態へ整理した。
+- Original downloadを表示variantから分離したStreaming coordinatorへ移し、OutputStream close後だけ成功とし、途中失敗時は不完全Fileを削除する契約にした。
+- App調停層へ`EntryDestinationResolver`を追加し、Files/Shared/FavoritesのEntryを共通規則で既存Destinationへ振り分けた。非Active・未知項目はdetailsへfail-closedする。
+- `MediaNavigationContextStore`へ同種Mediaの表示順IDだけをSession内で保持し、認証・接続境界でclear、Process loss時は単体表示へfallbackする構成にした。
 
 ### 技術的な学び
 
-未記録
+- Search共通metadataのID、MIME、状態、更新日時で派生Thumbnailを要求でき、詳細APIのN+1取得を避けられた。
+- Viewerの表示順はRouteへID列を埋め込まず一時Contextへ分離すると、URLを小さく保ちながら写真・動画・音声で同じNavigation規則を再利用できる。
+- SAF保存はHTTP成功だけでなくcopyとcloseの完了までを成功境界に含め、不完全File削除を失敗Outcomeへ組み込む必要がある。
+- 物理端末で変更できないfont scale・回転条件は、実機Semanticsと同一APIの固定Compose fixtureを組み合わせることで再現可能に検証できる。
+- USB切断で中断したConnected Testは失敗と混同せず、接続回復後にSuite全体を0件目から再実行して確定する必要がある。
 
 ### プロセス上の改善点
 
-未記録
+- PRごとに依存元のMergeを確認してから次Branchを開始したため、差分の混在と古い設計への実装を防げた。
+- 変更前診断、公開Mockup、実機・実Server、Compose/Unit/Connected TestをPR単位の証跡へまとめ、手動結果と自動結果を追跡可能にした。
+- 実機検証で作成したFavorite/Tag/Downloadを直後に復元し、端末・Localの一時Captureも削除するCleanup確認を完了条件へ明示する必要がある。
+- Android全検証は時間がかかるため、対象Testと静的解析を先に回し、最終差分で全検証を1回通す順序が効率的だった。
 
 ### 次回への改善提案
 
-未記録
+- 専用Test tenantと一意なrun IDを用意し、作成したUser、File、Folder、Tag、Shareをmanifestへ記録して`finally`相当で自動Cleanupする実Server E2E harnessを追加する。
+- 360dp、文字100%/200%、Portrait/Landscape、Light/Darkの主要画面CaptureをCI artifactとして自動生成し、個人データを使わない視覚差分へ移行する。
+- Entryの日時・Size・権限Labelを共通Presentationへさらに集約し、長いISO日時が狭い画面で過度に折り返す表示を改善する。
+- Process death後も一覧Contextを復元したい場合は、Session/Server scopeを含むSavedState方式を別Taskとして評価する。現行の単体fallbackは安全性を優先して維持する。
+- Production signing検証と既存Sessionを保持するvalidation signingを分離し、Release candidateの署名・Install・Upgrade Testを専用Pipelineにする。
