@@ -12,9 +12,12 @@ class MediaNavigationContextStore {
         private set
 
     @Synchronized
-    fun register(entries: List<FileEntry>): String =
+    fun register(entries: List<FileEntry>): String = registerIds(entries.map(FileEntry::id))
+
+    @Synchronized
+    fun registerIds(fileIds: List<String>): String =
         UUID.randomUUID().toString().also { contextId ->
-            contexts[contextId] = entries.map(FileEntry::id).distinct()
+            contexts[contextId] = fileIds.distinct()
         }
 
     @Synchronized

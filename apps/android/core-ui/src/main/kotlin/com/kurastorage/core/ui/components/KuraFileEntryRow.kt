@@ -38,6 +38,7 @@ fun KuraFileEntryRow(
     enabled: Boolean = status == FileEntryStatus.ACTIVE && entryType != FileEntryType.UNKNOWN,
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     KuraCard(
@@ -49,13 +50,19 @@ fun KuraFileEntryRow(
             horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            KuraFileTypeIcon(
-                type = KuraFileType.from(mimeType, entryType == FileEntryType.FOLDER),
-                contentDescription = if (entryType == FileEntryType.FOLDER) "Folder" else "File",
-            )
+            if (leading == null) {
+                KuraFileTypeIcon(
+                    type = KuraFileType.from(mimeType, entryType == FileEntryType.FOLDER),
+                    contentDescription = if (entryType == FileEntryType.FOLDER) "Folder" else "File",
+                )
+            } else {
+                leading()
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xxs)) {
                 androidx.compose.material3.Text(name, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                androidx.compose.material3.Text("Owner: $ownerName • $permission${permissionSource?.let { " ($it)" }.orEmpty()}")
+                androidx.compose.material3.Text(
+                    "Owner: $ownerName • ${permission.userLabel()}${permissionSource?.userLabel()?.let { " ($it)" }.orEmpty()}",
+                )
                 androidx.compose.material3.Text(
                     "Updated $updatedAt${size?.let { " • ${formatEntryBytes(it)}" }.orEmpty()}",
                 )
@@ -67,6 +74,23 @@ fun KuraFileEntryRow(
         }
     }
 }
+
+private fun SharePermission.userLabel(): String =
+    when (this) {
+        SharePermission.VIEWER -> "Read only"
+        SharePermission.CONTRIBUTOR -> "Can add"
+        SharePermission.EDITOR -> "Can edit"
+        SharePermission.MANAGER -> "Can manage"
+        SharePermission.UNKNOWN -> "Unavailable"
+    }
+
+private fun PermissionSource.userLabel(): String? =
+    when (this) {
+        PermissionSource.OWNER -> "Owner"
+        PermissionSource.DIRECT -> "Direct share"
+        PermissionSource.INHERITED -> "Inherited share"
+        PermissionSource.UNKNOWN -> null
+    }
 
 private fun FileEntryStatus.presentation(): Pair<String, KuraStatus>? =
     when (this) {

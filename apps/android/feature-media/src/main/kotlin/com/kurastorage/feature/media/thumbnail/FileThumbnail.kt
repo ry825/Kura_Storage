@@ -32,6 +32,7 @@ import com.kurastorage.core.data.media.MediaGeneratingException
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
+import com.kurastorage.core.model.SearchResultItem
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.core.ui.icons.KuraFileType
@@ -44,6 +45,46 @@ fun FileThumbnail(
     scopeId: String,
     imageLoader: ImageLoader,
     modifier: Modifier = Modifier,
+) = FileThumbnailContent(
+    ThumbnailItem(
+        entry.id,
+        entry.name,
+        entry.entryType,
+        entry.mimeType,
+        entry.status,
+        entry.fileVersion,
+    ),
+    scopeId,
+    imageLoader,
+    modifier,
+)
+
+@Composable
+fun FileThumbnail(
+    entry: SearchResultItem,
+    scopeId: String,
+    imageLoader: ImageLoader,
+    modifier: Modifier = Modifier,
+) = FileThumbnailContent(
+    ThumbnailItem(
+        entry.id,
+        entry.name,
+        entry.entryType,
+        entry.mimeType,
+        entry.status,
+        entry.updatedAt.toEpochMilli().coerceAtLeast(0),
+    ),
+    scopeId,
+    imageLoader,
+    modifier,
+)
+
+@Composable
+private fun FileThumbnailContent(
+    entry: ThumbnailItem,
+    scopeId: String,
+    imageLoader: ImageLoader,
+    modifier: Modifier,
 ) {
     val kind = thumbnailKind(entry)
     if (kind == null || entry.status != FileEntryStatus.ACTIVE) {
@@ -101,7 +142,7 @@ fun FileThumbnail(
 
 @Composable
 private fun ThumbnailFallback(
-    entry: FileEntry,
+    entry: ThumbnailItem,
     kind: ThumbnailKind?,
     modifier: Modifier,
 ) {
@@ -125,7 +166,7 @@ private fun ThumbnailFallback(
 }
 
 private fun thumbnailDescription(
-    entry: FileEntry,
+    entry: ThumbnailItem,
     state: AsyncImagePainter.State,
 ): String =
     when (state) {
@@ -139,7 +180,7 @@ private fun thumbnailDescription(
         else -> "Loading thumbnail: ${entry.name}"
     }
 
-private fun thumbnailKind(entry: FileEntry): ThumbnailKind? =
+private fun thumbnailKind(entry: ThumbnailItem): ThumbnailKind? =
     when {
         entry.entryType != FileEntryType.FILE -> null
         entry.mimeType == null -> null
@@ -163,6 +204,15 @@ private enum class ThumbnailKind(
     VIDEO("Video"),
     PDF("PDF"),
 }
+
+private data class ThumbnailItem(
+    val id: String,
+    val name: String,
+    val entryType: FileEntryType,
+    val mimeType: String?,
+    val status: FileEntryStatus,
+    val fileVersion: Long,
+)
 
 private const val MAX_GENERATING_RETRIES = 1
 private const val MILLIS_PER_SECOND = 1_000L

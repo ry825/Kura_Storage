@@ -2182,7 +2182,9 @@ Errorは`INVALID_ORGANIZATION_REQUEST`、`INVALID_FAVORITES_REQUEST`、`TAG_LIMI
 
 #### Androidのお気に入り・Tag画面
 
-Homeは既存のFiles、Shared、Search、Recent、Trash導線にFavoritesとTagsを追加する。Favorites画面はServerの安定Paginationをそのまま使用し、File／Folder、Owner、Permission／Source、共有元、更新日時、`MISSING_CANDIDATE`／`MISSING`をSearch共通metadataから表示する。項目選択時はEntry IDだけをApp Navigationへ渡し、最新詳細と権限を取得してから既存File画面を開く。
+Homeは既存のFiles、Shared、Search、Recent、Trash導線にFavoritesとTagsを追加する。Favorites画面はServerの安定Paginationをそのまま使用し、File／Folder、Owner、Permission／Source、共有元、更新日時、`MISSING_CANDIDATE`／`MISSING`をSearch共通metadataから表示する。写真・動画・PDFは既存の一覧用派生Thumbnailを追加の詳細API呼出しなしで表示し、未生成・失敗・その他の種別はIconへfallbackする。Appの共通Entry destination resolverは最新詳細のMIME、種別、状態からFolder、Photo、Video、Audio、PDF、Textを既存Destinationへ振り分け、非対応・非Active・未知項目はEntry detailsへfail-closedする。
+
+FavoritesのMedia遷移時は、表示中の同種かつ`ACTIVE`な項目IDをPaginationの表示順でSession-scoped navigation contextへ登録し、選択項目を詳細画面を経由せずViewer／Playerへ開く。ContextがProcess death等で消失した場合は現在項目の単体表示へfallbackし、Logout、認証Session失効、接続先変更でContextを破棄する。一覧tapと独立したoverflowからは、`MISSING_CANDIDATE`／`MISSING`を含めEntry detailsを開ける。
 
 FilesまたはSharedから開いた詳細actionはEntry IDだけをAppへ返し、Entry organization画面でお気に入り状態と本人Tagを再取得する。`ACTIVE`は登録・解除とTag付与・解除を許可し、`MISSING_CANDIDATE`／`MISSING`は既存関連の解除だけを許可する。二重操作を処理中状態で抑止し、PUT／DELETEの通信結果が不明な場合もローカル成功を合成せず、`GET /api/v1/files/{entryId}/organization`へ再照会する。
 

@@ -236,83 +236,83 @@
 
 ### 1. 実装前確認
 
-- [ ] PR 3の実装前状態を確認する。
-  - [ ] PR 2が`main`へMerge済みであることを確認する。
-  - [ ] `tasklist.md`を読み、PR 3だけを今回の実装範囲として選択する。
-  - [ ] 最新の`main`からPR 3用Branchを作成し、`git status`と既存差分を確認する。
-  - [ ] `docs/`のFavorites、Tags、画面Routing、Thumbnail、Accessibilityに直接関係する節を再確認する。
-  - [ ] `OrganizationScreens`、`MediaNavigationContextStore`、既存media/text/folder routes、Thumbnail実装、関連Testを確認する。
+- [x] PR 3の実装前状態を確認する。
+  - [x] PR 2が`main`へMerge済みであることを確認する。（PR #61、merge commit `4ac0cd6`）
+  - [x] `tasklist.md`を読み、PR 3だけを今回の実装範囲として選択する。
+  - [x] 最新の`main`からPR 3用Branchを作成し、`git status`と既存差分を確認する。（`feat/android-favorites-routing-polish`、開始時clean）
+  - [x] `docs/`のFavorites、Tags、画面Routing、Thumbnail、Accessibilityに直接関係する節を再確認する。
+  - [x] `OrganizationScreens`、`MediaNavigationContextStore`、既存media/text/folder routes、Thumbnail実装、関連Testを確認する。
 
 ### 2. Favoritesの視覚化
 
-- [ ] Favorites一覧へMedia Thumbnailを追加する。
-  - [ ] 写真・動画・PDFへ既存派生Thumbnailを表示する。
-  - [ ] Folder、Audio、Text、非対応Fileへ分かりやすい種別Iconを表示する。
-  - [ ] Thumbnail失敗を種別Iconへfallbackし、一覧全体をErrorにしない。
-  - [ ] 名前、最小限Metadata、Thumbnail、overflowを狭い画面で重ねない。
+- [x] Favorites一覧へMedia Thumbnailを追加する。
+  - [x] 写真・動画・PDFへ既存派生Thumbnailを表示する。
+  - [x] Folder、Audio、Text、非対応Fileへ分かりやすい種別Iconを表示する。
+  - [x] Thumbnail失敗を種別Iconへfallbackし、一覧全体をErrorにしない。
+  - [x] 名前、最小限Metadata、Thumbnail、overflowを狭い画面で重ねない。
 
 ### 3. Favorites直接RoutingとContext
 
-- [ ] appへ再利用可能なEntry destination resolverを実装する。
-  - [ ] Folder、Photo、Video、Audio、PDF、Textを適切な既存Destinationへ分類する。
-  - [ ] Unsupported、Missing、操作不能項目だけEntry detailsへfallbackする。
-  - [ ] Files/Shared/Favoritesの重複Routingをresolverへ統合し、既存遷移を維持する。
-- [ ] FavoritesのMedia navigation contextを接続する。
-  - [ ] Favorites結果からActiveな同種Mediaを表示順のまま登録する。
-  - [ ] 写真tapでFile detailsを経由せずPhoto viewerを開く。
-  - [ ] Favorites内のprevious/nextで一覧順に連続閲覧できる。
-  - [ ] Logout、Server変更、認証失効でContextをclearする。
-  - [ ] Process death等でContextがない場合も単体Viewerへ安全にfallbackする。
+- [x] appへ再利用可能なEntry destination resolverを実装する。
+  - [x] Folder、Photo、Video、Audio、PDF、Textを適切な既存Destinationへ分類する。
+  - [x] Unsupported、Missing、操作不能項目だけEntry detailsへfallbackする。
+  - [x] Files/Shared/Favoritesの重複Routingをresolverへ統合し、既存遷移を維持する。
+- [x] FavoritesのMedia navigation contextを接続する。
+  - [x] Favorites結果からActiveな同種Mediaを表示順のまま登録する。
+  - [x] 写真tapでFile detailsを経由せずPhoto viewerを開く。
+  - [x] Favorites内のprevious/nextで一覧順に連続閲覧できる。
+  - [x] Logout、Server変更、認証失効でContextをclearする。
+  - [x] Process death等でContextがない場合も単体Viewerへ安全にfallbackする。
 
 ### 4. アプリ全体のUI仕上げ
 
-- [ ] 今回対象の主要画面で視覚階層と用語を横断確認する。
-  - [ ] Home、Files、Shared、Search、Recent、Favorites、Tags、Activity、Trash、Settings、BackupへのNavigationを確認する。
-  - [ ] 対象Production UIに`Family shared`、抽象的な`Actions`、生の内部Enum、写真用`Load original photo?`が残っていない。
-  - [ ] Back、Refresh、overflowの位置、Icon、tap target、Content descriptionが一貫している。
-  - [ ] 冗長なCard、枠線、説明、余白が主要Contentを不必要に圧迫していない。
-  - [ ] 既存Themeの色、Typography、Spacing、ShapeでLight/Dark双方のcontrastを維持する。
+- [x] 今回対象の主要画面で視覚階層と用語を横断確認する。
+  - [x] Home、Files、Shared、Search、Recent、Favorites、Tags、Activity、Trash、Settings、BackupへのNavigationを確認する。
+  - [x] 対象Production UIに`Family shared`、抽象的な`Actions`、生の内部Enum、写真用`Load original photo?`が残っていない。
+  - [x] Back、Refresh、overflowの位置、Icon、tap target、Content descriptionが一貫している。
+  - [x] 冗長なCard、枠線、説明、余白が主要Contentを不必要に圧迫していない。
+  - [x] 既存Themeの色、Typography、Spacing、ShapeでLight/Dark双方のcontrastを維持する。
 
 ### 5. PR 3テスト・文書・総合検証
 
-- [ ] FavoritesとRoutingのUnit/Compose Testを追加・更新する。
-  - [ ] 種別ごとのdestination分類とfallbackをUnit Testする。
-  - [ ] Favorites順のPhoto/Video/Audio contextをUnit Testする。
-  - [ ] Thumbnail表示/fallback、Entry tap、overflowをCompose Testする。
-  - [ ] Favoritesの写真tapが直接Photo viewerへ遷移するNavigation Testを追加する。
-  - [ ] Context消失時、Logout/Server切替時の安全な挙動をTestする。
-- [ ] PR 3に対応する正式文書を更新する。
-  - [ ] `docs/product-requirements.md`のFavorites Thumbnailと直接Viewer条件を更新する。
-  - [ ] `docs/functional-design.md`のEntry resolverとFavorites media contextを更新する。
-  - [ ] `docs/architecture-design.md`のapp調停とContext lifecycleを更新する。
-  - [ ] 必要な場合だけ`docs/repository-structure.md`と`docs/development-guidelines.md`を更新する。
-- [ ] 全Android自動検証を完了する。
-  - [ ] 変更対象のUnit/Compose/Navigation Testが成功する。
-  - [ ] `./scripts/ci/verify-android.sh`が成功する。
-  - [ ] `git diff --check`が成功する。
-- [ ] 実機・実ServerでEnd-to-endフローを確認する。
-  - [ ] Files、Shared、FavoritesでThumbnailを確認し、各種Fileを適切なDestinationへ開く。
-  - [ ] Favorites写真を直接開き、一覧順の前後移動、Favorite解除、Tag変更を確認する。
-  - [ ] Low/Medium/OriginalとOriginal downloadを再確認する。
-  - [ ] File操作、共有、Upload、Download、Trash、Restore、Missing/Recoveryへ回帰がない。
-- [ ] Responsive・Accessibility・視覚比較を完了する。
-  - [ ] 360dp、font 100%/200%、Portrait/Landscape、Light/Darkで主要操作の重なり・切れ・到達不能がない。
-  - [ ] TalkBackの順序、状態読み上げ、全IconのContent description、48dp tap targetを確認する。
-  - [ ] System bar、cutout、IMEとTop/Bottom navigation、Viewer、Bottom sheetが重ならない。
-  - [ ] 変更前後Screenshotを同じ実データで比較し、一覧表示量、Viewer表示領域、Button崩れの改善を記録する。
-  - [ ] 認証、認可、共有、Session/Cache分離に重大な回帰がない。
+- [x] FavoritesとRoutingのUnit/Compose Testを追加・更新する。
+  - [x] 種別ごとのdestination分類とfallbackをUnit Testする。
+  - [x] Favorites順のPhoto/Video/Audio contextをUnit Testする。
+  - [x] Thumbnail表示/fallback、Entry tap、overflowをCompose Testする。
+  - [x] Favoritesの写真tapが直接Photo viewerへ遷移するNavigation Testを追加する。
+  - [x] Context消失時、Logout/Server切替時の安全な挙動をTestする。
+- [x] PR 3に対応する正式文書を更新する。
+  - [x] `docs/product-requirements.md`のFavorites Thumbnailと直接Viewer条件を更新する。
+  - [x] `docs/functional-design.md`のEntry resolverとFavorites media contextを更新する。
+  - [x] `docs/architecture-design.md`のapp調停とContext lifecycleを更新する。
+  - [x] 必要な場合だけ`docs/repository-structure.md`と`docs/development-guidelines.md`を更新する。
+- [x] 全Android自動検証を完了する。
+  - [x] 変更対象のUnit/Compose/Navigation Testが成功する。
+  - [x] `./scripts/ci/verify-android.sh`が成功する。
+  - [x] `git diff --check`が成功する。
+- [x] 実機・実ServerでEnd-to-endフローを確認する。
+  - [x] Files、Shared、FavoritesでThumbnailを確認し、各種Fileを適切なDestinationへ開く。
+  - [x] Favorites写真を直接開き、一覧順の前後移動、Favorite解除、Tag変更を確認する。
+  - [x] Low/Medium/OriginalとOriginal downloadを再確認する。
+  - [x] File操作、共有、Upload、Download、Trash、Restore、Missing/Recoveryへ回帰がない。
+- [x] Responsive・Accessibility・視覚比較を完了する。
+  - [x] 360dp、font 100%/200%、Portrait/Landscape、Light/Darkで主要操作の重なり・切れ・到達不能がない。
+  - [x] TalkBackの順序、状態読み上げ、全IconのContent description、48dp tap targetを確認する。
+  - [x] System bar、cutout、IMEとTop/Bottom navigation、Viewer、Bottom sheetが重ならない。
+  - [x] 変更前後Screenshotを同じ実データで比較し、一覧表示量、Viewer表示領域、Button崩れの改善を記録する。
+  - [x] 認証、認可、共有、Session/Cache分離に重大な回帰がない。
 
 ### 6. PR 3完了処理
 
-- [ ] PR 3の差分をセルフレビューする。
-  - [ ] PR 3の目的外変更、秘密情報、絶対Path、デバッグコード、不要依存がない。
-  - [ ] 実装、Test、実機記録、正式文書、Steeringの対応が取れている。
-- [ ] PR 3をCommit、Pushし、英語のPull Requestを作成する。
-  - [ ] 英語本文へ目的、対象Task、変更、Test結果、実機結果、影響、未実施事項を記載する。
-  - [ ] CI成功を確認し、Pull RequestはMergeしない。
-- [ ] `各Pull Request完了記録`へPR 3の実施結果を記載する。
-  - [ ] 完了日、PR番号/URL、Test、実機検証、計画差分、追加Task、取消Task、全体完了への引継ぎを記載する。
-  - [ ] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。
+- [x] PR 3の差分をセルフレビューする。
+  - [x] PR 3の目的外変更、秘密情報、絶対Path、デバッグコード、不要依存がない。
+  - [x] 実装、Test、実機記録、正式文書、Steeringの対応が取れている。
+- [x] PR 3をCommit、Pushし、英語のPull Requestを作成する。（PR #62）
+  - [x] 英語本文へ目的、対象Task、変更、Test結果、実機結果、影響、未実施事項を記載する。（PR #62）
+  - [x] CI成功を確認し、Pull RequestはMergeしない。（Android、Server、Config、Security成功）
+- [x] `各Pull Request完了記録`へPR 3の実施結果を記載する。
+  - [x] 完了日、PR番号/URL、Test、実機検証、計画差分、追加Task、取消Task、全体完了への引継ぎを記載する。
+  - [x] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。（commit `225e9e7`）
 
 ---
 
@@ -353,13 +353,20 @@
 
 ### PR 3
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析・手動確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したTaskと理由: 未記録
-- 技術的に不要になったTask、理由、代替実装: 未記録
-- 後続Pull Requestへの引継ぎ: 未記録
+- 完了日: 2026-09-05
+- Pull Request: [#62 Polish Android favorites navigation and media routing](https://github.com/ry825/Kura_Storage/pull/62)
+- 実施したTest・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`: 1,387タスク成功。Build、Unit Test、Coverage、ktlint、detekt、Lint、APK生成を含む。
+  - 対象Unit Test 334件、追加確認の`:app:testDebugUnitTest`、`:app:compileDebugKotlin`、`:app:ktlintCheck`、`:app:detekt`が成功。
+  - API 33 Emulator Connected Testは`app` 9件、`feature-search` 14件、`feature-media` 20件成功。
+  - API 33物理端末Connected Testは`feature-search` 14件、`feature-media` 20件成功。最初のMedia実行はUSB切断で中断したが、再接続後の全20件再実行は0失敗。
+  - OPPO CPH2333 / Android API 33 / 360dp / ZeroTier実Serverで、Favorites Thumbnail、写真の直接遷移と`1 / 2`から`2 / 2`の順序、PDF Viewer、Favorite解除・復元、Tag追加・解除、Low/Medium/Original、Original downloadを確認。
+  - Original downloadはSAFへ14,666,750 bytesを保存し、確認後に検証Fileを削除。Test用UserやServer上のFile/Folderは作成せず、一時Tagを削除して既存状態へ復元した。
+  - GitHub ActionsはAndroid、Server、Config、Securityの4jobが成功。`git diff --check`も成功。
+- 計画と実装の差分: 機能スコープに差分なし。実データScreenshotは個人画像とFile名を含むためPRへ添付せず、目視比較結果だけを`evidence/pr3/README.md`へ記録した。端末メーカーの`WRITE_SETTINGS`制限により実機の文字200%・Landscape切替は行えず、API 33 Compose fixtureとEmulatorで補完した。
+- 実装中に追加したTaskと理由: Favoritesの詳細操作を一覧tapと分離し、Missing項目でもdetailsへ到達できるoverflowとCompose Testを追加した。また認証成功時にもMedia contextをclearし、同じProcess内の再認証で旧SessionのID列が残らないようLifecycle境界を強化した。実機検証後の一時User/File/Folder/Tag/Capture cleanup方針を証跡へ追加した。
+- 技術的に不要になったTask、理由、代替実装: Favorites Thumbnail表示のためのEntry詳細N+1取得は不要と判断した。Search共通metadataのID、MIME、状態、更新日時から既存派生Thumbnail requestを作り、失敗時は種別Iconへfallbackした。
+- 全体完了への引継ぎ: PR 1〜PR 3の実装・検証・完了記録が揃ったため、PR #62をMergeせず維持したまま全体振り返りを記録する。
 
 ---
 
@@ -369,24 +376,42 @@
 
 ### 実装完了日
 
-未完了
+2026-09-05
 
 ### 計画と実績の差分
 
-未記録
+- 計画どおり3つのPull Requestへ分割し、PR 1でFiles/Sharedとdetails、PR 2でPhoto Viewer・画質・Original download、PR 3でFavorites Thumbnail・直接Routing・横断UIを完了した。
+- Server API、Database schema、認可契約を増やさず、既存APIと派生Media契約の範囲で完了した。
+- 実データScreenshotは個人情報保護のためPRへ添付せず、公開Mockupと同条件の実機Captureを目視比較して結果だけを証跡へ記録した。
+- OPPO端末の`WRITE_SETTINGS`制限で実機の文字200%・Landscape切替ができなかったため、同じAPI 33系のCompose fixtureとEmulatorで補完した。
 
 ### 主な設計変更と理由
 
-未記録
+- File一覧の表示を共通Componentへ寄せ、Thumbnail、種類Icon、状態、権限Label、独立overflowを一貫したSemanticsと48dp操作領域で表現した。
+- Photo Viewerを利用可能領域へ追従するLayoutへ変更し、画像外のPrevious/Next、compact action、実際の表示画質を示す状態へ整理した。
+- Original downloadを表示variantから分離したStreaming coordinatorへ移し、OutputStream close後だけ成功とし、途中失敗時は不完全Fileを削除する契約にした。
+- App調停層へ`EntryDestinationResolver`を追加し、Files/Shared/FavoritesのEntryを共通規則で既存Destinationへ振り分けた。非Active・未知項目はdetailsへfail-closedする。
+- `MediaNavigationContextStore`へ同種Mediaの表示順IDだけをSession内で保持し、認証・接続境界でclear、Process loss時は単体表示へfallbackする構成にした。
 
 ### 技術的な学び
 
-未記録
+- Search共通metadataのID、MIME、状態、更新日時で派生Thumbnailを要求でき、詳細APIのN+1取得を避けられた。
+- Viewerの表示順はRouteへID列を埋め込まず一時Contextへ分離すると、URLを小さく保ちながら写真・動画・音声で同じNavigation規則を再利用できる。
+- SAF保存はHTTP成功だけでなくcopyとcloseの完了までを成功境界に含め、不完全File削除を失敗Outcomeへ組み込む必要がある。
+- 物理端末で変更できないfont scale・回転条件は、実機Semanticsと同一APIの固定Compose fixtureを組み合わせることで再現可能に検証できる。
+- USB切断で中断したConnected Testは失敗と混同せず、接続回復後にSuite全体を0件目から再実行して確定する必要がある。
 
 ### プロセス上の改善点
 
-未記録
+- PRごとに依存元のMergeを確認してから次Branchを開始したため、差分の混在と古い設計への実装を防げた。
+- 変更前診断、公開Mockup、実機・実Server、Compose/Unit/Connected TestをPR単位の証跡へまとめ、手動結果と自動結果を追跡可能にした。
+- 実機検証で作成したFavorite/Tag/Downloadを直後に復元し、端末・Localの一時Captureも削除するCleanup確認を完了条件へ明示する必要がある。
+- Android全検証は時間がかかるため、対象Testと静的解析を先に回し、最終差分で全検証を1回通す順序が効率的だった。
 
 ### 次回への改善提案
 
-未記録
+- 専用Test tenantと一意なrun IDを用意し、作成したUser、File、Folder、Tag、Shareをmanifestへ記録して`finally`相当で自動Cleanupする実Server E2E harnessを追加する。
+- 360dp、文字100%/200%、Portrait/Landscape、Light/Darkの主要画面CaptureをCI artifactとして自動生成し、個人データを使わない視覚差分へ移行する。
+- Entryの日時・Size・権限Labelを共通Presentationへさらに集約し、長いISO日時が狭い画面で過度に折り返す表示を改善する。
+- Process death後も一覧Contextを復元したい場合は、Session/Server scopeを含むSavedState方式を別Taskとして評価する。現行の単体fallbackは安全性を優先して維持する。
+- Production signing検証と既存Sessionを保持するvalidation signingを分離し、Release candidateの署名・Install・Upgrade Testを専用Pipelineにする。
