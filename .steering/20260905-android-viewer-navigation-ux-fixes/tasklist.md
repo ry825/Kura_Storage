@@ -396,11 +396,11 @@
 
 ### 10.4 全体振り返り
 
-- [ ] 全タスクとPR 1完了記録を確認し、全体振り返りを本ファイルへ記録する。
-  - [ ] フェーズ0〜10.3に未完了タスク`[ ]`が残っていないことを振り返り本文の記載前に確認する。
-  - [ ] 実装完了日、計画と実績の差分、主な設計変更と理由、技術的な学び、プロセス上の改善点、次回への提案を記録する。
-  - [ ] 振り返り更新を同じBranchへCommit・Pushし、Pull Requestへ反映されたことを確認する。
-  - [ ] Pull Request URL、主な変更、検証、清掃、完了記録・振り返りの結果をUserへ報告し、Mergeせず停止する。
+- [x] 全タスクとPR 1完了記録を確認し、全体振り返りを本ファイルへ記録する。
+  - [x] フェーズ0〜10.3に未完了タスク`[ ]`が残っていないことを振り返り本文の記載前に確認する。
+  - [x] 実装完了日、計画と実績の差分、主な設計変更と理由、技術的な学び、プロセス上の改善点、次回への提案を記録する。
+  - [x] 振り返り更新を同じBranchへCommit・Pushし、Pull Requestへ反映されたことを確認する。
+  - [x] Pull Request URL、主な変更、検証、清掃、完了記録・振り返りの結果をUserへ報告し、Mergeせず停止する。
 
 ---
 
@@ -436,4 +436,31 @@
 
 ## 全体振り返り
 
-> PR 1の全タスク、Pull Request作成、完了記録が完了し、未完了項目がないことを確認した後にだけ記録する。
+### 2026-09-06 Android viewer/navigation UX fixes
+
+- 実装完了日: 2026-09-06
+- 対象Pull Request: [#63](https://github.com/ry825/Kura_Storage/pull/63)
+- 全体の計画と実績の差分:
+  - 計画したVideo、PDF、一覧、Size、Text、Folder navigation、Settings、接続境界を1本のPRで実装した。
+  - 実機確認により、当初計画外だったMedia/Text route優先順位、PDF Bitmap所有権、Media3 tap hit-test、compact error panelの4件を追加修正した。
+  - Edge caseは決定的な自動Testへ寄せ、実機はhardware rendering、Media3 lifecycle、実network routeに集中する構成へ整理した。
+- 主な設計変更と理由:
+  - variant HEAD metadataと表示Sourceをgeneration単位でatomic commitし、未生成Low/MediumへOriginal Sizeを誤表示しないようにした。
+  - PDFをbounded private streaming fileと単一page Bitmap所有権で扱い、Main thread負荷、部分File、resource raceを避けた。
+  - Text decode/save契約にencodingとdecode statusを導入し、UTF-16保存維持とlossy原本の明示承認を両立した。
+  - Folder遷移をgeneration付き状態機械へ寄せ、tap回数ではなく確定Folder IDからstackとパンくずを構築した。
+  - Media Playerのsurfaceと操作overlayを明示的な層へ分離し、fullscreenとtap semanticsを安定させた。
+- 技術的な学び:
+  - Compose TestだけではMedia3 `PlayerSurface`の実hit-testやRenderThreadのBitmap参照寿命を完全には再現できず、実機の代表操作が必要だった。
+  - `PdfRenderer`の描画完了とCompose display listの参照終了は同義ではないため、公開済みBitmapを即時recycleしない所有権規約が必要だった。
+  - Wi-Fi一致は接続可否ではなくBackup候補条件に限定し、route/TLS/identity/authenticationを独立してfail closedにする設計が実機切替でも有効だった。
+- プロセス上の改善点:
+  - 実機E2Eで見つかった不具合をその場で最小回帰Testへ変換し、影響moduleの再実行後に全標準検証へ戻した。
+  - 個人情報を含み得るCaptureはCommitせず、exact-ID manifest、削除前照合、残存0件確認を一連の手順にした。
+  - 長時間の派生生成は待機中に文書・接続・清掃を進め、実機代表確認と自動境界Testの役割を証跡で明示した。
+- 次回への提案:
+  - 短い保証動画と正常・暗号化・破損PDFを専用の削除可能fixtureとして用意し、全variantのLive E2E時間を短縮する。
+  - Media3 surface、PDF Bitmap寿命、compact widthを物理端末smoke suiteの固定項目にする。
+  - Local directと外部Wi-Fi＋ZeroTierの切替手順を匿名化した再利用可能runnerへまとめる。
+- 未完了・引継ぎ: なし。
+- Merge状態: 未Merge。User review待ちで停止する。
