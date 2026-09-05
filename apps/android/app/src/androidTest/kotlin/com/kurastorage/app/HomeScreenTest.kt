@@ -74,7 +74,7 @@ class HomeScreenTest {
         compose.onNodeWithText("Pending: 3").assertIsDisplayed()
         compose.onNodeWithText("Current status").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
         compose.onNodeWithText("My files").assertIsDisplayed()
-        compose.onNodeWithText("Family shared").assertIsDisplayed()
+        compose.onNodeWithText("Shared").assertIsDisplayed()
         compose.scrollHomeTo("Photos").performClick()
         compose.scrollHomeTo("report.pdf").performClick()
         compose.scrollHomeTo("Favorites").assertIsDisplayed()

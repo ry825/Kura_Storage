@@ -76,7 +76,11 @@ fun KuraStorageAppShell(
 
     KuraAppScaffold(
         modifier = modifier,
-        topBar = { KuraTopAppBar(selected.label) },
+        topBar = {
+            if (selected != TopLevelDestination.FILES) {
+                KuraTopAppBar(selected.label)
+            }
+        },
         bottomBar = {
             KuraBottomNavigation(
                 selected = selected,

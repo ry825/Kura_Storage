@@ -2674,7 +2674,7 @@ flowchart LR
 **主要カード**
 
 - 自分のファイル
-- 家族共有
+- Shared
 - 最近開いたファイル
 - 写真・動画・音声・文書
 - 自動バックアップ状態
@@ -2689,6 +2689,10 @@ flowchart LR
 
 ## 11.3 ファイル一覧
 
+FilesとSharedは共通のTop app barを使い、Backを左端、Search・List/Grid切替・Refreshを右端の48dp以上のIcon操作とする。Refresh中は同操作を無効化し、長い現在位置は1行のbreadcrumbとして省略可能に表示する。
+
+Trash以外はadaptive gridを初期表示とし、List/Gridの選択は画面再生成後も保持する。写真・動画・PDFは既存派生サムネイルを使用し、生成失敗、Folder、非対応Fileは種類Iconへfallbackする。UploadはFloating action、New folderはcompact actionとし、いずれも書込権限がある場合だけ表示する。
+
 | 項目         | リスト表示       | グリッド表示 |
 | ------------ | ---------------- | ------------ |
 | ファイル名   | 表示             | 省略表示     |
@@ -2699,9 +2703,11 @@ flowchart LR
 | MISSING      | 警告ラベル       | 警告バッジ   |
 | 共有状態     | アイコン＋ラベル | アイコン     |
 
-一覧用サムネイル取得時に元画像を取得しない。ファイルとフォルダのコンテキストメニューから共有設定画面へ移動できる。
+一覧用サムネイル取得時に元画像を取得しない。項目名に`Folder:`または`File:`接頭辞を付けず、項目本体のタップはOpen、縦overflowは詳細・補助操作とする。個人FilesのOwnerと通常Permissionは省略し、Sharedでは共有元、`Read only`、`Can add files`、`Can edit`、`Can manage`等の利用者向け権限、書込可否を表示する。
 
 ## 11.4 ファイル詳細画面
+
+詳細は固定幅Dialogではなく、縦scroll可能なadaptive bottom sheetとする。Headerにサムネイルまたは種類Icon、名前、種類を表示し、metadataは文字200%でも1行に詰め込まないLabel/Valueの縦配置とする。
 
 - ファイル名
 - MIMEタイプ
@@ -2711,8 +2717,10 @@ flowchart LR
 - 自分の権限
 - アップロード元端末
 - ファイル状態
-- ダウンロード
-- 名前変更、移動、共有、削除
+- Download original
+- Open、名前変更、移動、共有、Favorite・Tag、Trash
+
+実行不能な操作は原則非表示とし、状態理解に必要な場合だけ理由付きで無効表示する。Trashと完全削除は通常操作から区切った末尾に配置し、既存の確認DialogとServer認可を維持する。
 
 ### 11.4.1 MVP後: 共有一覧・共有設定
 

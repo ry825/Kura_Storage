@@ -20,8 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
@@ -34,6 +34,8 @@ import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.SupportedMediaMimeTypes
+import com.kurastorage.core.ui.icons.KuraFileType
+import com.kurastorage.core.ui.icons.KuraFileTypeIcon
 import kotlinx.coroutines.delay
 
 @Composable
@@ -71,7 +73,7 @@ fun FileThumbnail(
             .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .semantics { contentDescription = thumbnailDescription(entry, state) },
+            .clearAndSetSemantics { contentDescription = thumbnailDescription(entry, state) },
         contentAlignment = Alignment.Center,
     ) {
         AsyncImage(
@@ -86,7 +88,12 @@ fun FileThumbnail(
             is AsyncImagePainter.State.Loading,
             AsyncImagePainter.State.Empty,
             -> CircularProgressIndicator()
-            is AsyncImagePainter.State.Error -> Text(if (generating != null) "Generating" else kind.label)
+            is AsyncImagePainter.State.Error ->
+                if (generating != null) {
+                    Text("Generating")
+                } else {
+                    KuraFileTypeIcon(KuraFileType.from(entry.mimeType, false))
+                }
             is AsyncImagePainter.State.Success -> Unit
         }
     }
@@ -110,10 +117,10 @@ private fun ThumbnailFallback(
             .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .semantics { contentDescription = "$label: ${entry.name}" },
+            .clearAndSetSemantics { contentDescription = "$label: ${entry.name}" },
         contentAlignment = Alignment.Center,
     ) {
-        Text(label)
+        KuraFileTypeIcon(KuraFileType.from(entry.mimeType, entry.entryType == FileEntryType.FOLDER))
     }
 }
 

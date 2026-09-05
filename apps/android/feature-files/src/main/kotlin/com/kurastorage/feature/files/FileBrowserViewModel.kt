@@ -478,7 +478,7 @@ class FileBrowserViewModel(
         moveFolderStack.addLast(
             PickerLocation(
                 rootId,
-                mutableState.value.currentFolder?.name ?: if (rootId == null) "My files" else "Shared folder",
+                mutableState.value.currentFolder?.name ?: if (rootId == null) "My files" else "Shared",
                 rootId == null || currentCapabilities().canMove,
             ),
         )
