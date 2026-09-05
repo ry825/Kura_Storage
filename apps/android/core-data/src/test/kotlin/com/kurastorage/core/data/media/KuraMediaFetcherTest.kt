@@ -24,9 +24,15 @@ class KuraMediaFetcherTest {
     fun `cache key is session file version and variant only`() {
         val first = KuraMediaImage("session", "file", 7, MediaVariant.THUMBNAIL)
         val renamed = KuraMediaImage("session", "file", 7, MediaVariant.THUMBNAIL)
+        val regenerated = KuraMediaImage("session", "file", 7, MediaVariant.THUMBNAIL, requestGeneration = 9)
 
         assertEquals("session:file:7:thumbnail", first.cacheKey)
         assertEquals(first.cacheKey, renamed.cacheKey)
+        assertEquals(first.cacheKey, regenerated.cacheKey)
+        assertTrue(first.cacheKey != KuraMediaImage("other-session", "file", 7, MediaVariant.THUMBNAIL).cacheKey)
+        assertTrue(first.cacheKey != KuraMediaImage("session", "other-file", 7, MediaVariant.THUMBNAIL).cacheKey)
+        assertTrue(first.cacheKey != KuraMediaImage("session", "file", 8, MediaVariant.THUMBNAIL).cacheKey)
+        assertTrue(first.cacheKey != KuraMediaImage("session", "file", 7, MediaVariant.IMAGE_LOW).cacheKey)
     }
 
     @Test

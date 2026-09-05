@@ -37,6 +37,7 @@ data class MediaViewerState(
     val loadState: MediaLoadState,
     val confirmation: TransferConfirmationPrompt? = null,
     val canRetryGeneration: Boolean = false,
+    val originalSizeLabel: String? = null,
 )
 
 data class MediaRequestTicket(
@@ -208,7 +209,22 @@ class MediaViewerController(
         try {
             val prompt = confirmationPolicy.prepare(current.fileId, current.fileVersion, current.kind)
             if (generation == expectedGeneration) {
-                mutableState.value = current.copy(loadState = MediaLoadState.ConfirmingTransfer, confirmation = prompt)
+                if (current.kind == MediaKind.IMAGE) {
+                    approvedPrompt = prompt
+                    mutableState.value =
+                        current.copy(
+                            loadState = MediaLoadState.Loading,
+                            confirmation = null,
+                            originalSizeLabel = prompt.formattedSize,
+                        )
+                } else {
+                    mutableState.value =
+                        current.copy(
+                            loadState = MediaLoadState.ConfirmingTransfer,
+                            confirmation = prompt,
+                            originalSizeLabel = prompt.formattedSize,
+                        )
+                }
             }
         } catch (error: KuraStorageException) {
             if (generation == expectedGeneration) fail(error)

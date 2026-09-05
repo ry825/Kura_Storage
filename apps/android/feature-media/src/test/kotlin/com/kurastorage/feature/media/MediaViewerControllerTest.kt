@@ -20,6 +20,7 @@ import com.kurastorage.core.model.media.MediaLoadState
 import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaUiError
 import com.kurastorage.core.model.media.MediaVariant
+import com.kurastorage.core.model.media.NetworkQualityContext
 import com.kurastorage.core.model.media.OriginalMetadata
 import com.kurastorage.core.model.media.QualityPreferences
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -35,19 +36,91 @@ import java.io.IOException
 @OptIn(ExperimentalCoroutinesApi::class)
 class MediaViewerControllerTest {
     @Test
-    fun `original requires matching approval and never prefetches content`() =
+    fun `photo starts with the configured quality for every network context`() =
+        runTest {
+            val preferences =
+                QualityPreferences(
+                    localDirect = MediaQuality.ORIGINAL,
+                    registeredRemoteWifi = MediaQuality.MEDIUM,
+                    unregisteredRemoteWifi = MediaQuality.ORIGINAL,
+                    remoteMobile = MediaQuality.LOW,
+                )
+            val cases =
+                listOf(
+                    NetworkCase(
+                        ConnectionRoute.LOCAL_DIRECT,
+                        NetworkTransport.WIFI,
+                        false,
+                        NetworkQualityContext.LOCAL_DIRECT,
+                        MediaVariant.ORIGINAL,
+                    ),
+                    NetworkCase(
+                        ConnectionRoute.REMOTE_SECURE,
+                        NetworkTransport.WIFI,
+                        true,
+                        NetworkQualityContext.REGISTERED_REMOTE_WIFI,
+                        MediaVariant.IMAGE_MEDIUM,
+                    ),
+                    NetworkCase(
+                        ConnectionRoute.REMOTE_SECURE,
+                        NetworkTransport.WIFI,
+                        false,
+                        NetworkQualityContext.UNREGISTERED_REMOTE_WIFI,
+                        MediaVariant.ORIGINAL,
+                    ),
+                    NetworkCase(
+                        ConnectionRoute.REMOTE_SECURE,
+                        NetworkTransport.CELLULAR,
+                        false,
+                        NetworkQualityContext.REMOTE_MOBILE,
+                        MediaVariant.IMAGE_LOW,
+                    ),
+                )
+
+            cases.forEachIndexed { index, case ->
+                val controller =
+                    controller(
+                        repository = FakeRepository(),
+                        route = case.route,
+                        scope = backgroundScope,
+                        preferences = preferences,
+                        network = case,
+                    )
+                controller.start("photo-$index", 1, MediaKind.IMAGE)
+
+                assertEquals(case.context, controller.state.value?.networkContext)
+                assertEquals(case.variant, controller.requestTicket()?.source?.variant)
+                assertNull(controller.state.value?.confirmation)
+            }
+        }
+
+    @Test
+    fun `photo original is inspected and automatically starts without confirmation`() =
         runTest {
             val repository = FakeRepository()
             val controller = controller(repository, ConnectionRoute.LOCAL_DIRECT, backgroundScope)
 
             controller.start("file", 4, MediaKind.IMAGE)
 
-            assertTrue(controller.state.value?.loadState is MediaLoadState.ConfirmingTransfer)
-            assertNull(controller.requestTicket())
-            assertEquals(0, repository.contentRequests)
-            controller.confirmOriginal()
+            assertTrue(controller.state.value?.loadState is MediaLoadState.Loading)
+            assertNull(controller.state.value?.confirmation)
+            assertEquals("100 B", controller.state.value?.originalSizeLabel)
             assertEquals(MediaVariant.ORIGINAL, controller.requestTicket()?.source?.variant)
             assertEquals(0, repository.contentRequests)
+        }
+
+    @Test
+    fun `video original retains explicit transfer confirmation`() =
+        runTest {
+            val repository = FakeRepository()
+            val controller = controller(repository, ConnectionRoute.LOCAL_DIRECT, backgroundScope)
+
+            controller.start("video", 4, MediaKind.VIDEO)
+
+            assertTrue(controller.state.value?.loadState is MediaLoadState.ConfirmingTransfer)
+            assertNull(controller.requestTicket())
+            controller.confirmOriginal()
+            assertEquals(MediaVariant.ORIGINAL, controller.requestTicket()?.source?.variant)
         }
 
     @Test
@@ -235,8 +308,7 @@ class MediaViewerControllerTest {
             assertEquals(
                 "Size unavailable",
                 controller.state.value
-                    ?.confirmation
-                    ?.formattedSize,
+                    ?.originalSizeLabel,
             )
         }
 
@@ -244,35 +316,45 @@ class MediaViewerControllerTest {
         repository: FakeRepository,
         route: ConnectionRoute,
         scope: kotlinx.coroutines.CoroutineScope,
+        preferences: QualityPreferences = QualityPreferences(),
+        network: NetworkCase? = null,
     ) = MediaViewerController(
         repository = repository,
-        qualityStore = FakeQualityStore(),
+        qualityStore = FakeQualityStore(preferences),
         contextResolver =
             NetworkQualityContextResolver(
                 NetworkTransportSource {
-                    if (route ==
-                        ConnectionRoute.REMOTE_SECURE
-                    ) {
-                        NetworkTransport.CELLULAR
-                    } else {
-                        NetworkTransport.WIFI
-                    }
+                    network?.transport
+                        ?: when (route) {
+                            ConnectionRoute.REMOTE_SECURE -> NetworkTransport.CELLULAR
+                            ConnectionRoute.LOCAL_DIRECT -> NetworkTransport.WIFI
+                        }
                 },
-                RegisteredWifiSource { false },
+                RegisteredWifiSource { network?.registeredWifi ?: false },
             ),
         confirmationPolicy = TransferConfirmationPolicy(repository),
         route = route,
         parentScope = scope,
     )
 
-    private class FakeQualityStore : QualityPreferenceStore {
-        override suspend fun read() = QualityPreferences()
+    private class FakeQualityStore(
+        private val preferences: QualityPreferences,
+    ) : QualityPreferenceStore {
+        override suspend fun read() = preferences
 
         override suspend fun update(
             context: com.kurastorage.core.model.media.NetworkQualityContext,
             quality: MediaQuality,
         ) = Unit
     }
+
+    private data class NetworkCase(
+        val route: ConnectionRoute,
+        val transport: NetworkTransport,
+        val registeredWifi: Boolean,
+        val context: com.kurastorage.core.model.media.NetworkQualityContext,
+        val variant: MediaVariant,
+    )
 
     private class FakeRepository : MediaRepository {
         val jobs = ArrayDeque<MediaJobSnapshot>()

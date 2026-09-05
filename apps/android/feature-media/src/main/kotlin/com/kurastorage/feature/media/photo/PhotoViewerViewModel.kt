@@ -52,7 +52,10 @@ class PhotoViewerViewModel(
                 mutableState.update {
                     it.copy(
                         media = media,
-                        originalSizeLabel = media?.confirmation?.formattedSize ?: it.originalSizeLabel,
+                        originalSizeLabel =
+                            media?.originalSizeLabel
+                                ?: media?.confirmation?.formattedSize
+                                ?: it.originalSizeLabel,
                     )
                 }
             }
@@ -64,8 +67,6 @@ class PhotoViewerViewModel(
         viewModelScope.launch { controller.selectQuality(quality) }
     }
 
-    fun confirmOriginal() = controller.confirmOriginal()
-
     fun requestTicket(): MediaRequestTicket? = controller.requestTicket()
 
     fun contentReady(ticket: MediaRequestTicket) = controller.contentReady(ticket)
@@ -76,6 +77,10 @@ class PhotoViewerViewModel(
     ) = controller.contentGenerating(ticket, error.job)
 
     fun contentFailed(ticket: MediaRequestTicket) = controller.contentFailed(ticket, MediaUiError.UNSUPPORTED)
+
+    fun retryGeneration() {
+        viewModelScope.launch { controller.retryGeneration() }
+    }
 
     fun setZoom(value: Float) {
         mutableState.update { it.copy(zoom = value.coerceIn(MIN_ZOOM, MAX_ZOOM)) }

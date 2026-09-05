@@ -2,6 +2,8 @@ package com.kurastorage.feature.media
 
 import android.graphics.Bitmap
 import android.util.Base64
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -15,12 +17,16 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
@@ -31,13 +37,13 @@ import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import com.kurastorage.core.data.media.KuraMediaImage
 import com.kurastorage.core.data.media.KuraMediaKeyer
-import com.kurastorage.core.data.media.TransferConfirmationPrompt
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.OwnerSummary
 import com.kurastorage.core.model.PermissionSource
 import com.kurastorage.core.model.SharePermission
+import com.kurastorage.core.model.TagItem
 import com.kurastorage.core.model.media.ByteCount
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
@@ -49,6 +55,9 @@ import com.kurastorage.core.model.media.ReadyMediaSource
 import com.kurastorage.feature.media.pdf.PdfLoadState
 import com.kurastorage.feature.media.pdf.PdfViewerScreen
 import com.kurastorage.feature.media.pdf.PdfViewerUiState
+import com.kurastorage.feature.media.photo.PhotoDownloadStatus
+import com.kurastorage.feature.media.photo.PhotoDownloadUiState
+import com.kurastorage.feature.media.photo.PhotoOrganizationUiState
 import com.kurastorage.feature.media.photo.PhotoViewerScreen
 import com.kurastorage.feature.media.photo.PhotoViewerUiState
 import com.kurastorage.feature.media.thumbnail.FileThumbnail
@@ -57,6 +66,7 @@ import okio.Buffer
 import okio.FileSystem
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.time.Instant
@@ -114,20 +124,8 @@ class MediaViewerScreenTest {
     }
 
     @Test
-    fun photoRequiresOriginalConfirmationAndDoubleTapChangesZoom() {
+    fun photoLoadsOriginalWithoutConfirmationAndExposesActualQuality() {
         val photo = file("photo", "image/jpeg")
-        val prompt =
-            TransferConfirmationPrompt(
-                photo.id,
-                photo.fileVersion,
-                MediaKind.IMAGE,
-                MediaVariant.ORIGINAL,
-                ByteCount(1_024),
-                true,
-                "1.0 KiB",
-                "About 1.0 KiB may be transferred.",
-            )
-        var confirmed = false
         var state by
             mutableStateOf(
                 PhotoViewerUiState(
@@ -139,8 +137,8 @@ class MediaViewerScreenTest {
                             MediaKind.IMAGE,
                             MediaQuality.ORIGINAL,
                             NetworkQualityContext.REMOTE_MOBILE,
-                            MediaLoadState.ConfirmingTransfer,
-                            prompt,
+                            MediaLoadState.Loading,
+                            originalSizeLabel = "1.0 KiB",
                         ),
                     currentPosition = 3,
                     totalCount = 24,
@@ -157,24 +155,19 @@ class MediaViewerScreenTest {
                 onGenerating = { _, _ -> },
                 onImageFailed = {},
                 onQuality = {},
-                onConfirmOriginal = {
-                    confirmed = true
-                    state = state.copy(media = state.media?.copy(confirmation = null, loadState = MediaLoadState.Loading))
-                },
                 onPrevious = {},
                 onNext = {},
                 onZoom = { state = state.copy(zoom = it) },
                 onDetails = {},
-                onDownload = {},
+                onDownloadOriginal = {},
                 onBack = {},
             )
         }
 
-        compose.onNodeWithText("Load original photo?").assertIsDisplayed()
+        compose.onNodeWithText("Load original photo?").assertDoesNotExist()
         compose.onNodeWithText("3 / 24").assertIsDisplayed()
-        compose.onNodeWithText("Load original").performClick()
-        compose.runOnIdle { assertEquals(true, confirmed) }
-        compose.onNodeWithText("Zoom in").performScrollTo().performClick()
+        compose.onNodeWithText("Loading: Original").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Zoom in").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1.5f, state.zoom) }
     }
 
@@ -288,42 +281,211 @@ class MediaViewerScreenTest {
         compose.setContent {
             CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 2f)) {
                 MaterialTheme(colorScheme = darkColorScheme()) {
-                    PhotoViewerScreen(
-                        state = PhotoViewerUiState(file = photo, media = media, canGoNext = true),
-                        imageLoader = checkNotNull(loader),
-                        scopeId = "accessibility",
-                        requestTicket = { null },
-                        onImageReady = {},
-                        onGenerating = { _, _ -> },
-                        onImageFailed = {},
-                        onQuality = {},
-                        onConfirmOriginal = {},
-                        onPrevious = {},
-                        onNext = {},
-                        onZoom = {},
-                        onDetails = {},
-                        onDownload = {},
-                        onBack = {},
-                    )
+                    Box(Modifier.requiredSize(360.dp, 640.dp)) {
+                        PhotoViewerScreen(
+                            state = PhotoViewerUiState(file = photo, media = media, canGoNext = true),
+                            imageLoader = checkNotNull(loader),
+                            scopeId = "accessibility",
+                            requestTicket = { null },
+                            onImageReady = {},
+                            onGenerating = { _, _ -> },
+                            onImageFailed = {},
+                            onQuality = {},
+                            onPrevious = {},
+                            onNext = {},
+                            onZoom = {},
+                            onDetails = {},
+                            onDownloadOriginal = {},
+                            onBack = {},
+                        )
+                    }
                 }
             }
         }
 
         compose
-            .onNodeWithText("Back")
+            .onNodeWithContentDescription("Back")
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
         compose
-            .onNodeWithText("Download Low")
+            .onNodeWithContentDescription("Download original")
             .performScrollTo()
             .assertIsDisplayed()
             .assertIsEnabled()
         compose
-            .onNodeWithText("Next photo")
+            .onNodeWithContentDescription("Next photo")
             .performScrollTo()
             .assertIsDisplayed()
             .assertIsEnabled()
     }
+
+    @Test
+    fun photoSwipeMovesOnceAtActualSizeAndDoesNotNavigateWhileZoomed() {
+        val photo = file("swipe", "image/jpeg")
+        var nextCount = 0
+        var state by mutableStateOf(photoState(photo).copy(canGoNext = true))
+        loader = imageLoader()
+        compose.setContent {
+            PhotoViewerScreen(
+                state = state,
+                imageLoader = checkNotNull(loader),
+                scopeId = "swipe-scope",
+                requestTicket = { null },
+                onImageReady = {},
+                onGenerating = { _, _ -> },
+                onImageFailed = {},
+                onQuality = {},
+                onPrevious = {},
+                onNext = { nextCount++ },
+                onZoom = { state = state.copy(zoom = it) },
+                onDetails = {},
+                onDownloadOriginal = {},
+                onBack = {},
+            )
+        }
+
+        compose.onNodeWithTag("photo-canvas").performTouchInput { swipeLeft(durationMillis = 300) }
+        compose.runOnIdle { assertEquals(1, nextCount) }
+        compose.runOnIdle { state = state.copy(zoom = 2f) }
+        compose.onNodeWithTag("photo-canvas").performTouchInput { swipeLeft(durationMillis = 300) }
+        compose.runOnIdle { assertEquals(1, nextCount) }
+    }
+
+    @Test
+    fun photoToolbarAndTagSheetExposeServerBackedOrganizationActions() {
+        val photo = file("organized", "image/jpeg")
+        val travel = TagItem("travel", "A long travel tag that remains scrollable at large text")
+        var favoriteToggles = 0
+        var selectedTag: TagItem? = null
+        var refreshes = 0
+        loader = imageLoader()
+        compose.setContent {
+            PhotoViewerScreen(
+                state = photoState(photo),
+                imageLoader = checkNotNull(loader),
+                scopeId = "organization-scope",
+                requestTicket = { null },
+                onImageReady = {},
+                onGenerating = { _, _ -> },
+                onImageFailed = {},
+                onQuality = {},
+                onPrevious = {},
+                onNext = {},
+                onZoom = {},
+                onDetails = {},
+                onDownloadOriginal = {},
+                onBack = {},
+                organization =
+                    PhotoOrganizationUiState(
+                        isFavorite = true,
+                        attachedTags = listOf(travel),
+                        availableTags = listOf(travel),
+                        canAttach = true,
+                        loading = false,
+                    ),
+                onRefreshOrganization = { refreshes++ },
+                onToggleFavorite = { favoriteToggles++ },
+                onToggleTag = { selectedTag = it },
+            )
+        }
+
+        compose.onNodeWithContentDescription("Remove from favorites").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Manage photo tags").performScrollTo().performClick()
+        compose.onNodeWithTag("photo-tags-sheet").assertIsDisplayed()
+        compose.onNodeWithTag("photo-tag-travel").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Refresh photo tags").performScrollTo().performClick()
+        compose.runOnIdle {
+            assertEquals(1, favoriteToggles)
+            assertEquals(travel, selectedTag)
+            assertEquals(1, refreshes)
+        }
+    }
+
+    @Test
+    fun photoToolbarDisablesPendingFavoriteAndReportsIncompleteDownload() {
+        val photo = file("pending-actions", "image/jpeg")
+        var quality: MediaQuality? = null
+        loader = imageLoader()
+        compose.setContent {
+            PhotoViewerScreen(
+                state = photoState(photo),
+                imageLoader = checkNotNull(loader),
+                scopeId = "pending-actions-scope",
+                requestTicket = { null },
+                onImageReady = {},
+                onGenerating = { _, _ -> },
+                onImageFailed = {},
+                onQuality = { quality = it },
+                onPrevious = {},
+                onNext = {},
+                onZoom = {},
+                onDetails = {},
+                onDownloadOriginal = {},
+                onBack = {},
+                organization =
+                    PhotoOrganizationUiState(
+                        isFavorite = true,
+                        pendingFavorite = true,
+                        canAttach = true,
+                        loading = false,
+                    ),
+                download = PhotoDownloadUiState(PhotoDownloadStatus.INCOMPLETE_FILE_MAY_REMAIN),
+            )
+        }
+
+        compose.onNodeWithContentDescription("Saving favorite").performScrollTo().assertIsNotEnabled()
+        compose
+            .onNodeWithText("The incomplete destination could not be removed. Delete it before retrying.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Medium").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(MediaQuality.MEDIUM, quality) }
+    }
+
+    @Test
+    fun previousAndNextControlsAreOutsidePhotoViewport() {
+        val photo = file("bounds", "image/jpeg")
+        loader = imageLoader()
+        compose.setContent {
+            PhotoViewerScreen(
+                state = photoState(photo).copy(canGoPrevious = true, canGoNext = true),
+                imageLoader = checkNotNull(loader),
+                scopeId = "bounds-scope",
+                requestTicket = { null },
+                onImageReady = {},
+                onGenerating = { _, _ -> },
+                onImageFailed = {},
+                onQuality = {},
+                onPrevious = {},
+                onNext = {},
+                onZoom = {},
+                onDetails = {},
+                onDownloadOriginal = {},
+                onBack = {},
+            )
+        }
+
+        val viewport = compose.onNodeWithTag("photo-viewport").fetchSemanticsNode().boundsInRoot
+        val previous = compose.onNodeWithContentDescription("Previous photo").fetchSemanticsNode().boundsInRoot
+        val next = compose.onNodeWithContentDescription("Next photo").fetchSemanticsNode().boundsInRoot
+        assertTrue(!viewport.overlaps(previous))
+        assertTrue(!viewport.overlaps(next))
+    }
+
+    private fun photoState(photo: FileEntry): PhotoViewerUiState =
+        PhotoViewerUiState(
+            file = photo,
+            media =
+                MediaViewerState(
+                    fileId = photo.id,
+                    fileVersion = photo.fileVersion,
+                    kind = MediaKind.IMAGE,
+                    quality = MediaQuality.LOW,
+                    networkContext = NetworkQualityContext.REMOTE_MOBILE,
+                    loadState = MediaLoadState.Ready(ReadyMediaSource(photo.id, photo.fileVersion, MediaVariant.IMAGE_LOW)),
+                    originalSizeLabel = "1.0 KiB",
+                ),
+        )
 
     private fun imageLoader(
         throwError: Boolean = false,

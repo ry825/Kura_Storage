@@ -82,9 +82,56 @@ class KuraMediaFetcherMockWebServerTest {
             )
         }
 
-    private fun fetcher() =
+    @Test
+    fun `photo qualities request their exact variants and preserve response content type`() =
+        runTest {
+            val cases =
+                listOf(
+                    MediaVariant.IMAGE_LOW to "image-low",
+                    MediaVariant.IMAGE_MEDIUM to "image-medium",
+                    MediaVariant.ORIGINAL to "original",
+                )
+            cases.forEach { (variant, wireValue) ->
+                server.enqueue(
+                    MockResponse()
+                        .setHeader("Content-Type", "image/webp; charset=binary")
+                        .setBody(Buffer().write(ONE_PIXEL_PNG)),
+                )
+
+                val result = fetcher(variant).fetch() as coil3.fetch.SourceFetchResult
+
+                assertEquals("image/webp", result.mimeType)
+                result.source.close()
+                assertEquals(
+                    "/api/v1/files/$FILE_ID/content?variant=$wireValue&disposition=inline",
+                    server.takeRequest().path,
+                )
+            }
+        }
+
+    @Test
+    fun `media HTTP error is surfaced without a fallback request`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(403)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("""{"code":"FILE_NOT_FOUND","message":"denied","requestId":"media-403","details":{}}"""),
+            )
+
+            val failure = runCatching { fetcher(MediaVariant.IMAGE_MEDIUM).fetch() }.exceptionOrNull()
+
+            assertTrue(failure != null)
+            assertEquals(1, server.requestCount)
+            assertEquals(
+                "/api/v1/files/$FILE_ID/content?variant=image-medium&disposition=inline",
+                server.takeRequest().path,
+            )
+        }
+
+    private fun fetcher(variant: MediaVariant = MediaVariant.THUMBNAIL) =
         KuraMediaFetcher(
-            KuraMediaImage("session", FILE_ID, 1, MediaVariant.THUMBNAIL),
+            KuraMediaImage("session", FILE_ID, 1, variant),
             repository,
             Semaphore(8),
         )

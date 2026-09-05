@@ -31,6 +31,7 @@ import com.kurastorage.core.data.media.DataStoreQualityPreferenceStore
 import com.kurastorage.core.data.media.DefaultAdminMediaCacheRepository
 import com.kurastorage.core.data.media.DefaultMediaRepository
 import com.kurastorage.core.data.media.MediaContentDownloader
+import com.kurastorage.core.data.media.MediaOriginalDownloadCoordinator
 import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.data.media.NetworkQualityContextResolver
 import com.kurastorage.core.data.media.QualityPreferenceStore
@@ -228,13 +229,15 @@ class ServiceContainer(
                 executor,
             )
         val scopeId = UUID.randomUUID().toString()
+        val downloader = MediaContentDownloader(repository)
         return MediaSessionScope(
             scopeId = scopeId,
             repository = repository,
             qualityPreferences = qualityPreferenceStore,
             contextResolver = networkQualityContextResolver,
             confirmationPolicy = TransferConfirmationPolicy(repository),
-            downloader = MediaContentDownloader(repository),
+            downloader = downloader,
+            originalDownloader = MediaOriginalDownloadCoordinator(downloader),
             imageLoader = MediaImageLoaderFactory.create(applicationContext, scopeId, repository),
             temporaryPdfStore = TemporaryPdfStore(applicationContext.cacheDir, scopeId, repository),
             cleanupImageCache = { MediaImageLoaderFactory.cleanupSession(applicationContext, scopeId) },
@@ -284,6 +287,7 @@ class MediaSessionScope(
     val contextResolver: NetworkQualityContextResolver,
     val confirmationPolicy: TransferConfirmationPolicy,
     val downloader: MediaContentDownloader,
+    val originalDownloader: MediaOriginalDownloadCoordinator,
     val imageLoader: ImageLoader,
     val temporaryPdfStore: TemporaryPdfStore,
     private val cleanupImageCache: () -> Unit,

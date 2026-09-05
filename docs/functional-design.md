@@ -2739,10 +2739,17 @@ Trash以外はadaptive gridを初期表示とし、List/Gridの選択は画面�
 - 画質選択: 低 / 中 / 元
 - 現在の通信種別
 - 元画質サイズ
-- ダウンロード品質選択
+- 元ファイルのSAFダウンロード
+- お気に入り追加・解除、Tag付与・解除
 - 詳細情報
 
-初期画質は通信環境別設定から決定するが、ローカル直接接続を含むすべての手動閲覧可能な接続で、低・中・元画質へ切り替えられる。元画質へ切り替える前にはファイルサイズまたは推定転送量を表示する。
+初期画質は通信環境別設定から決定し、写真では確認Dialogを挟まず対応variantの取得を開始する。ローカル直接接続を含むすべての手動閲覧可能な接続で、低・中・元画質へ切り替えられ、元画質のサイズまたは推定転送量をViewer内に表示する。動画・音声・PDFの元画質取得前確認は維持する。
+
+写真CanvasはSystem barとTop app barを除く利用可能領域へ追従し、Portraitでは写真下、Landscapeでは写真横へcompact操作面を配置する。Previous／NextはCanvasへ重ねず、等倍時は水平方向Swipeでも1 gestureにつき1項目だけ移動する。Zoom中のPanは前後移動に使用しない。希望画質と現在表示中variantを分離し、request generationに一致する最新結果だけを表示する。
+
+`app`は表示中File IDごとの`EntryOrganizationViewModel`を保持し、表示用Favorite／Tag状態とCallbackを`feature-media`へ渡す。FavoriteとTagはServer成功応答後だけ更新し、pending中の重複操作を抑止する。Tagは縦scroll可能なBottom sheetで追加・解除、Error、Refresh、Tag管理導線を提供する。
+
+`Download original`は表示中variantに関係なく`variant=original`を使用し、元File名と具体的MIME typeで`CreateDocument`を起動する。選択URIへ全体ByteArray化せずStreaming copyし、OutputStreamのclose完了後だけ成功を表示する。Cancelは成功扱いにせず、open、copy、通信、認証・認可、容量、Server失敗時はURI削除を試み、削除不能時は不完全Fileの可能性を表示する。
 
 ## 11.5.1 MVP後: PDFビューアー
 
@@ -2815,7 +2822,7 @@ Trash以外はadaptive gridを初期表示とし、List/Gridの選択は画面�
 | 未登録Wi-Fi＋ZeroTier       | 低画質 |
 | モバイル通信＋ZeroTier      | 低画質 |
 
-利用者は環境別の初期値を変更できる。これらはビューアー起動時の既定値であり、手動閲覧中は接続環境に関係なく低画質、中画質、元画質へ変更できる。ただしモバイル通信での自動バックアップは変更不可で禁止とする。
+利用者は環境別の初期値を変更できる。これらはビューアー起動時の既定値であり、写真Viewerは現在接続に対応する値を確認Dialogなしで自動適用する。手動閲覧中は接続環境に関係なく低画質、中画質、元画質へ変更できる。ただしモバイル通信での自動バックアップは変更不可で禁止とする。
 
 ## 11.11 MVP後: キャッシュ状態画面
 

@@ -50,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,6 +69,8 @@ import androidx.navigation.navArgument
 import com.kurastorage.core.data.FileRepository
 import com.kurastorage.core.data.SharingRepository
 import com.kurastorage.core.data.media.MediaContentDownloader
+import com.kurastorage.core.data.media.MediaDownloadOutcome
+import com.kurastorage.core.data.media.MediaDownloadTarget
 import com.kurastorage.core.model.ConnectionStatus
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
@@ -81,7 +84,6 @@ import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.model.backup.BackupSourceType
 import com.kurastorage.core.model.filePermissionCapabilities
 import com.kurastorage.core.model.media.MediaKind
-import com.kurastorage.core.model.media.MediaLoadState
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.core.ui.AppDestination
@@ -117,10 +119,14 @@ import com.kurastorage.feature.files.FileBrowserViewModel
 import com.kurastorage.feature.media.MediaViewerController
 import com.kurastorage.feature.media.pdf.PdfViewerScreen
 import com.kurastorage.feature.media.pdf.PdfViewerViewModel
+import com.kurastorage.feature.media.photo.PhotoDownloadStatus
+import com.kurastorage.feature.media.photo.PhotoDownloadUiState
+import com.kurastorage.feature.media.photo.PhotoOrganizationUiState
 import com.kurastorage.feature.media.photo.PhotoViewerScreen
 import com.kurastorage.feature.media.photo.PhotoViewerViewModel
 import com.kurastorage.feature.media.thumbnail.FileThumbnail
 import com.kurastorage.feature.search.EntryOrganizationScreen
+import com.kurastorage.feature.search.EntryOrganizationUiState
 import com.kurastorage.feature.search.EntryOrganizationViewModel
 import com.kurastorage.feature.search.FavoritesScreen
 import com.kurastorage.feature.search.FavoritesViewModel
@@ -1041,25 +1047,54 @@ private fun KuraStorageApp(
                             },
                     )
                 val photoState by photoViewModel.state.collectAsStateWithLifecycle()
+                val displayedPhotoId = photoState.file?.id
+                val organizationViewModel =
+                    displayedPhotoId?.let { entryId ->
+                        viewModel<EntryOrganizationViewModel>(
+                            key = "photo-organization-$entryId-${current.sessionId}",
+                            factory =
+                                simpleViewModelFactory {
+                                    EntryOrganizationViewModel(entryId, current.organization, current.files::detail)
+                                },
+                        )
+                    }
+                val organizationState = organizationViewModel?.state?.collectAsStateWithLifecycle()?.value
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val downloadScope = rememberCoroutineScope()
-                var pendingMediaDownload by remember { mutableStateOf<MediaDownloadSelection?>(null) }
+                var pendingPhotoDownload by remember { mutableStateOf<PhotoDownloadSelection?>(null) }
+                var photoDownloadState by remember(displayedPhotoId) { mutableStateOf(PhotoDownloadUiState()) }
+                val downloadMimeType = photoState.file?.mimeType ?: "image/*"
                 val mediaDownloadPicker =
-                    rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-                        val selection = pendingMediaDownload
-                        pendingMediaDownload = null
-                        if (uri != null && selection != null) {
-                            downloadScope.launch {
-                                val succeeded =
-                                    runCatching {
-                                        downloadMedia(context, current.media.downloader, uri, selection)
-                                    }.isSuccess
-                                Toast
-                                    .makeText(
-                                        context,
-                                        if (succeeded) "Download completed." else "Download failed.",
-                                        Toast.LENGTH_LONG,
-                                    ).show()
+                    key(downloadMimeType) {
+                        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(downloadMimeType)) { uri ->
+                            val selection = pendingPhotoDownload
+                            pendingPhotoDownload = null
+                            if (uri == null || selection == null) {
+                                photoDownloadState = PhotoDownloadUiState()
+                            } else {
+                                photoDownloadState = PhotoDownloadUiState(PhotoDownloadStatus.SAVING)
+                                downloadScope.launch {
+                                    photoDownloadState =
+                                        when (
+                                            val outcome =
+                                                current.media.originalDownloader.download(
+                                                    selection.fileId,
+                                                    ContentResolverMediaDownloadTarget(context, uri),
+                                                )
+                                        ) {
+                                            is MediaDownloadOutcome.Completed ->
+                                                PhotoDownloadUiState(
+                                                    PhotoDownloadStatus.COMPLETED,
+                                                    "Saved ${outcome.bytesWritten} bytes from the original file.",
+                                                )
+                                            is MediaDownloadOutcome.Failed ->
+                                                if (outcome.incompleteTargetMayRemain) {
+                                                    PhotoDownloadUiState(PhotoDownloadStatus.INCOMPLETE_FILE_MAY_REMAIN)
+                                                } else {
+                                                    PhotoDownloadUiState(PhotoDownloadStatus.FAILED)
+                                                }
+                                        }
+                                }
                             }
                         }
                     }
@@ -1072,7 +1107,6 @@ private fun KuraStorageApp(
                     onGenerating = photoViewModel::contentGenerating,
                     onImageFailed = photoViewModel::contentFailed,
                     onQuality = photoViewModel::selectQuality,
-                    onConfirmOriginal = photoViewModel::confirmOriginal,
                     onPrevious = photoViewModel::previous,
                     onNext = photoViewModel::next,
                     onZoom = photoViewModel::setZoom,
@@ -1080,15 +1114,25 @@ private fun KuraStorageApp(
                         photoState.file?.id?.let(mediaContexts::requestDetails)
                         navController.popBackStack()
                     },
-                    onDownload = {
-                        val file = photoState.file
-                        val ready = photoState.media?.loadState as? MediaLoadState.Ready
-                        if (file != null && ready != null) {
-                            pendingMediaDownload = MediaDownloadSelection(file.id, file.name, ready.source.variant)
+                    onDownloadOriginal = {
+                        photoState.file?.let { file ->
+                            pendingPhotoDownload = PhotoDownloadSelection(file.id)
+                            photoDownloadState =
+                                PhotoDownloadUiState(
+                                    PhotoDownloadStatus.CHOOSING_DESTINATION,
+                                    "Choose where to save the original file.",
+                                )
                             mediaDownloadPicker.launch(file.name)
                         }
                     },
                     onBack = { navController.popBackStack() },
+                    organization = organizationState?.toPhotoOrganizationUiState() ?: PhotoOrganizationUiState(),
+                    onRefreshOrganization = { organizationViewModel?.refresh() },
+                    onToggleFavorite = { organizationViewModel?.toggleFavorite() },
+                    onToggleTag = { tag -> organizationViewModel?.toggleTag(tag) },
+                    onManageTags = { navController.navigate(AppDestination.TAGS.route) },
+                    download = photoDownloadState,
+                    onRetryGeneration = photoViewModel::retryGeneration,
                 )
             }
             composable(
@@ -1597,6 +1641,31 @@ private data class MediaDownloadSelection(
     val fileName: String,
     val variant: MediaVariant,
 )
+
+private data class PhotoDownloadSelection(
+    val fileId: String,
+)
+
+private class ContentResolverMediaDownloadTarget(
+    private val context: android.content.Context,
+    private val destination: Uri,
+) : MediaDownloadTarget {
+    override fun openOutputStream() = context.contentResolver.openOutputStream(destination, "w")
+
+    override fun delete(): Boolean = context.contentResolver.delete(destination, null, null) > 0
+}
+
+private fun EntryOrganizationUiState.toPhotoOrganizationUiState(): PhotoOrganizationUiState =
+    PhotoOrganizationUiState(
+        loading = loading,
+        isFavorite = organization?.isFavorite ?: false,
+        attachedTags = organization?.tags.orEmpty(),
+        availableTags = availableTags,
+        pendingFavorite = pendingFavorite,
+        pendingTagIds = pendingTagIds,
+        canAttach = canAttach,
+        errorMessage = error?.message,
+    )
 
 private suspend fun downloadMedia(
     context: android.content.Context,
