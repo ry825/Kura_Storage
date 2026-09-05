@@ -23,24 +23,30 @@ internal data class EntryNavigationCandidate(
     val entryType: FileEntryType,
     val status: FileEntryStatus,
     val mimeType: String?,
+    val name: String = "",
+    val size: Long = 0,
 )
 
 internal object EntryDestinationResolver {
-    fun resolve(entry: FileEntry): EntryDestination = resolve(entry.entryType, entry.status, entry.mimeType)
+    fun resolve(entry: FileEntry): EntryDestination = resolve(entry.navigationCandidate())
 
-    fun resolve(entry: SearchResultItem): EntryDestination = resolve(entry.entryType, entry.status, entry.mimeType)
+    fun resolve(entry: SearchResultItem): EntryDestination = resolve(entry.navigationCandidate())
 
     fun resolve(candidate: EntryNavigationCandidate): EntryDestination =
         resolve(
             candidate.entryType,
             candidate.status,
             candidate.mimeType,
+            candidate.name,
+            candidate.size,
         )
 
     private fun resolve(
         entryType: FileEntryType,
         status: FileEntryStatus,
         mimeType: String?,
+        name: String,
+        size: Long,
     ): EntryDestination =
         when {
             status != FileEntryStatus.ACTIVE || entryType == FileEntryType.UNKNOWN -> EntryDestination.DETAILS
@@ -50,7 +56,8 @@ internal object EntryDestinationResolver {
             SupportedMediaMimeTypes.isVideo(mimeType) -> EntryDestination.VIDEO
             SupportedMediaMimeTypes.isAudio(mimeType) -> EntryDestination.AUDIO
             SupportedMediaMimeTypes.isPdf(mimeType) -> EntryDestination.PDF
-            SupportedTextMimeTypes.isSupported(mimeType) -> EntryDestination.TEXT
+            size <= SupportedTextMimeTypes.MAX_CONTENT_BYTES &&
+                SupportedTextMimeTypes.isDirectlyOpenable(name, mimeType) -> EntryDestination.TEXT
             else -> EntryDestination.DETAILS
         }
 }
@@ -99,6 +106,8 @@ internal fun favoriteEntryRoute(
     directEntryRoute(entry, favorites.map(SearchResultItem::navigationCandidate), contexts)
         ?: entryRoute(entry.id, entry.entryType)
 
-internal fun FileEntry.navigationCandidate() = EntryNavigationCandidate(id, entryType, status, mimeType)
+internal fun FileEntry.navigationCandidate(): EntryNavigationCandidate =
+    EntryNavigationCandidate(id, entryType, status, mimeType, name, size)
 
-internal fun SearchResultItem.navigationCandidate() = EntryNavigationCandidate(id, entryType, status, mimeType)
+internal fun SearchResultItem.navigationCandidate(): EntryNavigationCandidate =
+    EntryNavigationCandidate(id, entryType, status, mimeType, name, size)

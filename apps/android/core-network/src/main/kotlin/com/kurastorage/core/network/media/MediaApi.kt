@@ -26,6 +26,27 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 interface MediaApi {
+    suspend fun headContent(
+        accessToken: String,
+        fileId: String,
+        variant: MediaVariant,
+    ): NetworkCallResult<MediaMetadataNetworkResult> {
+        require(variant == MediaVariant.ORIGINAL)
+        return when (val result = headOriginal(accessToken, fileId)) {
+            is NetworkCallResult.Success ->
+                NetworkCallResult.Success(
+                    MediaMetadataNetworkResult.Ready(
+                        VariantMetadataDto(
+                            result.value.contentLength,
+                            result.value.mimeType,
+                            result.value.acceptsRanges,
+                        ),
+                    ),
+                )
+            NetworkCallResult.Unauthorized -> NetworkCallResult.Unauthorized
+        }
+    }
+
     suspend fun headOriginal(
         accessToken: String,
         fileId: String,
@@ -66,6 +87,17 @@ sealed interface MediaContentNetworkResult {
     ) : MediaContentNetworkResult
 }
 
+sealed interface MediaMetadataNetworkResult {
+    data class Ready(
+        val metadata: VariantMetadataDto,
+    ) : MediaMetadataNetworkResult
+
+    data class Generating(
+        val accepted: MediaAcceptedResponseDto,
+    ) : MediaMetadataNetworkResult
+}
+
+@Suppress("TooManyFunctions")
 class OkHttpMediaApi(
     baseUrl: String,
     client: OkHttpClient,
@@ -78,6 +110,43 @@ class OkHttpMediaApi(
             .followRedirects(false)
             .followSslRedirects(false)
             .build()
+
+    override suspend fun headContent(
+        accessToken: String,
+        fileId: String,
+        variant: MediaVariant,
+    ): NetworkCallResult<MediaMetadataNetworkResult> =
+        executeHead(
+            requestBuilder(accessToken, contentUrl(fileId, variant)).head().build(),
+        ) { response ->
+            when (response.code) {
+                HTTP_OK -> {
+                    val length = response.header("Content-Length")?.toLongOrNull()
+                    val mime = response.header("Content-Type")?.substringBefore(';')?.trim()
+                    val hasInvalidMetadata = length == null || length < 0 || mime.isNullOrBlank()
+                    val supportsRanges = response.header("Accept-Ranges").equals("bytes", ignoreCase = true)
+                    if (
+                        hasInvalidMetadata ||
+                        !supportsRanges
+                    ) {
+                        invalidMediaResponse()
+                    }
+                    MediaMetadataNetworkResult.Ready(VariantMetadataDto(length, mime, true))
+                }
+                HTTP_ACCEPTED -> {
+                    val jobId = response.header("X-Kura-Media-Job-Id") ?: invalidMediaResponse()
+                    val location = response.header("Location") ?: invalidMediaResponse()
+                    val retryAfter = response.header("Retry-After")?.toIntOrNull() ?: invalidMediaResponse()
+                    if (jobId.isBlank() || location != "/api/v1/media-jobs/$jobId" || retryAfter <= 0) {
+                        invalidMediaResponse()
+                    }
+                    MediaMetadataNetworkResult.Generating(
+                        MediaAcceptedResponseDto("GENERATING", jobId, location, retryAfter),
+                    )
+                }
+                else -> invalidMediaResponse()
+            }
+        }
 
     override suspend fun headOriginal(
         accessToken: String,
@@ -188,6 +257,34 @@ class OkHttpMediaApi(
             }
         }
 
+    private suspend fun <T> executeHead(
+        request: Request,
+        map: (Response) -> T,
+    ): NetworkCallResult<T> =
+        withContext(Dispatchers.IO) {
+            try {
+                client.newCall(request).awaitResponse().use { response ->
+                    if (response.code == HTTP_UNAUTHORIZED) return@withContext NetworkCallResult.Unauthorized
+                    if (response.code != HTTP_OK && response.code != HTTP_ACCEPTED) {
+                        val code = if (response.code == HTTP_NOT_FOUND) ErrorCode.FILE_NOT_FOUND else ErrorCode.UNKNOWN
+                        throw KuraStorageException.Api(
+                            ApiError(
+                                code = code,
+                                requestId = response.header("X-Request-Id"),
+                                statusCode = response.code,
+                                retryAfterSeconds = response.header("Retry-After")?.toLongOrNull(),
+                            ),
+                        )
+                    }
+                    NetworkCallResult.Success(map(response))
+                }
+            } catch (error: KuraStorageException) {
+                throw error
+            } catch (error: IOException) {
+                throw KuraStorageException.Network(error)
+            }
+        }
+
     private fun requestBuilder(
         accessToken: String,
         url: HttpUrl,
@@ -217,6 +314,7 @@ class OkHttpMediaApi(
         const val HTTP_OK = 200
         const val HTTP_ACCEPTED = 202
         const val HTTP_PARTIAL_CONTENT = 206
+        const val HTTP_NOT_FOUND = 404
         val SINGLE_RANGE = Regex("bytes=(?:[0-9]+-[0-9]*|-[0-9]+)")
     }
 }

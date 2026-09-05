@@ -2,7 +2,10 @@ package com.kurastorage.core.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +43,7 @@ import com.kurastorage.core.ui.components.KuraSectionHeader
 import com.kurastorage.core.ui.components.KuraSegmentedControl
 import com.kurastorage.core.ui.components.KuraStatus
 import com.kurastorage.core.ui.components.KuraStatusBadge
+import com.kurastorage.core.ui.components.KuraStatusPanel
 import com.kurastorage.core.ui.icons.KuraFileType
 import com.kurastorage.core.ui.icons.KuraFileTypeIcon
 import com.kurastorage.core.ui.icons.KuraLogo
@@ -217,5 +221,30 @@ class KuraComponentsTest {
         val second = compose.onNodeWithText("Medium quality").getBoundsInRoot()
         assertTrue(second.top >= first.bottom)
         compose.onNodeWithTag("fixture").captureToImage()
+    }
+
+    @Test
+    fun compactStatusPanelKeepsMessageAndMultipleActionsVisible() {
+        compose.setContent {
+            KuraStorageTheme {
+                Box(Modifier.size(width = 360.dp, height = 480.dp)) {
+                    KuraStatusPanel(
+                        title = "PDF unavailable",
+                        message = "This PDF could not be opened safely.",
+                        status = KuraStatus.ERROR,
+                        action = {
+                            FlowRow {
+                                OutlinedButton(onClick = {}) { Text("Retry open") }
+                                OutlinedButton(onClick = {}) { Text("Save a copy") }
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithText("This PDF could not be opened safely.").assertIsDisplayed()
+        compose.onNodeWithText("Retry open").assertIsDisplayed()
+        compose.onNodeWithText("Save a copy").assertIsDisplayed()
     }
 }

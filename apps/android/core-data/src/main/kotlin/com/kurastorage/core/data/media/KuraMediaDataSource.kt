@@ -12,6 +12,7 @@ import com.kurastorage.core.model.media.ReadyMediaSource
 import kotlinx.coroutines.runBlocking
 import java.io.IOException
 import java.io.InputStream
+import java.net.ProtocolException
 
 class MediaGeneratingIOException(
     val job: MediaJobSnapshot,
@@ -27,6 +28,7 @@ class KuraMediaDataSource(
     private var remaining = C.LENGTH_UNSET.toLong()
     private var opened = false
 
+    @Suppress("SwallowedException")
     override fun open(dataSpec: DataSpec): Long {
         check(!opened) { "Data source is already open" }
         transferInitializing(dataSpec)
@@ -38,6 +40,8 @@ class KuraMediaDataSource(
                 throw MediaDataSourceIOException.Http(error.error.statusCode ?: HTTP_UNKNOWN, error)
             } catch (error: KuraStorageException.CredentialUnavailable) {
                 throw MediaDataSourceIOException.Http(HTTP_UNAUTHORIZED, error)
+            } catch (error: KuraStorageException.InvalidServerResponse) {
+                throw MediaDataSourceIOException.InvalidRange
             } catch (error: KuraStorageException.Network) {
                 throw MediaDataSourceIOException.Network(error)
             } catch (error: KuraStorageException) {
@@ -67,7 +71,12 @@ class KuraMediaDataSource(
         if (length == 0) return 0
         if (remaining == 0L) return C.RESULT_END_OF_INPUT
         val allowed = if (remaining == C.LENGTH_UNSET.toLong()) length else minOf(length.toLong(), remaining).toInt()
-        val read = input?.read(buffer, offset, allowed) ?: throw IOException("Data source is not open")
+        val read =
+            try {
+                input?.read(buffer, offset, allowed) ?: throw IOException("Data source is not open")
+            } catch (_: ProtocolException) {
+                throw MediaDataSourceIOException.Incomplete
+            }
         if (read == -1) {
             if (remaining > 0) throw MediaDataSourceIOException.Incomplete
             return C.RESULT_END_OF_INPUT
@@ -95,32 +104,22 @@ class KuraMediaDataSource(
     ) {
         content = ready
         val stream = ready.body.byteStream()
-        if (dataSpec.position > 0 && ready.statusCode == HTTP_OK) skipExactly(stream, dataSpec.position)
         input = stream
-        val available = ready.contentLength?.let { it - if (ready.statusCode == HTTP_OK) dataSpec.position else 0L }
+        val available =
+            MediaRangeResponseValidator
+                .validate(
+                    requestedPosition = dataSpec.position,
+                    requestedLength = dataSpec.length,
+                    statusCode = ready.statusCode,
+                    contentRange = ready.headers["Content-Range"],
+                    contentLength = ready.contentLength,
+                ).responseLength
         remaining =
             when {
                 dataSpec.length != C.LENGTH_UNSET.toLong() -> dataSpec.length
                 available != null && available >= 0 -> available
                 else -> C.LENGTH_UNSET.toLong()
             }
-    }
-
-    private fun skipExactly(
-        stream: InputStream,
-        count: Long,
-    ) {
-        var remaining = count
-        while (remaining > 0) {
-            val skipped = stream.skip(remaining)
-            if (skipped > 0) {
-                remaining -= skipped
-            } else if (stream.read() == -1) {
-                throw MediaDataSourceIOException.Incomplete
-            } else {
-                remaining--
-            }
-        }
     }
 
     class Factory(
@@ -132,7 +131,6 @@ class KuraMediaDataSource(
 
     private companion object {
         val MEDIA_URI: Uri = Uri.parse("kurastorage-media://content")
-        const val HTTP_OK = 200
         const val HTTP_UNAUTHORIZED = 401
         const val HTTP_UNKNOWN = 0
     }
@@ -152,4 +150,6 @@ sealed class MediaDataSourceIOException(
     ) : MediaDataSourceIOException("Media network request failed", cause)
 
     data object Incomplete : MediaDataSourceIOException("Media response ended before the requested range")
+
+    data object InvalidRange : MediaDataSourceIOException("Media response did not match the requested range")
 }

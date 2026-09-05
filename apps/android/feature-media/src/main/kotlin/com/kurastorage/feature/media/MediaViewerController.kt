@@ -1,5 +1,6 @@
 package com.kurastorage.feature.media
 
+import com.kurastorage.core.data.media.MediaMetadataResult
 import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.data.media.NetworkQualityContextResolver
 import com.kurastorage.core.data.media.QualityPreferenceStore
@@ -15,7 +16,10 @@ import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaUiError
 import com.kurastorage.core.model.media.MediaVariantResolver
 import com.kurastorage.core.model.media.NetworkQualityContext
+import com.kurastorage.core.model.media.OriginalMetadata
 import com.kurastorage.core.model.media.ReadyMediaSource
+import com.kurastorage.core.model.media.VariantMetadata
+import com.kurastorage.core.ui.formatting.formatFileSize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -38,11 +42,18 @@ data class MediaViewerState(
     val confirmation: TransferConfirmationPrompt? = null,
     val canRetryGeneration: Boolean = false,
     val originalSizeLabel: String? = null,
+    val requestedVariant: com.kurastorage.core.model.media.MediaVariant =
+        MediaVariantResolver.resolve(kind, quality),
+    val requestedMetadata: VariantMetadata? = null,
+    val displayedSource: ReadyMediaSource? = null,
+    val displayedMetadata: VariantMetadata? = null,
+    val displayedSizeLabel: String? = null,
 )
 
 data class MediaRequestTicket(
     internal val generation: Long,
     val source: ReadyMediaSource,
+    val metadata: VariantMetadata? = null,
 )
 
 @Suppress("TooManyFunctions")
@@ -95,6 +106,8 @@ class MediaViewerController(
                 loadState = MediaLoadState.Idle,
                 confirmation = null,
                 canRetryGeneration = false,
+                requestedVariant = MediaVariantResolver.resolve(current.kind, quality),
+                requestedMetadata = null,
             )
         prepareSelectedQuality(generation)
     }
@@ -122,7 +135,7 @@ class MediaViewerController(
             val approved = approvedPrompt ?: return null
             if (!approved.approve().matches(current.fileId, current.fileVersion, variant, approved.size)) return null
         }
-        return MediaRequestTicket(generation, current.toSource())
+        return MediaRequestTicket(generation, current.toSource(), current.requestedMetadata)
     }
 
     fun contentReady(ticket: MediaRequestTicket) {
@@ -131,6 +144,9 @@ class MediaViewerController(
             mutableState.value?.copy(
                 loadState = MediaLoadState.Ready(ticket.source),
                 canRetryGeneration = false,
+                displayedSource = ticket.source,
+                displayedMetadata = ticket.metadata,
+                displayedSizeLabel = formatFileSize(ticket.metadata?.size?.value),
             )
     }
 
@@ -172,9 +188,12 @@ class MediaViewerController(
             val retried = repository.retryJob(failed.jobId)
             if (generation != expectedGeneration) return
             val current = mutableState.value ?: return
-            val ticket = MediaRequestTicket(generation, current.toSource())
+            val metadata = current.requestedMetadata
+            val ticket = MediaRequestTicket(generation, current.toSource(), metadata)
             if (retried.status == MediaJobStatus.GENERATING) {
                 contentGenerating(ticket, retried)
+            } else if (retried.status == MediaJobStatus.READY) {
+                prepareSelectedQuality(expectedGeneration)
             } else {
                 activeJob = retried
                 mutableState.value =
@@ -196,40 +215,97 @@ class MediaViewerController(
         mutableState.value = null
     }
 
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")
     private suspend fun prepareSelectedQuality(expectedGeneration: Long) {
         val current = mutableState.value ?: return
         val variant = MediaVariantResolver.resolve(current.kind, current.quality)
-        if (variant != com.kurastorage.core.model.media.MediaVariant.ORIGINAL) {
-            if (generation == expectedGeneration) {
-                mutableState.value = current.copy(loadState = MediaLoadState.Loading)
-            }
-            return
-        }
-        mutableState.value = current.copy(loadState = MediaLoadState.ConfirmingTransfer)
         try {
-            val prompt = confirmationPolicy.prepare(current.fileId, current.fileVersion, current.kind)
-            if (generation == expectedGeneration) {
-                if (current.kind == MediaKind.IMAGE) {
-                    approvedPrompt = prompt
+            when (val inspection = repository.inspectVariant(current.fileId, variant)) {
+                is MediaMetadataResult.Generating -> {
+                    if (generation != expectedGeneration) return
+                    contentGenerating(MediaRequestTicket(generation, current.toSource()), inspection.job)
+                }
+                is MediaMetadataResult.Ready -> {
+                    if (generation != expectedGeneration) return
+                    val metadata = inspection.metadata
                     mutableState.value =
                         current.copy(
-                            loadState = MediaLoadState.Loading,
-                            confirmation = null,
-                            originalSizeLabel = prompt.formattedSize,
+                            requestedVariant = variant,
+                            requestedMetadata = metadata,
+                            loadState =
+                                if (variant == com.kurastorage.core.model.media.MediaVariant.ORIGINAL) {
+                                    MediaLoadState.ConfirmingTransfer
+                                } else {
+                                    MediaLoadState.Loading
+                                },
                         )
-                } else {
-                    mutableState.value =
-                        current.copy(
-                            loadState = MediaLoadState.ConfirmingTransfer,
-                            confirmation = prompt,
-                            originalSizeLabel = prompt.formattedSize,
+                    if (variant != com.kurastorage.core.model.media.MediaVariant.ORIGINAL) return
+                    val prompt =
+                        confirmationPolicy.prepare(
+                            current.fileId,
+                            current.fileVersion,
+                            current.kind,
+                            OriginalMetadata(metadata.size, metadata.mimeType, metadata.acceptsRanges),
                         )
+                    if (generation != expectedGeneration) return
+                    if (current.kind == MediaKind.IMAGE) {
+                        approvedPrompt = prompt
+                        mutableState.value =
+                            mutableState.value!!.copy(
+                                loadState = MediaLoadState.Loading,
+                                confirmation = null,
+                                originalSizeLabel = prompt.formattedSize,
+                            )
+                    } else {
+                        mutableState.value =
+                            mutableState.value!!.copy(
+                                loadState = MediaLoadState.ConfirmingTransfer,
+                                confirmation = prompt,
+                                originalSizeLabel = prompt.formattedSize,
+                            )
+                    }
                 }
             }
         } catch (error: KuraStorageException) {
-            if (generation == expectedGeneration) fail(error)
+            if (
+                generation == expectedGeneration &&
+                variant == com.kurastorage.core.model.media.MediaVariant.ORIGINAL &&
+                error.isTransientMetadataFailure()
+            ) {
+                prepareOriginalWithoutMetadata(current, expectedGeneration)
+            } else if (generation == expectedGeneration) {
+                fail(error)
+            }
         }
     }
+
+    private suspend fun prepareOriginalWithoutMetadata(
+        current: MediaViewerState,
+        expectedGeneration: Long,
+    ) {
+        val prompt = confirmationPolicy.prepare(current.fileId, current.fileVersion, current.kind)
+        if (generation != expectedGeneration) return
+        approvedPrompt = prompt.takeIf { current.kind == MediaKind.IMAGE }
+        mutableState.value =
+            current.copy(
+                requestedMetadata = null,
+                loadState =
+                    if (current.kind == MediaKind.IMAGE) {
+                        MediaLoadState.Loading
+                    } else {
+                        MediaLoadState.ConfirmingTransfer
+                    },
+                confirmation = prompt.takeUnless { current.kind == MediaKind.IMAGE },
+                originalSizeLabel = prompt.formattedSize,
+            )
+    }
+
+    private fun KuraStorageException.isTransientMetadataFailure(): Boolean =
+        this is KuraStorageException.Network ||
+            (
+                this is KuraStorageException.Api &&
+                    ((error.statusCode ?: 0) >= HTTP_SERVER_ERROR_START || error.statusCode == HTTP_TOO_MANY_REQUESTS)
+            )
 
     @Suppress("ReturnCount")
     private suspend fun poll(
@@ -257,11 +333,7 @@ class MediaViewerController(
                             canRetryGeneration = false,
                         )
                 MediaJobStatus.READY -> {
-                    mutableState.value =
-                        mutableState.value?.copy(
-                            loadState = MediaLoadState.Loading,
-                            canRetryGeneration = false,
-                        )
+                    prepareSelectedQuality(ticket.generation)
                     return
                 }
                 MediaJobStatus.FAILED,
@@ -297,6 +369,8 @@ class MediaViewerController(
                         HTTP_NOT_FOUND -> MediaUiError.NOT_FOUND
                         HTTP_CONFLICT -> MediaUiError.FILE_CHANGED
                         HTTP_RANGE_NOT_SATISFIABLE -> MediaUiError.RANGE_INVALID
+                        HTTP_TOO_MANY_REQUESTS -> MediaUiError.SERVER_ERROR
+                        in HTTP_SERVER_ERROR_START..HTTP_SERVER_ERROR_END -> MediaUiError.SERVER_ERROR
                         else -> MediaUiError.UNKNOWN
                     }
                 else -> MediaUiError.UNKNOWN
@@ -333,5 +407,8 @@ class MediaViewerController(
         const val HTTP_NOT_FOUND = 404
         const val HTTP_CONFLICT = 409
         const val HTTP_RANGE_NOT_SATISFIABLE = 416
+        const val HTTP_TOO_MANY_REQUESTS = 429
+        const val HTTP_SERVER_ERROR_START = 500
+        const val HTTP_SERVER_ERROR_END = 599
     }
 }

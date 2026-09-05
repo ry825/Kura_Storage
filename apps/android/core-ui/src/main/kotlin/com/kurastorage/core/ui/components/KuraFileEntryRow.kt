@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -17,12 +19,13 @@ import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.PermissionSource
 import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.ui.KuraTheme
+import com.kurastorage.core.ui.formatting.formatFileSize
 import com.kurastorage.core.ui.icons.KuraFileType
 import com.kurastorage.core.ui.icons.KuraFileTypeIcon
 import java.time.Instant
 
 @Composable
-@Suppress("LongParameterList")
+@Suppress("LongMethod", "LongParameterList")
 fun KuraFileEntryRow(
     name: String,
     entryType: FileEntryType,
@@ -35,6 +38,7 @@ fun KuraFileEntryRow(
     size: Long? = null,
     sharedFrom: String? = null,
     contextLine: String? = null,
+    visual: Boolean = false,
     enabled: Boolean = status == FileEntryStatus.ACTIVE && entryType != FileEntryType.UNKNOWN,
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -59,15 +63,42 @@ fun KuraFileEntryRow(
                 leading()
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xxs)) {
-                androidx.compose.material3.Text(name, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                androidx.compose.material3.Text(
-                    "Owner: $ownerName • ${permission.userLabel()}${permissionSource?.userLabel()?.let { " ($it)" }.orEmpty()}",
+                Text(
+                    name,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = if (visual) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
                 )
-                androidx.compose.material3.Text(
-                    "Updated $updatedAt${size?.let { " • ${formatEntryBytes(it)}" }.orEmpty()}",
-                )
-                sharedFrom?.let { androidx.compose.material3.Text("Shared from: $it") }
-                contextLine?.let { androidx.compose.material3.Text(it) }
+                if (visual) {
+                    Text(
+                        "${permission.userLabel()} • $ownerName${size?.let { " • ${formatFileSize(it)}" }.orEmpty()}",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    sharedFrom?.let {
+                        Text(
+                            "Shared from: $it",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        listOfNotNull(contextLine, "Updated $updatedAt").joinToString(" • "),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text("Owner: $ownerName • ${permission.userLabel()}${permissionSource?.userLabel()?.let { " ($it)" }.orEmpty()}")
+                    Text("Updated $updatedAt${size?.let { " • ${formatFileSize(it)}" }.orEmpty()}")
+                    sharedFrom?.let { Text("Shared from: $it") }
+                    contextLine?.let { Text(it) }
+                }
                 status.presentation()?.let { (label, style) -> KuraStatusBadge(label, style) }
             }
             trailing?.invoke()
@@ -99,12 +130,4 @@ private fun FileEntryStatus.presentation(): Pair<String, KuraStatus>? =
         FileEntryStatus.MISSING -> "File missing" to KuraStatus.ERROR
         FileEntryStatus.TRASHED -> "In Trash" to KuraStatus.WARNING
         FileEntryStatus.UNKNOWN -> "Update required" to KuraStatus.ERROR
-    }
-
-private fun formatEntryBytes(bytes: Long): String =
-    when {
-        bytes >= 1_000_000_000 -> "%.1f GB".format(bytes / 1_000_000_000.0)
-        bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
-        bytes >= 1_000 -> "%.1f KB".format(bytes / 1_000.0)
-        else -> "$bytes bytes"
     }

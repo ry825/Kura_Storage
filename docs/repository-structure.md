@@ -753,6 +753,8 @@ app/
 
 ```text
 core-model/src/main/kotlin/com/kurastorage/core/model/
+├── FileSizeFormatting.kt
+├── TextFileModels.kt
 ├── identity/
 ├── files/
 ├── sharing/
@@ -766,6 +768,7 @@ core-model/src/main/kotlin/com/kurastorage/core/model/
 - Android SDK依存を可能な限り避ける。
 - Search共通metadataは`SearchModels.kt`、お気に入り・Tag・Entry organization stateとTag名Validationは`OrganizationModels.kt`へ置き、同じEntry metadataを重複定義しない。
 - 利用者向け操作履歴の型付きmodelと未知enumのfail-closed表現は`ActivityModels.kt`へ置く。
+- Android SDKに依存しない1,024基準の利用者向けSize変換は`FileSizeFormatting.kt`へ置き、Feature独自の単位・丸めを持たない。
 
 #### `core-network/`
 
@@ -787,6 +790,7 @@ core-network/src/main/kotlin/com/kurastorage/core/network/
 - TLS検証無効化Codeを置かない。
 - お気に入り・Tag DTOは`ApiContracts.kt`、OpenAPIどおりの10 endpointとrepeated `tagId`は`KuraStorageApi.kt`の`OrganizationApi`へ置く。
 - 操作履歴DTOは`ApiContracts.kt`、`GET /activities`は`KuraStorageApi.kt`の`ActivityApi`へ置き、内部Audit列を追加しない。
+- Media variant HEAD、202 Job header、Range契約は`media/MediaApi.kt`と`media/MediaContracts.kt`へ置く。
 
 #### `core-data/`
 
@@ -806,6 +810,7 @@ core-data/src/main/kotlin/com/kurastorage/core/data/
 - Room Entity、DAO、WorkManagerは置かない。永続Queueが必要になった時点でMVP後の`core-database`を追加する。
 - MVP後自動BackupのMediaStore／SAF Scanner、Rule単位Coordinator、Room境界Adapterは`backup/`へ置き、Room APIは直接参照しない。
 - Favorite Pager、Tag CRUD、Entry organization state、strict DTO mapping、通信結果不明時の再照会は`OrganizationRepository.kt`へ置く。
+- Media source、variant metadata、通信量確認、一時PDFは`media/`へ集約し、FeatureへDTOやOkHttp実装を公開しない。
 
 #### MVP後: `core-database/`
 
@@ -849,6 +854,7 @@ core-ui/src/main/kotlin/com/kurastorage/core/ui/
 
 - 複数Featureで利用するCompose部品だけを置く。
 - `FileListScreen`等のFeature Screenを置かない。
+- UI向け公開Size formatterは`formatting/FileSizeFormatter.kt`へ置き、純粋変換は`core-model`へ委譲する。
 
 #### MVP後または必要時: `core-testing/`
 
@@ -930,11 +936,11 @@ feature-files/
 | --- | --- |
 | `feature-connection` | LOCAL_DIRECT/REMOTE_SECURE/DISCONNECTED、Health、RemoteAccessGuidanceController |
 | `feature-auth` | 初回Device登録、Login、Refresh、Logout、Device失効対応 |
-| `feature-files` | Home、一覧、詳細、Folder作成、Streaming Upload、Range Download、Trash、Restore、Rename、Move、MISSING表示・再確認・索引削除確認 |
+| `feature-files` | Home、一覧、詳細、Folder navigation state machine、Folder作成、Streaming Upload、Range Download、Trash、Restore、Rename、Move、MISSING表示・再確認・索引削除確認 |
 | `feature-sharing` | 所有・受信共有一覧、共有候補・Permission選択、Member追加・更新・解除、Share全体解除 |
-| `feature-search` | 権限対応検索、Tag Filter、ページング、最近使用、お気に入り一覧、Tag管理、Entry organization画面。結果選択はApp callbackで既存File画面へ接続 |
-| `feature-media` | 一覧Thumbnail、写真Viewer、PDF Viewer、動画・音声Player、Media Job状態、品質切替、通信量確認 |
-| `feature-text` | 対応テキストのread-only表示・編集、dirty／競合、行比較、version履歴・preview・復元 |
+| `feature-search` | 権限対応検索、Tag ID route／Filter、visual entry row、ページング、最近使用、お気に入り一覧、Tag管理、Entry organization画面。結果選択はApp callbackで既存File画面へ接続 |
+| `feature-media` | 一覧Thumbnail、写真Viewer、temporary PDF open／Viewer、動画・音声Player、非scroll Full screen／overlay、Media Job状態、品質切替、variant Size／通信量確認 |
+| `feature-text` | MIMEに限定しないText preview、exact／lossy表示・編集、dirty／競合、lossy保存確認、行比較、raw content version履歴・preview・復元 |
 | `feature-backup` | 自動バックアップ概要・履歴、Rule一覧／編集、許可Wi-Fi一覧／編集、WorkManager実行・進捗通知 |
 | `feature-settings` | 接続環境別の写真・動画初期品質と通信量説明 |
 | `feature-activity` | 利用者向け操作履歴、type filter、opaque cursorページング、Refresh、snapshot表示、アクセス可能Targetへの導線 |
@@ -1027,6 +1033,28 @@ feature-settings/src/
 ├── main/kotlin/com/kurastorage/feature/settings/QualitySettingsViewModel.kt
 ├── test/kotlin/com/kurastorage/feature/settings/QualitySettingsViewModelTest.kt
 └── androidTest/kotlin/com/kurastorage/feature/settings/QualitySettingsScreenTest.kt
+```
+
+この変更範囲の共通表示・Navigation Componentは次へ置く。
+
+```text
+core-model/src/main/kotlin/com/kurastorage/core/model/FileSizeFormatting.kt
+core-ui/src/main/kotlin/com/kurastorage/core/ui/
+├── components/KuraFileEntryRow.kt
+└── formatting/FileSizeFormatter.kt
+core-data/src/main/kotlin/com/kurastorage/core/data/media/
+└── MediaRangeResponseValidator.kt
+app/src/main/kotlin/com/kurastorage/app/
+├── EntryDestinationResolver.kt
+└── MainActivity.kt
+feature-files/src/main/kotlin/com/kurastorage/feature/files/
+├── FileBrowserScreen.kt
+└── FileBrowserViewModel.kt
+feature-search/src/main/kotlin/com/kurastorage/feature/search/
+├── OrganizationScreens.kt
+├── OrganizationViewModels.kt
+├── SearchScreens.kt
+└── SearchViewModels.kt
 ```
 
 ### 8.6 Gradle Build Logic

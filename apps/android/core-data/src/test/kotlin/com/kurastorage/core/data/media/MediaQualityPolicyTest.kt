@@ -69,7 +69,7 @@ class MediaQualityPolicyTest {
             val prompt = policy.prepare("file", 4, MediaKind.VIDEO)
             val approval = prompt.approve()
 
-            assertEquals("1.5 MiB", prompt.formattedSize)
+            assertEquals("1.5 MB", prompt.formattedSize)
             assertTrue(prompt.description.contains("range playback may use less"))
             assertTrue(approval.matches("file", 4, MediaVariant.ORIGINAL, ByteCount(1_572_864)))
             assertFalse(approval.matches("file", 5, MediaVariant.ORIGINAL, ByteCount(1_572_864)))

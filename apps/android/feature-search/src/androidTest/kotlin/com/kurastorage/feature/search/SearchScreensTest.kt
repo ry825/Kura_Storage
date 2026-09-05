@@ -102,6 +102,7 @@ class SearchScreensTest {
         var recentOpened = false
         val showRecent = mutableStateOf(false)
         val missing = item().copy(status = FileEntryStatus.MISSING)
+        val trashed = item().copy(id = ID_2, name = "trashed.pdf", status = FileEntryStatus.TRASHED)
         compose.setContent {
             if (showRecent.value) {
                 RecentFilesScreen(
@@ -113,7 +114,7 @@ class SearchScreensTest {
                 )
             } else {
                 SearchScreen(
-                    SearchUiState(input = SearchInput(query = "x"), items = listOf(missing), hasSearched = true),
+                    SearchUiState(input = SearchInput(query = "x"), items = listOf(missing, trashed), hasSearched = true),
                     {},
                     {},
                     {},
@@ -126,6 +127,9 @@ class SearchScreensTest {
         compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("search-result-$ID"))
         compose.onNodeWithText("File missing", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("search-result-$ID").performClick()
+        compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("search-result-$ID_2"))
+        compose.onNodeWithText("In Trash", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("search-result-$ID_2").performClick()
         compose.runOnIdle { assertFalse(searchOpened) }
 
         compose.runOnIdle { showRecent.value = true }
@@ -137,7 +141,14 @@ class SearchScreensTest {
 
     @Test
     fun narrowLargeFontLayoutScrollsToControlsAndRejectsInvalidRanges() {
-        val state = mutableStateOf(SearchUiState(input = SearchInput(query = "report")))
+        val state =
+            mutableStateOf(
+                SearchUiState(
+                    input = SearchInput(query = "report"),
+                    items = listOf(item().copy(name = "A deliberately long report name for layout.pdf")),
+                    hasSearched = true,
+                ),
+            )
         val landscape = mutableStateOf(false)
         compose.setContent {
             val density = LocalDensity.current.density
@@ -145,8 +156,8 @@ class SearchScreensTest {
                 KuraStorageTheme(darkTheme = true) {
                     Box(
                         Modifier.requiredSize(
-                            width = if (landscape.value) 360.dp else 280.dp,
-                            height = if (landscape.value) 280.dp else 360.dp,
+                            width = if (landscape.value) 800.dp else 360.dp,
+                            height = if (landscape.value) 360.dp else 800.dp,
                         ),
                     ) {
                         SearchScreen(
@@ -173,9 +184,11 @@ class SearchScreensTest {
         compose.onNodeWithTag("search-query").performClick()
         compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("search-submit"))
         compose.onNodeWithTag("search-submit").assertIsDisplayed()
+        compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("search-result-$ID"))
+        compose.onNodeWithTag("search-result-$ID").assertIsDisplayed()
         compose.runOnIdle { landscape.value = true }
-        compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("updated-from"))
-        compose.onNodeWithTag("updated-from").assertIsDisplayed()
+        compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("search-result-$ID"))
+        compose.onNodeWithTag("search-result-$ID").assertIsDisplayed()
         val capture = compose.onRoot().captureToImage()
         assertTrue(capture.width > 0 && capture.height > 0)
     }

@@ -37,7 +37,7 @@ import com.kurastorage.core.ui.components.KuraCardVariant
 import com.kurastorage.core.ui.components.KuraSectionHeader
 import com.kurastorage.core.ui.components.KuraStatus
 import com.kurastorage.core.ui.components.KuraStatusPanel
-import java.text.DecimalFormat
+import com.kurastorage.core.ui.formatting.formatFileSize
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -147,7 +147,7 @@ private fun UsageCard(status: AdminMediaCacheStatus) {
     KuraCard {
         Text("Usage / limit", style = MaterialTheme.typography.titleMedium)
         Text(
-            "${formatBytes(status.cacheBytes)} / ${formatBytes(status.highWatermarkBytes)}",
+            "${formatFileSize(status.cacheBytes)} / ${formatFileSize(status.highWatermarkBytes)}",
             style = MaterialTheme.typography.headlineMedium,
         )
         LinearProgressIndicator(
@@ -157,7 +157,7 @@ private fun UsageCard(status: AdminMediaCacheStatus) {
                     progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f)
                 },
         )
-        Text("Automatic cleanup starts above the limit and targets ${formatBytes(status.lowWatermarkBytes)}.")
+        Text("Automatic cleanup starts above the limit and targets ${formatFileSize(status.lowWatermarkBytes)}.")
     }
 }
 
@@ -177,7 +177,7 @@ private fun CacheRunCard(status: AdminMediaCacheStatus) {
 @Composable
 private fun CleanupRunDetails(run: MediaCleanupRun) {
     Text("Latest cleanup: ${run.status.label()}", style = MaterialTheme.typography.titleMedium)
-    Text("Examined ${run.examinedCount}, removed ${run.deletedCount}, released ${formatBytes(run.releasedBytes)}")
+    Text("Examined ${run.examinedCount}, removed ${run.deletedCount}, released ${formatFileSize(run.releasedBytes)}")
     if (run.failureCount > 0) {
         Text("Deletion failures: ${run.failureCount}", color = MaterialTheme.colorScheme.error)
     }
@@ -187,12 +187,12 @@ private fun CleanupRunDetails(run: MediaCleanupRun) {
 @Composable
 private fun BreakdownCard(status: AdminMediaCacheStatus) {
     KuraCard {
-        StatusRow("Images · Low", formatBytes(status.imageLowBytes))
-        StatusRow("Images · Medium", formatBytes(status.imageMediumBytes))
-        StatusRow("Videos · Low", formatBytes(status.videoLowBytes))
-        StatusRow("Videos · Medium", formatBytes(status.videoMediumBytes))
-        StatusRow("Image total", formatBytes(status.imageBytes))
-        StatusRow("Video total", formatBytes(status.videoBytes))
+        StatusRow("Images · Low", formatFileSize(status.imageLowBytes))
+        StatusRow("Images · Medium", formatFileSize(status.imageMediumBytes))
+        StatusRow("Videos · Low", formatFileSize(status.videoLowBytes))
+        StatusRow("Videos · Medium", formatFileSize(status.videoMediumBytes))
+        StatusRow("Image total", formatFileSize(status.imageBytes))
+        StatusRow("Video total", formatFileSize(status.videoBytes))
     }
 }
 
@@ -218,17 +218,3 @@ private fun formatRunTime(run: MediaCleanupRun): String =
     (run.completedAt ?: run.startedAt ?: run.requestedAt)
         .atZone(ZoneId.systemDefault())
         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-
-private fun formatBytes(bytes: Long): String {
-    val gib = bytes.toDouble() / BYTES_PER_GIB
-    return if (gib >= GIB_DISPLAY_THRESHOLD) {
-        "${DecimalFormat(ONE_DECIMAL_PATTERN).format(gib)} GiB"
-    } else {
-        "${bytes / BYTES_PER_MIB} MiB"
-    }
-}
-
-private const val BYTES_PER_MIB = 1024L * 1024L
-private const val BYTES_PER_GIB = BYTES_PER_MIB * 1024L
-private const val GIB_DISPLAY_THRESHOLD = 0.1
-private const val ONE_DECIMAL_PATTERN = "0.0"

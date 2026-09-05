@@ -100,6 +100,20 @@ class SearchViewModelsTest {
         }
 
     @Test
+    fun `tag route initializes one filtered empty-query search`() =
+        runTest(dispatcher) {
+            val repository = CapturingSearchRepository()
+
+            val viewModel = SearchViewModel(repository, { fileEntry(it) }, SearchInput(tagIds = listOf(ID_2)))
+            advanceUntilIdle()
+
+            assertEquals(1, repository.requests.size)
+            assertEquals(listOf(ID_2), repository.requests.single().tagIds)
+            assertEquals(null, repository.requests.single().query)
+            assertTrue(viewModel.state.value.hasSearched)
+        }
+
+    @Test
     fun `recent handles missing safely and refreshes after revoked detail`() =
         runTest(dispatcher) {
             val repository = FakeRecentRepository()
@@ -163,6 +177,15 @@ class SearchViewModelsTest {
         override suspend fun search(input: SearchInput): SearchPage {
             pages += input.page
             return SearchPage(listOf(item(if (input.page == 1) ID else ID_2, "item")), input.page, 1, 2)
+        }
+    }
+
+    private class CapturingSearchRepository : SearchRepository {
+        val requests = mutableListOf<SearchInput>()
+
+        override suspend fun search(input: SearchInput): SearchPage {
+            requests += input
+            return SearchPage(emptyList(), input.page, input.pageSize, 0)
         }
     }
 

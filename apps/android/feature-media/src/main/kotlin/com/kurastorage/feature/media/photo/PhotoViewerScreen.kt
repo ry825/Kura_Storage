@@ -140,7 +140,7 @@ fun PhotoViewerScreen(
             onZoom(state.zoom * zoomChange)
             offset = if (state.zoom <= 1f) Offset.Zero else offset + panChange
         }
-    val readySource = (media?.loadState as? MediaLoadState.Ready)?.source
+    val readySource = media?.displayedSource
     LaunchedEffect(file?.id, readySource, state.previousPrefetch?.id, state.nextPrefetch?.id) {
         val source = readySource ?: return@LaunchedEffect
         if (source.variant == MediaVariant.ORIGINAL && media.networkContext == NetworkQualityContext.REMOTE_MOBILE) return@LaunchedEffect
@@ -332,7 +332,7 @@ private fun PhotoControls(
         )
         Text(qualityStatus(media), modifier = Modifier.testTag("quality-status"), style = MaterialTheme.typography.bodySmall)
         Text("Connection: ${media?.networkContext.userLabel()}", style = MaterialTheme.typography.bodySmall)
-        Text("Original size: ${state.originalSizeLabel ?: "Inspecting"}", style = MaterialTheme.typography.bodySmall)
+        Text("Displayed size: ${state.displayedSizeLabel ?: "Not ready"}", style = MaterialTheme.typography.bodySmall)
         PhotoLoadStatus(state, onRetryGeneration)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             KuraIconButton(
@@ -514,9 +514,33 @@ private fun PhotoCanvas(
         contentAlignment = Alignment.Center,
     ) {
         val ticket = requestTicket()
-        val ready = media?.loadState as? MediaLoadState.Ready
-        val source = ticket?.source ?: ready?.source
+        val source = ticket?.source ?: media?.displayedSource
         if (file != null && source != null) {
+            val displayedSource = media?.displayedSource
+            if (ticket != null && displayedSource != null && displayedSource != source) {
+                AsyncImage(
+                    model =
+                        ImageRequest
+                            .Builder(context)
+                            .data(
+                                KuraMediaImage(
+                                    scopeId,
+                                    displayedSource.fileId,
+                                    displayedSource.fileVersion,
+                                    displayedSource.variant,
+                                ),
+                            ).size(MAX_DECODE_EDGE_PX, MAX_DECODE_EDGE_PX)
+                            .memoryCacheKey(
+                                "$scopeId:${displayedSource.fileId}:${displayedSource.fileVersion}:${displayedSource.variant.wireValue}",
+                            ).diskCacheKey(
+                                "$scopeId:${displayedSource.fileId}:${displayedSource.fileVersion}:${displayedSource.variant.wireValue}",
+                            ).build(),
+                    imageLoader = imageLoader,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             var painterState by remember(
                 source,
                 ticket?.generation,
@@ -582,7 +606,7 @@ private fun PhotoLoadStatus(
 
 private fun qualityStatus(media: com.kurastorage.feature.media.MediaViewerState?): String {
     val selected = media?.quality.userLabel()
-    val ready = (media?.loadState as? MediaLoadState.Ready)?.source?.variant?.qualityLabel()
+    val ready = media?.displayedSource?.variant?.qualityLabel()
     return if (ready != null) "Displayed: $ready" else "Loading: $selected"
 }
 
@@ -613,6 +637,7 @@ private fun MediaUiError.userMessage(): String =
         MediaUiError.FILE_CHANGED -> "The file changed. Return and open the latest version."
         MediaUiError.DISCONNECTED -> "Connection lost. Reconnect and select the quality again."
         MediaUiError.RANGE_INVALID, MediaUiError.RESPONSE_INCOMPLETE -> "The server response was incomplete."
+        MediaUiError.SERVER_ERROR -> "The server could not provide this photo. Try again."
         MediaUiError.GENERATION_FAILED -> "The selected quality could not be prepared."
         MediaUiError.UNSUPPORTED -> "This photo format is not supported on this device."
         MediaUiError.UNKNOWN -> "The photo could not be opened safely."

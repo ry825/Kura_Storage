@@ -18,6 +18,7 @@ import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.OwnerSummary
 import com.kurastorage.core.model.PermissionSource
 import com.kurastorage.core.model.SharePermission
+import com.kurastorage.core.model.TextDecodeStatus
 import com.kurastorage.core.model.TextDocument
 import com.kurastorage.core.model.TextMutationResult
 import kotlinx.coroutines.CompletableDeferred
@@ -72,6 +73,56 @@ class TextViewModelsTest {
                     ?.fileVersion,
             )
             assertEquals(Triple("updated", 1L, repository.lastOperationId), repository.lastSave)
+        }
+
+    @Test
+    fun `lossy source requires explicit confirmation and sends acknowledgement`() =
+        runTest(dispatcher) {
+            val repository =
+                FakeTextRepository().apply {
+                    document = document("broken \uFFFD", 1).copy(decodeStatus = TextDecodeStatus.LOSSY)
+                }
+            val viewModel = TextEditorViewModel("file", FakeFiles(file(SharePermission.EDITOR)), repository, SavedStateHandle())
+            viewModel.beginEditing()
+            viewModel.updateDraft("replacement")
+
+            viewModel.save()
+            assertTrue(viewModel.state.value.showLossySaveConfirmation)
+            assertEquals(null, repository.lastSave)
+
+            viewModel.confirmLossySave()
+            assertEquals(true, repository.lastAcknowledgement)
+            assertEquals(
+                TextDecodeStatus.EXACT,
+                viewModel.state.value.document
+                    ?.decodeStatus,
+            )
+            assertEquals(
+                "UTF-8",
+                viewModel.state.value.document
+                    ?.encoding,
+            )
+        }
+
+    @Test
+    fun `control-heavy content is blocked until explicitly opened`() =
+        runTest(dispatcher) {
+            val repository = FakeTextRepository().apply { document = document("text\u0000binary", 1) }
+            val viewModel = TextEditorViewModel("file", FakeFiles(file(SharePermission.VIEWER)), repository, SavedStateHandle())
+
+            assertTrue(viewModel.state.value.unsafeContentBlocked)
+            viewModel.confirmUnsafeOpen()
+            assertFalse(viewModel.state.value.unsafeContentBlocked)
+
+            val explicitlyAllowed =
+                TextEditorViewModel(
+                    "file",
+                    FakeFiles(file(SharePermission.VIEWER)),
+                    repository,
+                    SavedStateHandle(),
+                    allowUnsafeContent = true,
+                )
+            assertFalse(explicitlyAllowed.state.value.unsafeContentBlocked)
         }
 
     @Test
@@ -341,6 +392,7 @@ class TextViewModelsTest {
         var lastRestoredVersion: Long? = null
         var currentFailure: Throwable? = null
         var restoreConflict = false
+        var lastAcknowledgement: Boolean? = null
 
         override suspend fun current(fileId: String) = currentFailure?.let { throw it } ?: document
 
@@ -349,9 +401,11 @@ class TextViewModelsTest {
             content: String,
             expectedVersion: Long,
             operationId: String,
+            acknowledgeLossySource: Boolean,
         ): TextMutationResult {
             lastOperationId = operationId
             lastSave = Triple(content, expectedVersion, operationId)
+            lastAcknowledgement = acknowledgeLossySource
             if (saveConflict) throw KuraStorageException.Api(ApiError(ErrorCode.FILE_VERSION_CONFLICT, "conflict", 409))
             document = document(content, expectedVersion + 1)
             return mutation(document.fileVersion, FileVersionChangeKind.TEXT_EDIT)
@@ -433,6 +487,7 @@ class TextViewModelsTest {
             content: String,
             expectedVersion: Long,
             operationId: String,
+            acknowledgeLossySource: Boolean,
         ): TextMutationResult = error("unused")
 
         override suspend fun versions(

@@ -1,14 +1,13 @@
 package com.kurastorage.core.data.media
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class MediaRangeRequestTest {
     @Test
-    fun `initial unbounded request omits range and seek requests remaining bytes`() {
-        assertNull(MediaRangeRequest.header(position = 0, length = MediaRangeRequest.LENGTH_UNSET))
+    fun `initial and seek requests use byte ranges`() {
+        assertEquals("bytes=0-", MediaRangeRequest.header(position = 0, length = MediaRangeRequest.LENGTH_UNSET))
         assertEquals("bytes=4096-", MediaRangeRequest.header(position = 4096, length = MediaRangeRequest.LENGTH_UNSET))
     }
 

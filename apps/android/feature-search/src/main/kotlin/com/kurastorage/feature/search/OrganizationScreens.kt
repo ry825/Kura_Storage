@@ -126,6 +126,7 @@ private fun FavoriteRow(
         size = metadata.size.takeIf { metadata.entryType == com.kurastorage.core.model.FileEntryType.FILE },
         sharedFrom = metadata.shareTargetId?.let { id -> shareOptions.firstOrNull { it.id == id }?.label ?: "Shared item" },
         contextLine = "Favorited ${item.favoritedAt}",
+        visual = true,
         enabled = active,
         onClick = { onOpen(item) },
         modifier = Modifier.testTag("favorite-${item.id}"),
@@ -151,6 +152,7 @@ fun TagsScreen(
     onInput: (String) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    onOpenTag: (TagItem) -> Unit = {},
 ) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -173,7 +175,7 @@ fun TagsScreen(
                 else ->
                     LazyColumn(Modifier.weight(1f).testTag("tags-list")) {
                         items(state.tags, key = { it.id }) { tag ->
-                            KuraCard {
+                            KuraCard(onClick = { onOpenTag(tag) }) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(tag.name, style = MaterialTheme.typography.titleMedium)
                                     Row {

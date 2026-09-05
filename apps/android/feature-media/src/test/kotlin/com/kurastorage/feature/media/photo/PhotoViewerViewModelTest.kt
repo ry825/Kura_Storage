@@ -3,6 +3,7 @@ package com.kurastorage.feature.media.photo
 import com.kurastorage.core.data.FileRepository
 import com.kurastorage.core.data.media.MediaContentResult
 import com.kurastorage.core.data.media.MediaGeneratingException
+import com.kurastorage.core.data.media.MediaMetadataResult
 import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.data.media.NetworkQualityContextResolver
 import com.kurastorage.core.data.media.NetworkTransport
@@ -26,6 +27,7 @@ import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.OriginalMetadata
 import com.kurastorage.core.model.media.QualityPreferences
+import com.kurastorage.core.model.media.VariantMetadata
 import com.kurastorage.feature.media.MediaViewerController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -199,6 +201,11 @@ class PhotoViewerViewModelTest {
 
     private class FakeMediaRepository : MediaRepository {
         override suspend fun inspectOriginal(fileId: String) = OriginalMetadata(ByteCount(100), "image/jpeg", true)
+
+        override suspend fun inspectVariant(
+            fileId: String,
+            variant: MediaVariant,
+        ): MediaMetadataResult = MediaMetadataResult.Ready(VariantMetadata(variant, ByteCount(100), "image/jpeg", true))
 
         override suspend fun job(jobId: String): MediaJobSnapshot = error("not used")
 

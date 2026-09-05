@@ -14,6 +14,7 @@ import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.SupportedTextMimeTypes
 import com.kurastorage.core.model.TextConflict
+import com.kurastorage.core.model.TextDecodeStatus
 import com.kurastorage.core.model.TextDocument
 import com.kurastorage.core.model.canEditText
 import kotlinx.coroutines.Job
@@ -42,6 +43,8 @@ data class TextEditorUiState(
     val draftPersisted: Boolean = true,
     val forceOverwriteAvailable: Boolean = false,
     val exitAfterSave: Boolean = false,
+    val showLossySaveConfirmation: Boolean = false,
+    val unsafeContentBlocked: Boolean = false,
 )
 
 @Suppress("TooManyFunctions")
@@ -50,6 +53,7 @@ class TextEditorViewModel(
     private val files: FileRepository,
     private val text: TextFileRepository,
     private val savedState: SavedStateHandle,
+    private val allowUnsafeContent: Boolean = false,
     private val operationIdFactory: () -> String = { UUID.randomUUID().toString() },
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(TextEditorUiState())
@@ -71,7 +75,7 @@ class TextEditorViewModel(
             viewModelScope.launch {
                 runCatching {
                     val file = files.detail(fileId)
-                    require(file.isSupportedText())
+                    require(file.isTextCandidate())
                     file to text.current(fileId)
                 }.onSuccess { (file, document) ->
                     if (generation != requestGeneration) return@onSuccess
@@ -84,6 +88,8 @@ class TextEditorViewModel(
                             phase = if (restoredDraft == null) TextEditorPhase.VIEWING else TextEditorPhase.EDITING,
                             dirty = restoredDraft != null && restoredDraft != document.content,
                             canEdit = canEditText(file.permission, file.permissionSource),
+                            unsafeContentBlocked =
+                                !allowUnsafeContent && !SupportedTextMimeTypes.isLikelyText(document.content),
                         )
                 }.onFailure { error ->
                     if (generation == requestGeneration) mutableState.value = errorState(error)
@@ -95,6 +101,10 @@ class TextEditorViewModel(
         val current = mutableState.value
         if (!current.canEdit || current.document == null) return
         mutableState.value = current.copy(phase = TextEditorPhase.EDITING)
+    }
+
+    fun confirmUnsafeOpen() {
+        mutableState.value = mutableState.value.copy(unsafeContentBlocked = false)
     }
 
     fun endEditing() {
@@ -123,10 +133,26 @@ class TextEditorViewModel(
     }
 
     @Suppress("ReturnCount", "TooGenericExceptionCaught")
-    fun save() {
+    fun save() = save(acknowledgeLossySource = false)
+
+    fun confirmLossySave() {
+        mutableState.value = mutableState.value.copy(showLossySaveConfirmation = false)
+        save(acknowledgeLossySource = true)
+    }
+
+    fun dismissLossySaveConfirmation() {
+        mutableState.value = mutableState.value.copy(showLossySaveConfirmation = false)
+    }
+
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount", "TooGenericExceptionCaught")
+    private fun save(acknowledgeLossySource: Boolean) {
         val snapshot = mutableState.value
         val base = snapshot.document ?: return
         if (!snapshot.dirty || snapshot.phase == TextEditorPhase.SAVING) return
+        if (base.decodeStatus == TextDecodeStatus.LOSSY && !acknowledgeLossySource) {
+            mutableState.value = snapshot.copy(showLossySaveConfirmation = true)
+            return
+        }
         if (!SupportedTextMimeTypes.isWithinSizeLimit(snapshot.draft)) {
             mutableState.value = snapshot.copy(phase = TextEditorPhase.ERROR, errorCode = ErrorCode.TEXT_SIZE_LIMIT_EXCEEDED)
             return
@@ -142,9 +168,24 @@ class TextEditorViewModel(
                     if (!canEditText(latestFile.permission, latestFile.permissionSource)) {
                         throw KuraStorageException.Api(ApiErrorFactory.forbidden())
                     }
-                    val result = text.save(fileId, snapshot.draft, base.fileVersion, operationId)
+                    val result =
+                        text.save(
+                            fileId,
+                            snapshot.draft,
+                            base.fileVersion,
+                            operationId,
+                            acknowledgeLossySource,
+                        )
                     if (generation != requestGeneration) return@launch
-                    val updated = TextDocument(snapshot.draft, "UTF-8", result.fileVersion, result.size, result.sha256)
+                    val updated =
+                        TextDocument(
+                            snapshot.draft,
+                            if (base.decodeStatus == TextDecodeStatus.LOSSY) "UTF-8" else base.encoding,
+                            result.fileVersion,
+                            result.size,
+                            result.sha256,
+                            TextDecodeStatus.EXACT,
+                        )
                     pendingOperationId = null
                     clearSavedDraft()
                     mutableState.value =
@@ -282,8 +323,10 @@ class TextEditorViewModel(
 
     private fun Throwable.isVersionConflict() = (this as? KuraStorageException.Api)?.error?.code == ErrorCode.FILE_VERSION_CONFLICT
 
-    private fun FileEntry.isSupportedText() =
-        entryType == FileEntryType.FILE && status == FileEntryStatus.ACTIVE && SupportedTextMimeTypes.isSupported(mimeType)
+    private fun FileEntry.isTextCandidate() =
+        entryType == FileEntryType.FILE &&
+            status == FileEntryStatus.ACTIVE &&
+            size <= SupportedTextMimeTypes.MAX_CONTENT_BYTES
 
     companion object {
         const val MAX_SAVED_DRAFT_BYTES = 64 * 1024

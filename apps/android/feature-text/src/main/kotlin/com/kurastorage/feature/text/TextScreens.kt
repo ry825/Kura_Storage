@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.FileVersionChangeKind
 import com.kurastorage.core.model.FileVersionItem
+import com.kurastorage.core.model.TextDecodeStatus
 import com.kurastorage.core.ui.KuraTheme
 import com.kurastorage.core.ui.accessibility.kuraHeading
 import com.kurastorage.core.ui.components.KuraAdaptiveActionLayout
@@ -63,6 +64,7 @@ import com.kurastorage.core.ui.components.KuraStatus
 import com.kurastorage.core.ui.components.KuraStatusBadge
 import com.kurastorage.core.ui.components.KuraStatusPanel
 import com.kurastorage.core.ui.components.KuraTopAppBar
+import com.kurastorage.core.ui.formatting.formatFileSize
 import com.kurastorage.core.ui.state.KuraStateKind
 import com.kurastorage.core.ui.state.KuraStateView
 
@@ -83,6 +85,9 @@ fun TextEditorScreen(
     onSaveAndExit: () -> Unit = onSave,
     onExitAfterSaveConsumed: () -> Unit = {},
     onEndEdit: () -> Unit = {},
+    onConfirmLossySave: () -> Unit = onSave,
+    onDismissLossySave: () -> Unit = {},
+    onConfirmUnsafeOpen: () -> Unit = {},
 ) {
     fun exit() {
         if (!onRequestExit()) onBack()
@@ -142,6 +147,18 @@ fun TextEditorScreen(
                         onAction = if (state.errorCode == ErrorCode.FILE_NOT_FOUND) null else onReload,
                     )
                 }
+            state.unsafeContentBlocked ->
+                StateBox(padding) {
+                    KuraStateView(
+                        kind = KuraStateKind.BLOCKING_ERROR,
+                        title = "This may not be a text file",
+                        message =
+                            "The decoded content contains NUL or too many control characters. Open it only if you trust the file.",
+                        actionLabel = "Open as text",
+                        onAction = onConfirmUnsafeOpen,
+                        modifier = Modifier.testTag("unsafe-text-warning"),
+                    )
+                }
             else ->
                 EditorContent(
                     state = state,
@@ -177,6 +194,19 @@ fun TextEditorScreen(
                     ) { Text("Discard") }
                 }
             },
+        )
+    }
+    if (state.showLossySaveConfirmation) {
+        AlertDialog(
+            onDismissRequest = onDismissLossySave,
+            title = { Text("Replace undecodable characters?", modifier = Modifier.kuraHeading()) },
+            text = {
+                Text(
+                    "The source contains bytes that could not be decoded exactly. Saving replaces them with the displayed characters and stores the new version as UTF-8. The original bytes remain in version history.",
+                )
+            },
+            confirmButton = { TextButton(onClick = onConfirmLossySave) { Text("Save as UTF-8") } },
+            dismissButton = { TextButton(onClick = onDismissLossySave) { Text("Cancel") } },
         )
     }
 }
@@ -225,6 +255,14 @@ private fun EditorContent(
                 modifier = Modifier.testTag("text-mode"),
             )
             EditorStatus(state)
+            if (state.document?.decodeStatus == TextDecodeStatus.LOSSY) {
+                KuraStatusPanel(
+                    "Some characters were replaced",
+                    "This is a lossy UTF-8 preview. The warning remains until you explicitly save a normalized UTF-8 version.",
+                    KuraStatus.WARNING,
+                    Modifier.testTag("lossy-text-warning"),
+                )
+            }
             KuraCard {
                 Text("File information", style = MaterialTheme.typography.titleMedium, modifier = Modifier.kuraHeading())
                 MetadataLayout(
@@ -277,7 +315,7 @@ private fun EditorContent(
             if (!state.draftPersisted) {
                 KuraStatusPanel(
                     "Draft cannot be restored",
-                    "This draft is larger than 64 KiB. Save it before the app process ends.",
+                    "This draft is larger than 64 KB. Save it before the app process ends.",
                     KuraStatus.WARNING,
                 )
             }
@@ -549,7 +587,7 @@ private fun VersionCard(
         }
         Text("Created ${version.createdAt}")
         Text("By ${version.actorDisplayName}")
-        Text("${version.size} bytes · SHA-256 ${version.sha256.take(12)}…", maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text("${formatFileSize(version.size)} · SHA-256 ${version.sha256.take(12)}…", maxLines = 2, overflow = TextOverflow.Ellipsis)
         HorizontalDivider()
         KuraAdaptiveActionLayout(
             listOf(
@@ -563,7 +601,7 @@ private fun VersionCard(
 private fun editorErrorMessage(code: ErrorCode?): String =
     when (code) {
         ErrorCode.FILE_NOT_FOUND -> "The file, permission, or session is no longer available. Return to the file list."
-        ErrorCode.TEXT_SIZE_LIMIT_EXCEEDED -> "Use UTF-8 text no larger than 1 MiB, or download the file and edit it externally."
+        ErrorCode.TEXT_SIZE_LIMIT_EXCEEDED -> "Use text no larger than 1 MB, or download the file and edit it externally."
         ErrorCode.TEXT_ENCODING_INVALID -> "This content is not valid UTF-8. Download it and use an editor that supports its encoding."
         ErrorCode.FILE_VERSION_CONFLICT ->
             "A newer version exists. Reload it, compare the bounded changes, " +

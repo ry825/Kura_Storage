@@ -31,6 +31,8 @@ enum class PlayerFailure {
     FILE_CHANGED,
     RANGE,
     NETWORK,
+    INCOMPLETE,
+    SERVER,
     UNSUPPORTED_CODEC,
     DECODER,
     UNKNOWN,
@@ -90,6 +92,12 @@ class PlayerCommandController(
     }
 
     companion object {
-        val APPROVED_RATES = setOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f)
+        private val RATE_SEQUENCE = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f)
+        val APPROVED_RATES = RATE_SEQUENCE.toSet()
+
+        fun nextRate(current: PlaybackRate): PlaybackRate {
+            val index = RATE_SEQUENCE.indexOf(current.value)
+            return PlaybackRate(RATE_SEQUENCE[(index + 1) % RATE_SEQUENCE.size])
+        }
     }
 }

@@ -46,12 +46,17 @@ data class SearchUiState(
 class SearchViewModel(
     private val repository: SearchRepository,
     private val loadDetail: suspend (String) -> FileEntry,
+    initialInput: SearchInput = SearchInput(),
 ) : ViewModel() {
-    private val mutableState = MutableStateFlow(SearchUiState())
+    private val mutableState = MutableStateFlow(SearchUiState(input = initialInput.copy(page = 1)))
     val state: StateFlow<SearchUiState> = mutableState.asStateFlow()
     private var pager: SearchPager? = null
     private var requestJob: Job? = null
     private var generation = 0L
+
+    init {
+        if (initialInput.tagIds.isNotEmpty()) search()
+    }
 
     fun updateInput(input: SearchInput) {
         generation++

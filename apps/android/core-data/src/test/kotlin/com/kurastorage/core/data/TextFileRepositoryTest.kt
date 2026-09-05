@@ -45,6 +45,18 @@ class TextFileRepositoryTest {
 
             assertEquals(listOf("token", "refreshed-token"), api.saveTokens)
             assertEquals(listOf("op-save", "op-save"), api.saveRequests.map { it.operationId })
+            assertEquals(listOf(false, false), api.saveRequests.map { it.acknowledgeLossySource })
+        }
+
+    @Test
+    fun `lossy acknowledgement and decode status cross the repository boundary`() =
+        runTest {
+            val api = FakeTextApi().apply { documentStatus = "LOSSY" }
+            val repository = DefaultTextFileRepository(api, AuthenticatedRequestExecutor(FakeAuth()))
+
+            assertEquals(com.kurastorage.core.model.TextDecodeStatus.LOSSY, repository.current("file").decodeStatus)
+            repository.save("file", "replacement", 1, "op-lossy", acknowledgeLossySource = true)
+            assertEquals(true, api.saveRequests.single().acknowledgeLossySource)
         }
 
     @Test
@@ -63,11 +75,12 @@ class TextFileRepositoryTest {
         val saveTokens = mutableListOf<String>()
         val saveRequests = mutableListOf<SaveTextRequestDto>()
         var mutationKind = "TEXT_EDIT"
+        var documentStatus = "EXACT"
 
         override suspend fun getText(
             accessToken: String,
             fileId: String,
-        ) = NetworkCallResult.Success(TextDocumentDto("hello", "UTF-8", 1, 5, "a".repeat(64)))
+        ) = NetworkCallResult.Success(TextDocumentDto("hello", "UTF-8", 1, 5, "a".repeat(64), documentStatus))
 
         override suspend fun saveText(
             accessToken: String,

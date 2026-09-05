@@ -10,6 +10,8 @@ import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Duration
@@ -46,10 +48,6 @@ class TemporaryPdfStore(
             val downloadContext = currentCoroutineContext()
             validateMetadata(metadata)
             cleanupExpired()
-            ensureSessionCapacity(metadata.size.value)
-            if (availableBytes(directory) < metadata.size.value + RESERVED_FREE_BYTES) {
-                throw InsufficientPdfStorageException()
-            }
 
             val stem = safeStem(fileId, fileVersion)
             val partial = File(directory, "$stem.pdf.part")
@@ -57,6 +55,10 @@ class TemporaryPdfStore(
             if (complete.isFile && complete.length() == metadata.size.value && hasPdfSignature(complete)) {
                 complete.setLastModified(clock.millis())
                 return@withContext complete
+            }
+            ensureSessionCapacity(metadata.size.value)
+            if (availableBytes(directory) < metadata.size.value + RESERVED_FREE_BYTES) {
+                throw InsufficientPdfStorageException()
             }
             partial.delete()
             try {
@@ -72,8 +74,8 @@ class TemporaryPdfStore(
                         }
                 }
                 if (!hasPdfSignature(partial)) throw InvalidPdfException()
-                if (complete.exists() && !complete.delete()) throw InvalidPdfException()
-                if (!partial.renameTo(complete)) throw InvalidPdfException()
+                java.nio.file.Files
+                    .move(partial.toPath(), complete.toPath(), ATOMIC_MOVE, REPLACE_EXISTING)
                 complete.setLastModified(clock.millis())
                 complete
             } catch (error: Throwable) {

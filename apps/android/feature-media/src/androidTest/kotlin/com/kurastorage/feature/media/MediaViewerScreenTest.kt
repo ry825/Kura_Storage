@@ -52,6 +52,7 @@ import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.NetworkQualityContext
 import com.kurastorage.core.model.media.OriginalMetadata
 import com.kurastorage.core.model.media.ReadyMediaSource
+import com.kurastorage.feature.media.pdf.PdfFailure
 import com.kurastorage.feature.media.pdf.PdfLoadState
 import com.kurastorage.feature.media.pdf.PdfViewerScreen
 import com.kurastorage.feature.media.pdf.PdfViewerUiState
@@ -138,7 +139,7 @@ class MediaViewerScreenTest {
                             MediaQuality.ORIGINAL,
                             NetworkQualityContext.REMOTE_MOBILE,
                             MediaLoadState.Loading,
-                            originalSizeLabel = "1.0 KiB",
+                            originalSizeLabel = "1 KB",
                         ),
                     currentPosition = 3,
                     totalCount = 24,
@@ -182,7 +183,7 @@ class MediaViewerScreenTest {
                     bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888),
                     pageIndex = 1,
                     pageCount = 3,
-                    error = "This PDF could not be opened safely.",
+                    failure = PdfFailure.UNKNOWN,
                 ),
                 onConfirm = {},
                 onPrevious = {},
@@ -190,15 +191,16 @@ class MediaViewerScreenTest {
                 onPage = {},
                 onZoom = {},
                 onViewport = { _, _ -> },
-                onDownload = {},
+                onRetryOpen = {},
+                onSaveCopy = {},
                 onBack = {},
                 onDisposeViewer = {},
             )
         }
 
-        compose.onNodeWithText("Page 2 / 3 • Zoom 1.0x").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("This PDF could not be opened safely.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Next page").performScrollTo().performClick()
+        compose.onNodeWithText("Page 2 / 3 • Zoom 1.0x").assertIsDisplayed()
+        compose.onNodeWithText("This PDF could not be opened safely.").assertIsDisplayed()
+        compose.onNodeWithText("Next").performClick()
         compose.runOnIdle { assertEquals(true, next) }
     }
 
@@ -218,14 +220,15 @@ class MediaViewerScreenTest {
                 onPage = {},
                 onZoom = {},
                 onViewport = { _, _ -> },
-                onDownload = {},
+                onRetryOpen = {},
+                onSaveCopy = {},
                 onBack = {},
                 onDisposeViewer = {},
             )
         }
 
-        compose.onNodeWithText("MIME: application/pdf").assertIsDisplayed()
-        compose.onNodeWithText("Estimated transfer: 2.0 KiB", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("MIME: application/pdf", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Estimated transfer: 2 KB", substring = true).assertIsDisplayed()
         compose.onNodeWithText("Range support: Yes", substring = true).assertIsDisplayed()
         compose.onNodeWithText("Open PDF").performClick()
         compose.runOnIdle { assertEquals(true, confirmed) }
@@ -248,14 +251,15 @@ class MediaViewerScreenTest {
                 onPage = {},
                 onZoom = {},
                 onViewport = { _, _ -> },
-                onDownload = {},
+                onRetryOpen = {},
+                onSaveCopy = {},
                 onBack = {},
                 onDisposeViewer = {},
             )
         }
 
-        compose.onNodeWithText("Download").assertIsDisplayed().assertHeightIsEqualTo(48.dp)
-        compose.onNodeWithText("Next page").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Save a copy").assertIsDisplayed().assertHeightIsEqualTo(48.dp)
+        compose.onNodeWithText("Next").assertIsDisplayed()
     }
 
     @Test
@@ -483,7 +487,7 @@ class MediaViewerScreenTest {
                     quality = MediaQuality.LOW,
                     networkContext = NetworkQualityContext.REMOTE_MOBILE,
                     loadState = MediaLoadState.Ready(ReadyMediaSource(photo.id, photo.fileVersion, MediaVariant.IMAGE_LOW)),
-                    originalSizeLabel = "1.0 KiB",
+                    originalSizeLabel = "1 KB",
                 ),
         )
 

@@ -60,12 +60,26 @@ class OrganizationViewModelsTest {
             viewModel.loadMore()
             advanceUntilIdle()
             assertEquals(listOf(1, 2), repository.favoritePages)
+            assertEquals(
+                listOf(ENTRY, ENTRY_2),
+                viewModel.state.value.items
+                    .map { it.id },
+            )
             viewModel.open(
                 viewModel.state.value.items
                     .first(),
             ) { opened = true }
             advanceUntilIdle()
             assertTrue(opened)
+
+            viewModel.refresh()
+            advanceUntilIdle()
+            assertEquals(listOf(1, 2, 1), repository.favoritePages)
+            assertEquals(
+                listOf(ENTRY),
+                viewModel.state.value.items
+                    .map { it.id },
+            )
         }
 
     @Test fun `tag validation CRUD and conflict errors remain authoritative`() =

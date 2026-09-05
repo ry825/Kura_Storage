@@ -20,6 +20,7 @@ import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.FileVersionChangeKind
 import com.kurastorage.core.model.FileVersionItem
 import com.kurastorage.core.model.TextConflict
+import com.kurastorage.core.model.TextDecodeStatus
 import com.kurastorage.core.model.TextDocument
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -49,6 +50,40 @@ class TextScreensTest {
         compose.onNodeWithContentDescription("Text file content").assertIsDisplayed()
         compose.onNodeWithText("Read only").assertIsDisplayed()
         compose.onNodeWithText("History").assertHasClickAction()
+    }
+
+    @Test
+    fun lossy_preview_keeps_warning_and_requires_save_confirmation() {
+        var confirmed = false
+        compose.setContent {
+            TextEditorScreen(
+                state =
+                    TextEditorUiState(
+                        document = document().copy(decodeStatus = TextDecodeStatus.LOSSY),
+                        draft = "replacement",
+                        phase = TextEditorPhase.EDITING,
+                        dirty = true,
+                        canEdit = true,
+                        showLossySaveConfirmation = true,
+                    ),
+                onBack = {},
+                onRequestExit = { true },
+                onDismissDiscard = {},
+                onDiscard = {},
+                onBeginEdit = {},
+                onDraftChange = {},
+                onSave = {},
+                onReloadConflict = {},
+                onSaveAsCopy = {},
+                onHistory = {},
+                onConfirmLossySave = { confirmed = true },
+            )
+        }
+
+        compose.onNodeWithText("Some characters were replaced").assertIsDisplayed()
+        compose.onNodeWithText("Replace undecodable characters?").assertIsDisplayed()
+        compose.onNodeWithText("Save as UTF-8").performClick()
+        compose.runOnIdle { assertTrue(confirmed) }
     }
 
     @Test

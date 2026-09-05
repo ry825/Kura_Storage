@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Security.Cryptography;
-using System.Text;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Domain.Files;
@@ -58,7 +57,6 @@ public sealed class FileVersionStore(IOptions<StorageOptions> configuredOptions)
         var temporaryPath = Resolve(temporary, requireExisting: false);
 
         var bytes = ArrayPool<byte>.Shared.Rent(BufferSize);
-        var characters = ArrayPool<char>.Shared.Rent(Encoding.UTF8.GetMaxCharCount(BufferSize));
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(temporaryPath)!);
@@ -69,7 +67,6 @@ public sealed class FileVersionStore(IOptions<StorageOptions> configuredOptions)
             }
 
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            var decoder = new UTF8Encoding(false, true).GetDecoder();
             long total = 0;
             await using (var destination = new FileStream(
                              temporaryPath,
@@ -93,34 +90,13 @@ public sealed class FileVersionStore(IOptions<StorageOptions> configuredOptions)
                         throw new FileVersionContentSizeException();
                     }
 
-                    decoder.Convert(
-                        bytes,
-                        0,
-                        read,
-                        characters,
-                        0,
-                        characters.Length,
-                        flush: false,
-                        out var bytesUsed,
-                        out _,
-                        out var completed);
-                    if (!completed || bytesUsed != read)
-                    {
-                        throw new FileVersionEncodingException();
-                    }
-
                     hash.AppendData(bytes, 0, read);
                     await destination.WriteAsync(bytes.AsMemory(0, read), cancellationToken);
                 }
 
-                decoder.Convert(
-                    [], 0, 0, characters, 0, characters.Length, flush: true,
-                    out _, out _, out var finalCompleted);
-                if (!finalCompleted || total != expectedSize)
+                if (total != expectedSize)
                 {
-                    throw total != expectedSize
-                        ? new FileVersionContentSizeException()
-                        : new FileVersionEncodingException();
+                    throw new FileVersionContentSizeException();
                 }
 
                 await destination.FlushAsync(cancellationToken);
@@ -143,18 +119,11 @@ public sealed class FileVersionStore(IOptions<StorageOptions> configuredOptions)
             File.Move(temporaryPath, publishedPath);
             return new PublishedFileVersion(temporary, published, expectedSize, sha256);
         }
-        catch (DecoderFallbackException exception)
-        {
-            TryDeleteTemporary(temporaryPath);
-            _ = exception;
-            return null;
-        }
         catch (Exception exception) when (
             exception is UnauthorizedAccessException ||
             exception is IOException and
                 not FileVersionConsistencyException and
                 not FileVersionContentSizeException and
-                not FileVersionEncodingException and
                 not FileVersionStorageUnavailableException)
         {
             TryDeleteTemporary(temporaryPath);
@@ -168,7 +137,6 @@ public sealed class FileVersionStore(IOptions<StorageOptions> configuredOptions)
         finally
         {
             ArrayPool<byte>.Shared.Return(bytes);
-            ArrayPool<char>.Shared.Return(characters);
         }
     }
 
@@ -286,5 +254,3 @@ public sealed class FileVersionStore(IOptions<StorageOptions> configuredOptions)
 }
 
 public sealed class FileVersionContentSizeException : IOException;
-
-public sealed class FileVersionEncodingException : IOException;

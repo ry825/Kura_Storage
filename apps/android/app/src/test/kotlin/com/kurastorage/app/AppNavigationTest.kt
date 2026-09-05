@@ -33,6 +33,14 @@ class AppNavigationTest {
     }
 
     @Test
+    fun `search route recomposition isolates each tag and session ViewModel`() {
+        assertEquals("search-session-a-tag-a", searchViewModelKey("session-a", "tag-a"))
+        assertFalse(searchViewModelKey("session-a", "tag-a") == searchViewModelKey("session-a", "tag-b"))
+        assertFalse(searchViewModelKey("session-a", "tag-a") == searchViewModelKey("session-b", "tag-a"))
+        assertEquals("search-session-a-", searchViewModelKey("session-a", null))
+    }
+
+    @Test
     fun `home backup summary separates pending uploading and failed work`() {
         val completedAt = Instant.parse("2026-09-03T10:00:00Z")
         val summary =

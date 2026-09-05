@@ -207,6 +207,16 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
         var pendingFileId = await SeedSourceAsync(owner, "pending-video.mkv", "video/x-matroska");
         var elapsed = Stopwatch.StartNew();
 
+        using var headRequest = new HttpRequestMessage(
+            HttpMethod.Head, $"/api/v1/files/{pendingFileId}/content?variant=video-medium");
+        using var headAccepted = await owner.SendAsync(headRequest);
+        Assert.Equal(HttpStatusCode.Accepted, headAccepted.StatusCode);
+        Assert.True(headAccepted.Headers.TryGetValues("X-Kura-Media-Job-Id", out var headJobIds));
+        var headJobId = Guid.Parse(Assert.Single(headJobIds));
+        Assert.Equal($"/api/v1/media-jobs/{headJobId}", headAccepted.Headers.Location!.ToString());
+        Assert.NotNull(headAccepted.Headers.RetryAfter);
+        Assert.Empty(await headAccepted.Content.ReadAsByteArrayAsync());
+
         using var accepted = await owner.GetAsync(
             $"/api/v1/files/{pendingFileId}/content?variant=video-medium");
 
@@ -215,6 +225,7 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
         Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(1));
         using var acceptedJson = await JsonDocument.ParseAsync(await accepted.Content.ReadAsStreamAsync());
         var jobId = acceptedJson.RootElement.GetProperty("jobId").GetGuid();
+        Assert.Equal(headJobId, jobId);
         using var status = await owner.GetAsync($"/api/v1/media-jobs/{jobId}");
         var view = await status.Content.ReadFromJsonAsync<MediaJobView>();
         Assert.Equal("GENERATING", view!.Status);
@@ -223,6 +234,14 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
         var bytes = "0123456789"u8.ToArray();
         var (readyFileId, _) = await SeedReadyAsync(
             owner, "ready-video.mov", bytes, DerivativeType.VideoLow, "video/quicktime");
+        using var readyHeadRequest = new HttpRequestMessage(
+            HttpMethod.Head, $"/api/v1/files/{readyFileId}/content?variant=video-low");
+        using var readyHead = await owner.SendAsync(readyHeadRequest);
+        Assert.Equal(HttpStatusCode.OK, readyHead.StatusCode);
+        Assert.Equal(10, readyHead.Content.Headers.ContentLength);
+        Assert.Equal("video/mp4", readyHead.Content.Headers.ContentType!.MediaType);
+        Assert.Equal("bytes", Assert.Single(readyHead.Headers.AcceptRanges));
+        Assert.Empty(await readyHead.Content.ReadAsByteArrayAsync());
         using var rangeRequest = new HttpRequestMessage(
             HttpMethod.Get, $"/api/v1/files/{readyFileId}/content?variant=video-low");
         rangeRequest.Headers.Range = new RangeHeaderValue(3, 6);

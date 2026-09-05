@@ -27,6 +27,7 @@ data class PhotoViewerUiState(
     val canGoNext: Boolean = false,
     val error: MediaUiError? = null,
     val originalSizeLabel: String? = null,
+    val displayedSizeLabel: String? = null,
     val previousPrefetch: FileEntry? = null,
     val nextPrefetch: FileEntry? = null,
     val currentPosition: Int = 0,
@@ -56,6 +57,7 @@ class PhotoViewerViewModel(
                             media?.originalSizeLabel
                                 ?: media?.confirmation?.formattedSize
                                 ?: it.originalSizeLabel,
+                        displayedSizeLabel = media?.displayedSizeLabel ?: it.displayedSizeLabel,
                     )
                 }
             }

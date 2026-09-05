@@ -1,6 +1,7 @@
 package com.kurastorage.feature.media
 
 import com.kurastorage.core.data.media.MediaContentResult
+import com.kurastorage.core.data.media.MediaMetadataResult
 import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.data.media.NetworkQualityContextResolver
 import com.kurastorage.core.data.media.NetworkTransport
@@ -23,6 +24,7 @@ import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.NetworkQualityContext
 import com.kurastorage.core.model.media.OriginalMetadata
 import com.kurastorage.core.model.media.QualityPreferences
+import com.kurastorage.core.model.media.VariantMetadata
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -139,6 +141,60 @@ class MediaViewerControllerTest {
             controller.contentReady(medium)
             val ready = controller.state.value?.loadState as MediaLoadState.Ready
             assertEquals(MediaVariant.IMAGE_MEDIUM, ready.source.variant)
+        }
+
+    @Test
+    fun `displayed source and size change atomically only when the selected variant is ready`() =
+        runTest {
+            val repository =
+                FakeRepository().apply {
+                    variantSizes[MediaVariant.IMAGE_LOW] = 1_024
+                    variantSizes[MediaVariant.IMAGE_MEDIUM] = 2_048
+                }
+            val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
+            controller.start("file", 4, MediaKind.IMAGE)
+            val low = controller.requestTicket()!!
+            controller.contentReady(low)
+            assertEquals(
+                MediaVariant.IMAGE_LOW,
+                controller.state.value
+                    ?.displayedSource
+                    ?.variant,
+            )
+            assertEquals("1 KB", controller.state.value?.displayedSizeLabel)
+
+            controller.selectQuality(MediaQuality.MEDIUM)
+            val medium = controller.requestTicket()!!
+            assertEquals(
+                MediaVariant.IMAGE_LOW,
+                controller.state.value
+                    ?.displayedSource
+                    ?.variant,
+            )
+            assertEquals("1 KB", controller.state.value?.displayedSizeLabel)
+            assertEquals(
+                2_048L,
+                controller.state.value
+                    ?.requestedMetadata
+                    ?.size
+                    ?.value,
+            )
+
+            controller.contentReady(low)
+            assertEquals(
+                MediaVariant.IMAGE_LOW,
+                controller.state.value
+                    ?.displayedSource
+                    ?.variant,
+            )
+            controller.contentReady(medium)
+            assertEquals(
+                MediaVariant.IMAGE_MEDIUM,
+                controller.state.value
+                    ?.displayedSource
+                    ?.variant,
+            )
+            assertEquals("2 KB", controller.state.value?.displayedSizeLabel)
         }
 
     @Test
@@ -365,10 +421,26 @@ class MediaViewerControllerTest {
         var jobError: KuraStorageException? = null
         var inspectError: KuraStorageException? = null
         var contentRequests = 0
+        val variantSizes = mutableMapOf<MediaVariant, Long>()
 
         override suspend fun inspectOriginal(fileId: String): OriginalMetadata {
             inspectError?.let { throw it }
             return OriginalMetadata(ByteCount(100), "image/jpeg", true)
+        }
+
+        override suspend fun inspectVariant(
+            fileId: String,
+            variant: MediaVariant,
+        ): MediaMetadataResult {
+            val original = inspectOriginal(fileId)
+            return MediaMetadataResult.Ready(
+                VariantMetadata(
+                    variant,
+                    ByteCount(variantSizes[variant] ?: original.size.value),
+                    original.mimeType,
+                    original.acceptsRanges,
+                ),
+            )
         }
 
         override suspend fun job(jobId: String): MediaJobSnapshot {

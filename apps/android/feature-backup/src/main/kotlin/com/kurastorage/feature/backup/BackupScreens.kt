@@ -56,6 +56,7 @@ import com.kurastorage.core.model.backup.ExternalWifiPolicy
 import com.kurastorage.core.model.backup.LocalBackupRule
 import com.kurastorage.core.model.backup.LocalSyncItem
 import com.kurastorage.core.model.backup.SyncLifecycleState
+import com.kurastorage.core.model.formatUserFileSize
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -176,7 +177,7 @@ private fun BackupHistoryRow(
         if (item.size > 0 && item.lifecycleState == SyncLifecycleState.UPLOADING) {
             val progress = (item.confirmedOffset.toFloat() / item.size).coerceIn(0f, 1f)
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().testTag("backup-item-progress"))
-            Text("${(progress * PERCENT_SCALE).toInt()}% · ${item.confirmedOffset} of ${item.size} bytes")
+            Text("${(progress * PERCENT_SCALE).toInt()}% · ${formatUserFileSize(item.confirmedOffset)} of ${formatUserFileSize(item.size)}")
         }
         item.waitReason.takeUnless { it == BackupWaitReason.NONE }?.let { Text("Waiting: ${it.label()}") }
         item.failureReason.takeUnless { it == BackupFailureReason.NONE }?.let {

@@ -11,16 +11,6 @@ public sealed class FileVersionService(
     ISystemClock clock,
     IFileRepository? files = null)
 {
-    private static readonly HashSet<string> SupportedMimeTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "text/plain",
-        "text/markdown",
-        "text/csv",
-        "application/json",
-        "application/xml",
-        "application/yaml",
-    };
-
     public async Task<FileVersionRecord?> EnsureBaselineAsync(
         Guid fileEntryId,
         FileVersionChangeKind changeKind,
@@ -238,9 +228,7 @@ public sealed class FileVersionService(
     public static bool IsSupported(FileEntry entry) =>
         entry.EntryType == FileEntryType.File &&
         entry.Status == FileEntryStatus.Active &&
-        entry.Size <= FileVersionRecord.MaximumContentBytes &&
-        entry.MimeType is not null &&
-        SupportedMimeTypes.Contains(entry.MimeType);
+        entry.Size <= FileVersionRecord.MaximumContentBytes;
 
     private static string TemporaryPath(FileEntry entry, Guid operationId) =>
         TemporaryPath(entry, entry.FileVersion, operationId);

@@ -24,6 +24,7 @@ interface TextFileRepository {
         content: String,
         expectedVersion: Long,
         operationId: String,
+        acknowledgeLossySource: Boolean = false,
     ): TextMutationResult
 
     suspend fun versions(
@@ -60,7 +61,10 @@ class DefaultTextFileRepository(
         content: String,
         expectedVersion: Long,
         operationId: String,
-    ) = authenticated { api.saveText(it, fileId, SaveTextRequestDto(content, expectedVersion, operationId)) }.toModel()
+        acknowledgeLossySource: Boolean,
+    ) = authenticated {
+        api.saveText(it, fileId, SaveTextRequestDto(content, expectedVersion, operationId, acknowledgeLossySource))
+    }.toModel()
 
     override suspend fun versions(
         fileId: String,
@@ -91,7 +95,19 @@ class DefaultTextFileRepository(
         }
 }
 
-internal fun TextDocumentDto.toModel() = TextDocument(content, encoding, fileVersion, size, sha256)
+internal fun TextDocumentDto.toModel(): TextDocument {
+    val status =
+        com.kurastorage.core.model.TextDecodeStatus
+            .fromWire(decodeStatus)
+    val unknownStatus = status == com.kurastorage.core.model.TextDecodeStatus.UNKNOWN
+    val unknownEncoding = encoding !in setOf("UTF-8", "UTF-16LE", "UTF-16BE")
+    val inconsistentLossyEncoding =
+        status == com.kurastorage.core.model.TextDecodeStatus.LOSSY && encoding != "UTF-8"
+    if (unknownStatus || unknownEncoding || inconsistentLossyEncoding) {
+        throw KuraStorageException.InvalidServerResponse()
+    }
+    return TextDocument(content, encoding, fileVersion, size, sha256, status)
+}
 
 internal fun TextMutationResultDto.toModel() =
     FileVersionChangeKind.fromWire(changeKind).let { kind ->

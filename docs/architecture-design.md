@@ -308,7 +308,7 @@ Domain ───────────────────→ 外部ライ
 | PostgreSQL | 17系を基準 | 管理情報、検索索引、ジョブ、監査 | 30万件規模の検索、排他、再帰CTE、部分Index、`pg_trgm`を利用できる。 |
 | Nginx | OS安定版 | TLS終端、リバースプロキシ | APIを外部へ直接公開せず、TLSと要求制御を一元化する。 |
 | libvips | Debian 12系8.14 | 写真・Raster済みPDFの縮小、自動回転、WebP出力 | シェルを介さない独立Worker Processとして使用する。 |
-| FFmpeg / FFprobe | Debian 12系5.1 | 動画Thumbnail Frame抽出、出力メタデータ確認 | 動画Low／Medium変換は後続フェーズで同じAdapterを拡張する。 |
+| FFmpeg / FFprobe | Debian 12系5.1 | 動画Thumbnail Frame抽出、Low／Medium変換、出力メタデータ確認 | 変換をシェル経由にせず、引数を固定した独立Worker Processとして実行できる。 |
 | Poppler `pdftoppm` | Debian 12系22.12 | PDF先頭ページ描画 | 1ページだけを上限付きでRaster化する。 |
 | Argon2idライブラリ | 実装時に保守状況を確認して固定 | パスワードハッシュ | Argon2id v1.3と自己記述形式を扱い、独自暗号実装を避ける。 |
 | OpenTelemetry SDK | .NET対応安定版 | メトリクス、トレース | API時間、DB、ジョブ、変換を共通形式で計測できる。 |
@@ -902,9 +902,11 @@ Androidは`feature-media`、`feature-settings`と既存Core Moduleを使用す�
 - Media3は認証Header付き単一Range DataSourceを使用する。401時は既存の単一Flight Token refresh後に現在位置から1回だけ再構築し、再発時は再生を停止する。
 - Playerは動画・音声とも3秒／10秒の戻る・進む、0.5〜3.0倍速を提供する。Mobileでは5〜15秒Buffer、Wi-Fiでは15〜50秒Bufferを初期値とし、Playlistは1件だけにする。
 - 動画品質変更時は旧Sourceを新Sourceの準備完了まで保持し、現在位置、速度、再生状態を可能な範囲で復元する。低・中品質が未準備でも元画質へ自動Fallbackしない。
+- variant選択と表示中Sourceを別stateとして所有する。各variantのHEAD metadataは`variant + contentLength + contentType + rangeSupport`を一組にし、request generationが一致するREADY結果だけが表示Sourceと表示Sizeをatomicに更新する。202や失敗時にOriginal metadataを代用しない。
+- 動画Full screenは通常画面のscroll containerから分離した独立Compose Layoutとし、Player instanceと再生itemは共有する。System BackはNavigationより先にFull screen解除へ配送し、overlay表示時だけsafe insetを適用する。
 - 写真の元画質はHEADでSizeを取得した後、接続種別別設定またはViewer内選択に従って確認DialogなしでContentを開始する。動画の元画質、元音声、PDF本文は従来どおりHEADでSizeを確認し、利用者の承認前にContentを開始しない。
 - 写真ViewerのFavorite／Tagは`app`が表示中File用の`EntryOrganizationViewModel`を組み立て、`feature-media`へRepositoryを渡さず表示StateとCallbackだけを渡す。File切替時はFile IDを含むViewModel keyで対象状態を分離する。
-- `app`の`EntryDestinationResolver`はFiles、Shared、Favoritesから受け取ったEntryをMIME・種別・状態だけでFolder、Photo、Video、Audio、PDF、Text、detailsへ分類する。Feature moduleは他FeatureのRouteを知らず、既存callbackでAppへ操停を返す。
+- `app`の`EntryDestinationResolver`はFiles、Shared、Favoritesから受け取ったEntryをMIME・拡張子・種別・状態・SizeでFolder、Photo、Video、Audio、PDF、Text、detailsへ分類する。Feature moduleは他FeatureのRouteを知らず、既存callbackでAppへ操停を返す。
 - `MediaNavigationContextStore`は同一App process・認証Session内の一時ID列だけを保持する。FavoritesではSearch共通metadataから同種のActive IDを表示順で登録し、未知Contextは空としてViewer側の現在File単体fallbackを使う。Logout、Session失効、接続Route変更でStoreをclearし、次SessionへID列を引き継がない。
 - 写真のSAF保存は`core-data`のOriginal download coordinatorが表示variantから独立して`ORIGINAL`だけをStreaming copyする。OutputStream close後に成功を確定し、途中失敗とCoroutine cancellationでは作成済みURIの削除を試み、削除不能を別Outcomeとして`app`へ返す。
 - PDFはApp private一時領域へStreamingする。1 File 256MiB、Session合計512MiB、必要空き容量`Content-Length + 64MiB`、未参照TTL 1時間とする。超過時は既存SAF Downloadへ案内する。
@@ -918,11 +920,18 @@ Android 13実機のREMOTE_SECURE Original動画再生で、Player PSS 117,912 Ki
 
 Androidは`core-model`の対応MIME・Text／version Model、`core-network`のOpenAPI一致DTO／Retrofit境界、`core-data`のSession-scoped Repository、`feature-text`のEditor／History ViewModelとCompose画面を使用する。`feature-files`は`feature-text`へ依存せず、対応FileをApp callbackへ返し、`app`がNavigationとSession dependencyを組み立てる。
 
+- Text APIはMIME分類より先に`ACTIVE`、現在権限、raw Size上限を検証し、BOM付きUTF-8、UTF-16LE/BE、BOMなし厳密UTF-8をexact decodeする。厳密Decode不能時はraw bytesを変更せず`LOSSY` previewとして返す。
+- Text content versionは文字列ではなく変更前raw bytesをimmutableに保持する。UTF-16は認識したencodingで保存し、lossy保存は明示acknowledgementを必須として新内容をUTF-8化するため、元Byte列を復元可能なversion境界と現行Fileのatomic replace境界を同じJournal／mutation lockへ含める。
+- Androidは既知のText MIME／拡張子かつ1 MiB以下だけを直接Editorへ送る。取得後にNULまたは許容制御文字を除くISO制御文字比率2%超を検出した場合は表示を止め、Detailsの警告を明示承認したrouteだけがこのClient側guardを解除する。Serverの権限・状態・Size検証は解除しない。
 - Text／version requestは既存`AuthenticatedRequestExecutor`を通し、401後は呼出元が作成した同じ`operationId`とPayloadを1回だけ再送する。
 - EditorとHistoryはrequest generationとCoroutine cancellationを併用し、旧Session、旧File、旧refresh、旧previewの結果を破棄する。Session再生成時はViewModel keyも変更する。
 - 保存前と復元前にFile詳細を再取得して権限を再評価する。未知Permission、未知source、未知mutation種別はfail-closedとし、履歴の未知change kindは操作を推測せず`Unknown change`と表示する。
 - Text本文は永続Disk cacheへ保存しない。Editorの`SavedStateHandle`はUTF-8で64 KiBまで、API本文は1 MiBまでとし、行比較は400行、1行512文字までに制限する。
 - 競合解決は最新再読込、表示用行比較、SAFで作成した別名Fileの既存Upload Session経由Uploadだけを提供する。force overwriteとClient側自動mergeは提供しない。
+
+### 11.4.3 Android Folder Navigation
+
+`feature-files`はFolder位置を`FolderLocation` stack/snapshotへ集約し、breadcrumb、Top app bar Back、system Back、一覧取得targetを同じ状態から導出する。遷移要求ごとに単調増加するnavigation generationを割り当て、Repository応答はSession、generation、target IDが現在値と一致する場合だけcommitする。同一targetの連打はcoalesceし、異なるtargetの連続tap、読込中Back、refreshの古い成功・失敗は破棄する。遷移失敗では先行表示したbreadcrumbだけを残さず、直前の成功snapshotへatomicに戻す。
 
 ### 11.5 MVP後: 自動バックアップ
 

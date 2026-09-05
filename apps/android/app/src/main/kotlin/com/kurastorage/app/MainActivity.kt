@@ -21,6 +21,7 @@ import android.provider.OpenableColumns
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -80,6 +81,7 @@ import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.SearchFileCategory
 import com.kurastorage.core.model.ShareItem
 import com.kurastorage.core.model.ShareScope
+import com.kurastorage.core.model.SupportedTextMimeTypes
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.model.backup.BackupSourceType
@@ -588,6 +590,9 @@ private fun KuraStorageApp(
                         mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
                     },
                     onOpenText = { entry -> textRoute(entry)?.let(navController::navigate) != null },
+                    onOpenTextOverride = { entry ->
+                        textRoute(entry, allowUnknown = true)?.let(navController::navigate) != null
+                    },
                     requestedDetailsId = mediaContexts.requestedDetailsId,
                     onDetailsConsumed = mediaContexts::consumeDetails,
                 )
@@ -645,10 +650,15 @@ private fun KuraStorageApp(
                 )
             }
             composable(
-                route = "${AppDestination.SEARCH.route}?category={category}",
+                route = "${AppDestination.SEARCH.route}?category={category}&tagId={tagId}",
                 arguments =
                     listOf(
                         navArgument("category") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                        navArgument("tagId") {
                             type = NavType.StringType
                             nullable = true
                             defaultValue = null
@@ -660,10 +670,23 @@ private fun KuraStorageApp(
                     navController.navigateToConnection()
                     return@composable
                 }
+                val requestedTagId = backStackEntry.arguments?.getString("tagId")?.takeIf(String::isNotBlank)
                 val searchViewModel: SearchViewModel =
                     viewModel(
-                        key = "search-${current.sessionId}",
-                        factory = simpleViewModelFactory { SearchViewModel(current.search, current.files::detail) },
+                        key = searchViewModelKey(current.sessionId, requestedTagId),
+                        factory =
+                            simpleViewModelFactory {
+                                SearchViewModel(
+                                    current.search,
+                                    current.files::detail,
+                                    requestedTagId?.let {
+                                        com.kurastorage.core.model
+                                            .SearchInput(tagIds = listOf(it))
+                                    }
+                                        ?: com.kurastorage.core.model
+                                            .SearchInput(),
+                                )
+                            },
                     )
                 val state by searchViewModel.state.collectAsStateWithLifecycle()
                 val requestedCategory =
@@ -725,6 +748,14 @@ private fun KuraStorageApp(
                         )
                     },
                     onFavorites = { navController.navigate(AppDestination.FAVORITES.route) },
+                    thumbnail = { item ->
+                        FileThumbnail(
+                            item,
+                            current.media.scopeId,
+                            current.media.imageLoader,
+                            Modifier.size(104.dp),
+                        )
+                    },
                 )
             }
             composable(AppDestination.RECENT_FILES.route) {
@@ -825,7 +856,7 @@ private fun KuraStorageApp(
                             item.metadata,
                             current.media.scopeId,
                             current.media.imageLoader,
-                            Modifier.size(72.dp),
+                            Modifier.size(104.dp),
                         )
                     },
                     onDetails = { item ->
@@ -851,6 +882,9 @@ private fun KuraStorageApp(
                     onInput = tagsViewModel::input,
                     onConfirm = tagsViewModel::confirm,
                     onDismiss = tagsViewModel::dismiss,
+                    onOpenTag = { tag ->
+                        navController.navigate("${AppDestination.SEARCH.route}?tagId=${Uri.encode(tag.id)}")
+                    },
                 )
             }
             composable(
@@ -919,16 +953,27 @@ private fun KuraStorageApp(
                         mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
                     },
                     onOpenText = { entry -> textRoute(entry)?.let(navController::navigate) != null },
+                    onOpenTextOverride = { entry ->
+                        textRoute(entry, allowUnknown = true)?.let(navController::navigate) != null
+                    },
                     requestedDetailsId = mediaContexts.requestedDetailsId,
                     onDetailsConsumed = mediaContexts::consumeDetails,
                 )
             }
             composable(
-                route = "${AppDestination.TEXT_EDITOR.route}/{fileId}",
-                arguments = listOf(navArgument("fileId") { type = NavType.StringType }),
+                route = "${AppDestination.TEXT_EDITOR.route}/{fileId}?allowUnsafe={allowUnsafe}",
+                arguments =
+                    listOf(
+                        navArgument("fileId") { type = NavType.StringType },
+                        navArgument("allowUnsafe") {
+                            type = NavType.BoolType
+                            defaultValue = false
+                        },
+                    ),
             ) { backStackEntry ->
                 val current = services ?: return@composable
                 val fileId = checkNotNull(backStackEntry.arguments?.getString("fileId"))
+                val allowUnsafe = backStackEntry.arguments?.getBoolean("allowUnsafe") == true
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val scope = rememberCoroutineScope()
                 val textViewModel: TextEditorViewModel =
@@ -936,7 +981,7 @@ private fun KuraStorageApp(
                         key = textEditorViewModelKey(fileId, current.sessionId),
                         factory =
                             savedStateViewModelFactory { handle ->
-                                TextEditorViewModel(fileId, current.files, current.textFiles, handle)
+                                TextEditorViewModel(fileId, current.files, current.textFiles, handle, allowUnsafe)
                             },
                     )
                 val state by textViewModel.state.collectAsStateWithLifecycle()
@@ -986,6 +1031,9 @@ private fun KuraStorageApp(
                     onBeginEdit = textViewModel::beginEditing,
                     onDraftChange = textViewModel::updateDraft,
                     onSave = textViewModel::save,
+                    onConfirmLossySave = textViewModel::confirmLossySave,
+                    onDismissLossySave = textViewModel::dismissLossySaveConfirmation,
+                    onConfirmUnsafeOpen = textViewModel::confirmUnsafeOpen,
                     onReloadConflict = textViewModel::reloadAfterConflict,
                     onSaveAsCopy = { content ->
                         val file = state.file
@@ -1101,7 +1149,9 @@ private fun KuraStorageApp(
                                             is MediaDownloadOutcome.Completed ->
                                                 PhotoDownloadUiState(
                                                     PhotoDownloadStatus.COMPLETED,
-                                                    "Saved ${outcome.bytesWritten} bytes from the original file.",
+                                                    "Saved ${com.kurastorage.core.ui.formatting.formatFileSize(
+                                                        outcome.bytesWritten,
+                                                    )} from the original file.",
                                                 )
                                             is MediaDownloadOutcome.Failed ->
                                                 if (outcome.incompleteTargetMayRemain) {
@@ -1196,7 +1246,8 @@ private fun KuraStorageApp(
                     onPage = pdfViewModel::selectPage,
                     onZoom = pdfViewModel::setZoom,
                     onViewport = pdfViewModel::setViewport,
-                    onDownload = {
+                    onRetryOpen = pdfViewModel::retryOpen,
+                    onSaveCopy = {
                         pdfState.file?.let { file ->
                             pendingPdfDownload = MediaDownloadSelection(file.id, file.name, MediaVariant.ORIGINAL)
                             pdfDownloadPicker.launch(file.name)
@@ -1300,6 +1351,7 @@ private fun FileRoute(
     media: MediaSessionScope?,
     onOpenMedia: (FileEntry, List<FileEntry>) -> Boolean = { _, _ -> false },
     onOpenText: (FileEntry) -> Boolean = { false },
+    onOpenTextOverride: (FileEntry) -> Boolean = onOpenText,
     requestedDetailsId: String? = null,
     onDetailsConsumed: () -> Unit = {},
 ) {
@@ -1343,14 +1395,22 @@ private fun FileRoute(
             if (uri != null && file != null) viewModel.startDownload(file, uri.toString())
             pendingDownload = null
         }
+    val navigateBack = { handleFileBack(viewModel::back, onExit) }
+    BackHandler(onBack = navigateBack)
     FileBrowserScreen(
         state = state,
         trashMode = trashMode,
         onOpen = { entry ->
-            if (!onOpenText(entry) && !onOpenMedia(entry, state.entries)) viewModel.open(entry)
+            dispatchPrimaryEntry(
+                entry = entry,
+                entries = state.entries,
+                onOpenMedia = onOpenMedia,
+                onOpenText = onOpenText,
+                onFallback = viewModel::open,
+            )
         },
         onShowDetails = viewModel::select,
-        onBack = { if (!viewModel.back()) onExit() },
+        onBack = navigateBack,
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadMore,
         onCreateFolder = viewModel::createFolder,
@@ -1395,7 +1455,7 @@ private fun FileRoute(
             if (onOpenMedia(entry, state.entries)) viewModel.dismissDetail()
         },
         onOpenText = { entry ->
-            if (onOpenText(entry)) viewModel.dismissDetail()
+            if (onOpenTextOverride(entry)) viewModel.dismissDetail()
         },
         onSearch = onSearch,
         thumbnail = { entry, modifier ->
@@ -1714,17 +1774,58 @@ internal fun mediaRoute(
         null
     }
 
-internal fun textRoute(entry: FileEntry): String? =
-    if (EntryDestinationResolver.resolve(entry) == EntryDestination.TEXT) {
-        "${AppDestination.TEXT_EDITOR.route}/${entry.id}"
+internal fun dispatchPrimaryEntry(
+    entry: FileEntry,
+    entries: List<FileEntry>,
+    onOpenMedia: (FileEntry, List<FileEntry>) -> Boolean,
+    onOpenText: (FileEntry) -> Boolean,
+    onFallback: (FileEntry) -> Unit,
+) {
+    when (EntryDestinationResolver.resolve(entry)) {
+        EntryDestination.PHOTO,
+        EntryDestination.VIDEO,
+        EntryDestination.AUDIO,
+        EntryDestination.PDF,
+        -> if (!onOpenMedia(entry, entries)) onFallback(entry)
+        EntryDestination.TEXT -> if (!onOpenText(entry)) onFallback(entry)
+        EntryDestination.FOLDER,
+        EntryDestination.DETAILS,
+        -> onFallback(entry)
+    }
+}
+
+internal fun textRoute(
+    entry: FileEntry,
+    allowUnknown: Boolean = false,
+): String? {
+    val explicitlyAllowedCandidate =
+        allowUnknown &&
+            entry.entryType == FileEntryType.FILE &&
+            entry.status == FileEntryStatus.ACTIVE &&
+            entry.size <= SupportedTextMimeTypes.MAX_CONTENT_BYTES
+    return if (EntryDestinationResolver.resolve(entry) == EntryDestination.TEXT || explicitlyAllowedCandidate) {
+        "${AppDestination.TEXT_EDITOR.route}/${entry.id}${if (allowUnknown) "?allowUnsafe=true" else ""}"
     } else {
         null
     }
+}
 
 internal fun textEditorViewModelKey(
     fileId: String,
     sessionId: String,
 ): String = "text-editor-$fileId-$sessionId"
+
+internal fun searchViewModelKey(
+    sessionId: String,
+    tagId: String?,
+): String = "search-$sessionId-${tagId.orEmpty()}"
+
+internal fun handleFileBack(
+    onFolderBack: () -> Boolean,
+    onExit: () -> Unit,
+) {
+    if (!onFolderBack()) onExit()
+}
 
 internal fun activityViewModelKey(sessionId: String): String = "activity-$sessionId"
 

@@ -15,6 +15,7 @@ import com.kurastorage.core.network.media.OkHttpMediaApi
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -44,7 +45,12 @@ class KuraMediaDataSourceInstrumentedTest {
 
     @Test
     fun initialAndSeekRangesUseAuthorizationAndRefreshOnlyOnce() {
-        server.enqueue(MockResponse().setBody("01234567"))
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(206)
+                .setHeader("Content-Range", "bytes 0-7/8")
+                .setBody("01234567"),
+        )
         source().let { dataSource ->
             try {
                 assertEquals(8, dataSource.open(DataSpec.Builder().setUri("kurastorage-media://selected").build()))
@@ -53,7 +59,7 @@ class KuraMediaDataSourceInstrumentedTest {
                 dataSource.close()
             }
         }
-        assertEquals(null, server.takeRequest().getHeader("Range"))
+        assertEquals("bytes=0-", server.takeRequest().getHeader("Range"))
 
         server.enqueue(MockResponse().setResponseCode(401))
         server.enqueue(
@@ -113,7 +119,9 @@ class KuraMediaDataSourceInstrumentedTest {
             MockResponse()
                 .setResponseCode(206)
                 .setHeader("Content-Range", "bytes 0-7/8")
-                .setBody("0123"),
+                .setHeader("Content-Length", "8")
+                .setBody("01234567")
+                .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY),
         )
         val dataSource = source()
         val spec =
@@ -133,10 +141,42 @@ class KuraMediaDataSourceInstrumentedTest {
         }
     }
 
-    private fun source() =
+    @Test
+    fun mismatchedRangeIsReportedAsInvalidRange() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(206)
+                .setHeader("Content-Range", "bytes 1-7/8")
+                .setBody("1234567"),
+        )
+
+        assertThrows(MediaDataSourceIOException.InvalidRange::class.java) {
+            source().open(DataSpec.Builder().setUri("kurastorage-media://selected").build())
+        }
+    }
+
+    @Test
+    fun generatingVariantIsReportedWithoutPreparingInvalidContent() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(202)
+                .setHeader("Retry-After", "3")
+                .setBody(GENERATING_RESPONSE),
+        )
+
+        val error =
+            assertThrows(MediaGeneratingIOException::class.java) {
+                source(MediaVariant.VIDEO_LOW).open(DataSpec.Builder().setUri("kurastorage-media://selected").build())
+            }
+
+        assertEquals("job-1", error.job.jobId)
+        assertEquals("bytes=0-", server.takeRequest().getHeader("Range"))
+    }
+
+    private fun source(variant: MediaVariant = MediaVariant.ORIGINAL) =
         KuraMediaDataSource(
             repository,
-            ReadyMediaSource(FILE_ID, 1, MediaVariant.ORIGINAL),
+            ReadyMediaSource(FILE_ID, 1, variant),
         )
 
     private class FakeAuthentication : AuthenticationRepository {
@@ -184,5 +224,7 @@ class KuraMediaDataSourceInstrumentedTest {
         const val FILE_ID = "11111111-1111-1111-1111-111111111111"
         const val RANGE_ERROR_RESPONSE =
             """{"code":"RANGE_NOT_SATISFIABLE","message":"failed","requestId":"range-1","details":{}}"""
+        const val GENERATING_RESPONSE =
+            """{"status":"GENERATING","jobId":"job-1","jobStatusUrl":"/api/v1/media-jobs/job-1","retryAfterSeconds":3}"""
     }
 }

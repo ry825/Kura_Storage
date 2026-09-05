@@ -42,7 +42,7 @@ class CacheManagementScreenTest {
                 onBack = {},
             )
         }
-        compose.onNodeWithText("10 MiB / 100 MiB").assertIsDisplayed()
+        compose.onNodeWithText("10 MB / 100 MB").assertIsDisplayed()
         compose.onAllNodesWithText("Thumbnail", substring = true).assertCountEquals(0)
         compose.onNodeWithTag("cache-management").performScrollToNode(hasText("Clean up now"))
         compose.onNodeWithText("Clean up now").performClick()

@@ -124,6 +124,21 @@ public sealed class OrganizationApiTests(PostgreSqlAuthFlowFixture fixture)
             Assert.Equal(HttpStatusCode.BadRequest, duplicateFilter.StatusCode);
         }
 
+        var foreignAuthentication =
+            await fixture.CreateAuthenticatedClientAsync($"organization-foreign-{suffix}", "password");
+        using var foreignClient = foreignAuthentication.Client;
+        Guid foreignTagId;
+        using (var foreignTag = await foreignClient.PostAsJsonAsync("/api/v1/tags", new { name = "Foreign" }))
+        {
+            foreignTag.EnsureSuccessStatusCode();
+            using var json = JsonDocument.Parse(await foreignTag.Content.ReadAsStringAsync());
+            foreignTagId = json.RootElement.GetProperty("id").GetGuid();
+        }
+        using (var foreignTagSearch = await client.GetAsync($"/api/v1/search?tagId={foreignTagId}"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, foreignTagSearch.StatusCode);
+        }
+
         using (var invalidSearch = await client.GetAsync($"/api/v1/search?tagId={Guid.NewGuid()}"))
         {
             Assert.Equal(HttpStatusCode.BadRequest, invalidSearch.StatusCode);
@@ -148,6 +163,10 @@ public sealed class OrganizationApiTests(PostgreSqlAuthFlowFixture fixture)
         using (var deleteSecond = await client.DeleteAsync($"/api/v1/tags/{secondTagId}"))
         {
             Assert.Equal(HttpStatusCode.NoContent, deleteSecond.StatusCode);
+        }
+        using (var deletedTagSearch = await client.GetAsync($"/api/v1/search?tagId={tagId}"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, deletedTagSearch.StatusCode);
         }
 
         await using var verificationScope = fixture.Factory.Services.CreateAsyncScope();

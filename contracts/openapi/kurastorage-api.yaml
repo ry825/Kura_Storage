@@ -1429,10 +1429,21 @@ paths:
     head:
       tags: [Files]
       operationId: inspectFileContent
-      summary: Inspect original file size, media type, and range support
+      summary: Inspect selected original or derived media size, media type, and range support
+      parameters:
+        - name: variant
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/MediaVariant"
+        - name: disposition
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/MediaDisposition"
       responses:
         "200":
-          description: Original file headers without a response body.
+          description: Selected ready content headers without a response body.
           headers:
             Accept-Ranges:
               schema:
@@ -1447,6 +1458,23 @@ paths:
               required: true
               schema:
                 type: string
+        "202":
+          description: The selected derivative is queued or being generated; no response body is required for HEAD.
+          headers:
+            Retry-After:
+              required: true
+              schema:
+                type: integer
+                minimum: 1
+            Location:
+              required: true
+              schema:
+                type: string
+            X-Kura-Media-Job-Id:
+              required: true
+              schema:
+                type: string
+                format: uuid
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -2276,12 +2304,12 @@ components:
     SaveTextRequest:
       type: object
       additionalProperties: false
-      required: [content, expectedVersion, operationId]
+      required: [content, expectedVersion, operationId, acknowledgeLossySource]
       properties:
         content:
           type: string
           maxLength: 1048576
-          description: Strict Unicode text encoded and stored as BOM-less UTF-8. The encoded content must not exceed 1 MiB.
+          description: Strict Unicode text. It is stored using the exact source encoding, or UTF-8 after an acknowledged lossy preview. The encoded content must not exceed 1 MiB.
         expectedVersion:
           type: integer
           format: int64
@@ -2289,6 +2317,9 @@ components:
         operationId:
           type: string
           format: uuid
+        acknowledgeLossySource:
+          type: boolean
+          description: Must be true when the current raw source could only be decoded as a lossy UTF-8 replacement preview.
     RestoreTextVersionRequest:
       type: object
       additionalProperties: false
@@ -2304,14 +2335,17 @@ components:
     TextDocument:
       type: object
       additionalProperties: false
-      required: [content, encoding, fileVersion, size, sha256]
+      required: [content, encoding, decodeStatus, fileVersion, size, sha256]
       properties:
         content:
           type: string
           maxLength: 1048576
         encoding:
           type: string
-          const: UTF-8
+          enum: [UTF-8, UTF-16LE, UTF-16BE]
+        decodeStatus:
+          type: string
+          enum: [EXACT, LOSSY]
         fileVersion:
           type: integer
           format: int64

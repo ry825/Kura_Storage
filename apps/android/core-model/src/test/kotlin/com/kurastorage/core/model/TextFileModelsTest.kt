@@ -8,6 +8,17 @@ import java.time.Instant
 
 class TextFileModelsTest {
     @Test
+    fun `direct text routing and control character boundary are conservative`() {
+        assertTrue(SupportedTextMimeTypes.isDirectlyOpenable("server.log", "application/octet-stream"))
+        assertTrue(SupportedTextMimeTypes.isDirectlyOpenable("page.unknown", "text/html; charset=utf-8"))
+        assertFalse(SupportedTextMimeTypes.isDirectlyOpenable("archive.bin", "application/octet-stream"))
+        assertTrue(SupportedTextMimeTypes.isLikelyText("line one\nline two\tvalue"))
+        assertFalse(SupportedTextMimeTypes.isLikelyText("text\u0000binary"))
+        assertTrue(SupportedTextMimeTypes.isLikelyText("a".repeat(49) + "\u0001"))
+        assertFalse(SupportedTextMimeTypes.isLikelyText("a".repeat(48) + "\u0001\u0002"))
+    }
+
+    @Test
     fun `supported text MIME types are exact and normalized`() {
         listOf(
             "text/plain",

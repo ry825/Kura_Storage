@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -42,12 +43,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusEvent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -70,6 +74,7 @@ import com.kurastorage.core.ui.components.KuraSegmentedControl
 import com.kurastorage.core.ui.components.KuraStatus
 import com.kurastorage.core.ui.components.KuraStatusBadge
 import com.kurastorage.core.ui.components.KuraStatusPanel
+import kotlinx.coroutines.delay
 import java.util.Locale
 
 @Composable
@@ -94,71 +99,101 @@ fun MediaPlayerScreen(
 ) {
     val media = state.media
     val load = media?.loadState
-    var videoControlsVisible by remember { mutableStateOf(true) }
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .verticalScroll(rememberScrollState())
-                .padding(if (fullscreen) KuraTheme.spacing.xs else KuraTheme.spacing.md),
-            verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.md),
-        ) {
-            PlayerHeader(state, onBack)
+    var videoControlsVisible by remember(fullscreen) { mutableStateOf(!fullscreen || !state.player.playWhenReady) }
+    var seeking by remember { mutableStateOf(false) }
+    var controlsFocused by remember { mutableStateOf(false) }
+    val controlsMustRemainVisible =
+        !state.player.playWhenReady ||
+            state.player.phase in setOf(PlayerPhase.IDLE, PlayerPhase.BUFFERING, PlayerPhase.FAILED, PlayerPhase.ENDED) ||
+            state.player.error != null ||
+            controlsFocused
+    LaunchedEffect(fullscreen, videoControlsVisible, state.player.playWhenReady, state.player.phase, seeking, controlsFocused) {
+        val canScheduleAutoHide = fullscreen && videoControlsVisible && !controlsMustRemainVisible
+        if (canScheduleAutoHide && !seeking && !controlsFocused) {
+            delay(CONTROL_AUTO_HIDE_MS)
+            videoControlsVisible = false
+        }
+    }
+    if (fullscreen && state.kind == MediaKind.VIDEO) {
+        FullscreenVideoPlayer(
+            state = state,
+            controlsVisible = videoControlsVisible || controlsMustRemainVisible,
+            onToggleControls = { videoControlsVisible = !videoControlsVisible },
+            onPlay = onPlay,
+            onPause = onPause,
+            onSeek = onSeek,
+            onSkipBack = onSkipBack,
+            onSkipForward = onSkipForward,
+            onRate = onRate,
+            onExitFullscreen = onFullscreen,
+            onSeeking = {
+                seeking = it
+                if (it) videoControlsVisible = true
+            },
+            onControlsFocused = { controlsFocused = it },
+            videoSurface = videoSurface,
+        )
+    } else {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .verticalScroll(rememberScrollState())
+                    .padding(if (fullscreen) KuraTheme.spacing.xs else KuraTheme.spacing.md),
+                verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.md),
+            ) {
+                PlayerHeader(state, onBack)
 
-            if (state.kind == MediaKind.VIDEO) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable { videoControlsVisible = !videoControlsVisible }
-                        .semantics { contentDescription = "Toggle video controls" }
-                        .testTag("video-surface"),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    videoSurface()
-                    if (state.player.phase == PlayerPhase.BUFFERING) CircularProgressIndicator()
-                    if (state.player.phase == PlayerPhase.READY) {
-                        KuraStatusBadge(
-                            if (state.player.playWhenReady) "Playing" else "Paused",
-                            KuraStatus.NEUTRAL,
-                            Modifier.align(Alignment.TopStart).padding(KuraTheme.spacing.sm),
-                        )
-                    }
-                }
-                OutlinedButton(onClick = onFullscreen, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) {
-                    Text(if (fullscreen) "Exit full screen" else "Full screen")
-                }
-                QualityControls(media?.quality, onQuality)
-            } else {
-                KuraCard {
+                if (state.kind == MediaKind.VIDEO) {
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 180.dp)
-                            .semantics { contentDescription = "Audio artwork placeholder" },
+                            .aspectRatio(16f / 9f)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center,
-                    ) { Text("♫", style = MaterialTheme.typography.displayLarge) }
-                    Text(state.file?.name ?: "Audio", style = MaterialTheme.typography.titleLarge)
-                    Text("Original audio only • no conversion")
+                    ) {
+                        videoSurface()
+                        VideoControlTapLayer { videoControlsVisible = !videoControlsVisible }
+                        if (state.player.phase == PlayerPhase.BUFFERING) CircularProgressIndicator()
+                        if (state.player.phase == PlayerPhase.READY) {
+                            KuraStatusBadge(
+                                if (state.player.playWhenReady) "Playing" else "Paused",
+                                KuraStatus.NEUTRAL,
+                                Modifier.align(Alignment.TopStart).padding(KuraTheme.spacing.sm),
+                            )
+                        }
+                    }
+                    OutlinedButton(onClick = onFullscreen, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) {
+                        Text(if (fullscreen) "Exit full screen" else "Full screen")
+                    }
+                    QualityControls(media?.quality, onQuality)
+                } else {
+                    KuraCard {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 180.dp)
+                                .semantics { contentDescription = "Audio artwork placeholder" },
+                            contentAlignment = Alignment.Center,
+                        ) { Text("♫", style = MaterialTheme.typography.displayLarge) }
+                        Text(state.file?.name ?: "Audio", style = MaterialTheme.typography.titleLarge)
+                        Text("Original audio only • no conversion")
+                    }
                 }
-            }
 
-            KuraCard {
-                Text("Media details", style = MaterialTheme.typography.titleMedium, modifier = Modifier.kuraHeading())
-                Text("Connection: ${media?.networkContext.userLabel()}")
-                state.file
-                    ?.size
-                    ?.takeIf { it >= 0 }
-                    ?.let { Text("Original size: ${formatByteCount(it)}") }
-                Text(if (state.kind == MediaKind.VIDEO) "Quality: ${media?.quality.userLabel()}" else "Quality: Original")
-            }
+                KuraCard {
+                    Text("Media details", style = MaterialTheme.typography.titleMedium, modifier = Modifier.kuraHeading())
+                    Text("Connection: ${media?.networkContext.userLabel()}")
+                    Text("Displayed size: ${media?.displayedSizeLabel ?: "Not ready"}")
+                    Text(if (state.kind == MediaKind.VIDEO) "Quality: ${media?.quality.userLabel()}" else "Quality: Original")
+                }
 
-            PlayerStatus(state, load, onRetryGeneration, onRetryPlayback, onBackgroundGeneration, onQuality)
+                PlayerStatus(state, load, onRetryGeneration, onRetryPlayback, onBackgroundGeneration, onQuality)
 
-            if (state.kind != MediaKind.VIDEO || videoControlsVisible) {
-                PlayerControls(state.player, onPlay, onPause, onSeek, onSkipBack, onSkipForward, onRate)
+                if (state.kind != MediaKind.VIDEO || videoControlsVisible) {
+                    PlayerControls(state.player, onPlay, onPause, onSeek, onSkipBack, onSkipForward, onRate, onSeeking = {})
+                }
             }
         }
     }
@@ -176,6 +211,132 @@ fun MediaPlayerScreen(
             confirmButton = { Button(onClick = onConfirmOriginal) { Text("Play original") } },
             dismissButton = { TextButton(onClick = onCancelOriginal) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun FullscreenVideoPlayer(
+    state: MediaPlayerUiState,
+    controlsVisible: Boolean,
+    onToggleControls: () -> Unit,
+    onPlay: () -> Unit,
+    onPause: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onSkipBack: (Long) -> Unit,
+    onSkipForward: (Long) -> Unit,
+    onRate: (PlaybackRate) -> Unit,
+    onExitFullscreen: () -> Unit,
+    onSeeking: (Boolean) -> Unit,
+    onControlsFocused: (Boolean) -> Unit,
+    videoSurface: @Composable () -> Unit,
+) {
+    Surface(Modifier.fillMaxSize().testTag("fullscreen-player"), color = Color.Black) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center,
+        ) {
+            videoSurface()
+            VideoControlTapLayer(onToggleControls)
+            if (state.player.phase == PlayerPhase.BUFFERING) CircularProgressIndicator()
+            if (controlsVisible) {
+                Column(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.72f))
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(KuraTheme.spacing.sm)
+                        .onFocusEvent { onControlsFocused(it.hasFocus) }
+                        .testTag("player-overlay"),
+                    verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+                ) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        OutlinedButton(onClick = onExitFullscreen, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text("Exit full screen")
+                        }
+                    }
+                    CompactPlayerControls(state.player, onPlay, onPause, onSeek, onSkipBack, onSkipForward, onRate, onSeeking)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.VideoControlTapLayer(onToggleControls: () -> Unit) {
+    Box(
+        Modifier
+            .matchParentSize()
+            .clickable(onClickLabel = "Toggle video controls", onClick = onToggleControls)
+            .semantics { contentDescription = "Toggle video controls" }
+            .testTag("video-surface"),
+    )
+}
+
+@Composable
+private fun CompactPlayerControls(
+    player: PlayerSnapshot,
+    onPlay: () -> Unit,
+    onPause: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onSkipBack: (Long) -> Unit,
+    onSkipForward: (Long) -> Unit,
+    onRate: (PlaybackRate) -> Unit,
+    onSeeking: (Boolean) -> Unit,
+) {
+    val duration = player.durationMs.coerceAtLeast(0)
+    val position = player.positionMs.coerceIn(0, duration)
+    Text("${formatDuration(position)} / ${formatDuration(duration)}", color = Color.White)
+    Slider(
+        value = position.toFloat(),
+        onValueChange = {
+            onSeeking(true)
+            onSeek(it.toLong())
+        },
+        onValueChangeFinished = { onSeeking(false) },
+        valueRange = 0f..duration.coerceAtLeast(1).toFloat(),
+        enabled = player.seekable,
+        modifier = Modifier.semantics { contentDescription = "Playback position" },
+    )
+    FlowRow(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+    ) {
+        SkipButton("Back 10 seconds", "-10s") { onSkipBack(LONG_SKIP_MS) }
+        SkipButton("Back 3 seconds", "-3s") { onSkipBack(SHORT_SKIP_MS) }
+        Button(
+            onClick = {
+                when {
+                    player.phase == PlayerPhase.ENDED -> {
+                        onSeek(0)
+                        onPlay()
+                    }
+                    player.playWhenReady -> onPause()
+                    else -> onPlay()
+                }
+            },
+            modifier = Modifier.widthIn(min = 96.dp).height(48.dp),
+        ) {
+            Text(
+                if (player.playWhenReady) {
+                    "Pause"
+                } else if (player.phase == PlayerPhase.ENDED) {
+                    "Replay"
+                } else {
+                    "Play"
+                },
+            )
+        }
+        SkipButton("Forward 3 seconds", "+3s") { onSkipForward(SHORT_SKIP_MS) }
+        SkipButton("Forward 10 seconds", "+10s") { onSkipForward(LONG_SKIP_MS) }
+        val nextRate = PlayerCommandController.nextRate(player.rate)
+        OutlinedButton(
+            onClick = { onRate(nextRate) },
+            modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Playback speed ${player.rate.value} times" },
+        ) { Text("Speed ${player.rate.value}×") }
     }
 }
 
@@ -298,6 +459,7 @@ private fun PlayerControls(
     onSkipBack: (Long) -> Unit,
     onSkipForward: (Long) -> Unit,
     onRate: (PlaybackRate) -> Unit,
+    onSeeking: (Boolean) -> Unit,
 ) {
     val duration = player.durationMs.coerceAtLeast(0)
     val position = player.positionMs.coerceIn(0, duration.coerceAtLeast(0))
@@ -306,7 +468,11 @@ private fun PlayerControls(
         Text("${formatDuration(position)} / ${formatDuration(duration)}")
         Slider(
             value = position.toFloat(),
-            onValueChange = { onSeek(it.toLong()) },
+            onValueChange = {
+                onSeeking(true)
+                onSeek(it.toLong())
+            },
+            onValueChangeFinished = { onSeeking(false) },
             valueRange = 0f..duration.coerceAtLeast(1).toFloat(),
             enabled = player.seekable,
             modifier = Modifier.semantics { contentDescription = "Playback position" },
@@ -415,6 +581,7 @@ private fun MediaUiError.userMessage(): String =
         MediaUiError.DISCONNECTED -> "Connection lost. Reconnect to continue."
         MediaUiError.RANGE_INVALID -> "The server cannot resume this playback range."
         MediaUiError.RESPONSE_INCOMPLETE -> "The media response ended unexpectedly."
+        MediaUiError.SERVER_ERROR -> "The server could not provide this media response. Try again."
         MediaUiError.GENERATION_FAILED -> "The selected video quality could not be prepared."
         MediaUiError.UNSUPPORTED -> "This codec is not supported on this device. Return to choose another file."
         MediaUiError.UNKNOWN -> "Playback stopped safely because of an unexpected error."
@@ -427,6 +594,8 @@ private fun PlayerFailure.userMessage(): String =
         PlayerFailure.FILE_CHANGED -> "The file changed. Return and open the latest version."
         PlayerFailure.RANGE -> "The server cannot resume this playback range."
         PlayerFailure.NETWORK -> "Connection lost. Use Reconnect after connectivity returns."
+        PlayerFailure.INCOMPLETE -> "The media response ended unexpectedly. Reconnect to try again."
+        PlayerFailure.SERVER -> "The server could not provide this media response. Try again."
         PlayerFailure.UNSUPPORTED_CODEC, PlayerFailure.DECODER -> "This codec is not supported on this device. Automatic retry is disabled."
         PlayerFailure.UNKNOWN -> "Playback stopped safely because of an unexpected error."
     }
@@ -436,9 +605,4 @@ private fun formatDuration(milliseconds: Long): String {
     return "%d:%02d".format(Locale.US, seconds / 60, seconds % 60)
 }
 
-private fun formatByteCount(bytes: Long): String {
-    if (bytes < 1024) return "$bytes B"
-    val kib = bytes / 1024.0
-    if (kib < 1024) return String.format(Locale.US, "%.1f KiB", kib)
-    return String.format(Locale.US, "%.1f MiB", kib / 1024.0)
-}
+private const val CONTROL_AUTO_HIDE_MS = 3_000L

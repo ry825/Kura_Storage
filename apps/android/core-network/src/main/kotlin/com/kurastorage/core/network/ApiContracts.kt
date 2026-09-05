@@ -129,6 +129,7 @@ data class TextDocumentDto(
     val fileVersion: Long,
     val size: Long,
     val sha256: String,
+    val decodeStatus: String = "EXACT",
 )
 
 @Serializable
@@ -136,6 +137,7 @@ data class SaveTextRequestDto(
     val content: String,
     val expectedVersion: Long,
     val operationId: String,
+    val acknowledgeLossySource: Boolean,
 )
 
 @Serializable

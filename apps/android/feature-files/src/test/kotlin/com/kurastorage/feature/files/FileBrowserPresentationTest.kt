@@ -22,7 +22,7 @@ class FileBrowserPresentationTest {
     fun personalOwnerMetadataOmitsObviousOwnerAndPermission() {
         val metadata = entryMetadata(file(), personalRoot = true, sharedFrom = null)
 
-        assertTrue(metadata.primary.startsWith("Text file • 1.0 KiB"))
+        assertTrue(metadata.primary.startsWith("Text file • 1 KB"))
         assertTrue(metadata.secondary.isEmpty())
     }
 

@@ -93,15 +93,21 @@ run_connected_tests() {
   ANDROID_SERIAL="$device_serial" "$repository_root/apps/android/gradlew" -p "$repository_root/apps/android" \
     :app:connectedDebugAndroidTest \
     :core-data:connectedDebugAndroidTest \
+    :core-database:connectedDebugAndroidTest \
+    :core-ui:connectedDebugAndroidTest \
+    :feature-activity:connectedDebugAndroidTest \
     :feature-auth:connectedDebugAndroidTest \
+    :feature-backup:connectedDebugAndroidTest \
     :feature-connection:connectedDebugAndroidTest \
     :feature-files:connectedDebugAndroidTest \
     :feature-media:connectedDebugAndroidTest \
     :feature-search:connectedDebugAndroidTest \
     :feature-settings:connectedDebugAndroidTest \
     :feature-sharing:connectedDebugAndroidTest \
+    :feature-text:connectedDebugAndroidTest \
     --no-daemon \
-    --no-configuration-cache
+    --no-configuration-cache \
+    --max-workers=1
 }
 
 case "$mode" in

@@ -10,10 +10,12 @@ import com.kurastorage.core.model.media.MediaJobStatus
 import com.kurastorage.core.model.media.MediaPositionMs
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.OriginalMetadata
+import com.kurastorage.core.model.media.VariantMetadata
 import com.kurastorage.core.network.media.MediaAcceptedResponseDto
 import com.kurastorage.core.network.media.MediaApi
 import com.kurastorage.core.network.media.MediaContentNetworkResult
 import com.kurastorage.core.network.media.MediaJobDto
+import com.kurastorage.core.network.media.MediaMetadataNetworkResult
 import okhttp3.Headers
 import okhttp3.Response
 import okhttp3.ResponseBody
@@ -22,6 +24,17 @@ import java.io.OutputStream
 
 interface MediaRepository {
     suspend fun inspectOriginal(fileId: String): OriginalMetadata
+
+    suspend fun inspectVariant(
+        fileId: String,
+        variant: MediaVariant,
+    ): MediaMetadataResult {
+        require(variant == MediaVariant.ORIGINAL)
+        val original = inspectOriginal(fileId)
+        return MediaMetadataResult.Ready(
+            VariantMetadata(variant, original.size, original.mimeType, original.acceptsRanges),
+        )
+    }
 
     suspend fun job(jobId: String): MediaJobSnapshot
 
@@ -32,6 +45,16 @@ interface MediaRepository {
         variant: MediaVariant,
         range: String? = null,
     ): MediaContentResult
+}
+
+sealed interface MediaMetadataResult {
+    data class Ready(
+        val metadata: VariantMetadata,
+    ) : MediaMetadataResult
+
+    data class Generating(
+        val job: MediaJobSnapshot,
+    ) : MediaMetadataResult
 }
 
 sealed interface MediaContentResult {
@@ -84,10 +107,29 @@ class DefaultMediaRepository(
     private val executor: AuthenticatedRequestExecutor,
 ) : MediaRepository {
     override suspend fun inspectOriginal(fileId: String): OriginalMetadata =
+        when (val result = inspectVariant(fileId, MediaVariant.ORIGINAL)) {
+            is MediaMetadataResult.Ready ->
+                OriginalMetadata(result.metadata.size, result.metadata.mimeType, result.metadata.acceptsRanges)
+            is MediaMetadataResult.Generating -> invalidResponse()
+        }
+
+    override suspend fun inspectVariant(
+        fileId: String,
+        variant: MediaVariant,
+    ): MediaMetadataResult =
         executor.execute { token ->
-            api.headOriginal(token, fileId).toAuthenticatedResult { dto ->
-                if (dto.contentLength < 0 || dto.mimeType.isBlank()) invalidResponse()
-                OriginalMetadata(ByteCount(dto.contentLength), dto.mimeType, dto.acceptsRanges)
+            api.headContent(token, fileId, variant).toAuthenticatedResult { result ->
+                when (result) {
+                    is MediaMetadataNetworkResult.Ready -> {
+                        val dto = result.metadata
+                        if (dto.contentLength < 0 || dto.mimeType.isBlank() || !dto.acceptsRanges) invalidResponse()
+                        MediaMetadataResult.Ready(
+                            VariantMetadata(variant, ByteCount(dto.contentLength), dto.mimeType, dto.acceptsRanges),
+                        )
+                    }
+                    is MediaMetadataNetworkResult.Generating ->
+                        MediaMetadataResult.Generating(result.accepted.toSnapshot(variant))
+                }
             }
         }
 
