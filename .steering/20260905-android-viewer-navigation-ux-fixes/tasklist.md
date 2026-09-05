@@ -378,21 +378,21 @@
 
 ### 10.2 Commit・Push・Pull Request作成
 
-- [ ] PR 1をCommit・Pushし、英語のPull Requestを作成する。
-  - [ ] 実装、Test、正式文更新、Steering、匿名化した検証証跡をCommitする。
-  - [ ] 作業BranchをremoteへPushする。
-  - [ ] Titleと本文を英語で作成し、目的、対象Task、変更内容、Test結果、実機/Wi-Fi/清掃結果、影響、未実施事項を記載する。
-  - [ ] Android、Server、Config、SecurityのGitHub Actionsが成功することを確認する。
-  - [ ] Pull RequestはMergeしない。
+- [x] PR 1をCommit・Pushし、英語のPull Requestを作成する。
+  - [x] 実装、Test、正式文更新、Steering、匿名化した検証証跡をCommitする。
+  - [x] 作業BranchをremoteへPushする。
+  - [x] Titleと本文を英語で作成し、目的、対象Task、変更内容、Test結果、実機/Wi-Fi/清掃結果、影響、未実施事項を記載する。
+  - [x] Android、Server、Config、SecurityのGitHub Actionsが成功することを確認する。
+  - [x] Pull RequestはMergeしない。
 
 ### 10.3 Pull Request完了記録
 
-- [ ] `steering`スキルのモード3でPR 1の完了記録を本ファイルへ追加する。
-  - [ ] 完了日とPull Request番号/URLを記録する。
-  - [ ] 実施したTest・Build・静的解析・実機・Wi-Fi・Accessibility・清掃結果を記録する。
-  - [ ] 計画と実装の差分、追加タスクと理由、技術的に不要になったタスク・理由・代替実装、引継ぎを記録する。
-  - [ ] 該当のない項目も「なし」と記載する。
-  - [ ] 完了記録を同じBranchへCommit・Pushし、作成済みPull Requestへ反映されたことを確認する。
+- [x] `steering`スキルのモード3でPR 1の完了記録を本ファイルへ追加する。
+  - [x] 完了日とPull Request番号/URLを記録する。
+  - [x] 実施したTest・Build・静的解析・実機・Wi-Fi・Accessibility・清掃結果を記録する。
+  - [x] 計画と実装の差分、追加タスクと理由、技術的に不要になったタスク・理由・代替実装、引継ぎを記録する。
+  - [x] 該当のない項目も「なし」と記載する。
+  - [x] 完了記録を同じBranchへCommit・Pushし、作成済みPull Requestへ反映されたことを確認する。
 
 ### 10.4 全体振り返り
 
@@ -406,7 +406,33 @@
 
 ## 各Pull Request完了記録
 
-> Pull Request作成後、`steering`スキルのモード3でPR 1の実施結果をここに記録する。今回のPull Requestは1本だけとする。
+### PR 1: Android viewer, document, and navigation UX
+
+- 完了日: 2026-09-06
+- Pull Request: [#63](https://github.com/ry825/Kura_Storage/pull/63)
+- 実施内容:
+  - Video fullscreen・overlay・quality/Range、Photo/PDF viewer、共通Size表示、Favorites/Search/Tags、Settings、Text編集契約、Folder navigationを実装した。
+  - OpenAPIと5つの正式文書、Steering requirements/design/evidenceを実装と同じ変更で更新した。
+- Test・Build・静的解析:
+  - Repository Android検証は1,392 actionable tasks、JVM Test 358件、API 33変更対象Instrumented Test 126件が成功し、ktlint、detekt、Lintも成功した。
+  - Server Release Buildはwarning/error 0、Domain 135件、Application 350件、Integration/Contract 230件、合計715件が成功した。
+  - Config、Deployment構文、Security、`git diff --check`、coverage gateが成功した。
+  - GitHub ActionsのAndroid、Server、Config、Securityがすべて成功した。
+- 実機・Wi-Fi・Accessibility:
+  - Android 13実機の15 module 154件と、最終Media修正後の21件が失敗0で成功した。
+  - Original動画のPlay/Pause、seek、速度、fullscreen、tap overlay、回転、background/foreground、Back、Photo 3画質、PDF取得/render/page/zoom、Favorites/Search/Tags、Settings Light/Darkを確認した。
+  - Local direct Wi-Fi、外部Wi-Fi＋ZeroTier、ZeroTier無効時fail-closed、再有効化後の復元を確認した。SSID/BSSID等は記録していない。
+  - 360dp、拡大文字、Portrait/Landscape、Light/Darkを実機確認し、100%/200%、TalkBack semantics、48dp touch target、4.5:1/3:1 contrastをAPI 33 Testで確認した。
+- 清掃:
+  - Live User/File等のfixtureは作成していない。一時Capture、UI hierarchy、APK copy、bugreportをmanifestのexact IDだけで削除し、残存0件を確認した。
+  - 既存contentや無関係なcacheを削除せず、Dark mode、rotation、Wi-Fi、ZeroTierを復元した。
+- 計画と実装の差分:
+  - 実機でPrimary rowのMedia/Text route逆転、PDF Bitmap recycle race、PlayerSurface tap消費、compact PDF error panelを追加検出し、回帰Testとともに修正した。
+  - 長時間のLive Low/Medium動画変換は、実機で生成待ち状態、Originalでhardware/lifecycle全操作、全variantのContract/Range/Player自動Testを組み合わせて検証した。
+- 追加タスクと理由:
+  - 上記4件の実機固有回帰修正を追加した。既存の自動Testだけでは実描画・Media3 surface・compact端末で検出できなかったため。
+- 技術的に不要になったタスク: なし。
+- 後続Pull Requestへの引継ぎ: なし。このPull RequestはMergeせずreview待ちとする。
 
 ## 全体振り返り
 

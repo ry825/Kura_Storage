@@ -169,7 +169,7 @@ Androidアプリの動画・PDF・テキスト閲覧、Settings、Favorites、Se
 - [x] Androidと関連Serverの必須CI、実機・実Server E2E、Light/Dark、360dp、Landscape、文字200%、TalkBackの確認が成功する。
 - [x] 今回作成したテストデータがmanifest等で追跡され、それらだけが削除されている。
 - [x] 作業前から存在したUser、File、Folder、関連DB row、物理File、派生データ、端末データが削除または変更されていない。
-- [ ] 今回のすべての実装、Test、正式文書更新、検証記録、清掃を1本の英語Pull Requestにまとめる。
+- [x] 今回のすべての実装、Test、正式文書更新、検証記録、清掃を1本の英語Pull Requestにまとめる。
 - [ ] Pull Request作成後に`tasklist.md`へ完了記録を追加し、同じBranchとPull Requestへ反映する。
 
 ## 成功指標
