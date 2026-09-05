@@ -115,9 +115,9 @@
 - [x] PR 1をCommit、Pushし、英語のPull Requestを作成する。
   - [x] 英語本文へ目的、対象Task、変更、Test結果、影響、未実施事項を記載する。
   - [x] CI成功を確認し、Pull RequestはMergeしない。
-- [ ] `各Pull Request完了記録`へPR 1の実施結果を記載する。
+- [x] `各Pull Request完了記録`へPR 1の実施結果を記載する。
   - [x] 完了日、PR番号/URL、Test、計画差分、追加Task、取消Task、PR 2への引継ぎを記載する。
-  - [ ] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。
+  - [x] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。
 
 ---
 
