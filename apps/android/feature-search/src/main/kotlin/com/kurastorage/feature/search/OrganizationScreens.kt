@@ -33,6 +33,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kurastorage.core.model.FavoriteItem
 import com.kurastorage.core.model.FileEntry
@@ -45,9 +46,12 @@ import com.kurastorage.core.ui.LoadingState
 import com.kurastorage.core.ui.accessibility.kuraHeading
 import com.kurastorage.core.ui.components.KuraCard
 import com.kurastorage.core.ui.components.KuraFileEntryRow
+import com.kurastorage.core.ui.components.KuraIconButton
 import com.kurastorage.core.ui.components.KuraStatus
 import com.kurastorage.core.ui.components.KuraStatusBadge
 import com.kurastorage.core.ui.components.KuraStatusPanel
+import com.kurastorage.core.ui.icons.KuraFileType
+import com.kurastorage.core.ui.icons.KuraFileTypeIcon
 
 @Composable
 fun FavoritesScreen(
@@ -57,6 +61,13 @@ fun FavoritesScreen(
     onLoadMore: () -> Unit,
     onOpen: (FavoriteItem) -> Unit,
     shareOptions: List<SearchFilterOption> = emptyList(),
+    thumbnail: @Composable (FavoriteItem) -> Unit = { item ->
+        KuraFileTypeIcon(
+            KuraFileType.from(item.metadata.mimeType, item.metadata.entryType == com.kurastorage.core.model.FileEntryType.FOLDER),
+            contentDescription = if (item.metadata.entryType == com.kurastorage.core.model.FileEntryType.FOLDER) "Folder" else "File",
+        )
+    },
+    onDetails: (FavoriteItem) -> Unit = onOpen,
 ) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -76,7 +87,7 @@ fun FavoritesScreen(
                 else ->
                     LazyColumn(Modifier.weight(1f).testTag("favorites-list"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(state.items, key = { it.id }) { item ->
-                            FavoriteRow(item, onOpen, shareOptions)
+                            FavoriteRow(item, onOpen, onDetails, shareOptions, thumbnail)
                         }
                         state.error?.let { error -> item { Text(error.message, color = MaterialTheme.colorScheme.error) } }
                         if (state.canLoadMore) {
@@ -97,7 +108,9 @@ fun FavoritesScreen(
 private fun FavoriteRow(
     item: FavoriteItem,
     onOpen: (FavoriteItem) -> Unit,
+    onDetails: (FavoriteItem) -> Unit,
     shareOptions: List<SearchFilterOption>,
+    thumbnail: @Composable (FavoriteItem) -> Unit,
 ) {
     val active = item.metadata.status == FileEntryStatus.ACTIVE
     val metadata = item.metadata
@@ -116,6 +129,13 @@ private fun FavoriteRow(
         enabled = active,
         onClick = { onOpen(item) },
         modifier = Modifier.testTag("favorite-${item.id}"),
+        leading = { thumbnail(item) },
+        trailing = {
+            KuraIconButton(
+                contentDescription = "Favorite details: ${metadata.name}",
+                onClick = { onDetails(item) },
+            ) { Text("⋮") }
+        },
     )
 }
 
@@ -288,9 +308,9 @@ fun EntryOrganizationScreen(
 @Composable
 private fun EntrySummary(entry: FileEntry) {
     KuraCard {
-        Text(entry.name, style = MaterialTheme.typography.titleLarge)
-        Text("${entry.entryType} • ${entry.status} • ${entry.owner.displayName}")
-        Text("${entry.permission} (${entry.permissionSource})")
+        Text(entry.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+        Text("${entry.entryType.userLabel()} • ${entry.status.userLabel()} • ${entry.owner.displayName}")
+        Text("${entry.permission.userLabel()} (${entry.permissionSource.userLabel()})")
     }
 }
 
@@ -301,9 +321,46 @@ private fun Header(
     onRefresh: () -> Unit,
     refreshEnabled: Boolean,
 ) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        TextButton(onClick = onBack) { Text("Back") }
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        KuraIconButton("Back", onBack) { Text("←") }
         Text(title, modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.headlineSmall)
-        TextButton(onClick = onRefresh, enabled = refreshEnabled) { Text("Refresh") }
+        KuraIconButton("Refresh", onRefresh, enabled = refreshEnabled) { Text("↻") }
     }
 }
+
+private fun com.kurastorage.core.model.FileEntryType.userLabel(): String =
+    when (this) {
+        com.kurastorage.core.model.FileEntryType.FILE -> "File"
+        com.kurastorage.core.model.FileEntryType.FOLDER -> "Folder"
+        com.kurastorage.core.model.FileEntryType.UNKNOWN -> "Unknown item"
+    }
+
+private fun FileEntryStatus.userLabel(): String =
+    when (this) {
+        FileEntryStatus.ACTIVE -> "Available"
+        FileEntryStatus.MISSING_CANDIDATE -> "Checking file"
+        FileEntryStatus.MISSING -> "File missing"
+        FileEntryStatus.TRASHED -> "In Trash"
+        FileEntryStatus.UNKNOWN -> "Update required"
+    }
+
+private fun com.kurastorage.core.model.SharePermission.userLabel(): String =
+    when (this) {
+        com.kurastorage.core.model.SharePermission.VIEWER -> "Read only"
+        com.kurastorage.core.model.SharePermission.CONTRIBUTOR -> "Can add"
+        com.kurastorage.core.model.SharePermission.EDITOR -> "Can edit"
+        com.kurastorage.core.model.SharePermission.MANAGER -> "Can manage"
+        com.kurastorage.core.model.SharePermission.UNKNOWN -> "Unavailable"
+    }
+
+private fun com.kurastorage.core.model.PermissionSource.userLabel(): String =
+    when (this) {
+        com.kurastorage.core.model.PermissionSource.OWNER -> "Owner"
+        com.kurastorage.core.model.PermissionSource.DIRECT -> "Direct share"
+        com.kurastorage.core.model.PermissionSource.INHERITED -> "Inherited share"
+        com.kurastorage.core.model.PermissionSource.UNKNOWN -> "Unknown source"
+    }

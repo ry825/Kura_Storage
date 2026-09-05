@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -57,6 +58,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,14 +80,12 @@ import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.SearchFileCategory
 import com.kurastorage.core.model.ShareItem
 import com.kurastorage.core.model.ShareScope
-import com.kurastorage.core.model.SupportedTextMimeTypes
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.model.backup.BackupSourceType
 import com.kurastorage.core.model.filePermissionCapabilities
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaVariant
-import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.core.ui.AppDestination
 import com.kurastorage.core.ui.KuraStorageTheme
 import com.kurastorage.core.ui.KuraTheme
@@ -283,6 +283,7 @@ private fun KuraStorageApp(
                     onSubmit = authViewModel::submit,
                     onRetry = navController::navigateToConnection,
                     onAuthenticated = {
+                        mediaContexts.clear()
                         backupUi = container.backupUiServices(checkNotNull(services))
                         navController.navigate(AppDestination.HOME.route) {
                             popUpTo(AppDestination.AUTHENTICATION.route) { inclusive = true }
@@ -812,9 +813,24 @@ private fun KuraStorageApp(
                     },
                     onLoadMore = favoritesViewModel::loadMore,
                     onOpen = { item ->
-                        favoritesViewModel.open(item) { entry -> navController.navigate(entryRoute(entry.id, entry.entryType)) }
+                        favoritesViewModel.open(item) { entry ->
+                            navController.navigate(
+                                favoriteEntryRoute(entry, state.items.map { it.metadata }, mediaContexts),
+                            )
+                        }
                     },
                     shareOptions = shareOptions,
+                    thumbnail = { item ->
+                        FileThumbnail(
+                            item.metadata,
+                            current.media.scopeId,
+                            current.media.imageLoader,
+                            Modifier.size(72.dp),
+                        )
+                    },
+                    onDetails = { item ->
+                        navController.navigate(entryRoute(item.id, item.metadata.entryType))
+                    },
                 )
             }
             composable(AppDestination.TAGS.route) {
@@ -1618,7 +1634,7 @@ private fun settingsRoute(
 
 private fun searchCategoryRoute(category: SearchFileCategory): String = "${AppDestination.SEARCH.route}?category=${category.name}"
 
-private fun entryRoute(
+internal fun entryRoute(
     id: String,
     type: FileEntryType,
 ): String = "shared-entry/$id/${type.name}"
@@ -1688,48 +1704,22 @@ internal fun mediaRoute(
     entry: FileEntry,
     entries: List<FileEntry>,
     contexts: MediaNavigationContextStore,
-): String? {
-    if (entry.entryType != FileEntryType.FILE || entry.status != com.kurastorage.core.model.FileEntryStatus.ACTIVE) return null
-    return when (
-        entry.mimeType
-            ?.substringBefore(';')
-            ?.trim()
-            ?.lowercase()
-    ) {
-        "application/pdf" -> "${AppDestination.PDF_VIEWER.route}/${entry.id}"
-        else ->
-            if (SupportedMediaMimeTypes.isPhoto(entry.mimeType)) {
-                val contextId =
-                    contexts.register(
-                        entries.filter { candidate ->
-                            candidate.entryType == FileEntryType.FILE &&
-                                candidate.status == com.kurastorage.core.model.FileEntryStatus.ACTIVE &&
-                                SupportedMediaMimeTypes.isPhoto(candidate.mimeType)
-                        },
-                    )
-                "${AppDestination.PHOTO_VIEWER.route}/$contextId/${entry.id}"
-            } else if (SupportedMediaMimeTypes.isVideo(entry.mimeType)) {
-                val contextId = contexts.register(entries.filter { SupportedMediaMimeTypes.isVideo(it.mimeType) })
-                "${AppDestination.VIDEO_PLAYER.route}/$contextId/${entry.id}"
-            } else if (SupportedMediaMimeTypes.isAudio(entry.mimeType)) {
-                val contextId = contexts.register(entries.filter { SupportedMediaMimeTypes.isAudio(it.mimeType) })
-                "${AppDestination.AUDIO_PLAYER.route}/$contextId/${entry.id}"
-            } else {
-                null
-            }
-    }
-}
-
-internal fun textRoute(entry: FileEntry): String? {
+): String? =
     if (
-        entry.entryType != FileEntryType.FILE ||
-        entry.status != com.kurastorage.core.model.FileEntryStatus.ACTIVE ||
-        !SupportedTextMimeTypes.isSupported(entry.mimeType)
+        EntryDestinationResolver.resolve(entry) in
+        setOf(EntryDestination.PHOTO, EntryDestination.VIDEO, EntryDestination.AUDIO, EntryDestination.PDF)
     ) {
-        return null
+        directEntryRoute(entry, entries.map(FileEntry::navigationCandidate), contexts)
+    } else {
+        null
     }
-    return "${AppDestination.TEXT_EDITOR.route}/${entry.id}"
-}
+
+internal fun textRoute(entry: FileEntry): String? =
+    if (EntryDestinationResolver.resolve(entry) == EntryDestination.TEXT) {
+        "${AppDestination.TEXT_EDITOR.route}/${entry.id}"
+    } else {
+        null
+    }
 
 internal fun textEditorViewModelKey(
     fileId: String,

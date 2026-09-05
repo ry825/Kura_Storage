@@ -1198,6 +1198,9 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 
 - ユーザーごとにファイルとフォルダをお気に入り登録できる
 - ホーム画面からアクセスできる
+- [x] 写真・動画・PDFは一覧用派生Thumbnail、Folder・音声・Text・非対応Fileは種別Iconを表示し、Thumbnail失敗はIconへfallbackする
+- [x] `ACTIVE`なFolder、写真、動画、音声、PDF、Textは対応画面へ直接開き、非対応または非Active項目は詳細確認へfallbackする
+- [x] Favoritesから開いた写真・動画・音声は、同種のActive項目を一覧の安定表示順で前後閲覧できる
 
 **優先度**: P1（重要）
 

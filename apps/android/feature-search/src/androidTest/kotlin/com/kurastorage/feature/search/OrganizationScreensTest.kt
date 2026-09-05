@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -54,6 +55,66 @@ class OrganizationScreensTest {
         compose.onNodeWithText("Shared from: Shared folder").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Load more").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { assertTrue(opened) }
+    }
+
+    @Test fun favoriteThumbnailEntryTapAndDetailsOverflowRemainIndependent() {
+        var opened = 0
+        var details = 0
+        val favorite = FavoriteItem(metadata().copy(name = "Holiday photo.jpg", mimeType = "image/jpeg"), NOW)
+        compose.setContent {
+            Box(Modifier.width(320.dp)) {
+                FavoritesScreen(
+                    state = FavoritesUiState(listOf(favorite), loading = false),
+                    onBack = {},
+                    onRefresh = {},
+                    onLoadMore = {},
+                    onOpen = { opened++ },
+                    thumbnail = { androidx.compose.material3.Text("Photo preview") },
+                    onDetails = { details++ },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Photo preview").assertIsDisplayed()
+        compose.onNodeWithTag("favorite-$ENTRY").performClick()
+        compose.onNodeWithContentDescription("Favorite details: Holiday photo.jpg").performClick()
+        compose.runOnIdle {
+            assertTrue(opened == 1)
+            assertTrue(details == 1)
+        }
+    }
+
+    @Test fun favoriteFallbackUsesATypeIconWithoutBlockingTheRow() {
+        val favorite = FavoriteItem(metadata().copy(name = "notes.txt", mimeType = "text/plain"), NOW)
+        compose.setContent {
+            FavoritesScreen(FavoritesUiState(listOf(favorite), loading = false), {}, {}, {}, {})
+        }
+
+        compose.onNodeWithTag("favorite-$ENTRY").assertIsDisplayed()
+        compose.onNodeWithContentDescription("File").assertIsDisplayed()
+    }
+
+    @Test fun missingFavoriteKeepsDetailsAvailableWhileEntryTapIsDisabled() {
+        var opened = 0
+        var details = 0
+        val favorite = FavoriteItem(metadata().copy(name = "missing.jpg", status = FileEntryStatus.MISSING), NOW)
+        compose.setContent {
+            FavoritesScreen(
+                state = FavoritesUiState(listOf(favorite), loading = false),
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onOpen = { opened++ },
+                onDetails = { details++ },
+            )
+        }
+
+        compose.onNodeWithTag("favorite-$ENTRY").assertIsNotEnabled().performClick()
+        compose.onNodeWithContentDescription("Favorite details: missing.jpg").performClick()
+        compose.runOnIdle {
+            assertTrue(opened == 0)
+            assertTrue(details == 1)
+        }
     }
 
     @Test fun tagDialogSupportsKeyboardValidationAndDeleteConfirmation() {
