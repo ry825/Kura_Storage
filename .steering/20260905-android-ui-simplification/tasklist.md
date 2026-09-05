@@ -112,11 +112,11 @@
 - [x] PR 1の差分をセルフレビューする。
   - [x] PR 1の目的外変更、秘密情報、絶対Path、デバッグコード、不要依存がない。
   - [x] 実装、Test、正式文書、Steeringの対応が取れている。
-- [ ] PR 1をCommit、Pushし、英語のPull Requestを作成する。
-  - [ ] 英語本文へ目的、対象Task、変更、Test結果、影響、未実施事項を記載する。
-  - [ ] CI成功を確認し、Pull RequestはMergeしない。
+- [x] PR 1をCommit、Pushし、英語のPull Requestを作成する。
+  - [x] 英語本文へ目的、対象Task、変更、Test結果、影響、未実施事項を記載する。
+  - [x] CI成功を確認し、Pull RequestはMergeしない。
 - [ ] `各Pull Request完了記録`へPR 1の実施結果を記載する。
-  - [ ] 完了日、PR番号/URL、Test、計画差分、追加Task、取消Task、PR 2への引継ぎを記載する。
+  - [x] 完了日、PR番号/URL、Test、計画差分、追加Task、取消Task、PR 2への引継ぎを記載する。
   - [ ] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。
 
 ---
@@ -320,13 +320,19 @@
 
 ### PR 1
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析・手動確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したTaskと理由: 未記録
-- 技術的に不要になったTask、理由、代替実装: 未記録
-- 後続Pull Requestへの引継ぎ: 未記録
+- 完了日: 2026-09-05
+- Pull Request: [#60 Simplify Android file browsing navigation and details](https://github.com/ry825/Kura_Storage/pull/60)
+- 実施したTest・Build・静的解析・手動確認:
+  - `:feature-files:testDebugUnitTest`: 26件成功。
+  - `:feature-files:connectedDebugAndroidTest`: API 33 Emulatorで25件成功。Back、Refresh、Search、List/Grid、Entry操作、権限別details、Upload、Rename、Move、Trash、Restore、Missingを確認。
+  - `./scripts/ci/verify-android.sh`: JDK 17・API 36 SDKで1,387タスク成功。Build、Unit Test、ktlint、detekt、Lintを含む。
+  - `git diff --check`: 成功。
+  - GitHub Actions: Android、Server、Config、Securityの4jobが成功。
+  - 360dp、font 100%/200%、Portrait/Landscape、Light/DarkのCompose fixtureとSemantics treeを確認し、`evidence/pr1/`へCaptureと比較結果を保存。
+- 計画と実装の差分: PR 1の機能スコープに差分なし。実ServerでのMedia variant・Original download検証は計画どおりPR 2で行う。
+- 実装中に追加したTaskと理由: 表示ルールをComposeから分離した`FileBrowserPresentation`とUnit Testを追加し、個人/Shared metadataと権限Labelを安定検証可能にした。また再現可能なUI Capture用Compose testと証跡記録を追加した。
+- 技術的に不要になったTask、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ: PR #60の`main`へのMergeを確認するまでPR 2を開始しない。PR 2でPhoto viewerのadaptive layout、Quality自動適用、Favorite/Tags、Original downloadと実機・実Server検証を行う。
 
 ### PR 2
 
