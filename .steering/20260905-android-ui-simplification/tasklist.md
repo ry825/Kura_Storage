@@ -307,11 +307,11 @@
 - [x] PR 3の差分をセルフレビューする。
   - [x] PR 3の目的外変更、秘密情報、絶対Path、デバッグコード、不要依存がない。
   - [x] 実装、Test、実機記録、正式文書、Steeringの対応が取れている。
-- [ ] PR 3をCommit、Pushし、英語のPull Requestを作成する。
-  - [ ] 英語本文へ目的、対象Task、変更、Test結果、実機結果、影響、未実施事項を記載する。
-  - [ ] CI成功を確認し、Pull RequestはMergeしない。
+- [x] PR 3をCommit、Pushし、英語のPull Requestを作成する。（PR #62）
+  - [x] 英語本文へ目的、対象Task、変更、Test結果、実機結果、影響、未実施事項を記載する。（PR #62）
+  - [x] CI成功を確認し、Pull RequestはMergeしない。（Android、Server、Config、Security成功）
 - [ ] `各Pull Request完了記録`へPR 3の実施結果を記載する。
-  - [ ] 完了日、PR番号/URL、Test、実機検証、計画差分、追加Task、取消Task、全体完了への引継ぎを記載する。
+  - [x] 完了日、PR番号/URL、Test、実機検証、計画差分、追加Task、取消Task、全体完了への引継ぎを記載する。
   - [ ] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。
 
 ---
@@ -353,13 +353,20 @@
 
 ### PR 3
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析・手動確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したTaskと理由: 未記録
-- 技術的に不要になったTask、理由、代替実装: 未記録
-- 後続Pull Requestへの引継ぎ: 未記録
+- 完了日: 2026-09-05
+- Pull Request: [#62 Polish Android favorites navigation and media routing](https://github.com/ry825/Kura_Storage/pull/62)
+- 実施したTest・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`: 1,387タスク成功。Build、Unit Test、Coverage、ktlint、detekt、Lint、APK生成を含む。
+  - 対象Unit Test 334件、追加確認の`:app:testDebugUnitTest`、`:app:compileDebugKotlin`、`:app:ktlintCheck`、`:app:detekt`が成功。
+  - API 33 Emulator Connected Testは`app` 9件、`feature-search` 14件、`feature-media` 20件成功。
+  - API 33物理端末Connected Testは`feature-search` 14件、`feature-media` 20件成功。最初のMedia実行はUSB切断で中断したが、再接続後の全20件再実行は0失敗。
+  - OPPO CPH2333 / Android API 33 / 360dp / ZeroTier実Serverで、Favorites Thumbnail、写真の直接遷移と`1 / 2`から`2 / 2`の順序、PDF Viewer、Favorite解除・復元、Tag追加・解除、Low/Medium/Original、Original downloadを確認。
+  - Original downloadはSAFへ14,666,750 bytesを保存し、確認後に検証Fileを削除。Test用UserやServer上のFile/Folderは作成せず、一時Tagを削除して既存状態へ復元した。
+  - GitHub ActionsはAndroid、Server、Config、Securityの4jobが成功。`git diff --check`も成功。
+- 計画と実装の差分: 機能スコープに差分なし。実データScreenshotは個人画像とFile名を含むためPRへ添付せず、目視比較結果だけを`evidence/pr3/README.md`へ記録した。端末メーカーの`WRITE_SETTINGS`制限により実機の文字200%・Landscape切替は行えず、API 33 Compose fixtureとEmulatorで補完した。
+- 実装中に追加したTaskと理由: Favoritesの詳細操作を一覧tapと分離し、Missing項目でもdetailsへ到達できるoverflowとCompose Testを追加した。また認証成功時にもMedia contextをclearし、同じProcess内の再認証で旧SessionのID列が残らないようLifecycle境界を強化した。実機検証後の一時User/File/Folder/Tag/Capture cleanup方針を証跡へ追加した。
+- 技術的に不要になったTask、理由、代替実装: Favorites Thumbnail表示のためのEntry詳細N+1取得は不要と判断した。Search共通metadataのID、MIME、状態、更新日時から既存派生Thumbnail requestを作り、失敗時は種別Iconへfallbackした。
+- 全体完了への引継ぎ: PR 1〜PR 3の実装・検証・完了記録が揃ったため、PR #62をMergeせず維持したまま全体振り返りを記録する。
 
 ---
 
