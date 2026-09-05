@@ -2,8 +2,17 @@ package com.kurastorage.feature.settings
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
@@ -110,6 +119,66 @@ class SettingsHubScreenTest {
         compose.onNodeWithTag("settings-landscape").captureToImage()
     }
 
+    @Test
+    fun settingsTextAndUiColorsMeetContrastThresholdsAcrossSupportedSchemes() {
+        val schemeIndex = mutableIntStateOf(0)
+        var ratios = emptyList<Float>()
+        compose.setContent {
+            val context = LocalContext.current
+            when (schemeIndex.intValue) {
+                0 -> KuraStorageTheme(darkTheme = false) { contrastProbe { ratios = it } }
+                1 -> KuraStorageTheme(darkTheme = true) { contrastProbe { ratios = it } }
+                2 -> MaterialTheme(dynamicLightColorScheme(context)) { contrastProbe { ratios = it } }
+                else -> MaterialTheme(dynamicDarkColorScheme(context)) { contrastProbe { ratios = it } }
+            }
+        }
+
+        repeat(4) { index ->
+            compose.runOnIdle { schemeIndex.intValue = index }
+            compose.waitForIdle()
+            compose.runOnIdle {
+                assertTrue("Normal and supporting text must have at least 4.5:1 contrast", ratios.take(2).all { it >= 4.5f })
+                assertTrue("Actionable UI color must have at least 3:1 contrast", ratios.last() >= 3f)
+            }
+        }
+    }
+
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.scrollSettingsTo(text: String) =
         onNodeWithTag("settings-list").performScrollToNode(hasText(text)).let { onNodeWithText(text) }
+
+    @Composable
+    private fun contrastProbe(onMeasured: (List<Float>) -> Unit) {
+        val colors = MaterialTheme.colorScheme
+        SideEffect {
+            onMeasured(
+                listOf(
+                    contrastRatio(colors.onSurface, colors.surface),
+                    contrastRatio(colors.onSurfaceVariant, colors.surface),
+                    contrastRatio(colors.primary, colors.surface),
+                ),
+            )
+        }
+        SettingsHubScreen(
+            isAdmin = true,
+            accountStatus = "Administrator",
+            connectionStatus = "Local direct",
+            onConnection = {},
+            onMediaSettings = {},
+            onBackupSettings = {},
+            onWifiSettings = {},
+            onCacheManagement = {},
+            onActivity = {},
+            onTrash = {},
+            onLogout = {},
+        )
+    }
+
+    private fun contrastRatio(
+        foreground: Color,
+        background: Color,
+    ): Float {
+        val lighter = maxOf(foreground.luminance(), background.luminance())
+        val darker = minOf(foreground.luminance(), background.luminance())
+        return (lighter + 0.05f) / (darker + 0.05f)
+    }
 }

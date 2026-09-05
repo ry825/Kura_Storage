@@ -111,8 +111,8 @@ class MediaPlayerScreenTest {
                                     MediaVariant.ORIGINAL,
                                     ByteCount(1024),
                                     true,
-                                    "1.0 KiB",
-                                    "Up to 1.0 KiB may be transferred.",
+                                    "1 KB",
+                                    "Up to 1 KB may be transferred.",
                                 ),
                             ),
                     ),
@@ -135,7 +135,7 @@ class MediaPlayerScreenTest {
 
         compose
             .onNodeWithText(
-                "Estimated transfer: 1.0 KiB. Current connection: Mobile network. Range playback may receive less data than the full file. Actual usage can vary.",
+                "Estimated transfer: 1 KB. Current connection: Mobile network. Range playback may receive less data than the full file. Actual usage can vary.",
             ).assertIsDisplayed()
         compose.onNodeWithText("Play original").performClick()
         compose.runOnIdle { assertTrue(confirmed) }
@@ -280,12 +280,52 @@ class MediaPlayerScreenTest {
         }
 
         compose.onNodeWithTag("video-surface").captureToImage()
+        compose.onNodeWithTag("fullscreen-player").assertIsDisplayed()
+        compose.onNodeWithText("Media details").assertDoesNotExist()
+        compose.onNodeWithText("Video quality").assertDoesNotExist()
         compose.onNodeWithText("Exit full screen").assertIsDisplayed()
         compose
             .onNodeWithContentDescription("Forward 10 seconds")
-            .performScrollTo()
             .assertIsDisplayed()
             .assertHeightIsEqualTo(48.dp)
-        compose.onNodeWithContentDescription("Playback speed 3.0 times").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Playback speed 1.0 times").assertIsDisplayed()
+    }
+
+    @Test
+    fun playingFullscreenStartsWithAutoHiddenOverlayAndExposesTapAction() {
+        compose.setContent {
+            MediaPlayerScreen(
+                state =
+                    MediaPlayerUiState(
+                        kind = MediaKind.VIDEO,
+                        player =
+                            PlayerSnapshot(
+                                durationMs = 60_000,
+                                seekable = true,
+                                phase = PlayerPhase.READY,
+                                playWhenReady = true,
+                            ),
+                    ),
+                onBack = {},
+                onPlay = {},
+                onPause = {},
+                onSeek = {},
+                onSkipBack = {},
+                onSkipForward = {},
+                onRate = {},
+                onQuality = {},
+                onConfirmOriginal = {},
+                onCancelOriginal = {},
+                onRetryGeneration = {},
+                onRetryPlayback = {},
+                onBackgroundGeneration = {},
+                onFullscreen = {},
+                fullscreen = true,
+            )
+        }
+
+        compose.onNodeWithTag("player-overlay").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Toggle video controls").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("player-overlay").assertIsDisplayed()
     }
 }

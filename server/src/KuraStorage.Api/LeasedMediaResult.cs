@@ -44,6 +44,11 @@ public sealed class LeasedMediaResult(MediaContent content) : IResult
                 httpContext.Response.Headers.ContentRange = $"bytes {start}-{start + length - 1}/{content.Size}";
             }
 
+            if (HttpMethods.IsHead(httpContext.Request.Method))
+            {
+                return;
+            }
+
             content.Stream.Position = start;
             var buffer = new byte[BufferSize];
             var remaining = length;

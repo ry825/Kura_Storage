@@ -8,7 +8,8 @@ public sealed record TextDocument(
     string Encoding,
     long FileVersion,
     long Size,
-    string Sha256);
+    string Sha256,
+    string DecodeStatus = "EXACT");
 
 public sealed record SaveTextFileCommand(
     Guid ActorUserId,
@@ -17,7 +18,8 @@ public sealed record SaveTextFileCommand(
     string? Content,
     long ExpectedVersion,
     Guid OperationId,
-    string RequestId);
+    string RequestId,
+    bool AcknowledgeLossySource = false);
 
 public sealed record RestoreTextVersionCommand(
     Guid ActorUserId,
@@ -90,6 +92,7 @@ public static class TextFileErrorCodes
     public const string UnsupportedTextType = "UNSUPPORTED_TEXT_TYPE";
     public const string UnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE";
     public const string TextEncodingInvalid = "TEXT_ENCODING_INVALID";
+    public const string LossySourceAcknowledgementRequired = "LOSSY_SOURCE_ACKNOWLEDGEMENT_REQUIRED";
     public const string TextSizeLimitExceeded = "TEXT_SIZE_LIMIT_EXCEEDED";
     public const string FileVersionConflict = "FILE_VERSION_CONFLICT";
     public const string FileVersionNotFound = "FILE_VERSION_NOT_FOUND";
@@ -112,18 +115,8 @@ public enum TextEncodingFailure
 public static class TextFileRules
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-    private static readonly HashSet<string> SupportedMimeTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "text/plain",
-        "text/markdown",
-        "text/csv",
-        "application/json",
-        "application/xml",
-        "application/yaml",
-    };
-
-    public static bool IsSupportedMimeType(string? mimeType) =>
-        mimeType is not null && SupportedMimeTypes.Contains(mimeType);
+    private static readonly UnicodeEncoding StrictUtf16Le = new(false, false, true);
+    private static readonly UnicodeEncoding StrictUtf16Be = new(true, false, true);
 
     public static bool TryEncode(string? content, out byte[] encoded) =>
         TryEncode(content, out encoded, out _);
@@ -134,6 +127,28 @@ public static class TextFileRules
         out TextEncodingFailure failure)
     {
         encoded = [];
+        if (!TryNormalize(content, out var normalized, out failure))
+        {
+            return false;
+        }
+
+        var byteCount = StrictUtf8.GetByteCount(normalized);
+        if (byteCount > FileVersionRecord.MaximumContentBytes)
+        {
+            failure = TextEncodingFailure.SizeLimitExceeded;
+            return false;
+        }
+
+        encoded = StrictUtf8.GetBytes(normalized);
+        return true;
+    }
+
+    public static bool TryNormalize(
+        string? content,
+        out string normalized,
+        out TextEncodingFailure failure)
+    {
+        normalized = string.Empty;
         failure = TextEncodingFailure.None;
         if (content is null)
         {
@@ -141,23 +156,55 @@ public static class TextFileRules
             return false;
         }
 
-        var normalized = content.Length > 0 && content[0] == '\uFEFF' ? content[1..] : content;
+        normalized = content.Length > 0 && content[0] == '\uFEFF' ? content[1..] : content;
         try
         {
-            var byteCount = StrictUtf8.GetByteCount(normalized);
-            if (byteCount > FileVersionRecord.MaximumContentBytes)
-            {
-                failure = TextEncodingFailure.SizeLimitExceeded;
-                return false;
-            }
-
-            encoded = StrictUtf8.GetBytes(normalized);
+            _ = StrictUtf8.GetByteCount(normalized);
             return true;
         }
         catch (EncoderFallbackException)
         {
             failure = TextEncodingFailure.InvalidEncoding;
             return false;
+        }
+    }
+
+    public static byte[] Encode(string content, string sourceEncoding)
+    {
+        var normalized = content.Length > 0 && content[0] == '\uFEFF' ? content[1..] : content;
+        if (sourceEncoding == "UTF-16LE" || sourceEncoding == "UTF-16BE")
+        {
+            var encoding = sourceEncoding == "UTF-16LE" ? StrictUtf16Le : StrictUtf16Be;
+            var body = encoding.GetBytes(normalized);
+            var preamble = sourceEncoding == "UTF-16LE" ? new byte[] { 0xff, 0xfe } : [0xfe, 0xff];
+            return [.. preamble, .. body];
+        }
+
+        return StrictUtf8.GetBytes(normalized);
+    }
+
+    public static TextDecodeResult Decode(byte[] bytes)
+    {
+        try
+        {
+            if (bytes.AsSpan().StartsWith(new byte[] { 0xef, 0xbb, 0xbf }))
+            {
+                return new TextDecodeResult(StrictUtf8.GetString(bytes, 3, bytes.Length - 3), "UTF-8", "EXACT");
+            }
+            if (bytes.AsSpan().StartsWith(new byte[] { 0xff, 0xfe }))
+            {
+                return new TextDecodeResult(StrictUtf16Le.GetString(bytes, 2, bytes.Length - 2), "UTF-16LE", "EXACT");
+            }
+            if (bytes.AsSpan().StartsWith(new byte[] { 0xfe, 0xff }))
+            {
+                return new TextDecodeResult(StrictUtf16Be.GetString(bytes, 2, bytes.Length - 2), "UTF-16BE", "EXACT");
+            }
+
+            return new TextDecodeResult(StrictUtf8.GetString(bytes), "UTF-8", "EXACT");
+        }
+        catch (DecoderFallbackException)
+        {
+            return new TextDecodeResult(Encoding.UTF8.GetString(bytes), "UTF-8", "LOSSY");
         }
     }
 
@@ -178,3 +225,5 @@ public static class TextFileRules
         _ => throw new ArgumentOutOfRangeException(nameof(value)),
     };
 }
+
+public sealed record TextDecodeResult(string Content, string Encoding, string DecodeStatus);

@@ -14,6 +14,7 @@ import com.kurastorage.core.data.media.TemporaryPdfStore
 import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
+import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.media.OriginalMetadata
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,20 @@ import kotlinx.coroutines.launch
 
 enum class PdfLoadState { LOADING_METADATA, CONFIRMING, DOWNLOADING, RENDERING, READY, FAILED }
 
+enum class PdfFailure {
+    AUTHENTICATION,
+    PERMISSION,
+    NOT_FOUND,
+    TOO_LARGE,
+    STORAGE,
+    INCOMPLETE,
+    CORRUPT,
+    PASSWORD_PROTECTED,
+    RENDER,
+    NETWORK,
+    UNKNOWN,
+}
+
 data class PdfViewerUiState(
     val file: FileEntry? = null,
     val metadata: OriginalMetadata? = null,
@@ -32,7 +47,7 @@ data class PdfViewerUiState(
     val pageIndex: Int = 0,
     val pageCount: Int = 0,
     val zoom: Float = 1f,
-    val error: String? = null,
+    val failure: PdfFailure? = null,
 )
 
 @Suppress("TooManyFunctions")
@@ -59,8 +74,27 @@ class PdfViewerViewModel(
         val file = mutableState.value.file ?: return
         val metadata = mutableState.value.metadata ?: return
         if (mutableState.value.loadState != PdfLoadState.CONFIRMING) return
+        open(file, metadata)
+    }
+
+    fun retryOpen() {
+        val current = mutableState.value
+        if (current.loadState != PdfLoadState.FAILED) return
+        val file = current.file
+        val metadata = current.metadata
+        if (file == null || metadata == null) {
+            inspect()
+        } else {
+            open(file, metadata)
+        }
+    }
+
+    private fun open(
+        file: FileEntry,
+        metadata: OriginalMetadata,
+    ) {
         viewModelScope.launch {
-            mutableState.update { it.copy(loadState = PdfLoadState.DOWNLOADING, error = null) }
+            mutableState.update { it.copy(loadState = PdfLoadState.DOWNLOADING, failure = null) }
             runCatching {
                 val cached = store.download(file.id, file.fileVersion, metadata)
                 PdfDocumentController.open(store.acquire(cached))
@@ -69,7 +103,7 @@ class PdfViewerViewModel(
                 document = opened
                 mutableState.update { it.copy(pageCount = opened.pageCount, pageIndex = 0) }
                 render()
-            }.onFailure(::fail)
+            }.onFailure { fail(it, PdfFailure.CORRUPT) }
         }
     }
 
@@ -78,6 +112,7 @@ class PdfViewerViewModel(
         height: Int,
     ) {
         if (width <= 0 || height <= 0) return
+        if (width == viewportWidth && height == viewportHeight) return
         viewportWidth = width
         viewportHeight = height
         if (document != null) render()
@@ -109,12 +144,12 @@ class PdfViewerViewModel(
                     metadata.mimeType
                         .substringBefore(';')
                         .trim()
-                        .lowercase() != "application/pdf" -> fail(InvalidPdfException())
-                    !metadata.acceptsRanges -> fail(InvalidPdfException())
-                    metadata.size.value > TemporaryPdfStore.MAX_FILE_BYTES -> fail(PdfTooLargeException())
+                        .lowercase() != "application/pdf" -> fail(InvalidPdfException(), PdfFailure.CORRUPT)
+                    !metadata.acceptsRanges -> fail(InvalidPdfException(), PdfFailure.INCOMPLETE)
+                    metadata.size.value > TemporaryPdfStore.MAX_FILE_BYTES -> fail(PdfTooLargeException(), PdfFailure.TOO_LARGE)
                     else -> mutableState.value = PdfViewerUiState(file, metadata, PdfLoadState.CONFIRMING)
                 }
-            }.onFailure(::fail)
+            }.onFailure { fail(it, PdfFailure.UNKNOWN) }
         }
     }
 
@@ -125,33 +160,34 @@ class PdfViewerViewModel(
         renderJob =
             viewModelScope.launch {
                 mutableState.update {
-                    it.bitmap?.recycle()
-                    it.copy(loadState = PdfLoadState.RENDERING, bitmap = null)
+                    // Keep the published bitmap alive while Compose may still hold its display list.
+                    // Bitmap pixels are heap-managed; recycling here races the UI renderer.
+                    it.copy(loadState = PdfLoadState.RENDERING)
                 }
                 runCatching {
                     active.render(snapshot.pageIndex, viewportWidth, viewportHeight, snapshot.zoom)
                 }.onSuccess { bitmap ->
                     mutableState.update { current ->
                         if (current.pageIndex == snapshot.pageIndex && current.zoom == snapshot.zoom) {
-                            current.bitmap?.takeUnless { it === bitmap }?.recycle()
                             current.copy(loadState = PdfLoadState.READY, bitmap = bitmap)
                         } else {
+                            // This bitmap was never published to Compose and remains safe to recycle.
                             bitmap.recycle()
                             current
                         }
                     }
-                }.onFailure(::fail)
+                }.onFailure { fail(it, PdfFailure.RENDER) }
             }
     }
 
-    private fun fail(error: Throwable) {
-        val message =
-            when (error) {
-                is PdfTooLargeException -> "PDF is larger than 256 MiB. Download it instead."
-                is InsufficientPdfStorageException -> "Not enough private storage is available for safe PDF viewing. Download it instead."
-                else -> "This PDF could not be opened safely. Download it instead."
-            }
-        mutableState.update { it.copy(loadState = PdfLoadState.FAILED, bitmap = null, error = message) }
+    private fun fail(
+        error: Throwable,
+        fallback: PdfFailure,
+    ) {
+        val failure = error.toPdfFailure(fallback)
+        mutableState.update {
+            it.copy(loadState = PdfLoadState.FAILED, bitmap = null, failure = failure)
+        }
     }
 
     override fun onCleared() {
@@ -160,7 +196,6 @@ class PdfViewerViewModel(
 
     fun closeDocument() {
         renderJob?.cancel()
-        mutableState.value.bitmap?.recycle()
         document?.close()
         document = null
         if (mutableState.value.metadata != null && mutableState.value.loadState != PdfLoadState.FAILED) {
@@ -178,3 +213,32 @@ class PdfViewerViewModel(
         const val DEFAULT_VIEWPORT_HEIGHT = 1_920
     }
 }
+
+@Suppress("CyclomaticComplexMethod")
+private fun Throwable.toPdfFailure(fallback: PdfFailure): PdfFailure =
+    when (this) {
+        is PdfTooLargeException -> PdfFailure.TOO_LARGE
+        is InsufficientPdfStorageException -> PdfFailure.STORAGE
+        is InvalidPdfException -> PdfFailure.CORRUPT
+        is KuraStorageException.CredentialUnavailable -> PdfFailure.AUTHENTICATION
+        is KuraStorageException.Network -> PdfFailure.NETWORK
+        is KuraStorageException.InvalidServerResponse -> PdfFailure.INCOMPLETE
+        is KuraStorageException.Api ->
+            when (error.statusCode) {
+                HTTP_UNAUTHORIZED -> PdfFailure.AUTHENTICATION
+                HTTP_FORBIDDEN -> PdfFailure.PERMISSION
+                HTTP_NOT_FOUND -> PdfFailure.NOT_FOUND
+                else -> PdfFailure.NETWORK
+            }
+        is SecurityException ->
+            if (message?.contains("password", ignoreCase = true) == true) {
+                PdfFailure.PASSWORD_PROTECTED
+            } else {
+                PdfFailure.PERMISSION
+            }
+        else -> fallback
+    }
+
+private const val HTTP_UNAUTHORIZED = 401
+private const val HTTP_FORBIDDEN = 403
+private const val HTTP_NOT_FOUND = 404

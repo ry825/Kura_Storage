@@ -113,12 +113,19 @@ class KuraStorageApiContractTest {
             api.getText("token", DEVICE_ID)
             assertEquals("/api/v1/files/$DEVICE_ID/text", server.takeRequest().path)
 
-            api.saveText("token", DEVICE_ID, SaveTextRequestDto("updated", 4, IDEMPOTENCY_KEY))
+            api.saveText(
+                "token",
+                DEVICE_ID,
+                SaveTextRequestDto("updated", 4, IDEMPOTENCY_KEY, false),
+            )
             val save = server.takeRequest()
             assertEquals("PUT", save.method)
             assertEquals("/api/v1/files/$DEVICE_ID/text", save.path)
             assertEquals(
-                compactJson("""{"content":"updated","expectedVersion":4,"operationId":"$IDEMPOTENCY_KEY"}"""),
+                compactJson(
+                    """{"content":"updated","expectedVersion":4,""" +
+                        """"operationId":"$IDEMPOTENCY_KEY","acknowledgeLossySource":false}""",
+                ),
                 compactJson(save.body.readUtf8()),
             )
 
@@ -145,7 +152,7 @@ class KuraStorageApiContractTest {
             )
             val conflict =
                 runCatching {
-                    api.saveText("token", DEVICE_ID, SaveTextRequestDto("updated", 3, IDEMPOTENCY_KEY))
+                    api.saveText("token", DEVICE_ID, SaveTextRequestDto("updated", 3, IDEMPOTENCY_KEY, false))
                 }.exceptionOrNull() as KuraStorageException.Api
             assertEquals(ErrorCode.FILE_VERSION_CONFLICT, conflict.error.code)
 
@@ -623,7 +630,8 @@ class KuraStorageApiContractTest {
         const val TIME = "2026-08-23T00:00:00Z"
         const val SHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         const val TEXT_DOCUMENT_RESPONSE =
-            """{"content":"hello","encoding":"UTF-8","fileVersion":4,"size":5,"sha256":"$SHA256"}"""
+            """{"content":"hello","encoding":"UTF-8","decodeStatus":"EXACT",""" +
+                """"fileVersion":4,"size":5,"sha256":"$SHA256"}"""
         const val TEXT_MUTATION_RESPONSE =
             """{"fileVersion":5,"size":7,"sha256":"$SHA256","changeKind":"TEXT_EDIT","createdAt":"$TIME"}"""
         const val RESTORE_RESPONSE =

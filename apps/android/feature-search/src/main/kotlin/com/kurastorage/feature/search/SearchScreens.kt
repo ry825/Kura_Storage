@@ -59,6 +59,8 @@ import com.kurastorage.core.ui.KuraTheme
 import com.kurastorage.core.ui.LoadingState
 import com.kurastorage.core.ui.accessibility.kuraHeading
 import com.kurastorage.core.ui.components.KuraFileEntryRow
+import com.kurastorage.core.ui.icons.KuraFileType
+import com.kurastorage.core.ui.icons.KuraFileTypeIcon
 import java.time.Duration
 import java.time.Instant
 
@@ -84,6 +86,12 @@ fun SearchScreen(
     categoryMode: SearchFileCategory? = null,
     onClear: () -> Unit = {},
     onFavorites: () -> Unit = {},
+    thumbnail: @Composable (SearchResultItem) -> Unit = { item ->
+        KuraFileTypeIcon(
+            KuraFileType.from(item.mimeType, item.entryType == FileEntryType.FOLDER),
+            contentDescription = if (item.entryType == FileEntryType.FOLDER) "Folder" else "File",
+        )
+    },
 ) {
     var updatedFrom by remember(state.input.updatedFrom) {
         mutableStateOf(
@@ -262,7 +270,7 @@ fun SearchScreen(
                     Text("Browse favorites")
                 }
             }
-            searchResults(state, onRefresh, onLoadMore, onOpen, shareOptions)
+            searchResults(state, onRefresh, onLoadMore, onOpen, shareOptions, thumbnail)
         }
     }
 }
@@ -348,6 +356,7 @@ private fun LazyListScope.searchResults(
     onLoadMore: () -> Unit,
     onOpen: (SearchResultItem) -> Unit,
     shareOptions: List<SearchFilterOption>,
+    thumbnail: @Composable (SearchResultItem) -> Unit,
 ) {
     when {
         state.loading -> item { LoadingState("Searching") }
@@ -355,7 +364,7 @@ private fun LazyListScope.searchResults(
             item { ErrorState(state.error.message, state.error.requestId, onRefresh) }
         state.hasSearched && state.items.isEmpty() -> item { EmptyState("No matching files or folders.") }
         else -> {
-            items(state.items, key = { it.id }) { item -> SearchResultRow(item, onOpen, shareOptions) }
+            items(state.items, key = { it.id }) { item -> SearchResultRow(item, onOpen, shareOptions, thumbnail) }
             if (state.error != null) item { Text(state.error.message, color = MaterialTheme.colorScheme.error) }
             if (state.canLoadMore) {
                 item {
@@ -379,6 +388,7 @@ private fun SearchResultRow(
     item: SearchResultItem,
     onOpen: (SearchResultItem) -> Unit,
     shareOptions: List<SearchFilterOption>,
+    thumbnail: @Composable (SearchResultItem) -> Unit,
 ) {
     val active = item.status == FileEntryStatus.ACTIVE && item.entryType != FileEntryType.UNKNOWN
     KuraFileEntryRow(
@@ -393,9 +403,11 @@ private fun SearchResultRow(
         size = item.size.takeIf { item.entryType == FileEntryType.FILE },
         sharedFrom = item.shareTargetId?.let { shareLabel(it, shareOptions) },
         contextLine = item.fileCategory?.displayName(),
+        visual = true,
         enabled = active,
         onClick = { onOpen(item) },
         modifier = Modifier.testTag("search-result-${item.id}"),
+        leading = { thumbnail(item) },
     )
 }
 

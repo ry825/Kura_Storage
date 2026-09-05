@@ -162,8 +162,10 @@ class AndroidMediaPlayerController(
             dataError is MediaDataSourceIOException.Http && dataError.statusCode in setOf(403, 404) -> PlayerFailure.PERMISSION
             dataError is MediaDataSourceIOException.Http && dataError.statusCode == 409 -> PlayerFailure.FILE_CHANGED
             dataError is MediaDataSourceIOException.Http && dataError.statusCode == 416 -> PlayerFailure.RANGE
+            dataError is MediaDataSourceIOException.InvalidRange -> PlayerFailure.RANGE
             dataError is MediaDataSourceIOException.Network -> PlayerFailure.NETWORK
-            dataError is MediaDataSourceIOException.Incomplete -> PlayerFailure.NETWORK
+            dataError is MediaDataSourceIOException.Incomplete -> PlayerFailure.INCOMPLETE
+            dataError is MediaDataSourceIOException.Http -> PlayerFailure.SERVER
             errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> PlayerFailure.UNSUPPORTED_CODEC
             errorCode in DECODER_ERROR_CODES -> PlayerFailure.DECODER
             findCause<DataSourceException>() != null -> PlayerFailure.NETWORK

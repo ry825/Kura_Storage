@@ -20,6 +20,60 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
     : IClassFixture<PostgreSqlAuthFlowFixture>
 {
     [Fact]
+    public async Task TextEndpoints_DecodeUtf16AndRequireAcknowledgementForLossyArbitraryMime()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync(
+            $"text-decode-{Guid.NewGuid():N}",
+            "text-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+
+        var utf16 = new UnicodeEncoding(false, true, true);
+        var utf16Bytes = utf16.GetPreamble().Concat(utf16.GetBytes("utf16 sentinel")).ToArray();
+        var utf16Id = await UploadAsync(client, rootId, "opaque.data", utf16Bytes, "application/octet-stream");
+        using (var read = await client.GetAsync($"/api/v1/files/{utf16Id}/text"))
+        {
+            read.EnsureSuccessStatusCode();
+            using var body = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+            Assert.Equal("UTF-16LE", body.RootElement.GetProperty("encoding").GetString());
+            Assert.Equal("EXACT", body.RootElement.GetProperty("decodeStatus").GetString());
+            Assert.Equal("utf16 sentinel", body.RootElement.GetProperty("content").GetString());
+        }
+
+        var lossyBytes = new byte[] { 0x66, 0x6f, 0x80, 0x6f };
+        var lossyId = await UploadAsync(client, rootId, "photo.jpg", lossyBytes, "image/jpeg");
+        using (var read = await client.GetAsync($"/api/v1/files/{lossyId}/text"))
+        {
+            read.EnsureSuccessStatusCode();
+            using var body = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+            Assert.Equal("LOSSY", body.RootElement.GetProperty("decodeStatus").GetString());
+            Assert.Equal("fo\uFFFDo", body.RootElement.GetProperty("content").GetString());
+        }
+
+        using (var rejected = await client.PutAsJsonAsync(
+                   $"/api/v1/files/{lossyId}/text",
+                   new { content = "replacement", expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = false }))
+        {
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, rejected.StatusCode);
+            await AssertErrorAsync(rejected, "LOSSY_SOURCE_ACKNOWLEDGEMENT_REQUIRED");
+        }
+
+        using (var accepted = await client.PutAsJsonAsync(
+                   $"/api/v1/files/{lossyId}/text",
+                   new { content = "replacement", expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = true }))
+        {
+            accepted.EnsureSuccessStatusCode();
+        }
+
+        using (var past = await client.GetAsync($"/api/v1/files/{lossyId}/versions/1/text"))
+        {
+            past.EnsureSuccessStatusCode();
+            using var body = JsonDocument.Parse(await past.Content.ReadAsStringAsync());
+            Assert.Equal("LOSSY", body.RootElement.GetProperty("decodeStatus").GetString());
+        }
+    }
+
+    [Fact]
     public async Task TextVersionEndpoints_SaveConflictHistoryPastTextRestoreAndRetry()
     {
         var username = $"text-owner-{Guid.NewGuid():N}";
@@ -41,7 +95,7 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
         var saveOperation = Guid.NewGuid();
         using (var savedResponse = await client.PutAsJsonAsync(
                    $"/api/v1/files/{fileId}/text",
-                   new { content = "\uFEFFedited sentinel β", expectedVersion = 1, operationId = saveOperation }))
+                   new { content = "\uFEFFedited sentinel β", expectedVersion = 1, operationId = saveOperation, acknowledgeLossySource = false }))
         {
             savedResponse.EnsureSuccessStatusCode();
             using var saved = JsonDocument.Parse(await savedResponse.Content.ReadAsStringAsync());
@@ -51,7 +105,7 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
 
         using (var retrySaveResponse = await client.PutAsJsonAsync(
                    $"/api/v1/files/{fileId}/text",
-                   new { content = "\uFEFFedited sentinel β", expectedVersion = 1, operationId = saveOperation }))
+                   new { content = "\uFEFFedited sentinel β", expectedVersion = 1, operationId = saveOperation, acknowledgeLossySource = false }))
         {
             retrySaveResponse.EnsureSuccessStatusCode();
             using var retry = JsonDocument.Parse(await retrySaveResponse.Content.ReadAsStringAsync());
@@ -60,7 +114,7 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
 
         using (var conflictResponse = await client.PutAsJsonAsync(
                    $"/api/v1/files/{fileId}/text",
-                   new { content = "must not win", expectedVersion = 1, operationId = Guid.NewGuid() }))
+                   new { content = "must not win", expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = false }))
         {
             Assert.Equal(HttpStatusCode.Conflict, conflictResponse.StatusCode);
             await AssertErrorAsync(conflictResponse, "FILE_VERSION_CONFLICT");
@@ -152,7 +206,7 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
 
         using (var unknownResponse = await client.PutAsJsonAsync(
                    $"/api/v1/files/{fileId}/text",
-                   new { content = "x", expectedVersion = 1, operationId = Guid.NewGuid(), unknown = true }))
+                   new { content = "x", expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = false, unknown = true }))
         {
             Assert.Equal(HttpStatusCode.BadRequest, unknownResponse.StatusCode);
             await AssertErrorAsync(unknownResponse, "VALIDATION_FAILED");
@@ -170,7 +224,7 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
         var oversized = new string('a', checked((int)KuraStorage.Domain.Files.FileVersionRecord.MaximumContentBytes + 1));
         using (var oversizedResponse = await client.PutAsJsonAsync(
                    $"/api/v1/files/{fileId}/text",
-                   new { content = oversized, expectedVersion = 1, operationId = Guid.NewGuid() }))
+                   new { content = oversized, expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = false }))
         {
             Assert.Equal(HttpStatusCode.RequestEntityTooLarge, oversizedResponse.StatusCode);
             await AssertErrorAsync(oversizedResponse, "TEXT_SIZE_LIMIT_EXCEEDED");
@@ -237,7 +291,7 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
         using (var viewerRead = await member.GetAsync($"/api/v1/files/{fileId}/text"))
         using (var viewerWrite = await member.PutAsJsonAsync(
                    $"/api/v1/files/{fileId}/text",
-                   new { content = "denied", expectedVersion = 1, operationId = Guid.NewGuid() }))
+                   new { content = "denied", expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = false }))
         using (var adminRead = await admin.GetAsync($"/api/v1/files/{fileId}/versions"))
         {
             viewerRead.EnsureSuccessStatusCode();
@@ -254,10 +308,10 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
 
         var ownerSave = owner.PutAsJsonAsync(
             $"/api/v1/files/{fileId}/text",
-            new { content = "owner value", expectedVersion = 1, operationId = Guid.NewGuid() });
+            new { content = "owner value", expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = false });
         var memberSave = member.PutAsJsonAsync(
             $"/api/v1/files/{fileId}/text",
-            new { content = "member value", expectedVersion = 1, operationId = Guid.NewGuid() });
+            new { content = "member value", expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = false });
         var responses = await Task.WhenAll(ownerSave, memberSave);
         try
         {
@@ -440,7 +494,7 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
 
         var saveTask = client.PutAsJsonAsync(
             $"/api/v1/files/{fileId}/text",
-            new { content = "after trash race", expectedVersion = 1, operationId = Guid.NewGuid() });
+            new { content = "after trash race", expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = false });
         var trashTask = client.DeleteAsync($"/api/v1/files/{fileId}");
         var results = await Task.WhenAll(saveTask, trashTask);
         try
@@ -519,7 +573,7 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
             "text/plain");
         var saveTask = client.PutAsJsonAsync(
             $"/api/v1/files/{fileId}/text",
-            new { content = "after move", expectedVersion = 1, operationId = Guid.NewGuid() });
+            new { content = "after move", expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = false });
         var moveRequest = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/files/{fileId}")
         {
             Content = JsonContent.Create(new { parentId = folderId }),
@@ -570,7 +624,7 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
             "text/plain");
         using (var versionTwo = await client.PutAsJsonAsync(
                    $"/api/v1/files/{fileId}/text",
-                   new { content = "two", expectedVersion = 1, operationId = Guid.NewGuid() }))
+                   new { content = "two", expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = false }))
         {
             versionTwo.EnsureSuccessStatusCode();
         }
@@ -580,7 +634,7 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
             new { expectedVersion = 2, operationId = Guid.NewGuid() });
         var saveTask = client.PutAsJsonAsync(
             $"/api/v1/files/{fileId}/text",
-            new { content = "three", expectedVersion = 2, operationId = Guid.NewGuid() });
+            new { content = "three", expectedVersion = 2, operationId = Guid.NewGuid(), acknowledgeLossySource = false });
         var responses = await Task.WhenAll(restoreTask, saveTask);
         try
         {
@@ -653,7 +707,7 @@ public sealed class TextVersionApiTests(PostgreSqlAuthFlowFixture fixture, ITest
         var save = Stopwatch.StartNew();
         using (var response = await client.PutAsJsonAsync(
                    $"/api/v1/files/{fileId}/text",
-                   new { content = editedText, expectedVersion = 1, operationId = Guid.NewGuid() }))
+                   new { content = editedText, expectedVersion = 1, operationId = Guid.NewGuid(), acknowledgeLossySource = false }))
         {
             response.EnsureSuccessStatusCode();
         }

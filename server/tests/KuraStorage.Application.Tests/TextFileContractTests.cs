@@ -7,26 +7,17 @@ namespace KuraStorage.Application.Tests;
 
 public sealed class TextFileContractTests
 {
-    [Theory]
-    [InlineData("text/plain")]
-    [InlineData("text/markdown")]
-    [InlineData("text/csv")]
-    [InlineData("application/json")]
-    [InlineData("application/xml")]
-    [InlineData("application/yaml")]
-    public void SupportedMimeTypes_AreAcceptedCaseInsensitively(string mimeType)
+    [Fact]
+    public void Decode_UsesBomPrecedenceAndLossyUtf8Fallback()
     {
-        Assert.True(TextFileRules.IsSupportedMimeType(mimeType.ToUpperInvariant()));
-    }
+        var utf16 = new UnicodeEncoding(false, true, true);
+        var utf16Bytes = utf16.GetPreamble().Concat(utf16.GetBytes("hello")).ToArray();
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("image/jpeg")]
-    [InlineData("text/html")]
-    public void UnknownOrMissingMimeTypes_AreRejected(string? mimeType)
-    {
-        Assert.False(TextFileRules.IsSupportedMimeType(mimeType));
+        var exact = TextFileRules.Decode(utf16Bytes);
+        var lossy = TextFileRules.Decode([0x66, 0x80]);
+
+        Assert.Equal(new TextDecodeResult("hello", "UTF-16LE", "EXACT"), exact);
+        Assert.Equal(new TextDecodeResult("f\uFFFD", "UTF-8", "LOSSY"), lossy);
     }
 
     [Fact]

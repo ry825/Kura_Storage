@@ -1958,9 +1958,9 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 - `FAILED`かつRetry可能な派生生成だけを、監査可能な新しい`QUEUED` Jobとして明示的に再登録する。
 - 再試行時にも元ファイルの閲覧権限と現在Versionを再確認する。
 
-#### `HEAD /api/v1/files/{fileId}/content?variant=original`
+#### `HEAD /api/v1/files/{fileId}/content?variant={variant}`
 
-ファイルサイズ、MIMEタイプ、Range対応を確認する。
+`original`、`image-low`、`image-medium`、`video-low`、`video-medium`について、そのvariant自身のファイルサイズ、MIMEタイプ、Range対応を本文なしで確認する。完成済みの場合は`200`と`Content-Length`、`Content-Type`、`Accept-Ranges: bytes`を返す。派生データが未生成または生成中の場合は`202`と`X-Kura-Media-Job-Id`、`Location`、`Retry-After`を返し、元FileのSizeで代用しない。認証・認可・存在秘匿と生成失敗はGETと同じ型付きError契約を使用する。
 
 ### 8.6 MVP後: 動画・音声再生
 
@@ -1990,7 +1990,7 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 
 ### 8.7 MVP後: テキスト
 
-取得・編集対象はUTF-8として厳密にDecodeできる最大1 MiBのファイルに限定する。許可MIMEは`text/plain`、`text/markdown`、`text/csv`、`application/json`、`application/xml`、`application/yaml`とし、それ以外のMIME、UTF-8として不正なByte列、上限超過を拒否する。UTF-8 BOMは取得時に除去し、保存時はBOMなしUTF-8へ正規化する。
+取得候補はMIMEや`.txt`拡張子だけで限定せず、`ACTIVE`、現在`VIEWER`以上、raw Size 1 MiB以下を必須条件とする。UTF-8 BOM、UTF-16LE BOM、UTF-16BE BOM、BOMなし厳密UTF-8の順でexact decodeする。exact decodeできないByte列はUTF-8 replacement previewと`decodeStatus: LOSSY`を返す。NULを含む、またはTab・改行・復帰・Form Feedを除くISO制御文字が全文字数の2%を超える内容はEditorで自動表示を止め、利用者がDetailsの警告付き`Open as text`から明示した場合だけ表示する。
 
 #### `GET /api/v1/files/{fileId}/text`
 
@@ -1998,6 +1998,7 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 {
   "content": "text content",
   "encoding": "UTF-8",
+  "decodeStatus": "EXACT",
   "fileVersion": 4,
   "size": 12,
   "sha256": "64-character-lowercase-hex"
@@ -2010,11 +2011,12 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 {
   "content": "updated content",
   "expectedVersion": 4,
-  "operationId": "b1cf0e84-e0cc-4af5-8123-0f57baf7eeec"
+  "operationId": "b1cf0e84-e0cc-4af5-8123-0f57baf7eeec",
+  "acknowledgeLossySource": false
 }
 ```
 
-`Content-Type: application/json`を必須とし、現在`EDITOR`以上を要求する。成功時は新しい`fileVersion`、Size、SHA-256、変更契機`TEXT_EDIT`、作成日時を返す。同じ`operationId`と同じPayloadの再送は同じ結果を返して重複versionを作らず、異なるPayloadでの再利用は`409 IDEMPOTENCY_CONFLICT`とする。現在versionが`expectedVersion`と異なる場合は`409 FILE_VERSION_CONFLICT`を返す。
+`Content-Type: application/json`を必須とし、現在`EDITOR`以上を要求する。exact UTF-8はUTF-8で、BOM付きUTF-16LE/BEは認識した元encodingで保存する。`LOSSY`原本は`acknowledgeLossySource: true`がない要求を`422 LOSSY_SOURCE_ACKNOWLEDGEMENT_REQUIRED`で拒否し、確認済み保存では新内容をUTF-8へ正規化する。いずれも変更前raw bytesをimmutable versionとして確定してから現行内容をatomic replaceする。raw Sizeとencoded Sizeの両方へ1 MiB上限を適用する。成功時は新しい`fileVersion`、Size、SHA-256、変更契機`TEXT_EDIT`、作成日時を返す。同じ`operationId`と同じPayloadの再送は同じ結果を返して重複versionを作らず、異なるPayloadでの再利用は`409 IDEMPOTENCY_CONFLICT`とする。現在versionが`expectedVersion`と異なる場合は`409 FILE_VERSION_CONFLICT`を返す。
 
 #### `GET /api/v1/files/{fileId}/versions?page={page}&pageSize={pageSize}`
 
@@ -2188,7 +2190,7 @@ FavoritesのMedia遷移時は、表示中の同種かつ`ACTIVE`な項目IDをPa
 
 FilesまたはSharedから開いた詳細actionはEntry IDだけをAppへ返し、Entry organization画面でお気に入り状態と本人Tagを再取得する。`ACTIVE`は登録・解除とTag付与・解除を許可し、`MISSING_CANDIDATE`／`MISSING`は既存関連の解除だけを許可する。二重操作を処理中状態で抑止し、PUT／DELETEの通信結果が不明な場合もローカル成功を合成せず、`GET /api/v1/files/{entryId}/organization`へ再照会する。
 
-Tags画面はServer順の本人Tag一覧、作成、名前変更、削除確認を提供する。trim・NFC、1〜50 code point、control character拒否は送信前にも検証し、重複名、User上限200件、Entry上限20件、対象消失を共通Error codeから操作可能な文言へ変換する。Search画面は本人Tagを最大10件まで複数選択し、repeated `tagId`として既存Filterと組み合わせる。RepositoryとViewModelは接続先・認証Session単位で生成し、Logoutまたは接続先変更時にBack Stackを破棄して状態を再利用しない。
+Tags画面はServer順の本人Tag一覧、作成、名前変更、削除確認を提供する。Tag card本体のtapは`tagId`をencodeしたSearch routeを開き、trailing actionだけが名前変更・削除を担う。遷移先は空の検索語でも本人Tag 1件の`tagId` filterを一度だけ初期化し、visual entry rowから既存destinationを直接開く。Tag名は見出し表示にだけ用い、route identityや認可には用いない。trim・NFC、1〜50 code point、control character拒否は送信前にも検証し、重複名、User上限200件、Entry上限20件、対象消失を共通Error codeから操作可能な文言へ変換する。Search画面は本人Tagを最大10件まで複数選択し、repeated `tagId`として既存Filterと組み合わせる。RepositoryとViewModelは接続先・認証Session単位で生成し、Logoutまたは接続先変更時にBack Stackを破棄して状態を再利用しない。
 
 ### 8.12 MVP後: 自動バックアップ
 
@@ -2707,6 +2709,8 @@ Trash以外はadaptive gridを初期表示とし、List/Gridの選択は画面�
 
 一覧用サムネイル取得時に元画像を取得しない。項目名に`Folder:`または`File:`接頭辞を付けず、項目本体のタップはOpen、縦overflowは詳細・補助操作とする。個人FilesのOwnerと通常Permissionは省略し、Sharedでは共有元、`Read only`、`Can add files`、`Can edit`、`Can manage`等の利用者向け権限、書込可否を表示する。
 
+Folder位置は`FolderLocation`のstack/snapshotを唯一の正とし、現在Folder、breadcrumb、Back可否を同じsnapshotから導出する。Folder open、Top app bar Back、system Back、breadcrumb選択は共通`navigateTo(targetId)`へ集約し、単調増加するnavigation generationとtarget IDが一致する最新応答だけを反映する。同一targetへの読込中の再要求は無視し、異なるtargetの連続要求では古い成功・失敗・refreshを破棄する。子Folder取得に失敗した場合は直前の成功snapshotへ戻し、Back時は1階層だけpopして同じ規則で再読込する。
+
 ## 11.4 ファイル詳細画面
 
 詳細は固定幅Dialogではなく、縦scroll可能なadaptive bottom sheetとする。Headerにサムネイルまたは種類Icon、名前、種類を表示し、metadataは文字200%でも1行に詰め込まないLabel/Valueの縦配置とする。
@@ -2759,6 +2763,8 @@ Trash以外はadaptive gridを初期表示とし、List/Gridの選択は画面�
 - PDF本体の取得前に`HEAD`でMIME、サイズ、Range対応を確認し、ファイルサイズまたは推定通信量を表示して利用者の確認を得る。
 - アプリ内表示の上限は1ファイル256MiBとし、超過時はStorage Access Frameworkを使用するダウンロード操作へ案内する。
 - PDF本体は64KiB単位でアプリ専用一時領域へストリーミング保存し、ファイル全体をメモリへ読み込まない。保存完了までは一時名を使用し、Content-LengthとPDFシグネチャを検証してから確定名へ変更する。
+- `Open PDF`は閲覧専用取得stateとして扱い、確認後にprivate cacheへ取得して直接開く。SAF保存は独立した`Save a copy` action/stateとし、Viewerを開くための前提にしない。
+- Viewer取得失敗はauthentication、permission、not found、too large、storage不足、incomplete、corrupt、password protected、render、networkへ分類し、再試行可能な場合は`Retry open`を第一actionとして表示する。
 - PDF一時ファイルのセッション合計上限は512MiBとし、保存前に`Content-Length + 64MiB`以上の空き容量を確認する。
 - OSの`PdfRenderer`で1ページずつ描画し、現在ページ、総ページ数、ページ移動、1〜4倍の拡大・縮小を提供する。描画Bitmapは長辺4096px、推定32MiBを上限とする。
 - 一時ファイルのTTLは1時間とし、画面離脱、セッション終了、ログアウト、次回起動時に清掃する。表示中のファイル記述子は清掃対象外とする。
@@ -2793,6 +2799,9 @@ Trash以外はadaptive gridを初期表示とし、List/Gridの選択は画面�
 - 現在の文字コード
 - ファイルバージョン
 - 競合時の選択肢: 再読込 / 別名保存 / 内容比較（P1）
+- `EXACT`では認識したencodingと保存後Sizeを表示し、`LOSSY`では置換Previewであることを常時警告する。
+- `LOSSY`の保存直前に文字置換とUTF-8化を確認し、明示確認した操作だけ`acknowledgeLossySource`を送る。
+- 明らかなText MIME／拡張子は直接Editorへ、その他はDetailsの警告付き`Open as text`から遷移する。
 
 ## 11.8 MVP後: 自動バックアップ設定
 

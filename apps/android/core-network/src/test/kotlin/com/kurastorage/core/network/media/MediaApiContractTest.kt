@@ -56,6 +56,92 @@ class MediaApiContractTest {
         }
 
     @Test
+    fun `head variant returns ready metadata for the selected derivative`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setHeader("Content-Length", "1536")
+                    .setHeader("Content-Type", "video/mp4")
+                    .setHeader("Accept-Ranges", "bytes"),
+            )
+
+            val result = api.headContent("token", FILE_ID, MediaVariant.VIDEO_LOW) as NetworkCallResult.Success
+            val ready = result.value as MediaMetadataNetworkResult.Ready
+
+            assertEquals(1536L, ready.metadata.contentLength)
+            assertEquals("video/mp4", ready.metadata.mimeType)
+            assertTrue(ready.metadata.acceptsRanges)
+            assertEquals(
+                "/api/v1/files/$FILE_ID/content?variant=video-low&disposition=inline",
+                server.takeRequest().path,
+            )
+        }
+
+    @Test
+    fun `head variant maps generation headers without requiring a response body`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(202)
+                    .setHeader("X-Kura-Media-Job-Id", JOB_ID)
+                    .setHeader("Location", "/api/v1/media-jobs/$JOB_ID")
+                    .setHeader("Retry-After", "3"),
+            )
+
+            val result = api.headContent("token", FILE_ID, MediaVariant.VIDEO_MEDIUM) as NetworkCallResult.Success
+            val generating = result.value as MediaMetadataNetworkResult.Generating
+
+            assertEquals(JOB_ID, generating.accepted.jobId)
+            assertEquals(3, generating.accepted.retryAfterSeconds)
+        }
+
+    @Test
+    fun `head variant rejects incomplete ready and generation metadata`() =
+        runTest {
+            server.enqueue(MockResponse().setHeader("Content-Length", "12").setHeader("Content-Type", "video/mp4"))
+            assertTrue(
+                runCatching { api.headContent("token", FILE_ID, MediaVariant.VIDEO_LOW) }.exceptionOrNull()
+                    is KuraStorageException.InvalidServerResponse,
+            )
+
+            server.enqueue(MockResponse().setResponseCode(202).setHeader("Retry-After", "3"))
+            assertTrue(
+                runCatching { api.headContent("token", FILE_ID, MediaVariant.VIDEO_LOW) }.exceptionOrNull()
+                    is KuraStorageException.InvalidServerResponse,
+            )
+        }
+
+    @Test
+    fun `head variant preserves authentication authorization not found and network failures`() =
+        runTest {
+            server.enqueue(MockResponse().setResponseCode(401))
+            assertEquals(
+                NetworkCallResult.Unauthorized,
+                api.headContent("expired", FILE_ID, MediaVariant.IMAGE_LOW),
+            )
+
+            listOf(403, 404).forEach { status ->
+                server.enqueue(MockResponse().setResponseCode(status).setHeader("X-Request-Id", "head-1"))
+                val error =
+                    runCatching { api.headContent("token", FILE_ID, MediaVariant.IMAGE_LOW) }
+                        .exceptionOrNull()
+                assertTrue("status=$status error=$error", error is KuraStorageException.Api)
+                assertEquals(status, (error as KuraStorageException.Api).error.statusCode)
+            }
+
+            server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+            val noRetryApi =
+                OkHttpMediaApi(
+                    server.url("/api/v1").toString().removeSuffix("/"),
+                    OkHttpClient.Builder().retryOnConnectionFailure(false).build(),
+                )
+            assertTrue(
+                runCatching { noRetryApi.headContent("token", FILE_ID, MediaVariant.IMAGE_LOW) }.exceptionOrNull()
+                    is KuraStorageException.Network,
+            )
+        }
+
+    @Test
     fun `job lookup and retry preserve nullable progress and server state`() =
         runTest {
             server.enqueue(jsonResponse(MEDIA_JOB))

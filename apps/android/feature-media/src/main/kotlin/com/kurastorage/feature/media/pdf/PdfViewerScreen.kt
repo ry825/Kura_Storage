@@ -18,23 +18,20 @@ import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,13 +54,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.kurastorage.core.data.media.formatIec
 import com.kurastorage.core.ui.KuraTheme
 import com.kurastorage.core.ui.accessibility.kuraHeading
-import com.kurastorage.core.ui.components.KuraAdaptiveActionLayout
-import com.kurastorage.core.ui.components.KuraCard
 import com.kurastorage.core.ui.components.KuraStatus
 import com.kurastorage.core.ui.components.KuraStatusPanel
+import com.kurastorage.core.ui.formatting.formatFileSize
 
 @Composable
 fun PdfViewerScreen(
@@ -74,7 +69,8 @@ fun PdfViewerScreen(
     onPage: (Int) -> Unit,
     onZoom: (Float) -> Unit,
     onViewport: (Int, Int) -> Unit,
-    onDownload: () -> Unit,
+    onRetryOpen: () -> Unit,
+    onSaveCopy: () -> Unit,
     onBack: () -> Unit,
     onDisposeViewer: () -> Unit,
 ) {
@@ -85,16 +81,13 @@ fun PdfViewerScreen(
             offset = if (state.zoom <= 1f) Offset.Zero else offset + panChange
         }
     DisposableEffect(Unit) { onDispose(onDisposeViewer) }
-    var pageInput by remember(state.pageIndex) { mutableStateOf((state.pageIndex + 1).toString()) }
-
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .verticalScroll(rememberScrollState())
                 .padding(KuraTheme.spacing.md),
-            verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
@@ -106,26 +99,18 @@ fun PdfViewerScreen(
                     style = MaterialTheme.typography.titleLarge,
                 )
                 TextButton(
-                    onClick = onDownload,
+                    onClick = onSaveCopy,
                     enabled = state.file != null,
                     modifier = Modifier.heightIn(min = 48.dp),
-                ) { Text("Download") }
+                ) { Text("Save a copy") }
             }
 
-            KuraCard {
-                Text("Document", style = MaterialTheme.typography.titleMedium, modifier = Modifier.kuraHeading())
-                Text("MIME: ${state.metadata?.mimeType ?: state.file?.mimeType ?: "Checking"}")
-                Text("Size / estimated transfer: ${state.metadata?.size?.formatIec() ?: "Checking"}")
-                Text("Range requests: ${state.metadata?.acceptsRanges?.let { if (it) "Supported" else "Not supported" } ?: "Checking"}")
-                Text("Viewer limit: 256 MiB • session cache: 512 MiB")
-            }
-
-            PdfStatus(state, onDownload)
+            PdfStatus(state, onRetryOpen, onSaveCopy)
 
             if (state.pageCount > 0 || state.bitmap != null || state.loadState == PdfLoadState.RENDERING) {
                 Box(
                     Modifier
-                        .height(PDF_VIEWPORT_HEIGHT)
+                        .weight(1f)
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .onSizeChanged { onViewport(it.width, it.height) }
@@ -157,7 +142,7 @@ fun PdfViewerScreen(
                     }
                 }
 
-                KuraCard {
+                Column(verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs)) {
                     Text(
                         "Page ${if (state.pageCount == 0) 0 else state.pageIndex + 1} / ${state.pageCount} • Zoom ${"%.1f".format(
                             state.zoom,
@@ -165,68 +150,37 @@ fun PdfViewerScreen(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.kuraHeading(),
                     )
-                    KuraAdaptiveActionLayout(
-                        actions =
-                            listOf(
-                                {
-                                    OutlinedButton(
-                                        onClick = onPrevious,
-                                        enabled = state.pageIndex > 0,
-                                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                                    ) { Text("Previous page") }
-                                },
-                                {
-                                    OutlinedButton(
-                                        onClick = onNext,
-                                        enabled = state.pageIndex + 1 < state.pageCount,
-                                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                                    ) { Text("Next page") }
-                                },
-                            ),
-                    )
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm)) {
-                        OutlinedTextField(
-                            value = pageInput,
-                            onValueChange = { pageInput = it.filter(Char::isDigit).take(6) },
-                            label = { Text("Page number") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Button(
-                            onClick = { pageInput.toIntOrNull()?.let { onPage(it - 1) } },
-                            enabled = pageInput.toIntOrNull()?.let { it in 1..state.pageCount } == true,
+                    FlowRow(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+                        verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+                    ) {
+                        OutlinedButton(
+                            onClick = onPrevious,
+                            enabled = state.pageIndex > 0,
                             modifier = Modifier.heightIn(min = 48.dp),
-                        ) { Text("Go") }
+                        ) { Text("Previous") }
+                        OutlinedButton(
+                            onClick = onNext,
+                            enabled = state.pageIndex + 1 < state.pageCount,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text("Next") }
+                        OutlinedButton(
+                            onClick = { onPage(0) },
+                            enabled = state.pageIndex > 0,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text("First") }
+                        OutlinedButton(
+                            onClick = { onZoom(state.zoom - ZOOM_STEP) },
+                            enabled = state.zoom > PdfDocumentController.MIN_ZOOM,
+                            modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Zoom out" },
+                        ) { Text("− Zoom") }
+                        OutlinedButton(
+                            onClick = { onZoom(state.zoom + ZOOM_STEP) },
+                            enabled = state.zoom < PdfDocumentController.MAX_ZOOM,
+                            modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Zoom in" },
+                        ) { Text("+ Zoom") }
                     }
-                    KuraAdaptiveActionLayout(
-                        actions =
-                            listOf(
-                                {
-                                    OutlinedButton(
-                                        onClick = { onZoom(state.zoom - ZOOM_STEP) },
-                                        enabled = state.zoom > PdfDocumentController.MIN_ZOOM,
-                                        modifier =
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(
-                                                    min = 48.dp,
-                                                ).semantics { contentDescription = "Zoom out" },
-                                    ) { Text("− Zoom") }
-                                },
-                                {
-                                    OutlinedButton(
-                                        onClick = { onZoom(state.zoom + ZOOM_STEP) },
-                                        enabled = state.zoom < PdfDocumentController.MAX_ZOOM,
-                                        modifier =
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(
-                                                    min = 48.dp,
-                                                ).semantics { contentDescription = "Zoom in" },
-                                    ) { Text("+ Zoom") }
-                                },
-                            ),
-                    )
                 }
             }
         }
@@ -239,7 +193,7 @@ fun PdfViewerScreen(
             text = {
                 Text(
                     "MIME: ${state.metadata?.mimeType ?: "Unknown"}\n" +
-                        "Estimated transfer: ${state.metadata?.size?.formatIec() ?: "Unknown"}\n" +
+                        "Estimated transfer: ${formatFileSize(state.metadata?.size?.value)}\n" +
                         "Range support: ${if (state.metadata?.acceptsRanges == true) "Yes" else "No"}\n" +
                         "The PDF will be streamed to private temporary storage and removed by the session cleanup policy.",
                 )
@@ -253,7 +207,8 @@ fun PdfViewerScreen(
 @Composable
 private fun PdfStatus(
     state: PdfViewerUiState,
-    onDownload: () -> Unit,
+    onRetryOpen: () -> Unit,
+    onSaveCopy: () -> Unit,
 ) {
     when (state.loadState) {
         PdfLoadState.LOADING_METADATA ->
@@ -277,12 +232,19 @@ private fun PdfStatus(
             )
         PdfLoadState.FAILED ->
             KuraStatusPanel(
-                "PDF unavailable",
-                state.error ?: "This PDF could not be opened safely.",
+                state.failure?.title ?: "PDF unavailable",
+                state.failure?.userMessage() ?: "This PDF could not be opened safely.",
                 KuraStatus.ERROR,
                 action = {
-                    OutlinedButton(onClick = onDownload, enabled = state.file != null, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text("Download instead")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs)) {
+                        if (state.failure?.retryable != false) {
+                            Button(onClick = onRetryOpen, modifier = Modifier.heightIn(min = 48.dp)) {
+                                Text("Retry open")
+                            }
+                        }
+                        OutlinedButton(onClick = onSaveCopy, enabled = state.file != null, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text("Save a copy")
+                        }
                     }
                 },
             )
@@ -291,4 +253,39 @@ private fun PdfStatus(
 }
 
 private const val ZOOM_STEP = 0.5f
-private val PDF_VIEWPORT_HEIGHT = 420.dp
+
+private val PdfFailure.title: String
+    get() =
+        when (this) {
+            PdfFailure.AUTHENTICATION -> "Sign in required"
+            PdfFailure.PERMISSION -> "Permission changed"
+            PdfFailure.NOT_FOUND -> "PDF not found"
+            PdfFailure.TOO_LARGE -> "PDF is too large"
+            PdfFailure.STORAGE -> "Storage is full"
+            PdfFailure.INCOMPLETE -> "Download incomplete"
+            PdfFailure.CORRUPT -> "PDF is damaged"
+            PdfFailure.PASSWORD_PROTECTED -> "Password-protected PDF"
+            PdfFailure.RENDER -> "Page could not be rendered"
+            PdfFailure.NETWORK -> "Connection lost"
+            PdfFailure.UNKNOWN -> "PDF unavailable"
+        }
+
+private val PdfFailure.retryable: Boolean
+    get() =
+        this !in
+            setOf(PdfFailure.PERMISSION, PdfFailure.NOT_FOUND, PdfFailure.TOO_LARGE, PdfFailure.CORRUPT, PdfFailure.PASSWORD_PROTECTED)
+
+private fun PdfFailure.userMessage(): String =
+    when (this) {
+        PdfFailure.AUTHENTICATION -> "Sign in again, then retry opening this PDF."
+        PdfFailure.PERMISSION -> "You no longer have permission to view this PDF."
+        PdfFailure.NOT_FOUND -> "This PDF is no longer available."
+        PdfFailure.TOO_LARGE -> "PDFs larger than 256 MB cannot be opened in the viewer."
+        PdfFailure.STORAGE -> "Free private app storage and retry. No partial file was kept."
+        PdfFailure.INCOMPLETE -> "The transfer ended early or did not satisfy the media contract."
+        PdfFailure.CORRUPT -> "The downloaded file is not a valid PDF."
+        PdfFailure.PASSWORD_PROTECTED -> "Encrypted PDFs requiring a password are not supported by this viewer."
+        PdfFailure.RENDER -> "The current page could not be rendered. Retry opening the document."
+        PdfFailure.NETWORK -> "Reconnect and retry opening this PDF."
+        PdfFailure.UNKNOWN -> "This PDF could not be opened safely."
+    }

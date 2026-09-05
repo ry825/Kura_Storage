@@ -37,12 +37,12 @@ import com.kurastorage.core.ui.components.KuraSectionHeader
 import com.kurastorage.core.ui.components.KuraStatus
 import com.kurastorage.core.ui.components.KuraStatusBadge
 import com.kurastorage.core.ui.components.KuraStatusPanel
+import com.kurastorage.core.ui.formatting.formatFileSize
 import com.kurastorage.core.ui.icons.KuraFileType
 import com.kurastorage.core.ui.icons.KuraFileTypeIcon
 import com.kurastorage.core.ui.icons.KuraLogo
 import com.kurastorage.feature.files.AdminStoragePanel
 import com.kurastorage.feature.files.AdminStorageState
-import java.text.DecimalFormat
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -125,7 +125,7 @@ fun HomeScreen(
                     val metadata = recent.metadata
                     KuraListRow(
                         headline = metadata.name,
-                        supportingText = "${formatHomeInstant(recent.openedAt)} · ${formatHomeBytes(metadata.size)}",
+                        supportingText = "${formatHomeInstant(recent.openedAt)} · ${formatFileSize(metadata.size)}",
                         onClick = { onOpenRecent(recent) },
                         leading = {
                             KuraFileTypeIcon(
@@ -292,14 +292,3 @@ private fun formatHomeInstant(value: java.time.Instant): String =
         .ofPattern("yyyy-MM-dd HH:mm")
         .withZone(ZoneId.systemDefault())
         .format(value)
-
-private fun formatHomeBytes(bytes: Long): String {
-    val units = arrayOf("B", "KiB", "MiB", "GiB", "TiB")
-    var value = bytes.coerceAtLeast(0).toDouble()
-    var unit = 0
-    while (value >= 1024 && unit < units.lastIndex) {
-        value /= 1024
-        unit++
-    }
-    return "${DecimalFormat(if (unit == 0) "0" else "0.0").format(value)} ${units[unit]}"
-}

@@ -10,15 +10,20 @@ package com.kurastorage.app
 
 import android.content.pm.ActivityInfo
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -72,7 +77,13 @@ internal fun MediaPlayerRoute(
         remember(current.media.scopeId, mobile) {
             AndroidMediaPlayerController(context, current.media.repository, mobile, current.media.coroutineScope)
         }
-    var fullscreen by remember { mutableStateOf(false) }
+    var fullscreen by rememberSaveable { mutableStateOf(false) }
+
+    fun exitFullscreen() {
+        fullscreen = false
+    }
+
+    BackHandler(enabled = fullscreen, onBack = ::exitFullscreen)
 
     DisposableEffect(engine) {
         playerViewModel.attachEngine(engine)
@@ -91,8 +102,29 @@ internal fun MediaPlayerRoute(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    DisposableEffect(Unit) {
-        onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+    DisposableEffect(activity, fullscreen) {
+        val window = activity?.window
+        val insets = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        activity?.requestedOrientation =
+            if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        if (window != null) {
+            WindowCompat.setDecorFitsSystemWindows(window, !fullscreen)
+            if (fullscreen) {
+                insets?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                insets?.hide(WindowInsetsCompat.Type.systemBars())
+            } else {
+                insets?.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        onDispose {
+            if (window != null) {
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+                insets?.show(WindowInsetsCompat.Type.systemBars())
+            }
+            if (activity?.isChangingConfigurations != true) {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+        }
     }
 
     MediaPlayerScreen(
@@ -111,9 +143,11 @@ internal fun MediaPlayerRoute(
         onRetryPlayback = playerViewModel::retryPlayback,
         onBackgroundGeneration = onBack,
         onFullscreen = {
-            fullscreen = !fullscreen
-            activity?.requestedOrientation =
-                if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            if (fullscreen) {
+                exitFullscreen()
+            } else {
+                fullscreen = true
+            }
         },
         fullscreen = fullscreen,
         videoSurface = {

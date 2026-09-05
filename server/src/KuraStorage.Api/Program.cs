@@ -886,7 +886,7 @@ app.MapPut(
         }
 
         var request = await ReadJsonAsync<SaveTextRequest>(context.Request, cancellationToken);
-        if (request is null || request.AdditionalProperties is { Count: > 0 })
+        if (request is null || request.AcknowledgeLossySource is null || request.AdditionalProperties is { Count: > 0 })
         {
             return Error(StatusCodes.Status400BadRequest, TextFileErrorCodes.ValidationFailed, context);
         }
@@ -900,7 +900,8 @@ app.MapPut(
                     request.Content,
                     request.ExpectedVersion,
                     request.OperationId,
-                    context.TraceIdentifier),
+                    context.TraceIdentifier,
+                    request.AcknowledgeLossySource.Value),
                 cancellationToken),
             context);
     })
@@ -1391,6 +1392,12 @@ app.MapMethods(
 
             context.Response.Headers.RetryAfter = preview.Value.RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
             var jobId = preview.Value.JobId!.Value;
+            context.Response.Headers.Location = $"/api/v1/media-jobs/{jobId}";
+            context.Response.Headers["X-Kura-Media-Job-Id"] = jobId.ToString();
+            if (HttpMethods.IsHead(context.Request.Method))
+            {
+                return Results.StatusCode(StatusCodes.Status202Accepted);
+            }
             return Results.Json(
                 new MediaAcceptedResponse(
                     "GENERATING",
@@ -2131,6 +2138,8 @@ public sealed class SaveTextRequest
     public long ExpectedVersion { get; init; }
 
     public Guid OperationId { get; init; }
+
+    public bool? AcknowledgeLossySource { get; init; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? AdditionalProperties { get; init; }

@@ -63,8 +63,8 @@ class AdminStorageViewModelTest {
 
     @Test
     fun `byte formatting does not alter exact warning inputs`() {
-        assertEquals("10.0 GiB", formatBytes(10_737_418_240))
-        assertEquals("unknown", formatBytes(null))
+        assertEquals("10 GB", formatBytes(10_737_418_240))
+        assertEquals("Unknown", formatBytes(null))
     }
 
     private class FakeRepository(

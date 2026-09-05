@@ -8,6 +8,12 @@ data class OriginalMetadataDto(
     val acceptsRanges: Boolean,
 )
 
+data class VariantMetadataDto(
+    val contentLength: Long,
+    val mimeType: String,
+    val acceptsRanges: Boolean,
+)
+
 @Serializable
 data class MediaAcceptedResponseDto(
     val status: String,

@@ -10,10 +10,13 @@ import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.model.media.MediaJobStatus
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.network.NetworkCallResult
+import com.kurastorage.core.network.media.MediaAcceptedResponseDto
 import com.kurastorage.core.network.media.MediaApi
 import com.kurastorage.core.network.media.MediaContentNetworkResult
 import com.kurastorage.core.network.media.MediaJobDto
+import com.kurastorage.core.network.media.MediaMetadataNetworkResult
 import com.kurastorage.core.network.media.OriginalMetadataDto
+import com.kurastorage.core.network.media.VariantMetadataDto
 import kotlinx.coroutines.test.runTest
 import okhttp3.Call
 import okhttp3.Request
@@ -49,6 +52,23 @@ class MediaRepositoryTest {
             assertFalse(job.retryable)
             assertEquals(30, job.retryAfterSeconds)
             assertEquals(null, job.contentUrl)
+        }
+
+    @Test
+    fun `variant metadata keeps selected variant and maps generation without original fallback`() =
+        runTest {
+            val api = FakeMediaApi()
+            val repository = DefaultMediaRepository(api, AuthenticatedRequestExecutor(FakeAuthentication()))
+
+            val ready = repository.inspectVariant("file", MediaVariant.VIDEO_LOW) as MediaMetadataResult.Ready
+            assertEquals(MediaVariant.VIDEO_LOW, ready.metadata.variant)
+            assertEquals(1536L, ready.metadata.size.value)
+
+            api.generateMetadata = true
+            val generating =
+                repository.inspectVariant("file", MediaVariant.VIDEO_MEDIUM) as MediaMetadataResult.Generating
+            assertEquals(MediaJobStatus.GENERATING, generating.job.status)
+            assertEquals(listOf(MediaVariant.VIDEO_LOW, MediaVariant.VIDEO_MEDIUM), api.headVariants)
         }
 
     @Test
@@ -156,6 +176,42 @@ class MediaRepositoryTest {
         val contentTokens = mutableListOf<String>()
         val contentVariants = mutableListOf<MediaVariant>()
         val contentRanges = mutableListOf<String?>()
+        val headVariants = mutableListOf<MediaVariant>()
+        var generateMetadata = false
+
+        override suspend fun headContent(
+            accessToken: String,
+            fileId: String,
+            variant: MediaVariant,
+        ): NetworkCallResult<MediaMetadataNetworkResult> {
+            if (variant == MediaVariant.ORIGINAL) {
+                return when (val original = headOriginal(accessToken, fileId)) {
+                    is NetworkCallResult.Success ->
+                        NetworkCallResult.Success(
+                            MediaMetadataNetworkResult.Ready(
+                                VariantMetadataDto(
+                                    original.value.contentLength,
+                                    original.value.mimeType,
+                                    original.value.acceptsRanges,
+                                ),
+                            ),
+                        )
+                    NetworkCallResult.Unauthorized -> NetworkCallResult.Unauthorized
+                }
+            }
+            headVariants += variant
+            return if (generateMetadata) {
+                NetworkCallResult.Success(
+                    MediaMetadataNetworkResult.Generating(
+                        MediaAcceptedResponseDto("GENERATING", "job", "/api/v1/media-jobs/job", 3),
+                    ),
+                )
+            } else {
+                NetworkCallResult.Success(
+                    MediaMetadataNetworkResult.Ready(VariantMetadataDto(1536, "video/mp4", true)),
+                )
+            }
+        }
 
         override suspend fun headOriginal(
             accessToken: String,

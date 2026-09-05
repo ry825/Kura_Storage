@@ -163,7 +163,7 @@ class FileBrowserScreenTest {
         }
 
         compose.onNodeWithText("Trash").assertIsDisplayed()
-        compose.onNodeWithText("2 / 5 bytes").assertIsDisplayed()
+        compose.onNodeWithText("2 B / 5 B").assertIsDisplayed()
         compose.onNodeWithText("Delete permanently").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Restore").performScrollTo().performClick()
         compose.onNodeWithText("Restore this item?").assertIsDisplayed()
@@ -212,7 +212,7 @@ class FileBrowserScreenTest {
             )
         }
 
-        compose.onNodeWithText("4 / 10 bytes").assertIsDisplayed()
+        compose.onNodeWithText("4 B / 10 B").assertIsDisplayed()
         compose.onNodeWithText("a-very-long-video-file-name.mp4").assertIsDisplayed()
         compose
             .onNodeWithTag("transfer-status")
@@ -273,7 +273,7 @@ class FileBrowserScreenTest {
             )
         }
 
-        compose.onNodeWithText("0 / 0 bytes").assertIsDisplayed()
+        compose.onNodeWithText("0 B / 0 B").assertIsDisplayed()
         compose.onNodeWithText(operation.fileName).assertIsDisplayed()
         compose.onNodeWithTag("cancel-upload").performClick()
         compose.onNodeWithText("Cancel upload?").assertIsDisplayed()
@@ -283,7 +283,7 @@ class FileBrowserScreenTest {
         compose.runOnIdle {
             operation = operation.copy(size = 10, confirmedOffset = 10, state = UploadState.COMPLETED)
         }
-        compose.onNodeWithText("10 / 10 bytes").assertIsDisplayed()
+        compose.onNodeWithText("10 B / 10 B").assertIsDisplayed()
         compose.onNodeWithText("Upload completed").assertIsDisplayed()
         compose.onAllNodesWithTag("cancel-upload").assertCountEquals(0)
     }
@@ -908,6 +908,7 @@ class FileBrowserScreenTest {
     @Test
     fun unsupportedFileDetailsShowTypeReasonAndOnlySafeFallback() {
         val unsupported = file().copy(name = "archive.bin", mimeType = "application/x-private-archive")
+        var openedAsText = false
         compose.setContent {
             FileBrowserScreen(
                 state = FileBrowserState(loading = false, entries = listOf(unsupported), selected = unsupported),
@@ -926,6 +927,7 @@ class FileBrowserScreenTest {
                 onCancelTransfer = {},
                 onRetryTransfer = {},
                 onOpenDownload = {},
+                onOpenText = { openedAsText = true },
             )
         }
 
@@ -933,7 +935,10 @@ class FileBrowserScreenTest {
         compose.onNodeWithText("application/x-private-archive").assertIsDisplayed()
         compose.onNodeWithText("Download original").performScrollTo().assertIsDisplayed()
         compose.onAllNodesWithText("Open").assertCountEquals(0)
-        compose.onAllNodesWithText("Open").assertCountEquals(0)
+        compose.onNodeWithText("Open as text").performScrollTo().performClick()
+        compose.onNodeWithText("Open this file as text?").assertIsDisplayed()
+        compose.onNodeWithText("Open anyway").performClick()
+        compose.runOnIdle { assertTrue(openedAsText) }
     }
 
     @Test
@@ -1154,7 +1159,7 @@ class FileBrowserScreenTest {
             loading = false,
             entries = listOf(entry),
             selected = entry,
-            currentFolder = currentFolder,
+            locations = listOf(FolderLocation(currentFolder.id, currentFolder.name, currentFolder)),
             personalRoot = false,
         )
     }

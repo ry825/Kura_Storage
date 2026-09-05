@@ -18,6 +18,56 @@ object SupportedTextMimeTypes {
 
     fun isSupported(mimeType: String?): Boolean = normalize(mimeType) in values
 
+    fun isDirectlyOpenable(
+        name: String,
+        mimeType: String?,
+    ): Boolean {
+        val normalizedMime = normalize(mimeType)
+        val hasTextMimeType = normalizedMime?.startsWith("text/") == true || normalizedMime in values
+        val hasTextApplicationMimeType =
+            normalizedMime in setOf("application/javascript", "application/x-yaml", "application/toml")
+        val hasTextExtension =
+            name.substringAfterLast('.', "").lowercase() in
+                setOf(
+                    "txt",
+                    "md",
+                    "markdown",
+                    "csv",
+                    "tsv",
+                    "json",
+                    "xml",
+                    "yaml",
+                    "yml",
+                    "log",
+                    "ini",
+                    "conf",
+                    "config",
+                    "properties",
+                    "toml",
+                    "sql",
+                    "sh",
+                    "kt",
+                    "java",
+                    "cs",
+                    "js",
+                    "ts",
+                    "css",
+                    "html",
+                    "htm",
+                    "svg",
+                )
+        return hasTextMimeType || hasTextApplicationMimeType || hasTextExtension
+    }
+
+    fun isLikelyText(content: String): Boolean {
+        val controls = content.count { it.isISOControl() && it !in setOf('\t', '\n', '\r', '\u000C') }
+        return when {
+            '\u0000' in content -> false
+            content.isEmpty() -> true
+            else -> controls.toDouble() / content.length <= MAX_CONTROL_CHARACTER_RATIO
+        }
+    }
+
     fun encodedSize(content: String): Int = content.toByteArray(StandardCharsets.UTF_8).size
 
     fun isWithinSizeLimit(content: String): Boolean = encodedSize(content) <= MAX_CONTENT_BYTES
@@ -27,6 +77,8 @@ object SupportedTextMimeTypes {
             ?.substringBefore(';')
             ?.trim()
             ?.lowercase()
+
+    private const val MAX_CONTROL_CHARACTER_RATIO = 0.02
 }
 
 data class TextDocument(
@@ -35,7 +87,19 @@ data class TextDocument(
     val fileVersion: Long,
     val size: Long,
     val sha256: String,
+    val decodeStatus: TextDecodeStatus = TextDecodeStatus.EXACT,
 )
+
+enum class TextDecodeStatus {
+    EXACT,
+    LOSSY,
+    UNKNOWN,
+    ;
+
+    companion object {
+        fun fromWire(value: String?): TextDecodeStatus = entries.firstOrNull { it.name == value } ?: UNKNOWN
+    }
+}
 
 enum class FileVersionChangeKind {
     UPLOAD,

@@ -39,6 +39,22 @@ class TemporaryPdfStoreTest {
         }
 
     @Test
+    fun `complete cached PDF is reused without reserving download space`() =
+        runTest {
+            val bytes = "%PDF-1.7\ncontent".toByteArray()
+            val repository = FakeRepository(bytes)
+            var available = Long.MAX_VALUE
+            val store = TemporaryPdfStore(temporary.root, "scope", repository, availableBytes = { available })
+
+            val first = store.download("file", 4, metadata(bytes.size.toLong()))
+            available = 0
+            val reused = store.download("file", 4, metadata(bytes.size.toLong()))
+
+            assertEquals(first, reused)
+            assertEquals(1, repository.requests)
+        }
+
+    @Test
     fun `short or corrupt response removes partial file`() =
         runTest {
             val bytes = "not-pdf".toByteArray()

@@ -119,6 +119,13 @@ value class ByteCount(
     }
 }
 
+data class VariantMetadata(
+    val variant: MediaVariant,
+    val size: ByteCount,
+    val mimeType: String,
+    val acceptsRanges: Boolean,
+)
+
 @JvmInline
 value class MediaPositionMs(
     val value: Long,
@@ -233,6 +240,7 @@ enum class MediaUiError {
     DISCONNECTED,
     RANGE_INVALID,
     RESPONSE_INCOMPLETE,
+    SERVER_ERROR,
     GENERATION_FAILED,
     UNSUPPORTED,
     UNKNOWN,

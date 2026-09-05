@@ -23,7 +23,6 @@ public sealed class TextFileService(
     UserActivityFactory? activities = null)
 {
     private const int BufferSize = 64 * 1024;
-    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     public async Task<TextFileResult<TextDocument>> GetAsync(
         Guid actorUserId,
@@ -104,18 +103,16 @@ public sealed class TextFileService(
                 return Fail<TextDocument>(TextFileErrorCodes.FileVersionCorrupt, TextFileFailureKind.Conflict);
             }
 
-            var content = StrictUtf8.GetString(bytes);
-            if (content.Length > 0 && content[0] == '\uFEFF')
-            {
-                content = content[1..];
-            }
+            var decoded = TextFileRules.Decode(bytes);
 
             return TextFileResult<TextDocument>.Success(
-                new TextDocument(content, "UTF-8", entry.FileVersion, bytes.LongLength, sha256));
-        }
-        catch (DecoderFallbackException)
-        {
-            return Fail<TextDocument>(TextFileErrorCodes.TextEncodingInvalid, TextFileFailureKind.Unprocessable);
+                new TextDocument(
+                    decoded.Content,
+                    decoded.Encoding,
+                    entry.FileVersion,
+                    bytes.LongLength,
+                    sha256,
+                    decoded.DecodeStatus));
         }
         catch (TextContentSizeException)
         {
@@ -140,13 +137,10 @@ public sealed class TextFileService(
             return Fail<TextMutationResult>(TextFileErrorCodes.ValidationFailed, TextFileFailureKind.BadRequest);
         }
 
-        if (!TextFileRules.TryEncode(command.Content, out var content, out var encodingFailure))
+        if (!TextFileRules.TryNormalize(command.Content, out var normalizedContent, out var encodingFailure))
         {
             return encodingFailure switch
             {
-                TextEncodingFailure.SizeLimitExceeded => Fail<TextMutationResult>(
-                    TextFileErrorCodes.TextSizeLimitExceeded,
-                    TextFileFailureKind.PayloadTooLarge),
                 TextEncodingFailure.InvalidEncoding => Fail<TextMutationResult>(
                     TextFileErrorCodes.TextEncodingInvalid,
                     TextFileFailureKind.Unprocessable),
@@ -156,7 +150,6 @@ public sealed class TextFileService(
             };
         }
 
-        var contentSha256 = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
         await using var mutationLock = await files.AcquireMutationLocksAsync(
             [command.FileEntryId],
             cancellationToken);
@@ -176,6 +169,58 @@ public sealed class TextFileService(
         {
             return eligibility;
         }
+
+        byte[] sourceBytes;
+        try
+        {
+            await using var source = await fileStore.OpenReadAsync(
+                RelativeStoragePath.Create(entry.RelativePath),
+                cancellationToken);
+            sourceBytes = await ReadBoundedAsync(source, entry.Size, cancellationToken);
+        }
+        catch (TextContentSizeException)
+        {
+            return Fail<TextMutationResult>(
+                TextFileErrorCodes.TextSizeLimitExceeded,
+                TextFileFailureKind.PayloadTooLarge);
+        }
+        catch (IOException)
+        {
+            return Fail<TextMutationResult>(
+                TextFileErrorCodes.StorageUnavailable,
+                TextFileFailureKind.StorageUnavailable);
+        }
+
+        var sourceDecode = TextFileRules.Decode(sourceBytes);
+        if (sourceDecode.DecodeStatus == "LOSSY" && !command.AcknowledgeLossySource)
+        {
+            return Fail<TextMutationResult>(
+                TextFileErrorCodes.LossySourceAcknowledgementRequired,
+                TextFileFailureKind.Unprocessable);
+        }
+
+        byte[] content;
+        try
+        {
+            content = sourceDecode.DecodeStatus == "EXACT" && sourceDecode.Encoding is "UTF-16LE" or "UTF-16BE"
+                ? TextFileRules.Encode(normalizedContent, sourceDecode.Encoding)
+                : TextFileRules.Encode(normalizedContent, "UTF-8");
+        }
+        catch (EncoderFallbackException)
+        {
+            return Fail<TextMutationResult>(
+                TextFileErrorCodes.TextEncodingInvalid,
+                TextFileFailureKind.Unprocessable);
+        }
+
+        if (content.LongLength > FileVersionRecord.MaximumContentBytes)
+        {
+            return Fail<TextMutationResult>(
+                TextFileErrorCodes.TextSizeLimitExceeded,
+                TextFileFailureKind.PayloadTooLarge);
+        }
+
+        var contentSha256 = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
 
         var idempotencyKey = command.OperationId.ToString("D");
         var operation = await files.FindOperationAsync(
@@ -527,7 +572,6 @@ public sealed class TextFileService(
                 target.Sha256,
                 cancellationToken);
             content = await ReadBoundedAsync(targetSource, target.Size, cancellationToken);
-            _ = StrictUtf8.GetString(content);
             var actualSha256 = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
             if (!FixedTimeHexEquals(target.Sha256, actualSha256))
             {
@@ -537,7 +581,7 @@ public sealed class TextFileService(
             }
         }
         catch (Exception exception) when (
-            exception is FileVersionConsistencyException or DecoderFallbackException or TextContentSizeException)
+            exception is FileVersionConsistencyException or TextContentSizeException)
         {
             return Fail<TextMutationResult>(TextFileErrorCodes.FileVersionCorrupt, TextFileFailureKind.Conflict);
         }
@@ -840,20 +884,18 @@ public sealed class TextFileService(
                 return Fail<TextDocument>(TextFileErrorCodes.FileVersionCorrupt, TextFileFailureKind.Conflict);
             }
 
-            var content = StrictUtf8.GetString(bytes);
-            if (content.Length > 0 && content[0] == '\uFEFF')
-            {
-                content = content[1..];
-            }
+            var decoded = TextFileRules.Decode(bytes);
 
             return TextFileResult<TextDocument>.Success(
-                new TextDocument(content, "UTF-8", record.Version, record.Size, record.Sha256));
+                new TextDocument(
+                    decoded.Content,
+                    decoded.Encoding,
+                    record.Version,
+                    record.Size,
+                    record.Sha256,
+                    decoded.DecodeStatus));
         }
         catch (FileVersionConsistencyException)
-        {
-            return Fail<TextDocument>(TextFileErrorCodes.FileVersionCorrupt, TextFileFailureKind.Conflict);
-        }
-        catch (DecoderFallbackException)
         {
             return Fail<TextDocument>(TextFileErrorCodes.FileVersionCorrupt, TextFileFailureKind.Conflict);
         }
@@ -868,11 +910,6 @@ public sealed class TextFileService(
         if (entry.EntryType != FileEntryType.File || entry.Status != FileEntryStatus.Active)
         {
             return NotFound<T>();
-        }
-
-        if (!TextFileRules.IsSupportedMimeType(entry.MimeType))
-        {
-            return Fail<T>(TextFileErrorCodes.UnsupportedTextType, TextFileFailureKind.UnsupportedMediaType);
         }
 
         return entry.Size > FileVersionRecord.MaximumContentBytes

@@ -25,6 +25,7 @@ import com.kurastorage.core.model.SearchFileCategory
 import com.kurastorage.core.model.SearchResultItem
 import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.TagItem
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -119,6 +120,7 @@ class OrganizationScreensTest {
 
     @Test fun tagDialogSupportsKeyboardValidationAndDeleteConfirmation() {
         val state = mutableStateOf(TagsUiState(tags = listOf(TAG), loading = false))
+        var opened: TagItem? = null
         compose.setContent {
             TagsScreen(
                 state.value,
@@ -130,8 +132,11 @@ class OrganizationScreensTest {
                 { state.value = state.value.copy(input = it) },
                 {},
                 { state.value = state.value.copy(dialog = null) },
+                onOpenTag = { opened = it },
             )
         }
+        compose.onNodeWithText(TAG.name).performClick()
+        compose.runOnIdle { assertEquals(TAG, opened) }
         compose.onNodeWithTag("tag-create").performClick()
         compose.onNodeWithTag("tag-name").performTextInput("Work")
         compose.onNodeWithText("Cancel").assertIsDisplayed()

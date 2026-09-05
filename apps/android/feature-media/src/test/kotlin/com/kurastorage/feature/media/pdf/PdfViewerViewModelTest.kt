@@ -103,8 +103,17 @@ class PdfViewerViewModelTest {
                 withTimeout(5_000) { viewModel.state.first { it.loadState == PdfLoadState.FAILED } }
             }
             assertEquals(PdfLoadState.FAILED, viewModel.state.value.loadState)
+            assertEquals(PdfFailure.INCOMPLETE, viewModel.state.value.failure)
             assertEquals(1, repository.contentRequests)
             assertNull(viewModel.state.value.bitmap)
+            viewModel.retryOpen()
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    viewModel.state.first {
+                        it.loadState == PdfLoadState.FAILED && repository.contentRequests == 2
+                    }
+                }
+            }
             viewModel.closeDocument()
         }
 

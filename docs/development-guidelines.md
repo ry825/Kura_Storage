@@ -519,6 +519,8 @@ sealed interface FileListUiState {
 ### 5.10 MVP後: Android Media閲覧・再生
 
 - Media品質、Variant、Job状態、Byte数、再生位置、速度はenumまたはValue Typeで表し、任意Stringや裸の数値をFeatureへ渡さない。
+- 利用者向けFile Sizeは1,024基準の共通formatterで`B`、`KB`、`MB`、`GB`を使い、最大1桁の小数から不要な`.0`を除く。API、Log、永続値は丸めずbyteのまま保持する。
+- MediaのSizeは表示中variantのHEAD metadataだけから表示し、派生未生成、header不正、通信失敗をOriginal Sizeで補完しない。SourceとSizeはREADY時に同じstate更新で切り替える。
 - 写真・動画だけにLOW／MEDIUM／ORIGINALを許可し、音声とPDFへLOW／MEDIUM Variantを組み立てない。
 - Coil、Media3、PDF取得は`SessionServices`と同じ認証Session、TLS Host、接続経路別`OkHttpClient`を使用する。TokenをURL、Query、Cache key、File名、Logへ含めない。
 - 401は既存の単一Flight Token refresh後に1回だけ再試行する。再発、Device／Session失効、権限消失では表示・再生を停止する。
@@ -530,11 +532,20 @@ sealed interface FileListUiState {
 - 写真とPDFの表示Bitmapは1枚32MiB、長辺4096pxを上限とし、DecodeとRenderをMain threadで行わない。
 - Media3は1 Player／1 itemとし、動画・音声の3秒／10秒移動、0.5〜3.0倍速、単一Range Seekを実装する。Mobileの最大Bufferは15秒とし、次Mediaを自動準備しない。
 - 品質変更は旧Sourceを新Sourceの準備完了まで保持し、再生位置、速度、再生状態を可能な範囲で復元する。失敗時は旧Sourceへ戻し、元画質へFallbackしない。
+- 動画Full screenは通常画面の`verticalScroll`から分離し、`fillMaxSize`のSurfaceとoverlayだけで構成する。system BackはFull screen解除を優先し、TalkBack focus、seek drag、一時停止、buffering、error中は必要な操作を勝手に隠さない。
 - Clientの画面離脱やRequest取消をServer Media Jobの取消へ伝播させない。「バックグラウンドで続ける」はServer Jobへ任せ、Media閲覧のためだけにWorkManagerを追加しない。
 - JVM Unit Testで状態変換、MockWebServerで認証・202・Range・切断、Instrumented TestでCompose・`PdfRenderer`・Media3 lifecycleを検証する。
 - `./scripts/ci/verify-android.sh`でFormat、静的解析、Lint、Unit Test、Debug Assemblyに加え、Domain/Application 80%と重要状態変換・Controller 95%のJaCoCo Line Coverage gateを確認する。`connectedDebugAndroidTest`はEmulator／実機Jobで実行する。
 - 実Serverと物理Android端末のMedia検証は`./scripts/e2e/verify-android-media.sh`で全Instrumented Testと端末環境・Package flag・Memory・Frame・UID通信量・Fatal eventの証跡を取得する。
 - Android 10と現行Androidの実機で保証MIME、Codec非対応、3秒／10秒移動、PDF 256MiB境界、Session分離、通信量確認前の非取得を確認する。
+
+### 5.11 Text保存とFolder Navigation
+
+- Text decodeはBOMと厳密Decoderで判定し、置換文字を含む結果を`EXACT`として扱わない。`LOSSY` previewは常時警告し、保存前に文字置換とUTF-8化への明示確認を要求する。
+- lossy保存の確認BooleanをUIだけで消費せずAPIへ送り、Serverでも未確認要求を拒否する。変更前raw bytesをimmutable versionへ確定できない場合は現行Fileを置換しない。
+- Text自動表示は1 MiB以下の既知MIME／拡張子に限定し、取得内容にNULがあるか、Tab・改行・復帰・Form Feedを除くISO制御文字が2%を超える場合は停止する。未知FileはDetailsの警告付き明示操作だけでClient側表示guardを解除し、Server検証は迂回しない。
+- Folder位置、breadcrumb、Back可否を別々のmutable listで所有しない。単一snapshotとnavigation generationから導出し、最新generationとtarget IDに一致しない成功・失敗・refresh応答を破棄する。
+- Navigation Testでは同一Folder連打、異なるFolder連続tap、読込中Back、breadcrumb移動、回転、Process再生成を含める。
 
 ---
 
@@ -772,6 +783,13 @@ Admin手動Cache清掃はHTTP処理内で実行せず、必須UUID `Idempotency-
 Cache管理ResponseはREADYの低・中画質派生データの集計、Job/Run件数、watermark、許可済みRun summaryだけとする。File名、物理/相対Path、User名、Job入力、Idempotency key、自由形式ErrorをResponse・Log・Metricに含めない。結合TestでAdmin/Member/未認証/失効Device、同一key再送、通信結果不明、生成/配信Lease除外、Worker停止後の回収を検証する。
 
 派生物の物理操作は`IDerivativeStore`を経由し、`derivatives/<owner>/<source>/<version>/<profile>/<type>.<ext>`と`derivative-temp/<job>/<attempt>.part`以外を生成しない。書込み前にStorage Guardを再確認し、期待Sizeを超えるStream、absolute path、traversal、symlink、特殊File、Root外移動、正式Pathの上書きを拒否する。DB更新と物理配置の間で停止しても、一時Fileまたは未参照の正式Fileとして後続回収できる順序を維持し、元ファイルを変更しない。
+
+### 9.8 実機・実Server fixture清掃
+
+- E2E開始前に既存User、File、Folder、Tag、Favorite、Share、Recent、Activity、Backup、Media job／派生データ、端末一時Fileの保護対象をread-onlyで記録する。
+- 作業固有run IDを使い、今回作成したresourceは作成直後にexact IDと種別だけをRepository外manifestへ追記する。Token、Password、SSID／BSSID、物理Path、本文、個人的なFile名をmanifestや証跡へ残さない。
+- 清掃はmanifest membershipとexact IDを必須とし、wildcard、部分一致、親Folder全体、全件削除を禁止する。依存関係の逆順で削除し、各削除後に再取得して不存在を確認する。
+- 清掃後はbaselineの件数・ID・必要なchecksumと比較し、既存データ、未追跡データ、Server storage、端末private cacheに差分がないことを記録する。清掃失敗はテスト成功と分けて未完了として扱う。
 
 ---
 

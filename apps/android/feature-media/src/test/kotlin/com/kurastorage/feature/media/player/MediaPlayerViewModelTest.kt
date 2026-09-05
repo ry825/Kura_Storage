@@ -2,6 +2,7 @@ package com.kurastorage.feature.media.player
 
 import com.kurastorage.core.data.FileRepository
 import com.kurastorage.core.data.media.MediaContentResult
+import com.kurastorage.core.data.media.MediaMetadataResult
 import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.data.media.NetworkQualityContextResolver
 import com.kurastorage.core.data.media.NetworkTransport
@@ -24,6 +25,7 @@ import com.kurastorage.core.model.media.OriginalMetadata
 import com.kurastorage.core.model.media.PlaybackRate
 import com.kurastorage.core.model.media.QualityPreferences
 import com.kurastorage.core.model.media.ReadyMediaSource
+import com.kurastorage.core.model.media.VariantMetadata
 import com.kurastorage.feature.media.MediaViewerController
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -104,7 +106,7 @@ class MediaPlayerViewModelTest {
             viewModel.attachEngine(engine)
             assertNull(engine.preparedSource)
             assertEquals(
-                "4.0 KiB",
+                "4 KB",
                 viewModel.state.value.media
                     ?.confirmation
                     ?.formattedSize,
@@ -476,6 +478,11 @@ class MediaPlayerViewModelTest {
         private val mime: String,
     ) : MediaRepository {
         override suspend fun inspectOriginal(fileId: String) = OriginalMetadata(ByteCount(4096), mime, true)
+
+        override suspend fun inspectVariant(
+            fileId: String,
+            variant: MediaVariant,
+        ): MediaMetadataResult = MediaMetadataResult.Ready(VariantMetadata(variant, ByteCount(4096), mime, true))
 
         override suspend fun job(jobId: String): MediaJobSnapshot = error("not used")
 

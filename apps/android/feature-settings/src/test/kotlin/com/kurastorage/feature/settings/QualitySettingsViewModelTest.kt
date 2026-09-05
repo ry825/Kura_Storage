@@ -65,10 +65,37 @@ class QualitySettingsViewModelTest {
             assertEquals("Quality settings could not be loaded", unreadable.state.value.error)
         }
 
+    @Test
+    fun `staged selections save together and reset restores defaults`() =
+        runTest(dispatcher) {
+            val store = FakeStore()
+            val viewModel = QualitySettingsViewModel(store)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            NetworkQualityContext.entries.forEach { context ->
+                viewModel.select(
+                    context,
+                    if (context == NetworkQualityContext.LOCAL_DIRECT) MediaQuality.LOW else MediaQuality.ORIGINAL,
+                )
+            }
+            assertEquals(true, viewModel.state.value.dirty)
+            assertEquals(emptyList<Pair<NetworkQualityContext, MediaQuality>>(), store.updates)
+
+            viewModel.save()
+            dispatcher.scheduler.advanceUntilIdle()
+            assertEquals(false, viewModel.state.value.dirty)
+            assertEquals(NetworkQualityContext.entries.toSet(), store.updates.map { it.first }.toSet())
+
+            viewModel.reset()
+            assertEquals(QualityPreferences(), viewModel.state.value.preferences)
+            assertEquals(true, viewModel.state.value.dirty)
+        }
+
     private class FakeStore(
         private val readFailure: Throwable? = null,
     ) : QualityPreferenceStore {
         var updated: Pair<NetworkQualityContext, MediaQuality>? = null
+        val updates = mutableListOf<Pair<NetworkQualityContext, MediaQuality>>()
         var updateFailure: Throwable? = null
 
         override suspend fun read(): QualityPreferences {
@@ -82,6 +109,7 @@ class QualitySettingsViewModelTest {
         ) {
             updateFailure?.let { throw it }
             updated = context to quality
+            updates += context to quality
         }
     }
 }

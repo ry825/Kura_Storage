@@ -24,6 +24,7 @@ import com.kurastorage.core.model.UploadState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -32,6 +33,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -45,6 +47,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 
 @OptIn(ExperimentalCoroutinesApi::class)
+@Suppress("LargeClass")
 class FileBrowserViewModelTest {
     private val dispatcher = UnconfinedTestDispatcher()
 
@@ -99,6 +102,100 @@ class FileBrowserViewModelTest {
                 viewModel.state.value.breadcrumbs
                     .map { it.label },
             )
+        }
+
+    @Test
+    fun `duplicate folder taps commit once and stale different target cannot win`() =
+        runTest(dispatcher) {
+            val files = NavigationFiles()
+            val viewModel = FileBrowserViewModel(files, FakeTransfers())
+            val first = folder("first", null, "First")
+            val second = folder("second", null, "Second")
+
+            viewModel.open(first)
+            viewModel.open(first)
+            assertEquals(listOf("first"), files.detailCalls)
+
+            viewModel.open(second)
+            assertEquals(listOf("first", "second"), files.detailCalls)
+            files.complete("second", second)
+            assertEquals(
+                listOf("My files", "Second"),
+                viewModel.state.value.breadcrumbs
+                    .map { it.label },
+            )
+
+            files.complete("first", first)
+            assertEquals(
+                listOf("My files", "Second"),
+                viewModel.state.value.breadcrumbs
+                    .map { it.label },
+            )
+            assertEquals("second", viewModel.state.value.parentId)
+        }
+
+    @Test
+    fun `back during folder open cancels the pending location without creating a ghost path`() =
+        runTest(dispatcher) {
+            val files = NavigationFiles()
+            val viewModel = FileBrowserViewModel(files, FakeTransfers())
+            val pending = folder("pending", null, "Pending")
+
+            viewModel.open(pending)
+            assertTrue(viewModel.back())
+            files.complete("pending", pending)
+
+            assertEquals(
+                listOf("My files"),
+                viewModel.state.value.breadcrumbs
+                    .map { it.label },
+            )
+            assertFalse(viewModel.state.value.loading)
+        }
+
+    @Test
+    fun `folder list failure retains the previously committed location`() =
+        runTest(dispatcher) {
+            val files = NavigationFiles()
+            val viewModel = FileBrowserViewModel(files, FakeTransfers())
+            val failing = folder("failing", null, "Failing")
+
+            viewModel.open(failing)
+            files.fail(failing.id, failing)
+
+            assertEquals(
+                listOf("My files"),
+                viewModel.state.value.breadcrumbs
+                    .map { it.label },
+            )
+            assertEquals(null, viewModel.state.value.parentId)
+            assertEquals(
+                ErrorCode.STORAGE_UNAVAILABLE,
+                viewModel.state.value.error
+                    ?.code,
+            )
+        }
+
+    @Test
+    fun `shared root remains its own boundary and cannot back into personal root`() =
+        runTest(dispatcher) {
+            val files = NavigationFiles()
+            val shared = folder("shared", null, "Shared album")
+            val viewModel =
+                FileBrowserViewModel(
+                    files,
+                    FakeTransfers(),
+                    initialParentId = shared.id,
+                )
+            files.complete(shared.id, shared)
+
+            assertEquals(
+                listOf("Shared album"),
+                viewModel.state.value.breadcrumbs
+                    .map { it.label },
+            )
+            assertFalse(viewModel.state.value.personalRoot)
+            assertFalse(viewModel.back())
         }
 
     @Test
@@ -684,7 +781,7 @@ class FileBrowserViewModelTest {
             }
         }
 
-    private class FakeFiles(
+    private open class FakeFiles(
         private val empty: Boolean = false,
         private var failNext: Boolean = false,
     ) : FileRepository {
@@ -706,7 +803,12 @@ class FileBrowserViewModelTest {
             return FilePage("root", items, page, 1, if (empty) 0 else 2)
         }
 
-        override suspend fun detail(fileId: String) = file(fileId)
+        override suspend fun detail(fileId: String) =
+            if (fileId == "album") {
+                folder("album", "root", "Family photos")
+            } else {
+                file(fileId)
+            }
 
         override suspend fun createFolder(
             parentId: String?,
@@ -731,6 +833,48 @@ class FileBrowserViewModelTest {
         ) = FilePage(null, emptyList(), 1, 100, 0)
 
         override suspend fun restore(fileId: String) = file(fileId)
+    }
+
+    private class NavigationFiles : FakeFiles(empty = true) {
+        val detailCalls = mutableListOf<String>()
+        private val details = mutableMapOf<String, CompletableDeferred<FileEntry>>()
+        private val pages = mutableMapOf<String, CompletableDeferred<FilePage>>()
+
+        override suspend fun detail(fileId: String): FileEntry {
+            detailCalls += fileId
+            return withContext(NonCancellable) {
+                details.getOrPut(fileId) { CompletableDeferred() }.await()
+            }
+        }
+
+        override suspend fun list(
+            parentId: String?,
+            page: Int,
+            pageSize: Int,
+        ): FilePage =
+            if (parentId == null) {
+                FilePage(null, emptyList(), 1, pageSize, 0)
+            } else {
+                pages.getOrPut(parentId) { CompletableDeferred() }.await()
+            }
+
+        fun complete(
+            id: String,
+            folder: FileEntry,
+        ) {
+            details.getOrPut(id) { CompletableDeferred() }.complete(folder)
+            pages.getOrPut(id) { CompletableDeferred() }.complete(FilePage(id, emptyList(), 1, 50, 0))
+        }
+
+        fun fail(
+            id: String,
+            folder: FileEntry,
+        ) {
+            details.getOrPut(id) { CompletableDeferred() }.complete(folder)
+            pages.getOrPut(id) { CompletableDeferred() }.completeExceptionally(
+                KuraStorageException.Api(ApiError(ErrorCode.STORAGE_UNAVAILABLE, "navigation", 503)),
+            )
+        }
     }
 
     private class FakeTransfers(

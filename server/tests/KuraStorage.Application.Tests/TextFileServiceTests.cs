@@ -24,12 +24,43 @@ public sealed class TextFileServiceTests
         Assert.True(result.IsSuccess);
         Assert.Equal("hello 🌏", result.Value!.Content);
         Assert.Equal("UTF-8", result.Value.Encoding);
+        Assert.Equal("EXACT", result.Value.DecodeStatus);
         Assert.Equal(1, result.Value.FileVersion);
         Assert.Equal(bytes.Length, result.Value.Size);
         Assert.Equal(Sha256(bytes), result.Value.Sha256);
         Assert.Single(fixture.Versions.Records);
         Assert.Equal(1, fixture.Files.SaveCalls);
         Assert.True(fixture.Files.LockAcquired);
+    }
+
+    [Theory]
+    [InlineData(false, "UTF-16LE")]
+    [InlineData(true, "UTF-16BE")]
+    public async Task GetAsync_DecodesBomMarkedUtf16Exactly(bool bigEndian, string expectedEncoding)
+    {
+        var encoding = new UnicodeEncoding(bigEndian, byteOrderMark: true, throwOnInvalidBytes: true);
+        var bytes = encoding.GetPreamble().Concat(encoding.GetBytes("hello 🌏")).ToArray();
+        var fixture = new Fixture(bytes, EffectivePermissionLevel.Viewer, "application/octet-stream");
+
+        var result = await fixture.Service.GetAsync(fixture.ActorId, fixture.Entry.Id, default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("hello 🌏", result.Value!.Content);
+        Assert.Equal(expectedEncoding, result.Value.Encoding);
+        Assert.Equal("EXACT", result.Value.DecodeStatus);
+    }
+
+    [Fact]
+    public async Task GetAsync_InvalidUtf8ReturnsLossyReplacementPreview()
+    {
+        var fixture = new Fixture([0x66, 0x6f, 0x80, 0x6f], EffectivePermissionLevel.Viewer, "image/jpeg");
+
+        var result = await fixture.Service.GetAsync(fixture.ActorId, fixture.Entry.Id, default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("fo\uFFFDo", result.Value!.Content);
+        Assert.Equal("UTF-8", result.Value.Encoding);
+        Assert.Equal("LOSSY", result.Value.DecodeStatus);
     }
 
     [Theory]
@@ -58,7 +89,7 @@ public sealed class TextFileServiceTests
     }
 
     [Fact]
-    public async Task GetAsync_UnsupportedMimeAndOversizeFailBeforeStorageRead()
+    public async Task GetAsync_MimeDoesNotExcludeCandidateAndOversizeFailsBeforeStorageRead()
     {
         var unsupported = new Fixture(Encoding.UTF8.GetBytes("x"), EffectivePermissionLevel.Owner, "image/jpeg");
         var oversized = new Fixture(
@@ -71,26 +102,21 @@ public sealed class TextFileServiceTests
             unsupported.ActorId, unsupported.Entry.Id, default);
         var oversizedResult = await oversized.Service.GetAsync(oversized.ActorId, oversized.Entry.Id, default);
 
-        Assert.Equal(TextFileErrorCodes.UnsupportedTextType, unsupportedResult.Failure!.Code);
-        Assert.Equal(TextFileFailureKind.UnsupportedMediaType, unsupportedResult.Failure.Kind);
+        Assert.True(unsupportedResult.IsSuccess);
         Assert.Equal(TextFileErrorCodes.TextSizeLimitExceeded, oversizedResult.Failure!.Code);
         Assert.Equal(TextFileFailureKind.PayloadTooLarge, oversizedResult.Failure.Kind);
-        Assert.Equal(0, unsupported.Store.OpenReadCalls);
+        Assert.True(unsupported.Store.OpenReadCalls > 0);
         Assert.Equal(0, oversized.Store.OpenReadCalls);
     }
 
     [Fact]
-    public async Task GetAsync_InvalidUtf8AndIncompleteOperationFailClosed()
+    public async Task GetAsync_IncompleteOperationFailsClosed()
     {
-        var invalid = new Fixture([0xc3, 0x28], EffectivePermissionLevel.Owner);
         var blocked = new Fixture(Encoding.UTF8.GetBytes("x"), EffectivePermissionLevel.Owner);
         blocked.Files.HasIncomplete = true;
 
-        var invalidResult = await invalid.Service.GetAsync(invalid.ActorId, invalid.Entry.Id, default);
         var blockedResult = await blocked.Service.GetAsync(blocked.ActorId, blocked.Entry.Id, default);
 
-        Assert.Equal(TextFileErrorCodes.TextEncodingInvalid, invalidResult.Failure!.Code);
-        Assert.Equal(TextFileFailureKind.Unprocessable, invalidResult.Failure.Kind);
         Assert.Equal(TextFileErrorCodes.FileStateConflict, blockedResult.Failure!.Code);
         Assert.Equal(TextFileFailureKind.Conflict, blockedResult.Failure.Kind);
         Assert.Equal(0, blocked.Store.OpenReadCalls);
@@ -125,6 +151,55 @@ public sealed class TextFileServiceTests
         Assert.Equal(fixture.DeviceId, fixture.Versions.Records.Single(v => v.Version == 2).ActorDeviceId);
         Assert.Equal(FileOperationStatus.Completed, Assert.Single(fixture.Files.Operations).Status);
         Assert.Equal("FILE_TEXT_EDIT", Assert.Single(fixture.Files.Audits).Action);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveAsync_PreservesBomMarkedUtf16Encoding(bool bigEndian)
+    {
+        var encoding = new UnicodeEncoding(bigEndian, byteOrderMark: true, throwOnInvalidBytes: true);
+        var original = encoding.GetPreamble().Concat(encoding.GetBytes("before")).ToArray();
+        var fixture = new Fixture(original, EffectivePermissionLevel.Editor, "application/octet-stream");
+
+        var result = await fixture.Service.SaveAsync(Command(fixture, "after 🌏", 1), default);
+
+        Assert.True(result.IsSuccess);
+        var expected = encoding.GetPreamble().Concat(encoding.GetBytes("after 🌏")).ToArray();
+        Assert.Equal(expected, fixture.Store.CurrentContent);
+        Assert.Equal(original, fixture.Store.GetVersionContent(fixture.Versions.Records.Single(v => v.Version == 1)));
+    }
+
+    [Fact]
+    public async Task SaveAsync_AppliesSizeLimitToPreservedUtf16Encoding()
+    {
+        var encoding = new UnicodeEncoding(bigEndian: false, byteOrderMark: true, throwOnInvalidBytes: true);
+        var original = encoding.GetPreamble().Concat(encoding.GetBytes("before")).ToArray();
+        var fixture = new Fixture(original, EffectivePermissionLevel.Editor, "application/octet-stream");
+        var content = new string('\u754c', 400_000);
+
+        var result = await fixture.Service.SaveAsync(Command(fixture, content, 1), default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(800_002, fixture.Store.CurrentContent.Length);
+    }
+
+    [Fact]
+    public async Task SaveAsync_LossySourceRequiresAcknowledgementThenNormalizesToUtf8()
+    {
+        byte[] original = [0x66, 0x6f, 0x80, 0x6f];
+        var fixture = new Fixture(original, EffectivePermissionLevel.Editor, "application/octet-stream");
+
+        var rejected = await fixture.Service.SaveAsync(Command(fixture, "replacement", 1), default);
+        var accepted = await fixture.Service.SaveAsync(
+            Command(fixture, "replacement", 1) with { AcknowledgeLossySource = true },
+            default);
+
+        Assert.Equal(TextFileErrorCodes.LossySourceAcknowledgementRequired, rejected.Failure!.Code);
+        Assert.Equal(TextFileFailureKind.Unprocessable, rejected.Failure.Kind);
+        Assert.True(accepted.IsSuccess);
+        Assert.Equal(Encoding.UTF8.GetBytes("replacement"), fixture.Store.CurrentContent);
+        Assert.Equal(original, fixture.Store.GetVersionContent(fixture.Versions.Records.Single(v => v.Version == 1)));
     }
 
     [Fact]
@@ -427,7 +502,7 @@ public sealed class TextFileServiceTests
 
         Assert.Equal(TextFileErrorCodes.ValidationFailed, invalid.Failure!.Code);
         Assert.Equal(TextFileErrorCodes.ValidationFailed, missingContent.Failure!.Code);
-        Assert.Equal(TextFileErrorCodes.UnsupportedTextType, unsupportedResult.Failure!.Code);
+        Assert.True(unsupportedResult.IsSuccess);
         Assert.Equal(TextFileErrorCodes.FileStateConflict, blockedResult.Failure!.Code);
         Assert.Equal(TextFileErrorCodes.StorageUnavailable, unavailableResult.Failure!.Code);
         Assert.Empty(fixture.Files.Operations);
@@ -653,6 +728,13 @@ public sealed class TextFileServiceTests
             Command(oversized, new string('a', checked((int)FileVersionRecord.MaximumContentBytes + 1)), 1),
             default);
 
+        var utf16 = new UnicodeEncoding(false, true, true);
+        var utf16Source = utf16.GetPreamble().Concat(utf16.GetBytes("before")).ToArray();
+        var utf16Oversized = new Fixture(utf16Source, EffectivePermissionLevel.Editor, "application/octet-stream");
+        var utf16OversizedResult = await utf16Oversized.Service.SaveAsync(
+            Command(utf16Oversized, new string('a', 600_000), 1),
+            default);
+
         var invalidText = new Fixture(Encoding.UTF8.GetBytes("x"), EffectivePermissionLevel.Editor);
         var invalidTextResult = await invalidText.Service.SaveAsync(Command(invalidText, "\ud800", 1), default);
 
@@ -665,8 +747,9 @@ public sealed class TextFileServiceTests
         var storageResult = await storage.Service.SaveAsync(Command(storage, "after", 1), default);
 
         Assert.Equal(TextFileErrorCodes.TextSizeLimitExceeded, oversizedResult.Failure!.Code);
+        Assert.Equal(TextFileErrorCodes.TextSizeLimitExceeded, utf16OversizedResult.Failure!.Code);
         Assert.Equal(TextFileErrorCodes.TextEncodingInvalid, invalidTextResult.Failure!.Code);
-        Assert.Equal(TextFileErrorCodes.TextEncodingInvalid, invalidBaselineResult.Failure!.Code);
+        Assert.Equal(TextFileErrorCodes.LossySourceAcknowledgementRequired, invalidBaselineResult.Failure!.Code);
         Assert.Equal(TextFileErrorCodes.StorageUnavailable, storageResult.Failure!.Code);
     }
 
@@ -687,13 +770,13 @@ public sealed class TextFileServiceTests
         var corruptResult = await corrupt.Service.GetVersionTextAsync(
             corrupt.ActorId, corrupt.Entry.Id, 1, default);
 
-        Assert.Equal(TextFileErrorCodes.TextEncodingInvalid, invalidResult.Failure!.Code);
+        Assert.True(invalidResult.IsSuccess);
         Assert.Equal(TextFileErrorCodes.StorageUnavailable, storageResult.Failure!.Code);
         Assert.Equal(TextFileErrorCodes.FileVersionCorrupt, corruptResult.Failure!.Code);
     }
 
     [Fact]
-    public async Task GetVersionTextAsync_DeniedUnsupportedBomInvalidUtf8AndChecksumAreHandled()
+    public async Task GetVersionTextAsync_DeniedArbitraryMimeBomLossyAndChecksumAreHandled()
     {
         var denied = new Fixture(Encoding.UTF8.GetBytes("x"), EffectivePermissionLevel.None);
         var deniedResult = await denied.Service.GetVersionTextAsync(
@@ -722,9 +805,9 @@ public sealed class TextFileServiceTests
             checksum.ActorId, checksum.Entry.Id, 1, default);
 
         Assert.Equal(TextFileErrorCodes.FileNotFound, deniedResult.Failure!.Code);
-        Assert.Equal(TextFileErrorCodes.UnsupportedTextType, unsupportedResult.Failure!.Code);
+        Assert.True(unsupportedResult.IsSuccess);
         Assert.Equal("x", bomResult.Value!.Content);
-        Assert.Equal(TextFileErrorCodes.FileVersionCorrupt, invalidUtf8Result.Failure!.Code);
+        Assert.Equal("LOSSY", invalidUtf8Result.Value!.DecodeStatus);
         Assert.Equal(TextFileErrorCodes.FileVersionCorrupt, checksumResult.Failure!.Code);
     }
 
@@ -753,8 +836,8 @@ public sealed class TextFileServiceTests
         recovery.Store.ThrowReplace = false;
         var retry = await recovery.Service.RestoreAsync(command, default);
 
-        Assert.Equal(TextFileErrorCodes.UnsupportedTextType, unsupportedResult.Failure!.Code);
-        Assert.Equal(TextFileErrorCodes.TextEncodingInvalid, invalidBaselineResult.Failure!.Code);
+        Assert.True(unsupportedResult.IsSuccess);
+        Assert.True(invalidBaselineResult.IsSuccess);
         Assert.Equal(TextFileErrorCodes.FileVersionCorrupt, checksumResult.Failure!.Code);
         Assert.Equal(TextFileErrorCodes.RecoveryRequired, first.Failure!.Code);
         Assert.Equal(TextFileErrorCodes.RecoveryRequired, retry.Failure!.Code);
@@ -1021,15 +1104,6 @@ public sealed class TextFileServiceTests
             await source.CopyToAsync(memory, cancellationToken);
             var bytes = memory.ToArray();
             if (PublishInvalidEncoding)
-            {
-                return null;
-            }
-
-            try
-            {
-                _ = new UTF8Encoding(false, true).GetString(bytes);
-            }
-            catch (DecoderFallbackException)
             {
                 return null;
             }

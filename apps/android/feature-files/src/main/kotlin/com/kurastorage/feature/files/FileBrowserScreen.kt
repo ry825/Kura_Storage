@@ -78,6 +78,7 @@ import com.kurastorage.core.ui.components.KuraStatus
 import com.kurastorage.core.ui.components.KuraStatusBadge
 import com.kurastorage.core.ui.components.KuraStatusPanel
 import com.kurastorage.core.ui.components.KuraTopAppBar
+import com.kurastorage.core.ui.formatting.formatFileSize
 import com.kurastorage.core.ui.icons.KuraFileType
 import com.kurastorage.core.ui.icons.KuraFileTypeIcon
 import androidx.compose.foundation.lazy.grid.items as gridItems
@@ -146,8 +147,9 @@ fun FileBrowserScreen(
         return ErrorState(state.error.message, state.error.requestId, onRefresh)
     }
     val visibleEntries = state.entries
+    val currentFolder = state.currentFolder
     val currentCapabilities =
-        state.currentFolder?.let {
+        currentFolder?.let {
             filePermissionCapabilities(it.permission, it.permissionSource)
         } ?: filePermissionCapabilities(
             if (state.personalRoot) SharePermission.MANAGER else SharePermission.UNKNOWN,
@@ -156,19 +158,11 @@ fun FileBrowserScreen(
     val folderTitle =
         when {
             trashMode -> "Trash"
-            state.currentFolder != null -> state.currentFolder.name
+            currentFolder != null -> currentFolder.name
             state.personalRoot -> "My files"
             else -> "Shared"
         }
-    val breadcrumbTrail =
-        state.breadcrumbs.let { breadcrumbs ->
-            val currentFolder = state.currentFolder
-            if (!trashMode && currentFolder != null && breadcrumbs.none { it.id == currentFolder.id }) {
-                breadcrumbs + BrowserBreadcrumb(currentFolder.id, currentFolder.name)
-            } else {
-                breadcrumbs
-            }
-        }
+    val breadcrumbTrail = state.breadcrumbs
     KuraAppScaffold(
         topBar = {
             BrowserHeader(
@@ -427,6 +421,7 @@ private fun FileDetailsSheet(
 ) {
     val capabilities = filePermissionCapabilities(entry.permission, entry.permissionSource)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var confirmOpenAsText by remember(entry.id) { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -516,8 +511,19 @@ private fun FileDetailsSheet(
                 Text("アプリの更新が必要です", color = MaterialTheme.colorScheme.error)
             } else {
                 if (entry.isMediaPreview()) DetailAction("Open", { onOpenMedia(entry) }, primary = true)
-                if (entry.entryType == FileEntryType.FILE && SupportedTextMimeTypes.isSupported(entry.mimeType)) {
+                if (
+                    entry.entryType == FileEntryType.FILE &&
+                    entry.size <= SupportedTextMimeTypes.MAX_CONTENT_BYTES &&
+                    SupportedTextMimeTypes.isDirectlyOpenable(entry.name, entry.mimeType)
+                ) {
                     DetailAction("Open", { onOpenText(entry) }, primary = true)
+                }
+                if (
+                    entry.entryType == FileEntryType.FILE &&
+                    entry.size <= SupportedTextMimeTypes.MAX_CONTENT_BYTES &&
+                    !SupportedTextMimeTypes.isDirectlyOpenable(entry.name, entry.mimeType)
+                ) {
+                    DetailAction("Open as text", { confirmOpenAsText = true })
                 }
                 if (entry.entryType == FileEntryType.FILE && capabilities.canDownload) {
                     DetailAction("Download original", {
@@ -541,6 +547,26 @@ private fun FileDetailsSheet(
             }
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Close") }
         }
+    }
+    if (confirmOpenAsText) {
+        AlertDialog(
+            onDismissRequest = { confirmOpenAsText = false },
+            title = { Text("Open this file as text?") },
+            text = {
+                Text(
+                    "This file is not recognized as text. It may contain unreadable or control characters. Open it only if you trust the file.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmOpenAsText = false
+                        onOpenText(entry)
+                    },
+                ) { Text("Open anyway") }
+            },
+            dismissButton = { TextButton(onClick = { confirmOpenAsText = false }) { Text("Cancel") } },
+        )
     }
 }
 
@@ -756,7 +782,7 @@ private fun FileEntry.isUnsupportedFile(): Boolean =
     entryType == FileEntryType.FILE &&
         status == FileEntryStatus.ACTIVE &&
         !isMediaPreview() &&
-        !SupportedTextMimeTypes.isSupported(mimeType)
+        !SupportedTextMimeTypes.isDirectlyOpenable(name, mimeType)
 
 private fun unsupportedReason(entry: FileEntry): String =
     if (entry.mimeType.isNullOrBlank()) {
@@ -1049,7 +1075,7 @@ private fun TransferPanel(
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Downloading")
                         if (fraction == null) LinearProgressIndicator() else LinearProgressIndicator({ fraction })
-                        Text("${event.transferredBytes} / ${event.totalBytes ?: "?"} bytes")
+                        Text("${formatFileSize(event.transferredBytes)} / ${formatFileSize(event.totalBytes)}")
                         TextButton(onClick = onCancel) { Text("Cancel") }
                     }
                 }
@@ -1063,7 +1089,7 @@ private fun TransferPanel(
                     ) {
                         LinearProgressIndicator({ fraction.coerceIn(0f, 1f) }, Modifier.fillMaxWidth())
                         Text(operation.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${operation.confirmedOffset} / ${operation.size} bytes")
+                        Text("${formatFileSize(operation.confirmedOffset)} / ${formatFileSize(operation.size)}")
                         Text(event.message ?: operation.state.uploadLabel())
                         if (event.canRetry) {
                             Button(onClick = onRetry, modifier = Modifier.testTag("resume-upload")) {

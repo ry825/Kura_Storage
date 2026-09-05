@@ -72,9 +72,9 @@ class MediaPlayerViewModel(
         detachEngine()
         engine = value
         val media = mutableState.value.media
-        if (media?.loadState is MediaLoadState.Ready) {
+        if (media?.displayedSource != null) {
             value.prepare(
-                media.loadState.source,
+                media.displayedSource,
                 pendingRestore.positionMs,
                 pendingRestore.rate,
                 pendingRestore.playWhenReady,
@@ -238,6 +238,8 @@ class MediaPlayerViewModel(
             PlayerFailure.FILE_CHANGED -> MediaUiError.FILE_CHANGED
             PlayerFailure.RANGE -> MediaUiError.RANGE_INVALID
             PlayerFailure.NETWORK -> MediaUiError.DISCONNECTED
+            PlayerFailure.INCOMPLETE -> MediaUiError.RESPONSE_INCOMPLETE
+            PlayerFailure.SERVER -> MediaUiError.SERVER_ERROR
             PlayerFailure.UNSUPPORTED_CODEC,
             PlayerFailure.DECODER,
             -> MediaUiError.UNSUPPORTED

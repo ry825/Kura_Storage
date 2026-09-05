@@ -4,13 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kurastorage.core.data.AdminStorageRepository
 import com.kurastorage.core.model.AdminStorageStatus
+import com.kurastorage.core.ui.formatting.formatFileSize
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.math.RoundingMode
-import java.text.DecimalFormat
 
 data class AdminStorageState(
     val loading: Boolean = true,
@@ -43,17 +42,4 @@ class AdminStorageViewModel(
     }
 }
 
-internal fun formatBytes(bytes: Long?): String {
-    if (bytes == null) return "unknown"
-    val units = arrayOf("B", "KiB", "MiB", "GiB", "TiB")
-    var value = bytes.toDouble()
-    var unit = 0
-    while (value >= BINARY_UNIT && unit < units.lastIndex) {
-        value /= BINARY_UNIT
-        unit++
-    }
-    val formatter = DecimalFormat(if (unit == 0) "0" else "0.0").apply { roundingMode = RoundingMode.HALF_UP }
-    return "${formatter.format(value)} ${units[unit]}"
-}
-
-private const val BINARY_UNIT = 1024.0
+internal fun formatBytes(bytes: Long?): String = formatFileSize(bytes, unknownLabel = "Unknown")

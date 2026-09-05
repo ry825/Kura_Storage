@@ -70,12 +70,10 @@ public sealed class FileVersionServiceTests
             entry, FileVersionChangeKind.Upload, Guid.NewGuid(), null, null, default));
     }
 
-    [Theory]
-    [InlineData("image/jpeg", 1)]
-    [InlineData("text/plain", FileVersionRecord.MaximumContentBytes + 1)]
-    public async Task EnsureCurrent_UnsupportedFileDoesNotReadOrPublish(string mimeType, long size)
+    [Fact]
+    public async Task EnsureCurrent_OversizedFileDoesNotReadOrPublish()
     {
-        var entry = CreateFile(mimeType, size);
+        var entry = CreateFile("application/octet-stream", FileVersionRecord.MaximumContentBytes + 1);
         var readStore = new ReadStore("unused");
         var versionStore = new VersionStore();
         var service = CreateService(new VersionRepository(), versionStore, readStore);

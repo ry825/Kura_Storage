@@ -1,10 +1,11 @@
 package com.kurastorage.core.data.media
 
 import com.kurastorage.core.model.KuraStorageException
+import com.kurastorage.core.model.formatUserFileSize
 import com.kurastorage.core.model.media.ByteCount
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaVariant
-import java.util.Locale
+import com.kurastorage.core.model.media.OriginalMetadata
 
 data class TransferConfirmationPrompt(
     val fileId: String,
@@ -44,29 +45,31 @@ class TransferConfirmationPolicy(
         fileId: String,
         fileVersion: Long,
         kind: MediaKind,
+        observedMetadata: OriginalMetadata? = null,
     ): TransferConfirmationPrompt {
         require(fileId.isNotBlank())
         require(fileVersion >= 0)
         val metadata =
-            try {
-                repository.inspectOriginal(fileId)
-            } catch (error: KuraStorageException) {
-                when (error) {
-                    is KuraStorageException.Network,
-                    is KuraStorageException.InvalidServerResponse,
-                    -> null
-                    is KuraStorageException.Api ->
-                        if (
-                            error.error.statusCode == TOO_MANY_REQUESTS_STATUS ||
-                            (error.error.statusCode ?: 0) >= SERVER_ERROR_STATUS
-                        ) {
-                            null
-                        } else {
-                            throw error
-                        }
-                    else -> throw error
+            observedMetadata
+                ?: try {
+                    repository.inspectOriginal(fileId)
+                } catch (error: KuraStorageException) {
+                    when (error) {
+                        is KuraStorageException.Network,
+                        is KuraStorageException.InvalidServerResponse,
+                        -> null
+                        is KuraStorageException.Api ->
+                            if (
+                                error.error.statusCode == TOO_MANY_REQUESTS_STATUS ||
+                                (error.error.statusCode ?: 0) >= SERVER_ERROR_STATUS
+                            ) {
+                                null
+                            } else {
+                                throw error
+                            }
+                        else -> throw error
+                    }
                 }
-            }
         val formattedSize = metadata?.size?.formatIec() ?: "Size unavailable"
         return TransferConfirmationPrompt(
             fileId = fileId,
@@ -93,19 +96,7 @@ private fun transferDescription(
         else -> "About $formattedSize may be transferred. Actual data use varies by file and format."
     }
 
-fun ByteCount.formatIec(): String {
-    if (value < KIBIBYTE) return "$value B"
-    val (divisor, suffix) =
-        when {
-            value >= GIBIBYTE -> GIBIBYTE to "GiB"
-            value >= MEBIBYTE -> MEBIBYTE to "MiB"
-            else -> KIBIBYTE to "KiB"
-        }
-    return String.format(Locale.US, "%.1f %s", value.toDouble() / divisor, suffix)
-}
+fun ByteCount.formatIec(): String = formatUserFileSize(value)
 
-private const val KIBIBYTE = 1024L
-private const val MEBIBYTE = KIBIBYTE * 1024
-private const val GIBIBYTE = MEBIBYTE * 1024
 private const val TOO_MANY_REQUESTS_STATUS = 429
 private const val SERVER_ERROR_STATUS = 500

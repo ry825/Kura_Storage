@@ -69,7 +69,7 @@ public sealed class FileVersionStoreTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Publish_RejectsInvalidUtf8AndDoesNotPublish()
+    public async Task Publish_PreservesArbitraryRawBytes()
     {
         var store = CreateStore();
 
@@ -77,8 +77,8 @@ public sealed class FileVersionStoreTests : IAsyncLifetime
             Guid.NewGuid(), Guid.NewGuid(), 1, Guid.NewGuid(),
             new MemoryStream([0xc3, 0x28]), 2, default);
 
-        Assert.Null(published);
-        Assert.False(Directory.Exists(Path.Combine(root, "versions")));
+        Assert.NotNull(published);
+        Assert.Equal([0xc3, 0x28], await File.ReadAllBytesAsync(Resolve(published.Path.Value)));
     }
 
     [Fact]

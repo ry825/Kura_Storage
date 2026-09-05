@@ -48,7 +48,7 @@ class SharingScreensTest {
             )
         }
         compose.onNodeWithText("Photos").assertIsDisplayed()
-        compose.onNodeWithText("Owner: Owner • MANAGER (DIRECT)").assertIsDisplayed()
+        compose.onNodeWithText("Owner: Owner • Can manage (Direct share)").assertIsDisplayed()
         compose.onNodeWithText("Applies to this folder and descendants").assertIsDisplayed()
         compose.onNodeWithText("Manage").assertIsDisplayed()
     }

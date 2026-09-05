@@ -288,18 +288,45 @@ fun KuraStatusPanel(
         shape = MaterialTheme.shapes.medium,
         border = BorderStroke(1.dp, palette.accent),
     ) {
-        Row(
-            modifier = Modifier.padding(KuraTheme.spacing.md),
-            horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(status.symbol, style = MaterialTheme.typography.titleLarge)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xxs)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(message, style = MaterialTheme.typography.bodyMedium)
+        BoxWithConstraints {
+            if (action != null && maxWidth < 480.dp) {
+                Column(
+                    modifier = Modifier.padding(KuraTheme.spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Text(status.symbol, style = MaterialTheme.typography.titleLarge)
+                        StatusPanelMessage(title, message, Modifier.weight(1f))
+                    }
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) { action() }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.padding(KuraTheme.spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(status.symbol, style = MaterialTheme.typography.titleLarge)
+                    StatusPanelMessage(title, message, Modifier.weight(1f))
+                    action?.invoke()
+                }
             }
-            action?.invoke()
         }
+    }
+}
+
+@Composable
+private fun StatusPanelMessage(
+    title: String,
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xxs)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(message, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

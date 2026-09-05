@@ -48,10 +48,18 @@ data class FileBrowserState(
     val retention: RetentionDisplayState? = null,
     val placementResult: String? = null,
     val error: BrowserError? = null,
-    val currentFolder: FileEntry? = null,
     val personalRoot: Boolean = true,
     val historySyncError: String? = null,
-    val breadcrumbs: List<BrowserBreadcrumb> = listOf(BrowserBreadcrumb(null, "My files")),
+    val locations: List<FolderLocation> = listOf(FolderLocation(null, "My files")),
+) {
+    val currentFolder: FileEntry? get() = locations.lastOrNull()?.folder
+    val breadcrumbs: List<BrowserBreadcrumb> get() = locations.map { BrowserBreadcrumb(it.id, it.label) }
+}
+
+data class FolderLocation(
+    val id: String?,
+    val label: String,
+    val folder: FileEntry? = null,
 )
 
 data class BrowserBreadcrumb(
@@ -136,7 +144,15 @@ class FileBrowserViewModel(
     private val initialSelectionId: String? = null,
     private val recentFiles: RecentFileRepository? = null,
 ) : ViewModel() {
-    private val mutableState = MutableStateFlow(FileBrowserState(personalRoot = initialParentId == null))
+    private val initialLocation =
+        FolderLocation(initialParentId, if (initialParentId == null) "My files" else "Shared")
+    private val mutableState =
+        MutableStateFlow(
+            FileBrowserState(
+                personalRoot = initialParentId == null,
+                locations = listOf(initialLocation),
+            ),
+        )
     val state: StateFlow<FileBrowserState> = mutableState.asStateFlow()
     private var pager = pager(initialParentId)
     private var movePager: FilePager? = null
@@ -145,13 +161,14 @@ class FileBrowserViewModel(
     private var lastDownload: DownloadOperation? = null
     private var lastWasUpload = false
     private var placementDetailId: String? = null
-    private val folderStack = ArrayDeque<String?>().apply { addLast(initialParentId) }
     private val moveFolderStack = ArrayDeque<PickerLocation>()
     private var displayedFileId: String? = null
+    private var navigationJob: Job? = null
+    private var navigationGeneration = 0L
+    private var navigationTargetId: String? = null
 
     init {
-        refresh()
-        initialParentId?.let(::loadCurrentFolder)
+        if (initialParentId == null) refresh() else navigateTo(listOf(initialLocation), force = true)
         initialSelectionId?.let { id ->
             displayFile(id)
         }
@@ -179,15 +196,7 @@ class FileBrowserViewModel(
 
     fun open(entry: FileEntry) {
         if (entry.entryType == FileEntryType.FOLDER && entry.status == FileEntryStatus.ACTIVE && !trashMode) {
-            folderStack.addLast(entry.id)
-            pager = pager(entry.id)
-            mutableState.update {
-                it.copy(
-                    currentFolder = entry,
-                    breadcrumbs = it.breadcrumbs + BrowserBreadcrumb(entry.id, entry.name),
-                )
-            }
-            refresh()
+            navigateTo(mutableState.value.locations + FolderLocation(entry.id, entry.name, entry))
         } else {
             select(entry)
         }
@@ -201,13 +210,18 @@ class FileBrowserViewModel(
         }
     }
 
+    @Suppress("ReturnCount")
     fun back(): Boolean {
-        if (trashMode || folderStack.size <= 1) return false
-        folderStack.removeLast()
-        pager = pager(folderStack.last())
-        mutableState.update { it.copy(breadcrumbs = it.breadcrumbs.dropLast(1)) }
-        folderStack.last()?.let(::loadCurrentFolder)
-        refresh()
+        val locations = mutableState.value.locations
+        if (navigationJob?.isActive == true && navigationTargetId != locations.lastOrNull()?.id) {
+            navigationJob?.cancel()
+            navigationGeneration++
+            navigationTargetId = null
+            mutableState.update { it.copy(loading = false) }
+            return true
+        }
+        if (trashMode || locations.size <= 1) return false
+        navigateTo(locations.dropLast(1))
         return true
     }
 
@@ -239,7 +253,16 @@ class FileBrowserViewModel(
     }
 
     fun createFolder(name: String) {
-        if (currentCapabilities().canCreate) mutate { files.createFolder(folderStack.last(), name) }
+        if (currentCapabilities().canCreate) {
+            mutate {
+                files.createFolder(
+                    mutableState.value.locations
+                        .last()
+                        .id,
+                    name,
+                )
+            }
+        }
     }
 
     fun trash(entry: FileEntry) {
@@ -651,13 +674,33 @@ class FileBrowserViewModel(
         action: suspend () -> FilePage,
         after: (FilePage) -> Unit = {},
     ) {
+        val generation = navigationGeneration
+        val locationId =
+            mutableState.value.locations
+                .lastOrNull()
+                ?.id
         viewModelScope.launch {
             mutableState.update { it.copy(loading = true, error = null, placementResult = null) }
             runCatching { action() }
                 .onSuccess { page ->
+                    if (generation != navigationGeneration ||
+                        mutableState.value.locations
+                            .lastOrNull()
+                            ?.id != locationId
+                    ) {
+                        return@onSuccess
+                    }
                     showPage(page)
                     after(page)
-                }.onFailure(::showError)
+                }.onFailure { error ->
+                    if (generation == navigationGeneration &&
+                        mutableState.value.locations
+                            .lastOrNull()
+                            ?.id == locationId
+                    ) {
+                        showError(error)
+                    }
+                }
         }
     }
 
@@ -700,33 +743,74 @@ class FileBrowserViewModel(
                 entries = page.items,
                 parentId = page.parentId,
                 canLoadMore = page.hasNextPage,
-                currentFolder = if (page.parentId == null) null else it.currentFolder?.takeIf { folder -> folder.id == page.parentId },
-                personalRoot = initialParentId == null && folderStack.size == 1,
+                personalRoot = initialParentId == null && it.locations.size == 1,
             )
         }
     }
 
-    private fun loadCurrentFolder(parentId: String) {
-        viewModelScope.launch {
-            runCatching { files.detail(parentId) }.onSuccess { folder ->
-                mutableState.update { state ->
-                    val trail =
-                        if (state.breadcrumbs.lastOrNull()?.id == folder.id) {
-                            state.breadcrumbs.dropLast(1) + BrowserBreadcrumb(folder.id, folder.name)
-                        } else {
-                            listOf(BrowserBreadcrumb(null, "My files"), BrowserBreadcrumb(folder.id, folder.name))
+    private fun navigateTo(
+        proposedLocations: List<FolderLocation>,
+        force: Boolean = false,
+    ) {
+        val target = proposedLocations.last()
+        val isNavigatingToTarget = navigationJob?.isActive == true && navigationTargetId == target.id
+        val isAlreadyAtTarget =
+            mutableState.value.locations
+                .lastOrNull()
+                ?.id == target.id
+        if (
+            !force &&
+            (isNavigatingToTarget || isAlreadyAtTarget)
+        ) {
+            return
+        }
+        val generation = ++navigationGeneration
+        navigationTargetId = target.id
+        navigationJob?.cancel()
+        mutableState.update { it.copy(loading = true, error = null, placementResult = null) }
+        navigationJob =
+            viewModelScope.launch {
+                runCatching {
+                    val folder =
+                        target.id?.let { id ->
+                            files.detail(id).also {
+                                require(it.entryType == FileEntryType.FOLDER && it.status == FileEntryStatus.ACTIVE)
+                            }
                         }
-                    state.copy(currentFolder = folder, breadcrumbs = trail)
+                    val nextPager = pager(target.id)
+                    val page = nextPager.refresh()
+                    Triple(folder, nextPager, page)
+                }.onSuccess { (folder, nextPager, page) ->
+                    if (generation != navigationGeneration) return@onSuccess
+                    val committedLocations =
+                        proposedLocations.dropLast(1) +
+                            target.copy(label = folder?.name ?: target.label, folder = folder)
+                    pager = nextPager
+                    navigationTargetId = null
+                    mutableState.update {
+                        it.copy(
+                            loading = false,
+                            entries = page.items,
+                            parentId = page.parentId,
+                            canLoadMore = page.hasNextPage,
+                            locations = committedLocations,
+                            personalRoot = initialParentId == null && committedLocations.size == 1,
+                            error = null,
+                        )
+                    }
+                }.onFailure { error ->
+                    if (generation != navigationGeneration) return@onFailure
+                    navigationTargetId = null
+                    showError(error)
                 }
             }
-        }
     }
 
     private fun capabilities(entry: FileEntry) = filePermissionCapabilities(entry.permission, entry.permissionSource)
 
     private fun currentCapabilities() =
         mutableState.value.currentFolder?.let(::capabilities)
-            ?: if (initialParentId == null && folderStack.size == 1) {
+            ?: if (initialParentId == null && mutableState.value.locations.size == 1) {
                 filePermissionCapabilities(SharePermission.MANAGER, PermissionSource.OWNER)
             } else {
                 filePermissionCapabilities(SharePermission.UNKNOWN, PermissionSource.UNKNOWN)
