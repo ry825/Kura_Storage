@@ -223,12 +223,12 @@
 - [x] PR 2の差分をセルフレビューする。
   - [x] PR 2の目的外変更、秘密情報、絶対Path、デバッグコード、不要依存がない。
   - [x] 実装、Test、実機記録、正式文書、Steeringの対応が取れている。
-- [ ] PR 2をCommit、Pushし、英語のPull Requestを作成する。
-  - [ ] 英語本文へ目的、対象Task、変更、Test結果、実機結果、影響、未実施事項を記載する。
-  - [ ] CI成功を確認し、Pull RequestはMergeしない。
-- [ ] `各Pull Request完了記録`へPR 2の実施結果を記載する。
-  - [ ] 完了日、PR番号/URL、Test、実機検証、計画差分、追加Task、取消Task、PR 3への引継ぎを記載する。
-  - [ ] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。
+- [x] PR 2をCommit、Pushし、英語のPull Requestを作成する。
+  - [x] 英語本文へ目的、対象Task、変更、Test結果、実機結果、影響、未実施事項を記載する。
+  - [x] CI成功を確認し、Pull RequestはMergeしない。
+- [x] `各Pull Request完了記録`へPR 2の実施結果を記載する。
+  - [x] 完了日、PR番号/URL、Test、実機検証、計画差分、追加Task、取消Task、PR 3への引継ぎを記載する。
+  - [x] 記録をCommit・Pushし、Pull Requestへ反映されたことを確認する。
 
 ---
 
@@ -336,13 +336,20 @@
 
 ### PR 2
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したTest・Build・静的解析・手動確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したTaskと理由: 未記録
-- 技術的に不要になったTask、理由、代替実装: 未記録
-- 後続Pull Requestへの引継ぎ: 未記録
+- 完了日: 2026-09-05
+- Pull Request: [#61 Improve Android photo viewer and media actions](https://github.com/ry825/Kura_Storage/pull/61)
+- 実施したTest・Build・静的解析・手動確認:
+  - `./scripts/ci/verify-android.sh`: JDK 17・API 36 SDKで1,387タスク成功。Build、Unit Test、ktlint、detekt、Lintを含む。
+  - API 33実機のConnected Compose Test: `feature-media` 18件、`feature-search` 11件成功。API 33 Emulatorでは`core-data` 14件、`feature-files` 25件を含む関連回帰Testも成功。
+  - `git diff --check`: 成功。
+  - GitHub Actions: Android、Server、Config、Securityの4jobが成功。
+  - OPPO CPH2333 / Android API 33 / 360dpで、実ServerへZeroTier接続し、Viewer、Swipe、Zoom/Pan/Double tap、Favorite、Tags、Quality、Original download、SAF Cancelを確認。
+  - LowはHTTP 200・WebP・1280 x 853・137,516 bytes、MediumはHTTP 200・WebP・2560 x 1707・237,762 bytes、OriginalはHTTP 200・JPEG・5472 x 3648・10,047,953 bytesであることを確認。
+  - 端末保存FileとServer originalが10,047,953 bytesおよびSHA-256 `835be98e71267845b7a4f66469fcf96e3e0888899972ecc48d72f98b50469f14`で一致。詳細は`evidence/pr2/README.md`へ記録。
+- 計画と実装の差分: 機能スコープに差分なし。実データScreenshotは個人画像とFile名を含むためPRへ添付せず、公開モックを変更前基準として目視比較結果を記録した。実機メーカー制限でADB shellからfont scaleを変更できなかったため、文字200%は同じAPI 33実機上のCompose fontScale fixtureとSemanticsで確認した。
+- 実装中に追加したTaskと理由: 実機Zoom/Pan検証で拡大画像がViewer外へ描画される問題を検出したため、Photo canvasを独立したclip layerで囲み、Top app barと操作領域への描画はみ出しを防止した。変更前Downloadの3.84 KiB不完全Fileと修正後の段階別検証を再現可能な証跡として追加した。
+- 技術的に不要になったTask、理由、代替実装: なし。
+- 後続Pull Requestへの引継ぎ: PR #61の`main`へのMergeを確認するまでPR 3を開始しない。PR 3ではFavoritesのThumbnail、直接Routing、Media navigation context、主要画面の横断UI・Accessibility仕上げを行う。
 
 ### PR 3
 
