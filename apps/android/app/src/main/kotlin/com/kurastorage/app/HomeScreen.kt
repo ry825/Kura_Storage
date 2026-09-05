@@ -231,7 +231,7 @@ private fun PrimaryDestinations(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm)) {
         DestinationCard("My files", "Browse folders and files", onFiles)
-        DestinationCard("Family shared", "Open items shared with you", onShared)
+        DestinationCard("Shared", "Open items shared with you", onShared)
         DestinationCard("Recent files", "Continue where you left off", onRecent)
     }
 }

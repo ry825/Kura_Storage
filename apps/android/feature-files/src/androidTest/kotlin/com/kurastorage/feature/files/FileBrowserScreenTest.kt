@@ -1,6 +1,6 @@
 package com.kurastorage.feature.files
 
-import android.view.KeyEvent
+import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
@@ -10,16 +10,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -27,6 +30,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
@@ -49,6 +53,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.io.File
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -56,7 +61,9 @@ class FileBrowserScreenTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
-    fun fileListShowsActionsAndEntry() {
+    fun fileGridShowsOverflowAndEntry() {
+        var backed = false
+        var refreshed = false
         var searched = false
         compose.setContent {
             FileBrowserScreen(
@@ -64,8 +71,8 @@ class FileBrowserScreenTest {
                 trashMode = false,
                 onOpen = {},
                 onShowDetails = {},
-                onBack = {},
-                onRefresh = {},
+                onBack = { backed = true },
+                onRefresh = { refreshed = true },
                 onLoadMore = {},
                 onCreateFolder = {},
                 onChooseUpload = {},
@@ -81,10 +88,16 @@ class FileBrowserScreenTest {
         }
 
         compose.onNodeWithText("My files").assertIsDisplayed()
-        compose.onNodeWithText("Upload").assertIsDisplayed()
-        compose.onNodeWithText("File: document.txt").assertIsDisplayed()
-        compose.onNodeWithText("Search").performClick()
-        compose.runOnIdle { assertTrue(searched) }
+        compose.onNodeWithContentDescription("Upload file").assertIsDisplayed()
+        compose.onNodeWithText("document.txt").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithContentDescription("Refresh files").performClick()
+        compose.onNodeWithContentDescription("Search files").performClick()
+        compose.runOnIdle {
+            assertTrue(backed)
+            assertTrue(refreshed)
+            assertTrue(searched)
+        }
     }
 
     @Test
@@ -151,8 +164,8 @@ class FileBrowserScreenTest {
 
         compose.onNodeWithText("Trash").assertIsDisplayed()
         compose.onNodeWithText("2 / 5 bytes").assertIsDisplayed()
-        compose.onNodeWithText("Delete permanently").assertIsDisplayed()
-        compose.onNodeWithText("Restore").performClick()
+        compose.onNodeWithText("Delete permanently").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Restore").performScrollTo().performClick()
         compose.onNodeWithText("Restore this item?").assertIsDisplayed()
     }
 
@@ -218,7 +231,7 @@ class FileBrowserScreenTest {
     }
 
     @Test
-    fun uploadProgressHandlesZeroAndCompleteBoundariesAndBackDismissesCancellation() {
+    fun uploadProgressHandlesZeroAndCompleteBoundariesAndDismissesCancellation() {
         var operation by
             mutableStateOf(
                 UploadOperation(
@@ -264,8 +277,7 @@ class FileBrowserScreenTest {
         compose.onNodeWithText(operation.fileName).assertIsDisplayed()
         compose.onNodeWithTag("cancel-upload").performClick()
         compose.onNodeWithText("Cancel upload?").assertIsDisplayed()
-        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-        compose.waitForIdle()
+        compose.onNodeWithText("Keep uploading").performClick()
         compose.onAllNodesWithText("Cancel upload?").assertCountEquals(0)
 
         compose.runOnIdle {
@@ -301,8 +313,8 @@ class FileBrowserScreenTest {
             )
         }
 
-        compose.onNodeWithText("Folder: Photos").assertIsDisplayed()
-        compose.onNodeWithText("Actions").performClick()
+        compose.onNodeWithText("Photos").assertIsDisplayed()
+        compose.onNodeWithContentDescription("More actions for Photos").performClick()
         compose.runOnIdle { assertEquals(folder, selected) }
     }
 
@@ -417,11 +429,11 @@ class FileBrowserScreenTest {
         compose.onNodeWithText("Rename").performClick()
         compose.onNodeWithTag("rename-input").performTextReplacement("renamed.txt")
         compose.onNodeWithText("Rename").performClick()
-        compose.onNodeWithText("File: renamed.txt").assertIsDisplayed()
+        compose.onNodeWithText("renamed.txt").assertIsDisplayed()
         compose.onNodeWithText("Renamed to renamed.txt.").assertIsDisplayed()
 
-        compose.onNodeWithText("Actions").performClick()
-        compose.onNodeWithText("Move").performClick()
+        compose.onNodeWithContentDescription("More actions for renamed.txt").performClick()
+        compose.onNodeWithText("Move").performScrollTo().performClick()
         compose.onNodeWithText("Destination: Destination").assertIsDisplayed()
         compose.onNodeWithTag("move-confirm").assertIsEnabled().performClick()
         compose.onNodeWithText("Moved renamed.txt.").assertIsDisplayed()
@@ -602,9 +614,13 @@ class FileBrowserScreenTest {
                 onOpenDownload = {},
             )
         }
-        compose.onNodeWithText("Restore").assertIsDisplayed()
-        compose.onNodeWithText("Scheduled for automatic deletion: tomorrow").assertIsDisplayed()
-        compose.onNodeWithText("Delete permanently").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Restore").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Scheduled for automatic deletion: tomorrow").performScrollTo().assertIsDisplayed()
+        compose
+            .onNodeWithText("Delete permanently")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
         compose.onNodeWithText("This operation cannot be undone.").assertIsDisplayed()
         compose.onNodeWithText("The folder and everything inside it will be permanently deleted.").assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, purgeRequests) }
@@ -613,7 +629,7 @@ class FileBrowserScreenTest {
             assertEquals(0, purgeRequests)
             screenState.value = screenState.value.copy(selected = target)
         }
-        compose.onNodeWithText("Delete permanently").performClick()
+        compose.onNodeWithText("Delete permanently").performScrollTo().performClick()
         compose.onNodeWithTag("confirm-permanent-delete").performClick()
         compose.runOnIdle { assertEquals(1, purgeRequests) }
         compose.onNodeWithText("Deleting…").assertIsNotEnabled()
@@ -749,8 +765,8 @@ class FileBrowserScreenTest {
         }
 
         compose.onAllNodesWithText("ファイルが見つかりません").assertCountEquals(2)
-        compose.onNodeWithText("最終確認: 2026-08-22T00:05:00Z").assertIsDisplayed()
-        compose.onNodeWithTag("recheck-missing").performClick()
+        compose.onNodeWithText("2026-08-22T00:05:00Z").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("recheck-missing").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, rechecks) }
         compose.onNodeWithTag("delete-missing-index").performClick()
         compose.onNodeWithText("KuraStorageの索引だけを削除します。HDD上のファイルは削除しません。").assertIsDisplayed()
@@ -813,18 +829,18 @@ class FileBrowserScreenTest {
                 onOpenDownload = {},
             )
         }
-        compose.onNodeWithText("Download").assertIsDisplayed()
-        compose.onNodeWithText("Photos").assertIsDisplayed()
-        compose.onAllNodesWithText("Owner: Owner").assertCountEquals(2)
-        compose.onAllNodesWithText("Permission: VIEWER (DIRECT)").assertCountEquals(2)
-        compose.onNodeWithText("Shared from folder: Photos").assertIsDisplayed()
+        compose.onNodeWithText("Download original").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText("Photos").assertCountEquals(2)
+        compose.onAllNodesWithText("Owner").assertCountEquals(2)
+        compose.onAllNodesWithText("Read only").assertCountEquals(3)
+        compose.onNodeWithText("Shared from").assertIsDisplayed()
         assertSharedControlCounts(create = 0, rename = 0, move = 0, trash = 0, sharing = 0)
 
         compose.runOnIdle {
             permission.value = SharePermission.CONTRIBUTOR
             source.value = PermissionSource.INHERITED
         }
-        compose.onNodeWithText("Download").assertIsDisplayed()
+        compose.onNodeWithText("Download original").performScrollTo().assertIsDisplayed()
         assertSharedControlCounts(create = 1, rename = 0, move = 0, trash = 0, sharing = 0)
 
         compose.runOnIdle {
@@ -838,19 +854,19 @@ class FileBrowserScreenTest {
             source.value = PermissionSource.INHERITED
         }
         assertSharedControlCounts(create = 1, rename = 1, move = 1, trash = 1, sharing = 1)
-        compose.onNodeWithText("Sharing settings").assertIsDisplayed()
+        compose.onNodeWithText("Share").performScrollTo().assertIsDisplayed()
 
         compose.runOnIdle {
             source.value = PermissionSource.UNKNOWN
         }
-        compose.onNodeWithText("Download").assertIsDisplayed()
+        compose.onNodeWithText("Download original").performScrollTo().assertIsDisplayed()
         assertSharedControlCounts(create = 0, rename = 0, move = 0, trash = 0, sharing = 0)
 
         compose.runOnIdle {
             permission.value = SharePermission.UNKNOWN
             source.value = PermissionSource.OWNER
         }
-        compose.onNodeWithText("Download").assertIsDisplayed()
+        compose.onNodeWithText("Download original").performScrollTo().assertIsDisplayed()
         assertSharedControlCounts(create = 0, rename = 0, move = 0, trash = 0, sharing = 0)
     }
 
@@ -914,10 +930,10 @@ class FileBrowserScreenTest {
         }
 
         compose.onNodeWithText("Unsupported file").assertIsDisplayed()
-        compose.onNodeWithText("MIME type: application/x-private-archive").assertIsDisplayed()
-        compose.onNodeWithText("Download").assertIsDisplayed()
+        compose.onNodeWithText("application/x-private-archive").assertIsDisplayed()
+        compose.onNodeWithText("Download original").performScrollTo().assertIsDisplayed()
         compose.onAllNodesWithText("Open").assertCountEquals(0)
-        compose.onAllNodesWithText("Open text").assertCountEquals(0)
+        compose.onAllNodesWithText("Open").assertCountEquals(0)
     }
 
     @Test
@@ -944,13 +960,84 @@ class FileBrowserScreenTest {
             )
         }
 
-        compose.onNodeWithText("Folders").assertIsDisplayed()
-        compose.onNodeWithText("Files").assertIsDisplayed()
         compose.onNodeWithContentDescription("Folder").assertIsDisplayed()
         compose.onNodeWithContentDescription("Text file").assertIsDisplayed()
-        compose.onNodeWithText("Grid").performClick()
+        compose.onNodeWithContentDescription("Show as list").performClick()
+        compose.onNodeWithText("Folders").assertIsDisplayed()
+        compose.onNodeWithText("Files").assertIsDisplayed()
         compose.onNodeWithText(longName).assertIsDisplayed()
-        compose.onNodeWithTag("file-grid").captureToImage()
+        compose.onNodeWithTag("file-list").captureEvidence("pr1-files-list.png")
+    }
+
+    @Test
+    fun displayModeSurvivesStateRestorationAndRefreshIsDisabledWhileLoading() {
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
+            FileBrowserScreen(
+                state = FileBrowserState(loading = true, entries = listOf(file())),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithContentDescription("Refreshing files").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Show as list").performClick()
+        compose.onNodeWithTag("file-list").assertIsDisplayed()
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithTag("file-list").assertIsDisplayed()
+    }
+
+    @Test
+    fun compactLargeTextReadOnlyDetailsUseScrollableSheetAndFriendlyLabels() {
+        val selected =
+            file().copy(
+                permission = SharePermission.VIEWER,
+                permissionSource = PermissionSource.DIRECT,
+                name = "a-very-long-read-only-document-name-that-needs-wrapping.txt",
+            )
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                Box(Modifier.size(width = 360.dp, height = 800.dp)) {
+                    FileBrowserScreen(
+                        state = FileBrowserState(loading = false, entries = listOf(selected), selected = selected, personalRoot = false),
+                        trashMode = false,
+                        onOpen = {},
+                        onShowDetails = {},
+                        onBack = {},
+                        onRefresh = {},
+                        onLoadMore = {},
+                        onCreateFolder = {},
+                        onChooseUpload = {},
+                        onChooseDownload = {},
+                        onTrash = {},
+                        onRestore = {},
+                        onDismissDetail = {},
+                        onCancelTransfer = {},
+                        onRetryTransfer = {},
+                        onOpenDownload = {},
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithTag("file-details-sheet").assertIsDisplayed().captureEvidence("pr1-file-details-200pct.png")
+        compose.onAllNodesWithText("Read only").assertCountEquals(2)
+        compose.onAllNodesWithText("Rename").assertCountEquals(0)
+        compose.onAllNodesWithText("Move to Trash").assertCountEquals(0)
     }
 
     @Test
@@ -984,9 +1071,9 @@ class FileBrowserScreenTest {
             }
         }
 
-        compose.onNodeWithTag("file-list").assertIsDisplayed()
+        compose.onNodeWithTag("file-grid").assertIsDisplayed()
         compose.onNodeWithTag("upload-fab").assertIsDisplayed()
-        compose.onNodeWithTag("files-compact").captureToImage()
+        compose.onNodeWithTag("files-compact").captureEvidence("pr1-files-grid-360dp-200pct-dark.png")
     }
 
     @Test
@@ -1014,8 +1101,8 @@ class FileBrowserScreenTest {
             }
         }
 
-        compose.onNodeWithTag("file-list").assertIsDisplayed()
-        compose.onNodeWithText("Actions").assertIsDisplayed()
+        compose.onNodeWithTag("file-grid").assertIsDisplayed()
+        compose.onNodeWithContentDescription("More actions for document.txt").assertIsDisplayed()
         compose.onNodeWithTag("files-landscape").captureToImage()
     }
 
@@ -1053,7 +1140,7 @@ class FileBrowserScreenTest {
 
         compose.runOnIdle { assertTrue(thumbnails.get() < 100) }
         thumbnails.set(0)
-        compose.onNodeWithText("Grid").performClick()
+        compose.onNodeWithContentDescription("Show as list").performClick()
         compose.runOnIdle { assertTrue(thumbnails.get() < 250) }
     }
 
@@ -1072,6 +1159,14 @@ class FileBrowserScreenTest {
         )
     }
 
+    private fun SemanticsNodeInteraction.captureEvidence(fileName: String) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = File(requireNotNull(context.getExternalFilesDir(null)), "ui-evidence").apply { mkdirs() }
+        File(directory, fileName).outputStream().use { stream ->
+            captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, stream)
+        }
+    }
+
     private fun assertSharedControlCounts(
         create: Int,
         rename: Int,
@@ -1080,11 +1175,11 @@ class FileBrowserScreenTest {
         sharing: Int,
     ) {
         compose.onAllNodesWithText("New folder").assertCountEquals(create)
-        compose.onAllNodesWithText("Upload").assertCountEquals(create)
+        compose.onAllNodesWithTag("upload-fab").assertCountEquals(create)
         compose.onAllNodesWithText("Rename").assertCountEquals(rename)
         compose.onAllNodesWithText("Move").assertCountEquals(move)
-        compose.onAllNodesWithText("Move to trash").assertCountEquals(trash)
-        compose.onAllNodesWithText("Sharing settings").assertCountEquals(sharing)
+        compose.onAllNodesWithText("Move to Trash").assertCountEquals(trash)
+        compose.onAllNodesWithText("Share").assertCountEquals(sharing)
     }
 
     private fun file() =
