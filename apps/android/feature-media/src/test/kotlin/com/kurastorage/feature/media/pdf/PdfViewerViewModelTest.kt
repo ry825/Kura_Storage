@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength")
+
 package com.kurastorage.feature.media.pdf
 
 import com.kurastorage.core.data.FileRepository
@@ -84,6 +86,21 @@ class PdfViewerViewModelTest {
                     store("inactive", inactive),
                 )
             assertEquals(PdfLoadState.FAILED, inactiveViewModel.state.value.loadState)
+        }
+
+    @Test
+    fun `metadata accepts PDF parameters and rejects empty files before download`() =
+        runTest(dispatcher) {
+            val parameterized = MetadataRepository(8, mimeType = "Application/PDF; charset=binary")
+            val accepted = PdfViewerViewModel("pdf", FakeFiles(pdf()), parameterized, store("parameterized", parameterized))
+            assertEquals(PdfLoadState.CONFIRMING, accepted.state.value.loadState)
+            assertEquals(0, parameterized.contentRequests)
+
+            val empty = MetadataRepository(0)
+            val rejected = PdfViewerViewModel("pdf", FakeFiles(pdf()), empty, store("empty", empty))
+            assertEquals(PdfLoadState.FAILED, rejected.state.value.loadState)
+            assertEquals(PdfFailure.INCOMPLETE, rejected.state.value.failure)
+            assertEquals(0, empty.contentRequests)
         }
 
     @Test

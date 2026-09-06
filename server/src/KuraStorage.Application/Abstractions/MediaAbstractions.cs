@@ -6,6 +6,18 @@ namespace KuraStorage.Application.Abstractions;
 public interface IMediaJobRunner
 {
     Task<bool> RunNextAsync(CancellationToken cancellationToken);
+
+    Task<bool> RunNextAsync(
+        MediaJobClaimScope claimScope,
+        int maximumConcurrency,
+        CancellationToken cancellationToken) => RunNextAsync(cancellationToken);
+}
+
+public enum MediaJobClaimScope
+{
+    Any,
+    Thumbnail,
+    NonThumbnail,
 }
 
 public interface IMediaCleanupRepository
@@ -99,6 +111,13 @@ public interface IMediaJobQueue
 {
     Task<MediaJob?> TryAcquireNextAsync(Guid workerToken, DateTimeOffset now, CancellationToken cancellationToken);
 
+    Task<MediaJob?> TryAcquireNextAsync(
+        Guid workerToken,
+        DateTimeOffset now,
+        MediaJobClaimScope claimScope,
+        int maximumConcurrency,
+        CancellationToken cancellationToken) => TryAcquireNextAsync(workerToken, now, cancellationToken);
+
     Task<bool> TryRecordHeartbeatAsync(
         Guid jobId,
         Guid workerToken,
@@ -141,6 +160,11 @@ public interface IMediaJobQueue
     Task<int?> GetQueuePositionAsync(Guid jobId, DateTimeOffset now, CancellationToken cancellationToken);
 }
 
+public interface IThumbnailJobSummaryRepository
+{
+    Task<ThumbnailJobSummarySnapshot> GetAsync(Guid actorUserId, CancellationToken cancellationToken);
+}
+
 public interface IDerivativeStore
 {
     Task<PublishedDerivative?> FindPublishedAsync(
@@ -179,6 +203,8 @@ public interface IDerivativeStore
 public sealed record DerivativeTemporaryFile(RelativeStoragePath Path, long Size, Guid JobId, int Attempt);
 
 public sealed record MediaQueueSnapshot(int QueuedCount, int RunningCount, long OldestWaitSeconds);
+
+public sealed record ThumbnailJobSummarySnapshot(long QueuedCount, long RunningCount, long FailedCount);
 
 public sealed record MediaTemporaryCandidate(Guid JobId, int Attempt);
 

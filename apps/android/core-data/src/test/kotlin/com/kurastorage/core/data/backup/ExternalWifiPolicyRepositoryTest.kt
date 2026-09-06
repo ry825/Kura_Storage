@@ -39,6 +39,32 @@ class ExternalWifiPolicyRepositoryTest {
     }
 
     @Test
+    fun wifiIdentityFallsBackWhenCapabilitiesRedactLocationSensitiveFields() {
+        assertEquals(
+            ConnectedWifi("Family Wi-Fi", "aa:bb:cc:dd:ee:ff", false),
+            WifiIdentitySelector.select(
+                candidates =
+                    listOf(
+                        WifiIdentityCandidate("<unknown ssid>", "02:00:00:00:00:00"),
+                        WifiIdentityCandidate("\"Family Wi-Fi\"", "AA-BB-CC-DD-EE-FF"),
+                    ),
+                systemMetered = false,
+            ),
+        )
+    }
+
+    @Test
+    fun wifiIdentityIsUnavailableWhenEveryCandidateHasARedactedSsid() {
+        assertEquals(
+            null,
+            WifiIdentitySelector.select(
+                candidates = listOf(WifiIdentityCandidate("<unknown ssid>", null)),
+                systemMetered = true,
+            ),
+        )
+    }
+
+    @Test
     fun permissionPolicyFailsClosedAcrossAndroidVersions() {
         assertEquals(setOf(Manifest.permission.ACCESS_FINE_LOCATION), WifiPermissionPolicy.requiredPermissions(30))
         assertEquals(
@@ -60,6 +86,44 @@ class ExternalWifiPolicyRepositoryTest {
         assertEquals(
             CurrentWifiResult.PermissionRequired(setOf(Manifest.permission.ACCESS_FINE_LOCATION)),
             WifiPermissionPolicy.missingResult(setOf(Manifest.permission.ACCESS_FINE_LOCATION)) { true },
+        )
+    }
+
+    @Test
+    fun detectionPrerequisitesDistinguishVersionPermissionAndLocationFailures() {
+        assertEquals(
+            CurrentWifiResult.PermissionRequired(setOf(Manifest.permission.ACCESS_FINE_LOCATION)),
+            WifiDetectionPolicy.blockedResult(30, emptySet(), locationServicesEnabled = true),
+        )
+        assertEquals(
+            CurrentWifiResult.PermissionRequired(
+                setOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION),
+            ),
+            WifiDetectionPolicy.blockedResult(32, emptySet(), locationServicesEnabled = true),
+        )
+        assertEquals(
+            CurrentWifiResult.PermissionRequired(setOf(Manifest.permission.NEARBY_WIFI_DEVICES)),
+            WifiDetectionPolicy.blockedResult(
+                33,
+                setOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION),
+                locationServicesEnabled = true,
+            ),
+        )
+        assertEquals(
+            CurrentWifiResult.LocationServicesDisabled,
+            WifiDetectionPolicy.blockedResult(
+                33,
+                WifiPermissionPolicy.requiredPermissions(33),
+                locationServicesEnabled = false,
+            ),
+        )
+        assertEquals(
+            null,
+            WifiDetectionPolicy.blockedResult(
+                33,
+                WifiPermissionPolicy.requiredPermissions(33),
+                locationServicesEnabled = true,
+            ),
         )
     }
 
@@ -86,7 +150,14 @@ class ExternalWifiPolicyRepositoryTest {
         runTest {
             val dao = FakeWifiDao()
             val repository = repository(ConnectedWifi("\"Cafe\"", "AA-BB-CC-DD-EE-FF", true), dao)
-            val created = repository.registerCurrent(scope, "Cafe", restrictToBssid = true, treatAsMetered = false)
+            val created =
+                repository.registerCurrent(
+                    scope,
+                    ConnectedWifi("\"Cafe\"", "AA-BB-CC-DD-EE-FF", true),
+                    "Cafe",
+                    restrictToBssid = true,
+                    treatAsMetered = false,
+                )
             assertEquals("Cafe", created.normalizedSsid)
             assertEquals("aa:bb:cc:dd:ee:ff", created.normalizedBssid)
             assertTrue(created.treatAsMetered)
@@ -94,16 +165,42 @@ class ExternalWifiPolicyRepositoryTest {
         }
 
     @Test
+    fun registrationUsesConfirmedFormCandidateInsteadOfRereadingChangedNetwork() =
+        runTest {
+            val dao = FakeWifiDao()
+            val repository = repository(ConnectedWifi("Different network", null, false), dao)
+
+            val created =
+                repository.registerCurrent(
+                    scope,
+                    ConnectedWifi("Confirmed network", "aa:bb:cc:dd:ee:ff", false),
+                    "Confirmed",
+                    restrictToBssid = true,
+                    treatAsMetered = false,
+                )
+
+            assertEquals("Confirmed network", created.normalizedSsid)
+            assertEquals("aa:bb:cc:dd:ee:ff", created.normalizedBssid)
+        }
+
+    @Test
     fun duplicateRegistrationAndUnavailableRestrictedBssidFailClosed() =
         runTest {
             val duplicateDao = FakeWifiDao()
             val duplicateRepository = repository(ConnectedWifi("Home", null, false), duplicateDao)
-            duplicateRepository.registerCurrent(scope, "Home", restrictToBssid = false, treatAsMetered = false)
+            duplicateRepository.registerCurrent(
+                scope,
+                ConnectedWifi("Home", null, false),
+                "Home",
+                restrictToBssid = false,
+                treatAsMetered = false,
+            )
 
             assertThrows(IllegalArgumentException::class.java) {
                 kotlinx.coroutines.runBlocking {
                     duplicateRepository.registerCurrent(
                         scope,
+                        ConnectedWifi("Home", null, false),
                         "Home again",
                         restrictToBssid = false,
                         treatAsMetered = false,
@@ -114,6 +211,7 @@ class ExternalWifiPolicyRepositoryTest {
                 kotlinx.coroutines.runBlocking {
                     repository(ConnectedWifi("Home", null, false)).registerCurrent(
                         scope,
+                        ConnectedWifi("Home", null, false),
                         "Restricted",
                         restrictToBssid = true,
                         treatAsMetered = false,
@@ -127,7 +225,7 @@ class ExternalWifiPolicyRepositoryTest {
         runTest {
             val dao = FakeWifiDao()
             val repository = repository(ConnectedWifi("Home", null, false), dao)
-            val created = repository.registerCurrent(scope, "Home", false, false)
+            val created = repository.registerCurrent(scope, ConnectedWifi("Home", null, false), "Home", false, false)
 
             assertThrows(IllegalArgumentException::class.java) {
                 kotlinx.coroutines.runBlocking {
@@ -144,7 +242,7 @@ class ExternalWifiPolicyRepositoryTest {
 
             assertThrows(IllegalArgumentException::class.java) {
                 kotlinx.coroutines.runBlocking {
-                    repository.registerCurrent(scope, "Home", false, false)
+                    repository.registerCurrent(scope, ConnectedWifi("Home", null, false), "Home", false, false)
                 }
             }
         }
@@ -154,7 +252,7 @@ class ExternalWifiPolicyRepositoryTest {
         dao: FakeWifiDao = FakeWifiDao(),
     ) = RoomExternalWifiPolicyRepository(
         dao,
-        CurrentWifiSource { CurrentWifiResult.Connected(wifi) },
+        CurrentWifiSource { CurrentWifiResult.Available(wifi) },
         Clock.fixed(Instant.EPOCH, ZoneOffset.UTC),
     )
 

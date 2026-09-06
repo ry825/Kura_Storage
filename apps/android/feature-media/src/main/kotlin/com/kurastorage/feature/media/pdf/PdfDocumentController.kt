@@ -72,12 +72,15 @@ class PdfDocumentController private constructor(
         suspend fun open(lease: PdfFileLease): PdfDocumentController =
             withContext(Dispatchers.IO) {
                 var descriptor: ParcelFileDescriptor? = null
+                var renderer: PdfRenderer? = null
                 try {
                     descriptor = ParcelFileDescriptor.open(lease.file, ParcelFileDescriptor.MODE_READ_ONLY)
-                    val renderer = PdfRenderer(descriptor)
-                    require(renderer.pageCount > 0) { "PDF has no pages" }
-                    PdfDocumentController(lease, descriptor, renderer)
+                    val openedRenderer = PdfRenderer(descriptor)
+                    renderer = openedRenderer
+                    require(openedRenderer.pageCount > 0) { "PDF has no pages" }
+                    PdfDocumentController(lease, descriptor, openedRenderer)
                 } catch (error: Throwable) {
+                    runCatching { renderer?.close() }
                     runCatching { descriptor?.close() }
                     lease.close()
                     throw error

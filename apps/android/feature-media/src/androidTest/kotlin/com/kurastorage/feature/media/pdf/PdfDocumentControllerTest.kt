@@ -47,6 +47,33 @@ class PdfDocumentControllerTest {
             store.close()
         }
 
+    @Test
+    fun rendererSwitchesPagesAndCanCloseRepeatedly() =
+        runBlocking {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val scopeId = "renderer-pages-${System.nanoTime()}"
+            val store = TemporaryPdfStore(context.cacheDir, scopeId, UnusedRepository())
+            val file = File(context.cacheDir, "media-pdf/$scopeId/fixture.pdf")
+            val fixture = PdfDocument()
+            try {
+                repeat(3) { index ->
+                    val page = fixture.startPage(PdfDocument.PageInfo.Builder(600, 800, index + 1).create())
+                    page.canvas.drawText("Page ${index + 1}", 20f, 40f, android.graphics.Paint())
+                    fixture.finishPage(page)
+                }
+                FileOutputStream(file).use(fixture::writeTo)
+            } finally {
+                fixture.close()
+            }
+
+            val controller = PdfDocumentController.open(store.acquire(file))
+            assertEquals(3, controller.pageCount)
+            repeat(3) { page -> controller.render(page, 600, 800, 1f).recycle() }
+            controller.close()
+            controller.close()
+            store.close()
+        }
+
     private class UnusedRepository : MediaRepository {
         override suspend fun inspectOriginal(fileId: String) = OriginalMetadata(ByteCount(1), "application/pdf", true)
 

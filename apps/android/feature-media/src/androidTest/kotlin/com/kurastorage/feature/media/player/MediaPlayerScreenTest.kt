@@ -3,6 +3,9 @@ package com.kurastorage.feature.media.player
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
@@ -18,8 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kurastorage.core.data.media.TransferConfirmationPrompt
 import com.kurastorage.core.model.media.ByteCount
-import com.kurastorage.core.model.media.MediaJobSnapshot
-import com.kurastorage.core.model.media.MediaJobStatus
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
 import com.kurastorage.core.model.media.MediaQuality
@@ -57,12 +58,9 @@ class MediaPlayerScreenTest {
                 onSkipBack = {},
                 onSkipForward = {},
                 onRate = {},
-                onQuality = {},
                 onConfirmOriginal = {},
                 onCancelOriginal = {},
-                onRetryGeneration = {},
                 onRetryPlayback = {},
-                onBackgroundGeneration = {},
                 onFullscreen = {},
             )
         }
@@ -125,10 +123,7 @@ class MediaPlayerScreenTest {
                 onSkipBack = {},
                 onSkipForward = {},
                 onRate = {},
-                onQuality = {},
-                onRetryGeneration = {},
                 onRetryPlayback = {},
-                onBackgroundGeneration = {},
                 onFullscreen = {},
             )
         }
@@ -142,7 +137,7 @@ class MediaPlayerScreenTest {
     }
 
     @Test
-    fun conversionQueueOffersBackgroundAndOriginalWithoutPlayingPartialMedia() {
+    fun impossibleGenerationStateOffersNoConversionActions() {
         compose.setContent {
             MediaPlayerScreen(
                 state =
@@ -153,11 +148,9 @@ class MediaPlayerScreenTest {
                                 "file",
                                 1,
                                 MediaKind.VIDEO,
-                                MediaQuality.LOW,
+                                MediaQuality.ORIGINAL,
                                 NetworkQualityContext.REMOTE_MOBILE,
-                                MediaLoadState.Generating(
-                                    MediaJobSnapshot("job", MediaJobStatus.GENERATING, null, null, null, 3, 3, false),
-                                ),
+                                MediaLoadState.Failed(com.kurastorage.core.model.media.MediaUiError.GENERATION_FAILED),
                             ),
                     ),
                 onBack = {},
@@ -167,19 +160,16 @@ class MediaPlayerScreenTest {
                 onSkipBack = {},
                 onSkipForward = {},
                 onRate = {},
-                onQuality = {},
                 onConfirmOriginal = {},
                 onCancelOriginal = {},
-                onRetryGeneration = {},
                 onRetryPlayback = {},
-                onBackgroundGeneration = {},
                 onFullscreen = {},
             )
         }
 
-        compose.onNodeWithContentDescription("Queued: position 3").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Continue in background").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Play original").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Original media could not be prepared.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Retry conversion").assertDoesNotExist()
+        compose.onNodeWithText("Continue in background").assertDoesNotExist()
     }
 
     @Test
@@ -196,7 +186,7 @@ class MediaPlayerScreenTest {
                                 "file",
                                 1,
                                 MediaKind.VIDEO,
-                                MediaQuality.LOW,
+                                MediaQuality.ORIGINAL,
                                 NetworkQualityContext.REMOTE_MOBILE,
                                 MediaLoadState.Failed(com.kurastorage.core.model.media.MediaUiError.GENERATION_FAILED),
                             ),
@@ -209,12 +199,9 @@ class MediaPlayerScreenTest {
                 onSkipBack = {},
                 onSkipForward = {},
                 onRate = {},
-                onQuality = {},
                 onConfirmOriginal = {},
                 onCancelOriginal = {},
-                onRetryGeneration = {},
                 onRetryPlayback = {},
-                onBackgroundGeneration = {},
                 onFullscreen = {},
             )
         }
@@ -227,6 +214,49 @@ class MediaPlayerScreenTest {
         }
         compose.onNodeWithText("Reconnect").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Retry conversion").assertDoesNotExist()
+    }
+
+    @Test
+    fun normalVideoUsesSharedOverlayAndPreservesPortraitSquareAndLandscapeRatios() {
+        var aspectRatio by mutableStateOf(0.5f)
+        compose.setContent {
+            MediaPlayerScreen(
+                state =
+                    MediaPlayerUiState(
+                        kind = MediaKind.VIDEO,
+                        player =
+                            PlayerSnapshot(
+                                durationMs = 60_000,
+                                seekable = true,
+                                phase = PlayerPhase.READY,
+                                videoAspectRatio = aspectRatio,
+                            ),
+                    ),
+                onBack = {},
+                onPlay = {},
+                onPause = {},
+                onSeek = {},
+                onSkipBack = {},
+                onSkipForward = {},
+                onRate = {},
+                onConfirmOriginal = {},
+                onCancelOriginal = {},
+                onRetryPlayback = {},
+                onFullscreen = {},
+            )
+        }
+
+        listOf(0.5f, 1f, 16f / 9f).forEach { expected ->
+            compose.runOnIdle { aspectRatio = expected }
+            compose.waitForIdle()
+            val image = compose.onNodeWithTag("video-content").captureToImage()
+            val actual = image.width.toFloat() / image.height
+            assertTrue("expected=$expected actual=$actual", kotlin.math.abs(expected - actual) < 0.02f)
+        }
+        compose.onNodeWithTag("player-overlay").assertIsDisplayed()
+        compose.onNodeWithText("Full screen").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Forward 10 seconds").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Playback speed 1.0 times").assertIsDisplayed()
     }
 
     @Test
@@ -247,13 +277,13 @@ class MediaPlayerScreenTest {
                                         "file",
                                         1,
                                         MediaKind.VIDEO,
-                                        MediaQuality.MEDIUM,
+                                        MediaQuality.ORIGINAL,
                                         NetworkQualityContext.REGISTERED_REMOTE_WIFI,
                                         MediaLoadState.Ready(
                                             com.kurastorage.core.model.media.ReadyMediaSource(
                                                 "file",
                                                 1,
-                                                MediaVariant.VIDEO_MEDIUM,
+                                                MediaVariant.ORIGINAL,
                                             ),
                                         ),
                                     ),
@@ -266,12 +296,9 @@ class MediaPlayerScreenTest {
                         onSkipBack = {},
                         onSkipForward = {},
                         onRate = {},
-                        onQuality = {},
                         onConfirmOriginal = {},
                         onCancelOriginal = {},
-                        onRetryGeneration = {},
                         onRetryPlayback = {},
-                        onBackgroundGeneration = {},
                         onFullscreen = {},
                         fullscreen = true,
                     )
@@ -313,12 +340,9 @@ class MediaPlayerScreenTest {
                 onSkipBack = {},
                 onSkipForward = {},
                 onRate = {},
-                onQuality = {},
                 onConfirmOriginal = {},
                 onCancelOriginal = {},
-                onRetryGeneration = {},
                 onRetryPlayback = {},
-                onBackgroundGeneration = {},
                 onFullscreen = {},
                 fullscreen = true,
             )

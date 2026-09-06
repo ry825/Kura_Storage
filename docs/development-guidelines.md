@@ -222,7 +222,7 @@ operation.MarkCompleted(clock.UtcNow);
 - キャッシュ上限10GB・清掃後6GB・TTL 24時間
 - ゴミ箱30日
 - テキスト取得・編集上限1 MiB
-- 動画変換並列数1
+- Thumbnail生成並列数2、Worker CPU quota 125%
 - ページサイズ初期値100・最大500
 
 業務上固定された値はDomain/Applicationの型付きOptionsまたは定数へ置く。環境差がある値は設定ファイルと環境変数から注入する。設定値には起動時検証を実装する。
@@ -521,17 +521,18 @@ sealed interface FileListUiState {
 - Media品質、Variant、Job状態、Byte数、再生位置、速度はenumまたはValue Typeで表し、任意Stringや裸の数値をFeatureへ渡さない。
 - 利用者向けFile Sizeは1,024基準の共通formatterで`B`、`KB`、`MB`、`GB`を使い、最大1桁の小数から不要な`.0`を除く。API、Log、永続値は丸めずbyteのまま保持する。
 - MediaのSizeは表示中variantのHEAD metadataだけから表示し、派生未生成、header不正、通信失敗をOriginal Sizeで補完しない。SourceとSizeはREADY時に同じstate更新で切り替える。
-- 写真・動画だけにLOW／MEDIUM／ORIGINALを許可し、音声とPDFへLOW／MEDIUM Variantを組み立てない。
+- 写真だけにLOW／MEDIUM／ORIGINALを許可する。動画・音声・PDFはORIGINAL固定とし、LOW／MEDIUM Variantや動画変換Jobを組み立てない。
 - Coil、Media3、PDF取得は`SessionServices`と同じ認証Session、TLS Host、接続経路別`OkHttpClient`を使用する。TokenをURL、Query、Cache key、File名、Logへ含めない。
 - 401は既存の単一Flight Token refresh後に1回だけ再試行する。再発、Device／Session失効、権限消失では表示・再生を停止する。
 - 別HostへのRedirectへAuthorizationを転送しない。Media URLはClientが固定API Hostと型付きIDから組み立てる。
-- 一覧Thumbnail、写真LOW／MEDIUM、動画LOW／MEDIUMの失敗時に元Fileを自動取得しない。
-- 元写真、元動画、元音声、PDF本文はHEADでSizeを確認し、利用者の承認前にContent Requestを開始しない。
+- 一覧Thumbnailと写真LOW／MEDIUMの失敗時に元Fileを自動取得しない。
+- 元写真はHEAD後に接続別初期品質として確認Dialogなしで取得できる。元動画はCellularの1 MiB以上またはSize不明、元音声とPDF本文は既定の通信量確認が完了するまでContent Requestを開始しない。
 - Coil Cache keyへSession scope、File ID、File Version、Variantを含め、Logout、Session失効、接続Route変更時にSession cacheを破棄する。
 - PDFはApp private cacheへ64KiB bufferでStreamingし、1 File 256MiB、Session合計512MiB、空き容量`Content-Length + 64MiB`、未参照TTL 1時間を強制する。部分File、Page、Bitmap、FileDescriptorを所有Lifecycleで閉じる。
 - 写真とPDFの表示Bitmapは1枚32MiB、長辺4096pxを上限とし、DecodeとRenderをMain threadで行わない。
 - Media3は1 Player／1 itemとし、動画・音声の3秒／10秒移動、0.5〜3.0倍速、単一Range Seekを実装する。Mobileの最大Bufferは15秒とし、次Mediaを自動準備しない。
-- 品質変更は旧Sourceを新Sourceの準備完了まで保持し、再生位置、速度、再生状態を可能な範囲で復元する。失敗時は旧Sourceへ戻し、元画質へFallbackしない。
+- 動画ContentのGET／Rangeを開始する前にOriginalのHEAD metadataとactive networkを確定し、Cellular上の1 MiB以上またはSize不明では明示確認を必須とする。PlayerはFile/versionが同じ再Compositionで再作成・再prepareせず、Lifecycle停止時にのみ適切に中断・破棄する。
+- 写真の品質変更は旧Sourceを新Sourceの準備完了まで保持し、失敗時は旧Sourceへ戻して元画質へFallbackしない。動画はOriginal固定で品質変更stateを持たない。
 - 動画Full screenは通常画面の`verticalScroll`から分離し、`fillMaxSize`のSurfaceとoverlayだけで構成する。system BackはFull screen解除を優先し、TalkBack focus、seek drag、一時停止、buffering、error中は必要な操作を勝手に隠さない。
 - Clientの画面離脱やRequest取消をServer Media Jobの取消へ伝播させない。「バックグラウンドで続ける」はServer Jobへ任せ、Media閲覧のためだけにWorkManagerを追加しない。
 - JVM Unit Testで状態変換、MockWebServerで認証・202・Range・切断、Instrumented TestでCompose・`PdfRenderer`・Media3 lifecycleを検証する。
@@ -546,6 +547,8 @@ sealed interface FileListUiState {
 - Text自動表示は1 MiB以下の既知MIME／拡張子に限定し、取得内容にNULがあるか、Tab・改行・復帰・Form Feedを除くISO制御文字が2%を超える場合は停止する。未知FileはDetailsの警告付き明示操作だけでClient側表示guardを解除し、Server検証は迂回しない。
 - Folder位置、breadcrumb、Back可否を別々のmutable listで所有しない。単一snapshotとnavigation generationから導出し、最新generationとtarget IDに一致しない成功・失敗・refresh応答を破棄する。
 - Navigation Testでは同一Folder連打、異なるFolder連続tap、読込中Back、breadcrumb移動、回転、Process再生成を含める。
+- SAF Folder traversalはDocument IDと親子関係を保持し、Root外参照、再訪、空名、`.`、`..`、区切り文字を検証する。Server Folderはsegment列を親優先で解決し、Path文字列連結で作らない。
+- 手動Uploadと自動Backupは同じ優先度付きdispatcherを共有し、既定合計同時数2、許容範囲1〜8を起動時検証する。待機中は手動Uploadを優先し、実行中項目はpreemptしない。並列処理のFile間でSession、Idempotency Key、offset、receiptを共有しない。
 
 ---
 

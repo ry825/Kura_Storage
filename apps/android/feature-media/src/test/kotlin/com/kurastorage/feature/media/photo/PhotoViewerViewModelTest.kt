@@ -152,6 +152,11 @@ class PhotoViewerViewModelTest {
                     ?.loadState is MediaLoadState.Failed,
             )
 
+            viewModel.selectQuality(MediaQuality.MEDIUM)
+            viewModel.contentReady(checkNotNull(viewModel.requestTicket()))
+            viewModel.setZoom(2f)
+            assertEquals(2f, viewModel.state.value.zoom)
+
             viewModel.selectQuality(MediaQuality.ORIGINAL)
             val original = checkNotNull(viewModel.requestTicket())
             viewModel.contentReady(original)
@@ -159,6 +164,7 @@ class PhotoViewerViewModelTest {
                 viewModel.state.value.media
                     ?.loadState is MediaLoadState.Ready,
             )
+            assertEquals(1f, viewModel.state.value.zoom)
         }
 
     private class FakeFiles(

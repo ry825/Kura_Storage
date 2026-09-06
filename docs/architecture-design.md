@@ -70,7 +70,7 @@ Phase 2のWebアプリは実装対象外だが、同じApplication層とHTTP API
 3. HDD上の実ファイルとPostgreSQLの管理情報を明確に分離すること。
 4. ファイルシステムとDBをまたぐ処理が途中失敗しても復旧できること。
 5. ZeroTier固有の管理機能をKuraStorageのドメインへ持ち込まないこと。
-6. 動画変換などの高負荷処理がAPI応答を停止させないこと。
+6. サムネイル・写真派生生成などの高負荷処理がAPI応答を停止させないこと。
 7. 外部クラウドや一般公開Webサービスを前提とせず、自宅サーバーとして運用できること。
 8. Phase 2のWebアプリ追加時に、バックエンドのドメインロジックを作り直さないこと。
 
@@ -308,7 +308,7 @@ Domain ───────────────────→ 外部ライ
 | PostgreSQL | 17系を基準 | 管理情報、検索索引、ジョブ、監査 | 30万件規模の検索、排他、再帰CTE、部分Index、`pg_trgm`を利用できる。 |
 | Nginx | OS安定版 | TLS終端、リバースプロキシ | APIを外部へ直接公開せず、TLSと要求制御を一元化する。 |
 | libvips | Debian 12系8.14 | 写真・Raster済みPDFの縮小、自動回転、WebP出力 | シェルを介さない独立Worker Processとして使用する。 |
-| FFmpeg / FFprobe | Debian 12系5.1 | 動画Thumbnail Frame抽出、Low／Medium変換、出力メタデータ確認 | 変換をシェル経由にせず、引数を固定した独立Worker Processとして実行できる。 |
+| FFmpeg / FFprobe | Debian 12系5.1 | 動画Thumbnail Frame抽出と入力メタデータ確認 | 処理をシェル経由にせず、引数を固定した独立Worker Processとして実行できる。 |
 | Poppler `pdftoppm` | Debian 12系22.12 | PDF先頭ページ描画 | 1ページだけを上限付きでRaster化する。 |
 | Argon2idライブラリ | 実装時に保守状況を確認して固定 | パスワードハッシュ | Argon2id v1.3と自己記述形式を扱い、独自暗号実装を避ける。 |
 | OpenTelemetry SDK | .NET対応安定版 | メトリクス、トレース | API時間、DB、ジョブ、変換を共通形式で計測できる。 |
@@ -326,7 +326,7 @@ Domain ───────────────────→ 外部ライ
 | Android Keystore | OS標準 | 秘密情報保護 | 取り出し不可鍵、StrongBox、AES-GCMを利用できる。 |
 | OkHttp | 安定版固定 | HTTPS、Range、アップロード | ネットワークへの明示バインド、Interceptor、ストリーミングを実装しやすい。 |
 | Retrofit 3 | 安定版固定 | 型付きAPIクライアント | API DTOとエラー変換を`core-network`へ集約し、OkHttpのNetwork bindingと組み合わせる。 |
-| Media3 ExoPlayer | 1.11.0 | 完成済みMP4と元動画・元音声のRange再生 | Session-scoped認証DataSource、Seek、速度、品質変更時の位置維持を実装する。 |
+| Media3 ExoPlayer | 1.11.0 | 元動画・元音声のRange再生 | Session-scoped認証DataSource、Seek、速度、同一File/versionでの再Composition時の再prepare抑止を実装する。 |
 | Coil | 3.5.0 | 写真・サムネイル表示 | Kotlin language version 2.2と現行Project Kotlin 2.3.21の互換性を維持し、独自認証Fetcherを使用する。 |
 | Android PdfRenderer | OS標準（minSdk 29） | PDF表示 | App private一時Fileから1 Pageずつboundedに描画する。 |
 
@@ -428,7 +428,7 @@ Application Command / Query
 - `ExpiredUploadCleanupWorker`
 - `AuditRetentionWorker`
 
-動画変換はグローバル同時実行数1とする。その他の軽量ジョブは個別の同時実行上限を持つ。
+サムネイル生成はグローバル同時実行数2とし、WorkerのCPU quotaを125%とする。その他の派生生成は個別の同時実行上限を持つ。
 
 ### 6.5 KuraStorage.AdminCli
 
@@ -671,7 +671,7 @@ LIMIT 1;
 
 `LISTEN/NOTIFY`は待機時間短縮に使用できるが、通知自体を信頼できるキューとして扱わない。ジョブの正はテーブルとする。
 
-初回基盤は通知を使用せず500ms Pollingを正とする。取得時は安定順の`FOR UPDATE SKIP LOCKED`とTransaction advisory lockを併用し、全Media Jobと動画Jobの初期同時実行数をそれぞれ1に制限する。更新結果が不明な場合もJob ID、状態、Worker tokenを条件とする更新を再照会できる形に保つ。stale回収はHeartbeatが120秒を超え、activeな`GENERATION` LeaseがないJobだけを対象とする。
+初回基盤は通知を使用せず500ms Pollingを正とする。取得時は安定順の`FOR UPDATE SKIP LOCKED`とTransaction advisory lockを併用し、Thumbnail Jobは設定された共通枠（既定2）までclaimする。写真Low／Medium等の非Thumbnail Media Jobは既定1の専用枠で実行し、動画Low／Medium Jobは新規作成しない。更新結果が不明な場合もJob ID、状態、Worker tokenを条件とする更新を再照会できる形に保つ。stale回収はHeartbeatが120秒を超え、activeな`GENERATION` LeaseがないJobだけを対象とする。
 
 ---
 
@@ -895,16 +895,19 @@ sequenceDiagram
 
 ### 11.4.1 Android Media閲覧・再生
 
-Androidは`feature-media`、`feature-settings`と既存Core Moduleを使用する。写真・動画のLOW／MEDIUM／ORIGINAL、音声とPDFのORIGINALを同じ認証Sessionと接続経路別`OkHttpClient`から取得する。音声にLOW／MEDIUM派生や変換Jobを作らない。
+Androidは`feature-media`、`feature-settings`と既存Core Moduleを使用する。写真のLOW／MEDIUM／ORIGINALと、動画・音声・PDFのORIGINALを同じ認証Sessionと接続経路別`OkHttpClient`から取得する。動画・音声にLOW／MEDIUM派生や変換Jobを作らない。既存の動画派生物は新規配信せず、即時一括削除も行わず従来のTTL／LRU清掃で収束させる。
 
 - Coilは`scopeId:fileId:fileVersion:variant`をCache keyにした独自認証Fetcherを使用する。Memory cacheはHeapの10%かつ最大64MiB、Disk cacheはSessionごとに最大256MiBとする。
 - 写真の画質変更ではrequest generationを増加させ、現在generationとFile ID、File version、variantが一致する応答だけを表示Stateへ反映する。generationはCoilのCache keyへ含めず、同一Session・File version・variantの有効Cacheを再利用する。
-- Media3は認証Header付き単一Range DataSourceを使用する。401時は既存の単一Flight Token refresh後に現在位置から1回だけ再構築し、再発時は再生を停止する。
+- Media3はOriginal固定の認証Header付き単一Range DataSourceを使用する。401時は既存の単一Flight Token refresh後に現在位置から1回だけ再構築し、再発時は再生を停止する。Cellularの1 MiB以上またはSize不明ではHEAD完了後の明示確認前にDataSourceをPlayerへ渡さない。
 - Playerは動画・音声とも3秒／10秒の戻る・進む、0.5〜3.0倍速を提供する。Mobileでは5〜15秒Buffer、Wi-Fiでは15〜50秒Bufferを初期値とし、Playlistは1件だけにする。
-- 動画品質変更時は旧Sourceを新Sourceの準備完了まで保持し、現在位置、速度、再生状態を可能な範囲で復元する。低・中品質が未準備でも元画質へ自動Fallbackしない。
+- 動画は品質変更stateを持たずOriginalのFile ID／versionをPlayer identityとする。同一identityの再CompositionでPlayerまたはMediaItemを再生成しない。
 - variant選択と表示中Sourceを別stateとして所有する。各variantのHEAD metadataは`variant + contentLength + contentType + rangeSupport`を一組にし、request generationが一致するREADY結果だけが表示Sourceと表示Sizeをatomicに更新する。202や失敗時にOriginal metadataを代用しない。
 - 動画Full screenは通常画面のscroll containerから分離した独立Compose Layoutとし、Player instanceと再生itemは共有する。System BackはNavigationより先にFull screen解除へ配送し、overlay表示時だけsafe insetを適用する。
 - 写真の元画質はHEADでSizeを取得した後、接続種別別設定またはViewer内選択に従って確認DialogなしでContentを開始する。動画の元画質、元音声、PDF本文は従来どおりHEADでSizeを確認し、利用者の承認前にContentを開始しない。
+- 写真はintrinsic sizeとviewportから縦横同一の`Fit`倍率とpan境界を計算し、小画像を既定状態でupscaleしない。通常／全画面は同じsurfaceとzoom stateを共有し、File ID、version、variant変更時だけresetする。
+- PDFはContent-Type parameterを正規化し、0 byte、256MiB超過、Range非対応、Content-Length不一致をRenderer開始前に拒否する。完全取得済みのprivate seekable Fileだけを`PdfRenderer`へ渡し、Page、PFD、lease、未公開Bitmapを画面離脱・取消・Session終了で閉じる。取得失敗とcorrupt、password protected、render unsupportedを別stateにする。
+- Trusted Wi-Fi検出はAndroid version別のpermissionと位置情報Serviceを先に評価し、現在の非VPN Wi-Fiから正規化済みSSIDと任意BSSIDを得る。検出候補はForm stateとして固定し、Repositoryは保存時にOS状態を再読込して別Networkへ差し替えない。Settings全下位画面はThemeのbackground／onBackground Surfaceを所有する。
 - 写真ViewerのFavorite／Tagは`app`が表示中File用の`EntryOrganizationViewModel`を組み立て、`feature-media`へRepositoryを渡さず表示StateとCallbackだけを渡す。File切替時はFile IDを含むViewModel keyで対象状態を分離する。
 - `app`の`EntryDestinationResolver`はFiles、Shared、Favoritesから受け取ったEntryをMIME・拡張子・種別・状態・SizeでFolder、Photo、Video、Audio、PDF、Text、detailsへ分類する。Feature moduleは他FeatureのRouteを知らず、既存callbackでAppへ操停を返す。
 - `MediaNavigationContextStore`は同一App process・認証Session内の一時ID列だけを保持する。FavoritesではSearch共通metadataから同種のActive IDを表示順で登録し、未知Contextは空としてViewer側の現在File単体fallbackを使う。Logout、Session失効、接続Route変更でStoreをclearし、次SessionへID列を引き継がない。
@@ -933,6 +936,10 @@ Androidは`core-model`の対応MIME・Text／version Model、`core-network`のOp
 
 `feature-files`はFolder位置を`FolderLocation` stack/snapshotへ集約し、breadcrumb、Top app bar Back、system Back、一覧取得targetを同じ状態から導出する。遷移要求ごとに単調増加するnavigation generationを割り当て、Repository応答はSession、generation、target IDが現在値と一致する場合だけcommitする。同一targetの連打はcoalesceし、異なるtargetの連続tap、読込中Back、refreshの古い成功・失敗は破棄する。遷移失敗では先行表示したbreadcrumbだけを残さず、直前の成功snapshotへatomicに戻す。
 
+一覧のscroll anchorはFolder ID、Sort、Filterを含むcontext keyごとに、先頭可視File ID、index、pixel offsetだけを保存する。Back復帰ではFile IDを現在一覧へ再解決し、見つからない場合だけindexをclampする。HeaderはRootではTop app barだけに集約し、子Folderでは確定済みbreadcrumb chain全体を`FlowRow`相当の折り返し領域へ表示する。祖先Linkの48dp操作領域と現在地の非活性表示を維持し、深い階層で中間要素を切り捨てない。
+
+複数FileとFolder UploadはSAF URI／Document IDを物理Pathへ変換せず、選択読取り、Folder計画、Server Folder解決、既存Transfer投入を別componentへ分ける。Folder計画は親子関係と空Folderを保持し、Root外参照、循環相当、不正segmentをClientで拒否する。Serverは既存の名前・親ID・認可検証を再適用する。
+
 ### 11.5 MVP後: 自動バックアップ
 
 1. AndroidがMediaStore/SAF差分をRoomへ記録する。
@@ -949,6 +956,8 @@ Androidは`core-model`の対応MIME・Text／version Model、`core-network`のOp
 端末側で消えた項目は、サーバーへ削除要求を送らない。
 保留中Backup Uploadは`userId`、認証済み`deviceId`、`localDocumentKey`ごとに1件へ制限し、
 完了Receiptも同じ組で一意にする。
+
+Androidの手動Uploadと自動BackupはProcess単位の`PriorityTransferDispatcher`を共有する。既定の合計同時数はServer全体Upload limiterと同じ2、型付き許容範囲は1〜8とする。手動要求は待機中Backupより先に枠を得るが、実行中Backupをpreemptしない。Backupは単一のWorkManager WorkerがBatchをtransactional claimし、File単位のcoroutineでUpload Session、Idempotency Key、expected version、checkpointを分離する。個別の再試行可能Errorは他Fileへ伝播させず、Worker取消またはNetwork policy喪失では新規送信を止めて再開可能状態を保存する。2を超える既定値は、端末とRaspberry Piの混合負荷測定およびServer limiterの再検証なしに採用しない。
 
 ### 11.6 MVP後: `MISSING`判定
 
@@ -1179,10 +1188,10 @@ DevelopmentとTestingでPathを省略した場合だけ、Process内に一時的
 | キャッシュ済み写真 | 通常2秒以内に表示開始 | 5GHz Wi-Fi、サムネイル/派生取得 |
 | 未生成写真 | 通常1秒以内に生成中状態 | APIが202または生成結果を返すまで |
 | キャッシュ済み動画・音声 | 通常3秒以内に再生開始 | 初回Range取得から再生開始まで |
-| 未生成動画 | 通常1秒以内にジョブ状態 | ジョブ登録と202応答まで |
+| 動画の非対応品質 | 通常1秒以内に拒否 | `video-low`／`video-medium`要求から`MEDIA_VARIANT_UNSUPPORTED`応答まで |
 | Token Refresh | p95 500ms以内 | DB状態確認とローテーション込み |
 
-動画変換完了時間は固定SLAとしない。
+動画Originalの再生開始時間はファイル形式、Range取得経路、端末Codec性能に依存するため固定SLAとしない。
 
 ### 14.3 DB最適化
 
@@ -1204,18 +1213,18 @@ DevelopmentとTestingでPathを省略した場合だけ、Process内に一時的
 ### 14.5 CPU・メモリ保護
 
 - MVPはAPI、PostgreSQL、Nginx、Androidの実測値を記録し、Upload同時数とRequest Buffering無効化を確認する。
-- 動画・画像変換は独立Workerで直列実行し、下記のsystemd上限を適用する。
-- FFmpegの進捗出力間隔は1秒とする
-- FFmpeg Workerは低いCPU/IO優先度で動作させる
-- Workerはsystemdの`MemoryMax=3G`、`CPUWeight=50`、`IOWeight=50`でAPIより低い
-  相対優先度と十分なMemory余裕を確保する
+- 写真・動画・PDF Thumbnailは共通の型付き上限内で並列実行し、動画低・中画質派生は新規生成しない。
+- FFmpegを使用する動画Thumbnail Workerは低いCPU/IO優先度で動作させる
+- Workerはsystemdの`MemoryMax=3G`、`CPUQuota=125%`、`CPUWeight=50`、`IOWeight=50`で、
+  API用CPU余力、低い相対優先度、十分なMemory余裕を確保する。
+- Thumbnail並列数の既定値は2とし、設定可能範囲は1〜8とする。Raspberry Pi 4実機の
+  JPEG・MP4・PDF混在負荷では、並列2が直列比10.6%の総時間短縮と平均CPU余力33.3%を両立した。
+  並列4以上は改善が小さく、6・8の反復でCPU余力25%を下回ったため既定値にしない。
+  詳細条件と結果は`docs/testing/20260906-thumbnail-concurrency-raspberry-pi.md`を正とする。
 - 画像の最大デコードピクセル数とテキスト編集サイズ上限を設定する
 
-Raspberry Pi 4実機で完全20秒の単一Thread 1080p→720p H.264変換を測定した結果、
-FFmpegのpeak working setは126.04MiB、CPU時間は37.41秒、生成出力は3.69MiBだった。
-変換中の認証済みAPI応答は平均59.90ms、最大183.11msで、全標本が1秒未満だった。
-Worker本体、最大割当、画像処理、将来のLibrary差分を含む余裕を維持するため、Workerの
-`MemoryMax`は初期目安3GBを正式値として維持する。
+Worker本体、最大割当、画像処理、Library差分を含む余裕を維持するため、Workerの
+`MemoryMax`は初期目安3GBを維持する。
 
 | プロセス | Memory上限目安 | 備考 |
 | --- | --- | --- |
@@ -1573,7 +1582,7 @@ APIには次を設定する。
 - Device: 2〜20
 - FileEntry: 最大30万件
 - 同時利用: 数名
-- 動画変換: 同時1
+- サムネイル生成: 同時2、Worker CPU quota 125%
 - 単一Raspberry Pi、単一PostgreSQL、単一HDD
 
 ### 20.2 データ増加対策
@@ -1678,10 +1687,10 @@ Phase 1では対象外。将来必要になった場合、次の分離が前提�
 - 登録済み外部Wi-FiでもZeroTierなしで実行しない
 - WorkManager再実行とRoom保留キュー復元
 - Device失効時にKuraStorageのTokenを削除し、ZeroTier Member失効が別途必要であることを案内する
-- 低・中画質未準備時に元画質へ自動フォールバックしない
-- 品質変更時に再生位置を維持する
+- 写真の低・中画質未準備時に元画質へ自動フォールバックしない
+- 写真の品質変更時に旧Sourceを維持し、動画はOriginal固定で同一File/versionの再Composition時に再prepareしない
 - 一覧Thumbnail取得時に元ファイルを取得しない
-- 元写真・元動画・元音声・PDF本文を通信量確認前に取得しない
+- 写真は選択variantを確認Dialogなしで取得し、動画はCellularで1 MiB以上またはSize不明の場合だけ確認前にContentを取得しない
 - 動画・音声の3秒／10秒移動、0.5〜3.0倍速、Seek Rangeを確認する
 - PDF 256MiB境界、空き容量不足、取消、破損、暗号化、TTL清掃を確認する
 - Logout、Session失効、接続先変更後に前Sessionの画像、PDF、Player、Job状態を再利用しない
@@ -1757,8 +1766,8 @@ Phase 1では対象外。将来必要になった場合、次の分離が前提�
 - APIは一般インターネットへ直接公開しない。
 - ZeroTier Network内でもHTTPSを使用する。
 - TLS固定ホスト名は`docs/environment-info.md`の`NET-API-HOSTNAME`とし、専用プライベートRoot CAから直接発行した証明書を使用する。
-- 動画変換同時数は1。
-- 動画派生は完成済みMP4、H.264＋AAC。
+- 動画はOriginal固定でRange配信し、低・中画質派生を新規生成しない。
+- サムネイル生成同時数は2、Worker CPU quotaは125%。
 - HDD実ファイルが正、PostgreSQLは索引・管理情報。
 - Refresh Tokenは24時間、使用ごとにローテーション。
 - Device有効上限はUserあたり10台。
@@ -1768,7 +1777,7 @@ Phase 1では対象外。将来必要になった場合、次の分離が前提�
 - テキスト取得・編集はUTF-8のみ、最大1 MiB。許可MIMEは`text/plain`、`text/markdown`、`text/csv`、`application/json`、`application/xml`、`application/yaml`。
 - Androidの画像閲覧MIMEは`image/jpeg`、`image/png`、`image/webp`、`image/gif`、`image/bmp`、`image/heic`、`image/heif`。
 - Androidの動画再生MIMEは`video/mp4`、`video/webm`、`video/3gpp`。音声再生MIMEは`audio/mpeg`、`audio/mp4`、`audio/aac`、`audio/ogg`、`audio/opus`、`audio/flac`、`audio/wav`、`audio/3gpp`、`audio/amr`、`audio/amr-wb`。
-- Androidの品質選択は写真・動画だけを対象とし、音声は元ファイルだけをRange再生する。元写真、元動画、元音声、PDF本文はSizeまたは推定通信量の確認後に取得する。
+- Androidの品質選択は写真だけを対象とする。動画と音声は元ファイルだけをRange再生し、動画はCellularで1 MiB以上またはSize不明の場合に限りContent取得前の確認を必須とする。写真は確認Dialogなしで選択variantを取得し、音声とPDF本文はSizeまたは推定通信量の確認後に取得する。
 - Androidの動画・音声Playerは3秒／10秒の戻る・進むと0.5〜3.0倍速を提供する。
 - Android PDF Viewerは1 File 256MiB、Session一時File合計512MiB、未参照TTL 1時間とする。
 - MIMEが保証対象でも端末のMediaCodecが内部コーデックを再生できない場合は、実行時に非対応形式として扱う。Android 14以降を必要とするAVIF等は`minSdk 29`のMVP保証対象に含めない。

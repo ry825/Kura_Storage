@@ -38,6 +38,43 @@ object WifiPermissionPolicy {
         }
 }
 
+object WifiDetectionPolicy {
+    fun blockedResult(
+        sdkInt: Int,
+        grantedPermissions: Set<String>,
+        locationServicesEnabled: Boolean,
+        canRequestPermissionAgain: (String) -> Boolean = { true },
+    ): CurrentWifiResult? {
+        val missing = WifiPermissionPolicy.requiredPermissions(sdkInt) - grantedPermissions
+        return when {
+            missing.isNotEmpty() -> WifiPermissionPolicy.missingResult(missing, canRequestPermissionAgain)
+            !locationServicesEnabled -> CurrentWifiResult.LocationServicesDisabled
+            else -> null
+        }
+    }
+}
+
+data class WifiIdentityCandidate(
+    val ssid: String?,
+    val bssid: String?,
+)
+
+object WifiIdentitySelector {
+    fun select(
+        candidates: List<WifiIdentityCandidate>,
+        systemMetered: Boolean,
+    ): ConnectedWifi? =
+        candidates.firstNotNullOfOrNull { candidate ->
+            runCatching {
+                ConnectedWifi(
+                    ssid = WifiIdentifierNormalizer.normalizeSsid(candidate.ssid.orEmpty()),
+                    bssid = runCatching { WifiIdentifierNormalizer.normalizeBssid(candidate.bssid) }.getOrNull(),
+                    systemMetered = systemMetered,
+                )
+            }.getOrNull()
+        }
+}
+
 class AndroidCurrentWifiSource(
     private val context: Context,
     private val connectivityManager: ConnectivityManager,
@@ -48,12 +85,18 @@ class AndroidCurrentWifiSource(
 ) : CurrentWifiSource {
     @Suppress("DEPRECATION", "ReturnCount")
     override fun read(): CurrentWifiResult {
-        val missing =
-            WifiPermissionPolicy.requiredPermissions(sdkInt).filterTo(mutableSetOf()) { permission ->
-                context.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED
+        val requiredPermissions = WifiPermissionPolicy.requiredPermissions(sdkInt)
+        val grantedPermissions =
+            requiredPermissions.filterTo(mutableSetOf()) { permission ->
+                context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
             }
-        if (missing.isNotEmpty()) return WifiPermissionPolicy.missingResult(missing, canRequestPermissionAgain)
-        if (!locationManager.isLocationEnabled) return CurrentWifiResult.LocationServicesDisabled
+        WifiDetectionPolicy
+            .blockedResult(
+                sdkInt = sdkInt,
+                grantedPermissions = grantedPermissions,
+                locationServicesEnabled = locationManager.isLocationEnabled,
+                canRequestPermissionAgain = canRequestPermissionAgain,
+            )?.let { return it }
 
         // A VPN is commonly the active network while ZeroTier is connected. Read the
         // non-VPN Wi-Fi underneath it so Android 13 can still evaluate an allowlisted SSID/BSSID.
@@ -63,34 +106,30 @@ class AndroidCurrentWifiSource(
                     capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
                         !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
                 } == true
-            } ?: return CurrentWifiResult.NotConnectedToWifi
+            } ?: return CurrentWifiResult.NotConnected
         val capabilities =
             connectivityManager.getNetworkCapabilities(activeNetwork)
-                ?: return CurrentWifiResult.InformationUnavailable
+                ?: return CurrentWifiResult.Unavailable
         if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-            return CurrentWifiResult.NotConnectedToWifi
+            return CurrentWifiResult.NotConnected
         }
         return try {
-            val wifiInfo =
-                if (sdkInt >= Build.VERSION_CODES.S) {
-                    capabilities.transportInfo as? WifiInfo
-                } else {
-                    @Suppress("DEPRECATION")
-                    wifiManager.connectionInfo
-                } ?: return CurrentWifiResult.InformationUnavailable
-            val ssid = WifiIdentifierNormalizer.normalizeSsid(wifiInfo.ssid)
-            val bssid = runCatching { WifiIdentifierNormalizer.normalizeBssid(wifiInfo.bssid) }.getOrNull()
-            CurrentWifiResult.Connected(
-                ConnectedWifi(
-                    ssid = ssid,
-                    bssid = bssid,
+            val capabilityWifiInfo = capabilities.transportInfo as? WifiInfo
+            val connectionWifiInfo = wifiManager.connectionInfo
+            val connectedWifi =
+                WifiIdentitySelector.select(
+                    candidates =
+                        listOfNotNull(
+                            capabilityWifiInfo?.toCandidate(),
+                            connectionWifiInfo?.toCandidate(),
+                        ),
                     systemMetered = connectivityManager.isActiveNetworkMetered,
-                ),
-            )
+                ) ?: return CurrentWifiResult.Unavailable
+            CurrentWifiResult.Available(connectedWifi)
         } catch (_: SecurityException) {
             CurrentWifiResult.PermissionRequired(WifiPermissionPolicy.requiredPermissions(sdkInt))
-        } catch (_: IllegalArgumentException) {
-            CurrentWifiResult.InformationUnavailable
         }
     }
+
+    private fun WifiInfo.toCandidate() = WifiIdentityCandidate(ssid = ssid, bssid = bssid)
 }

@@ -85,6 +85,41 @@ class AppShellTest {
     }
 
     @Test
+    fun searchAndSearchViewerReturnToSingleHomeDestination() {
+        lateinit var controller: NavHostController
+        compose.setContent {
+            KuraStorageTheme {
+                controller = rememberNavController()
+                KuraStorageAppShell(controller) { padding ->
+                    NavHost(
+                        navController = controller,
+                        startDestination = AppDestination.HOME.route,
+                        modifier = Modifier.padding(padding),
+                    ) {
+                        composable(AppDestination.HOME.route) { Text("Home body") }
+                        composable(AppDestination.SEARCH.route) { Text("Search body") }
+                        composable(AppDestination.PHOTO_VIEWER.route) { Text("Viewer body") }
+                    }
+                }
+            }
+        }
+
+        compose.onNodeWithTag("top-level-search").performClick()
+        compose.onNodeWithText("Search body").assertIsDisplayed()
+        compose.onNodeWithTag("top-level-home").performClick()
+        compose.onNodeWithText("Home body").assertIsDisplayed()
+
+        compose.onNodeWithTag("top-level-search").performClick()
+        compose.runOnIdle { controller.navigate(AppDestination.PHOTO_VIEWER.route) }
+        compose.onNodeWithText("Viewer body").assertIsDisplayed()
+        compose.runOnIdle { check(controller.popBackStack()) }
+        compose.onNodeWithTag("top-level-home").performClick()
+        compose.onNodeWithText("Home body").assertIsDisplayed()
+        compose.onNodeWithTag("top-level-home").performClick().assertIsSelected()
+        compose.runOnIdle { check(!controller.popBackStack()) }
+    }
+
+    @Test
     fun logoutNavigationClearsProtectedBackStack() {
         lateinit var controller: NavHostController
         compose.setContent {

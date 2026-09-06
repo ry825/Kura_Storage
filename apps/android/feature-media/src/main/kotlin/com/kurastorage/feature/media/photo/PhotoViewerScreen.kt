@@ -11,6 +11,7 @@
 
 package com.kurastorage.feature.media.photo
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -44,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +57,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
@@ -133,14 +137,15 @@ fun PhotoViewerScreen(
     val file = state.file
     val media = state.media
     val context = LocalContext.current
+    val readySource = media?.displayedSource
     var showTags by remember(file?.id) { mutableStateOf(false) }
-    var offset by remember(file?.id, media?.quality) { mutableStateOf(Offset.Zero) }
+    var offset by remember(file?.id, readySource) { mutableStateOf(Offset.Zero) }
+    var fullscreen by rememberSaveable(file?.id, file?.fileVersion, readySource) { mutableStateOf(false) }
     val transformable =
         rememberTransformableState { zoomChange, panChange, _ ->
             onZoom(state.zoom * zoomChange)
             offset = if (state.zoom <= 1f) Offset.Zero else offset + panChange
         }
-    val readySource = media?.displayedSource
     LaunchedEffect(file?.id, readySource, state.previousPrefetch?.id, state.nextPrefetch?.id) {
         val source = readySource ?: return@LaunchedEffect
         if (source.variant == MediaVariant.ORIGINAL && media.networkContext == NetworkQualityContext.REMOTE_MOBILE) return@LaunchedEffect
@@ -162,87 +167,112 @@ fun PhotoViewerScreen(
         }
     }
 
-    KuraAppScaffold(
-        topBar = {
-            KuraTopAppBar(
-                title = file?.name ?: "Photo",
-                navigationIcon = { KuraIconButton("Back", onBack) { Text("←") } },
-                actions = {
-                    if (state.totalCount > 0) Text("${state.currentPosition} / ${state.totalCount}")
-                    KuraIconButton("File details", onDetails, enabled = file != null) { Text("ⓘ") }
-                },
+    BackHandler(enabled = fullscreen) { fullscreen = false }
+    if (fullscreen) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).testTag("photo-fullscreen")) {
+            PhotoViewport(
+                state,
+                imageLoader,
+                scopeId,
+                requestTicket,
+                onImageReady,
+                onGenerating,
+                onImageFailed,
+                offset,
+                transformable,
+                { offset = Offset.Zero },
+                onZoom,
+                onPrevious,
+                onNext,
+                Modifier.fillMaxSize(),
             )
-        },
-    ) { contentPadding ->
-        BoxWithConstraints(Modifier.fillMaxSize().padding(contentPadding)) {
-            val landscape = maxWidth > maxHeight
-            if (landscape) {
-                Row(Modifier.fillMaxSize()) {
-                    PhotoViewport(
-                        state,
-                        imageLoader,
-                        scopeId,
-                        requestTicket,
-                        onImageReady,
-                        onGenerating,
-                        onImageFailed,
-                        offset,
-                        transformable,
-                        { offset = Offset.Zero },
-                        onZoom,
-                        onPrevious,
-                        onNext,
-                        Modifier.weight(1f),
-                    )
-                    PhotoControls(
-                        state,
-                        organization,
-                        download,
-                        onQuality,
-                        onPrevious,
-                        onNext,
-                        onZoom,
-                        onToggleFavorite,
-                        { showTags = true },
-                        onDownloadOriginal,
-                        onDetails,
-                        onRetryGeneration,
-                        Modifier.fillMaxHeight().widthIn(min = 280.dp, max = 360.dp),
-                    )
-                }
-            } else {
-                Column(Modifier.fillMaxSize()) {
-                    PhotoViewport(
-                        state,
-                        imageLoader,
-                        scopeId,
-                        requestTicket,
-                        onImageReady,
-                        onGenerating,
-                        onImageFailed,
-                        offset,
-                        transformable,
-                        { offset = Offset.Zero },
-                        onZoom,
-                        onPrevious,
-                        onNext,
-                        Modifier.weight(1f),
-                    )
-                    PhotoControls(
-                        state,
-                        organization,
-                        download,
-                        onQuality,
-                        onPrevious,
-                        onNext,
-                        onZoom,
-                        onToggleFavorite,
-                        { showTags = true },
-                        onDownloadOriginal,
-                        onDetails,
-                        onRetryGeneration,
-                        Modifier.fillMaxWidth().heightIn(max = 320.dp),
-                    )
+            KuraIconButton("Exit full screen", { fullscreen = false }, modifier = Modifier.align(Alignment.TopEnd)) { Text("×") }
+        }
+    } else {
+        KuraAppScaffold(
+            topBar = {
+                KuraTopAppBar(
+                    title = file?.name ?: "Photo",
+                    navigationIcon = { KuraIconButton("Back", onBack) { Text("←") } },
+                    actions = {
+                        if (state.totalCount > 0) Text("${state.currentPosition} / ${state.totalCount}")
+                        KuraIconButton("File details", onDetails, enabled = file != null) { Text("ⓘ") }
+                    },
+                )
+            },
+        ) { contentPadding ->
+            BoxWithConstraints(Modifier.fillMaxSize().padding(contentPadding)) {
+                val landscape = maxWidth > maxHeight
+                if (landscape) {
+                    Row(Modifier.fillMaxSize()) {
+                        PhotoViewport(
+                            state,
+                            imageLoader,
+                            scopeId,
+                            requestTicket,
+                            onImageReady,
+                            onGenerating,
+                            onImageFailed,
+                            offset,
+                            transformable,
+                            { offset = Offset.Zero },
+                            onZoom,
+                            onPrevious,
+                            onNext,
+                            Modifier.weight(1f),
+                        )
+                        PhotoControls(
+                            state,
+                            organization,
+                            download,
+                            onQuality,
+                            onPrevious,
+                            onNext,
+                            onZoom,
+                            onToggleFavorite,
+                            { showTags = true },
+                            onDownloadOriginal,
+                            onDetails,
+                            onRetryGeneration,
+                            { fullscreen = true },
+                            Modifier.fillMaxHeight().widthIn(min = 280.dp, max = 360.dp),
+                        )
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize()) {
+                        PhotoViewport(
+                            state,
+                            imageLoader,
+                            scopeId,
+                            requestTicket,
+                            onImageReady,
+                            onGenerating,
+                            onImageFailed,
+                            offset,
+                            transformable,
+                            { offset = Offset.Zero },
+                            onZoom,
+                            onPrevious,
+                            onNext,
+                            Modifier.weight(1f),
+                        )
+                        PhotoControls(
+                            state,
+                            organization,
+                            download,
+                            onQuality,
+                            onPrevious,
+                            onNext,
+                            onZoom,
+                            onToggleFavorite,
+                            { showTags = true },
+                            onDownloadOriginal,
+                            onDetails,
+                            onRetryGeneration,
+                            { fullscreen = true },
+                            Modifier.fillMaxWidth().heightIn(max = 320.dp),
+                        )
+                    }
                 }
             }
         }
@@ -311,6 +341,7 @@ private fun PhotoControls(
     onDownloadOriginal: () -> Unit,
     onDetails: () -> Unit,
     onRetryGeneration: () -> Unit,
+    onFullscreen: () -> Unit,
     modifier: Modifier,
 ) {
     val media = state.media
@@ -354,6 +385,7 @@ private fun PhotoControls(
                     state.file != null && download.status !in setOf(PhotoDownloadStatus.CHOOSING_DESTINATION, PhotoDownloadStatus.SAVING),
             ) { Text("↓") }
             KuraIconButton("File details", onDetails, enabled = state.file != null) { Text("ⓘ") }
+            KuraIconButton("Full screen", onFullscreen, enabled = state.file != null) { Text("⛶") }
             KuraIconButton(
                 "Zoom out",
                 { onZoom(state.zoom - ZOOM_STEP) },
@@ -465,6 +497,9 @@ private fun PhotoCanvas(
     val file = state.file
     val media = state.media
     val context = LocalContext.current
+    val ticket = requestTicket()
+    val source = ticket?.source ?: media?.displayedSource
+    var intrinsicSize by remember(source) { mutableStateOf<androidx.compose.ui.geometry.Size?>(null) }
     var horizontalDrag by remember(file?.id) { mutableFloatStateOf(0f) }
     val swipeModifier =
         if (state.zoom <= 1f) {
@@ -498,11 +533,10 @@ private fun PhotoCanvas(
         } else {
             Modifier
         }
-    Box(
+    BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .then(swipeModifier)
-            .graphicsLayer(scaleX = state.zoom, scaleY = state.zoom, translationX = offset.x, translationY = offset.y)
             .transformable(transformable)
             .pointerInput(file?.id) {
                 detectTapGestures(onDoubleTap = {
@@ -513,8 +547,31 @@ private fun PhotoCanvas(
             }.testTag("photo-canvas"),
         contentAlignment = Alignment.Center,
     ) {
-        val ticket = requestTicket()
-        val source = ticket?.source ?: media?.displayedSource
+        val density = LocalDensity.current
+        val fitted =
+            intrinsicSize
+                ?.takeIf { it.width.isFinite() && it.height.isFinite() && it.width > 0f && it.height > 0f }
+                ?.let {
+                    PhotoFitPolicy.fitWithoutUpscaling(
+                        it.width,
+                        it.height,
+                        constraints.maxWidth.toFloat(),
+                        constraints.maxHeight.toFloat(),
+                    )
+                }
+        val imageModifier =
+            fitted?.let {
+                with(density) { Modifier.size(it.widthPx.toDp(), it.heightPx.toDp()) }
+            } ?: Modifier.fillMaxSize()
+        val maximumPanX = fitted?.let { PhotoFitPolicy.maximumPanPx(it.widthPx, constraints.maxWidth.toFloat(), state.zoom) } ?: 0f
+        val maximumPanY = fitted?.let { PhotoFitPolicy.maximumPanPx(it.heightPx, constraints.maxHeight.toFloat(), state.zoom) } ?: 0f
+        val transformedImageModifier =
+            imageModifier.graphicsLayer(
+                scaleX = state.zoom,
+                scaleY = state.zoom,
+                translationX = offset.x.coerceIn(-maximumPanX, maximumPanX),
+                translationY = offset.y.coerceIn(-maximumPanY, maximumPanY),
+            )
         if (file != null && source != null) {
             val displayedSource = media?.displayedSource
             if (ticket != null && displayedSource != null && displayedSource != source) {
@@ -538,7 +595,7 @@ private fun PhotoCanvas(
                     imageLoader = imageLoader,
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = transformedImageModifier,
                 )
             }
             var painterState by remember(
@@ -558,8 +615,11 @@ private fun PhotoCanvas(
                 imageLoader = imageLoader,
                 contentDescription = "Photo: ${file.name}",
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-                onState = { painterState = it },
+                modifier = transformedImageModifier,
+                onState = {
+                    painterState = it
+                    if (it is AsyncImagePainter.State.Success) intrinsicSize = it.painter.intrinsicSize
+                },
             )
             LaunchedEffect(painterState, ticket) {
                 val active = ticket ?: return@LaunchedEffect

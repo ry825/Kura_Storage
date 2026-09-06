@@ -17,7 +17,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.StrictMode
-import android.provider.OpenableColumns
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -69,8 +68,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.kurastorage.core.data.AndroidFolderTreePermissionSource
+import com.kurastorage.core.data.AndroidFolderUploadTreeSource
+import com.kurastorage.core.data.AndroidUploadDocumentSource
 import com.kurastorage.core.data.FileRepository
+import com.kurastorage.core.data.FolderUploadPlanner
+import com.kurastorage.core.data.FolderUploadSelectionReader
 import com.kurastorage.core.data.SharingRepository
+import com.kurastorage.core.data.UploadSelectionReader
 import com.kurastorage.core.data.media.MediaContentDownloader
 import com.kurastorage.core.data.media.MediaDownloadOutcome
 import com.kurastorage.core.data.media.MediaDownloadTarget
@@ -524,12 +529,21 @@ private fun KuraStorageApp(
                 val state by model.state.collectAsStateWithLifecycle()
                 val permissions =
                     rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { model.refreshCurrent() }
+                DisposableEffect(model) {
+                    val lifecycle = (navController.context as? ComponentActivity)?.lifecycle
+                    val observer =
+                        LifecycleEventObserver { _, event ->
+                            if (event == Lifecycle.Event.ON_RESUME) model.refreshCurrent()
+                        }
+                    lifecycle?.addObserver(observer)
+                    onDispose { lifecycle?.removeObserver(observer) }
+                }
                 BackupWifiScreen(
                     state = state,
                     onRefresh = model::refreshCurrent,
                     onRequestPermission = { permissions.launch(it.toTypedArray()) },
-                    onRegister = { name, restrictBssid, metered, enabled ->
-                        model.register(name, restrictBssid, metered, enabled)
+                    onRegister = { name, wifi, restrictBssid, metered, enabled ->
+                        model.register(wifi, name, restrictBssid, metered, enabled)
                     },
                     onSave = model::save,
                     onDelete = model::delete,
@@ -563,8 +577,14 @@ private fun KuraStorageApp(
                     viewModel(
                         key = "files-${current.sessionId}",
                         factory =
-                            simpleViewModelFactory {
-                                FileBrowserViewModel(current.files, current.transfers, recentFiles = current.recentFiles)
+                            savedStateViewModelFactory { savedState ->
+                                FileBrowserViewModel(
+                                    current.files,
+                                    current.transfers,
+                                    recentFiles = current.recentFiles,
+                                    savedStateHandle = savedState,
+                                    media = current.media.repository,
+                                )
                             },
                     )
                 val storageViewModel =
@@ -607,8 +627,13 @@ private fun KuraStorageApp(
                     viewModel(
                         key = "trash-${current.sessionId}",
                         factory =
-                            simpleViewModelFactory {
-                                FileBrowserViewModel(current.files, current.transfers, trashMode = true)
+                            savedStateViewModelFactory { savedState ->
+                                FileBrowserViewModel(
+                                    current.files,
+                                    current.transfers,
+                                    trashMode = true,
+                                    savedStateHandle = savedState,
+                                )
                             },
                     )
                 FileRoute(
@@ -937,6 +962,7 @@ private fun KuraStorageApp(
                                     initialParentId = entryId.takeIf { type == FileEntryType.FOLDER },
                                     initialSelectionId = entryId.takeIf { type == FileEntryType.FILE },
                                     recentFiles = current.recentFiles,
+                                    media = current.media.repository,
                                 )
                             },
                     )
@@ -1357,8 +1383,22 @@ private fun FileRoute(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
+    DisposableEffect(viewModel, trashMode) {
+        if (!trashMode) viewModel.startThumbnailSummaryPolling()
+        onDispose { viewModel.stopThumbnailSummaryPolling() }
+    }
     val adminStorageState = AdminStorageStateFor(adminStorageViewModel)
     var pendingDownload by remember { mutableStateOf<FileEntry?>(null) }
+    val pickerScope = rememberCoroutineScope()
+    val uploadSelectionReader =
+        remember(context) { UploadSelectionReader(AndroidUploadDocumentSource(context.contentResolver)) }
+    val folderUploadSelectionReader =
+        remember(context) {
+            FolderUploadSelectionReader(
+                permissionSource = AndroidFolderTreePermissionSource(context.contentResolver),
+                plannerFactory = { FolderUploadPlanner(AndroidFolderUploadTreeSource(context.contentResolver)) },
+            )
+        }
     LaunchedEffect(requestedDetailsId, state.entries) {
         val requested = requestedDetailsId ?: return@LaunchedEffect
         state.entries.firstOrNull { it.id == requested }?.let {
@@ -1367,26 +1407,25 @@ private fun FileRoute(
         }
     }
     val uploadPicker =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) {
-                val metadata =
-                    context.contentResolver
-                        .query(
-                            uri,
-                            arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
-                            null,
-                            null,
-                            null,
-                        )?.use { cursor ->
-                            if (!cursor.moveToFirst()) {
-                                null
-                            } else {
-                                cursor.getString(0) to cursor.getLong(1)
-                            }
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            if (uris.isNotEmpty()) {
+                pickerScope.launch {
+                    val selections =
+                        withContext(Dispatchers.IO) {
+                            uploadSelectionReader.read(uris.map(Uri::toString))
                         }
-                metadata?.let { (name, size) ->
-                    viewModel.startUpload(uri.toString(), name, size, context.contentResolver.getType(uri))
+                    viewModel.startUploads(selections)
                 }
+            }
+        }
+    val folderUploadPicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            pickerScope.launch {
+                val result =
+                    withContext(Dispatchers.IO) {
+                        folderUploadSelectionReader.read(uri?.toString())
+                    }
+                viewModel.acceptFolderUploadSelection(result)
             }
         }
     val downloadPicker =
@@ -1411,10 +1450,12 @@ private fun FileRoute(
         },
         onShowDetails = viewModel::select,
         onBack = navigateBack,
+        onBreadcrumb = viewModel::openBreadcrumb,
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadMore,
         onCreateFolder = viewModel::createFolder,
         onChooseUpload = { uploadPicker.launch(arrayOf("*/*")) },
+        onChooseFolderUpload = { folderUploadPicker.launch(null) },
         onChooseDownload = { file ->
             pendingDownload = file
             downloadPicker.launch(file.name)
@@ -1443,6 +1484,12 @@ private fun FileRoute(
         onDismissDetail = viewModel::dismissDetail,
         onCancelTransfer = viewModel::cancelTransfer,
         onRetryTransfer = viewModel::retryTransfer,
+        onCancelUpload = viewModel::cancelUpload,
+        onRetryUpload = viewModel::retryUpload,
+        onDismissUpload = viewModel::dismissUpload,
+        onUploadCompletionConsumed = viewModel::consumeUploadCompletionNotice,
+        onRetryFolderUpload = viewModel::retryFolderUpload,
+        onScrollAnchor = viewModel::recordScrollAnchor,
         onOpenDownload = { uri ->
             runCatching { context.startActivity(viewModel.downloadedFileIntent(uri)) }
         },

@@ -24,9 +24,11 @@ class MediaModelsTest {
     }
 
     @Test
-    fun `variant resolver permits quality only for images and videos`() {
+    fun `variant resolver applies quality only to images and fixes video to original`() {
         assertEquals(MediaVariant.IMAGE_LOW, MediaVariantResolver.resolve(MediaKind.IMAGE, MediaQuality.LOW))
-        assertEquals(MediaVariant.VIDEO_MEDIUM, MediaVariantResolver.resolve(MediaKind.VIDEO, MediaQuality.MEDIUM))
+        MediaQuality.entries.forEach { quality ->
+            assertEquals(MediaVariant.ORIGINAL, MediaVariantResolver.resolve(MediaKind.VIDEO, quality))
+        }
         assertEquals(MediaVariant.ORIGINAL, MediaVariantResolver.resolve(MediaKind.AUDIO, MediaQuality.ORIGINAL))
         assertThrows(IllegalArgumentException::class.java) {
             MediaVariantResolver.resolve(MediaKind.PDF, MediaQuality.LOW)

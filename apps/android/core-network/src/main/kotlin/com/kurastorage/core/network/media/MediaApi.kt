@@ -62,6 +62,9 @@ interface MediaApi {
         jobId: String,
     ): NetworkCallResult<MediaJobDto>
 
+    suspend fun thumbnailJobSummary(accessToken: String): NetworkCallResult<ThumbnailJobSummaryDto> =
+        error("Thumbnail job summary is not implemented by this test double")
+
     fun contentRequest(
         accessToken: String,
         fileId: String,
@@ -177,6 +180,11 @@ class OkHttpMediaApi(
             requestBuilder(accessToken, resourceUrl("media-jobs", jobId, "retry"))
                 .post(ByteArray(0).toRequestBody())
                 .build(),
+        )
+
+    override suspend fun thumbnailJobSummary(accessToken: String): NetworkCallResult<ThumbnailJobSummaryDto> =
+        executeJson(
+            requestBuilder(accessToken, resourceUrl("media", "thumbnail-jobs", "summary")).get().build(),
         )
 
     override fun contentRequest(

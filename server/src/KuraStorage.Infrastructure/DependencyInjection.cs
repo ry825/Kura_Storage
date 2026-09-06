@@ -121,8 +121,10 @@ public static class DependencyInjection
                     options.TerminalJobRetentionDays > 0,
                 "Media cleanup settings are invalid.")
             .Validate(
-                options => options.MaximumConcurrentMediaJobs == 1 && options.MaximumConcurrentVideoJobs == 1,
-                "Initial media and video concurrency must both be one.")
+                options => options.MaximumConcurrentMediaJobs == 1 &&
+                    options.MaximumConcurrentVideoJobs == 1 &&
+                    options.MaximumConcurrentThumbnailJobs is >= 1 and <= 8,
+                "Media concurrency settings are outside their safe limits.")
             .Validate(
                 options => Path.IsPathFullyQualified(options.VipsPath) &&
                     Path.IsPathFullyQualified(options.FfmpegPath) &&
@@ -151,6 +153,7 @@ public static class DependencyInjection
         services.AddScoped<IOrganizationRepository, PostgreSqlOrganizationRepository>();
         services.AddScoped<IShareRepository, ShareRepository>();
         services.AddScoped<IMediaJobQueue, PostgreSqlMediaJobQueue>();
+        services.AddScoped<IThumbnailJobSummaryRepository, PostgreSqlThumbnailJobSummaryRepository>();
         services.AddScoped<IMediaRepository, PostgreSqlMediaRepository>();
         services.AddScoped<IMediaCleanupRepository, PostgreSqlMediaCleanupRepository>();
         services.AddSingleton<IMediaHeartbeat, PostgreSqlMediaHeartbeat>();
@@ -211,6 +214,7 @@ public static class DependencyInjection
                     GenerationLeaseSeconds = configured.GenerationLeaseSeconds,
                     JobHeartbeatSeconds = configured.JobHeartbeatSeconds,
                     CacheTtlHours = configured.CacheTtlHours,
+                    MaximumConcurrentThumbnailJobs = configured.MaximumConcurrentThumbnailJobs,
                 };
             });
         services.AddSingleton(
@@ -242,6 +246,7 @@ public static class DependencyInjection
         services.AddScoped<RecentFileService>();
         services.AddScoped<OrganizationService>();
         services.AddScoped<PreviewService>();
+        services.AddScoped<ThumbnailJobSummaryService>();
         services.AddScoped<MediaJobRunner>();
         services.AddScoped<IMediaJobRunner>(serviceProvider => serviceProvider.GetRequiredService<MediaJobRunner>());
         services.AddScoped<MediaCleanupService>();

@@ -55,9 +55,9 @@ class MediaPlayerViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `video starts selected mobile quality and preserves position rate and play state when quality changes`() =
+    fun `video ignores stored quality and prepares original only after confirmation`() =
         runTest(dispatcher) {
-            val repository = FakeMediaRepository("video/mp4")
+            val repository = FakeMediaRepository("video/mp4", 2L * 1024 * 1024)
             val controller = controller(repository, backgroundScope)
             val engine = FakeEngine()
             val viewModel =
@@ -70,23 +70,20 @@ class MediaPlayerViewModelTest {
                 )
 
             viewModel.attachEngine(engine)
-            assertEquals(MediaVariant.VIDEO_LOW, engine.preparedSource?.variant)
-            engine.emit(
-                PlayerSnapshot(
-                    positionMs = 12_000,
-                    durationMs = 60_000,
-                    seekable = true,
-                    playWhenReady = true,
-                    rate = PlaybackRate(1.5f),
-                    phase = PlayerPhase.READY,
-                ),
+            assertNull(engine.preparedSource)
+            assertEquals(
+                MediaQuality.ORIGINAL,
+                viewModel.state.value.media
+                    ?.quality,
             )
-            viewModel.selectQuality(MediaQuality.MEDIUM)
+            assertEquals(listOf(MediaVariant.ORIGINAL), repository.inspectedVariants)
 
-            assertEquals(MediaVariant.VIDEO_MEDIUM, engine.preparedSource?.variant)
-            assertEquals(12_000, engine.preparedPosition)
-            assertEquals(1.5f, engine.preparedRate.value)
-            assertTrue(engine.preparedPlayWhenReady)
+            viewModel.confirmOriginal()
+
+            assertEquals(MediaVariant.ORIGINAL, engine.preparedSource?.variant)
+            assertEquals(1, engine.prepareCalls)
+            viewModel.attachEngine(engine)
+            assertEquals(1, engine.prepareCalls)
         }
 
     @Test
@@ -117,9 +114,9 @@ class MediaPlayerViewModelTest {
         }
 
     @Test
-    fun `cancelling original before initial video is ready returns to the previous quality`() =
+    fun `cancelling original video confirmation never falls back to a derived quality`() =
         runTest(dispatcher) {
-            val repository = FakeMediaRepository("video/mp4")
+            val repository = FakeMediaRepository("video/mp4", 2L * 1024 * 1024)
             val viewModel =
                 MediaPlayerViewModel(
                     FILE_ID,
@@ -131,7 +128,6 @@ class MediaPlayerViewModelTest {
             val engine = FakeEngine()
             viewModel.attachEngine(engine)
 
-            viewModel.selectQuality(MediaQuality.ORIGINAL)
             assertEquals(
                 MediaQuality.ORIGINAL,
                 viewModel.state.value.media
@@ -140,43 +136,42 @@ class MediaPlayerViewModelTest {
             viewModel.cancelOriginal()
 
             assertEquals(
-                MediaQuality.LOW,
+                MediaQuality.ORIGINAL,
                 viewModel.state.value.media
                     ?.quality,
             )
-            assertEquals(MediaVariant.VIDEO_LOW, engine.preparedSource?.variant)
+            assertTrue(
+                viewModel.state.value.media
+                    ?.loadState is MediaLoadState.Idle,
+            )
+            assertNull(engine.preparedSource)
         }
 
     @Test
-    fun `cancelling an initially configured original video falls back to medium`() =
+    fun `pending mobile confirmation survives engine replacement without preparing content`() =
         runTest(dispatcher) {
-            val repository = FakeMediaRepository("video/mp4")
+            val repository = FakeMediaRepository("video/mp4", 2L * 1024 * 1024)
             val viewModel =
                 MediaPlayerViewModel(
                     FILE_ID,
                     MediaKind.VIDEO,
                     FakeFiles(file("video/mp4")),
-                    localController(repository, backgroundScope),
+                    controller(repository, backgroundScope),
                     MediaReadinessProbe { MediaReadiness.Ready },
                 )
-            val engine = FakeEngine()
-            viewModel.attachEngine(engine)
+            val first = FakeEngine()
+            viewModel.attachEngine(first)
 
-            assertEquals(
-                MediaQuality.ORIGINAL,
+            viewModel.detachEngine(first)
+            val replacement = FakeEngine()
+            viewModel.attachEngine(replacement)
+
+            assertNull(first.preparedSource)
+            assertNull(replacement.preparedSource)
+            assertTrue(
                 viewModel.state.value.media
-                    ?.quality,
+                    ?.loadState is MediaLoadState.ConfirmingTransfer,
             )
-            assertNull(engine.preparedSource)
-
-            viewModel.cancelOriginal()
-
-            assertEquals(
-                MediaQuality.MEDIUM,
-                viewModel.state.value.media
-                    ?.quality,
-            )
-            assertEquals(MediaVariant.VIDEO_MEDIUM, engine.preparedSource?.variant)
         }
 
     @Test
@@ -236,11 +231,11 @@ class MediaPlayerViewModelTest {
             readiness.complete(MediaReadiness.Ready)
 
             assertNull(first.preparedSource)
-            assertEquals(MediaVariant.VIDEO_LOW, replacement.preparedSource?.variant)
+            assertEquals(MediaVariant.ORIGINAL, replacement.preparedSource?.variant)
         }
 
     @Test
-    fun `generating video keeps player source unset and exposes the server job`() =
+    fun `original video never enters generation polling`() =
         runTest(dispatcher) {
             val repository = FakeMediaRepository("video/mp4")
             val generating =
@@ -267,12 +262,9 @@ class MediaPlayerViewModelTest {
             viewModel.attachEngine(engine)
 
             assertNull(engine.preparedSource)
-            assertEquals(
-                generating,
-                (
-                    viewModel.state.value.media
-                        ?.loadState as MediaLoadState.Generating
-                ).job,
+            assertTrue(
+                viewModel.state.value.media
+                    ?.loadState is MediaLoadState.Failed,
             )
         }
 
@@ -330,7 +322,7 @@ class MediaPlayerViewModelTest {
             assertTrue(!engine.snapshot.playWhenReady)
 
             viewModel.retryPlayback()
-            assertEquals(MediaVariant.VIDEO_LOW, engine.preparedSource?.variant)
+            assertEquals(MediaVariant.ORIGINAL, engine.preparedSource?.variant)
             viewModel.detachEngine(FakeEngine())
             viewModel.pause()
         }
@@ -419,21 +411,6 @@ class MediaPlayerViewModelTest {
         scope,
     )
 
-    private fun localController(
-        repository: MediaRepository,
-        scope: kotlinx.coroutines.CoroutineScope,
-    ) = MediaViewerController(
-        repository,
-        FakeQualityStore(),
-        NetworkQualityContextResolver(
-            NetworkTransportSource { NetworkTransport.WIFI },
-            RegisteredWifiSource { false },
-        ),
-        TransferConfirmationPolicy(repository),
-        ConnectionRoute.LOCAL_DIRECT,
-        scope,
-    )
-
     private class FakeEngine : ObservablePlayerEngine {
         private val mutableStates = MutableStateFlow(PlayerSnapshot())
         override val states: StateFlow<PlayerSnapshot> = mutableStates
@@ -442,6 +419,7 @@ class MediaPlayerViewModelTest {
         var preparedPosition: Long = 0
         var preparedRate = PlaybackRate(1f)
         var preparedPlayWhenReady = false
+        var prepareCalls = 0
         private var closed = false
 
         override fun prepare(
@@ -451,6 +429,7 @@ class MediaPlayerViewModelTest {
             playWhenReady: Boolean,
         ) {
             check(!closed) { "Player is closed" }
+            prepareCalls++
             preparedSource = source
             preparedPosition = positionMs
             preparedRate = rate
@@ -476,13 +455,19 @@ class MediaPlayerViewModelTest {
 
     private class FakeMediaRepository(
         private val mime: String,
+        private val size: Long = 4096,
     ) : MediaRepository {
-        override suspend fun inspectOriginal(fileId: String) = OriginalMetadata(ByteCount(4096), mime, true)
+        val inspectedVariants = mutableListOf<MediaVariant>()
+
+        override suspend fun inspectOriginal(fileId: String) = OriginalMetadata(ByteCount(size), mime, true)
 
         override suspend fun inspectVariant(
             fileId: String,
             variant: MediaVariant,
-        ): MediaMetadataResult = MediaMetadataResult.Ready(VariantMetadata(variant, ByteCount(4096), mime, true))
+        ): MediaMetadataResult {
+            inspectedVariants += variant
+            return MediaMetadataResult.Ready(VariantMetadata(variant, ByteCount(size), mime, true))
+        }
 
         override suspend fun job(jobId: String): MediaJobSnapshot = error("not used")
 

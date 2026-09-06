@@ -15,7 +15,10 @@ data class PlayerSnapshot(
     val phase: PlayerPhase = PlayerPhase.IDLE,
     val error: PlayerFailure? = null,
     val generatingJob: MediaJobSnapshot? = null,
+    val videoAspectRatio: Float = DEFAULT_VIDEO_ASPECT_RATIO,
 )
+
+const val DEFAULT_VIDEO_ASPECT_RATIO = 16f / 9f
 
 enum class PlayerPhase {
     IDLE,

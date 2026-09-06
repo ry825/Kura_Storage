@@ -9,6 +9,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
+import com.kurastorage.core.data.PriorityTransferDispatcher
 import com.kurastorage.core.data.backup.AndroidBackupContentSource
 import com.kurastorage.core.data.backup.AndroidBackupDocumentSource
 import com.kurastorage.core.data.backup.AndroidCurrentWifiSource
@@ -64,12 +65,14 @@ internal data class BackupSessionServices(
     val hasStoredCredential: suspend () -> Boolean,
 )
 
+@Suppress("LongParameterList")
 internal class AndroidBackupRuntimeFactory(
     private val context: Context,
     private val database: BackupDatabaseAccess,
     private val connectivityManager: ConnectivityManager,
     private val localNetworkSource: AndroidLocalNetworkSource,
     private val connectionDetector: ConnectionDetector,
+    private val transferDispatcher: PriorityTransferDispatcher,
     private val sessionFactory: BackupSessionFactory,
 ) {
     private val persistence = BackupTransferPersistence(database)
@@ -124,6 +127,7 @@ internal class AndroidBackupRuntimeFactory(
             remote,
             contentSource,
             BackupPolicyProvider { rule -> evaluate(rule, initialRoute, session) },
+            transferDispatcher = transferDispatcher,
         ).transfer(scope)
     }
 

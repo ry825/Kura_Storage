@@ -24,6 +24,7 @@ public sealed class PreviewService(
         if (request.ActorUserId == Guid.Empty || request.FileId == Guid.Empty ||
             !MediaContractRules.TryParseVariant(request.Variant, out var variant) ||
             variant == MediaVariant.Original ||
+            variant is MediaVariant.VideoLow or MediaVariant.VideoMedium ||
             !MediaContractRules.TryParseDisposition(request.Disposition, out var disposition))
         {
             return MediaResult<MediaRequestResult>.Fail(MediaErrorCodes.VariantUnsupported, MediaFailureKind.BadRequest);

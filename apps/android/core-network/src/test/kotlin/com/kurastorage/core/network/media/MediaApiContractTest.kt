@@ -158,6 +158,29 @@ class MediaApiContractTest {
         }
 
     @Test
+    fun `thumbnail job summary uses authenticated media endpoint and strict DTO`() =
+        runTest {
+            server.enqueue(jsonResponse(THUMBNAIL_SUMMARY))
+
+            val result = api.thumbnailJobSummary("summary-token") as NetworkCallResult.Success
+
+            assertEquals(4L, result.value.queuedCount)
+            assertEquals(2L, result.value.runningCount)
+            assertEquals(1L, result.value.failedCount)
+            assertEquals("2026-09-06T12:34:56Z", result.value.observedAt)
+            val request = server.takeRequest()
+            assertEquals("GET", request.method)
+            assertEquals("/api/v1/media/thumbnail-jobs/summary", request.path)
+            assertEquals("Bearer summary-token", request.getHeader("Authorization"))
+
+            server.enqueue(jsonResponse(THUMBNAIL_SUMMARY.dropLast(1) + ",\"fileId\":\"secret\"}"))
+            assertTrue(
+                runCatching { api.thumbnailJobSummary("summary-token") }.exceptionOrNull()
+                    is KuraStorageException.Network,
+            )
+        }
+
+    @Test
     fun `content request encodes identifiers and sends only selected variant and range`() {
         val call = api.contentRequest("token", "file/segment", MediaVariant.VIDEO_LOW, "bytes=10-19")
         val request = call.request()
@@ -269,5 +292,7 @@ class MediaApiContractTest {
             """{"jobId":"$JOB_ID","status":"GENERATING","progressPercent":null,"processedDurationMs":null,""" +
                 """"totalDurationMs":null,"queuePosition":2,"retryable":false,""" +
                 """"retryAfterSeconds":7,"contentUrl":null}"""
+        const val THUMBNAIL_SUMMARY =
+            """{"queuedCount":4,"runningCount":2,"failedCount":1,"observedAt":"2026-09-06T12:34:56Z"}"""
     }
 }

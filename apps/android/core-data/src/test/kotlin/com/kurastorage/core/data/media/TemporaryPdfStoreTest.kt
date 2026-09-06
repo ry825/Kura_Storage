@@ -91,6 +91,19 @@ class TemporaryPdfStoreTest {
         }
 
     @Test
+    fun `rejects empty metadata before creating a partial file`() =
+        runTest {
+            val repository = FakeRepository(ByteArray(0))
+            val store = TemporaryPdfStore(temporary.root, "scope", repository, availableBytes = { Long.MAX_VALUE })
+
+            val error = runCatching { store.download("file", 1, metadata(0)) }.exceptionOrNull()
+
+            assertTrue(error is IncompletePdfException)
+            assertEquals(0, repository.requests)
+            assertTrue(temporary.root.walkTopDown().none { it.name.endsWith(".part") })
+        }
+
+    @Test
     fun `cleanup preserves active lease then removes it after release`() =
         runTest {
             val store =

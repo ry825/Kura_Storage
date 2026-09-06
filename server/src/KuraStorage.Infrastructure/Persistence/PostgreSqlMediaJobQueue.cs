@@ -11,6 +11,19 @@ public sealed class PostgreSqlMediaJobQueue(KuraStorageDbContext database) : IMe
     public async Task<MediaJob?> TryAcquireNextAsync(
         Guid workerToken,
         DateTimeOffset now,
+        CancellationToken cancellationToken) =>
+        await TryAcquireNextAsync(
+            workerToken,
+            now,
+            MediaJobClaimScope.Any,
+            1,
+            cancellationToken);
+
+    public async Task<MediaJob?> TryAcquireNextAsync(
+        Guid workerToken,
+        DateTimeOffset now,
+        MediaJobClaimScope claimScope,
+        int maximumConcurrency,
         CancellationToken cancellationToken)
     {
         if (workerToken == Guid.Empty)
@@ -18,20 +31,51 @@ public sealed class PostgreSqlMediaJobQueue(KuraStorageDbContext database) : IMe
             throw new ArgumentException("A worker token is required.", nameof(workerToken));
         }
 
+        if (!Enum.IsDefined(claimScope))
+        {
+            throw new ArgumentOutOfRangeException(nameof(claimScope));
+        }
+
+        if (maximumConcurrency is < 1 or > 8)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumConcurrency));
+        }
+
+        await using var transaction = await database.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
+            cancellationToken);
+        foreach (var lockKey in ClaimLockKeys(claimScope))
+        {
+            await database.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({lockKey})",
+                cancellationToken);
+        }
+
         const string sql =
             """
-            WITH gate AS MATERIALIZED (
-                SELECT pg_advisory_xact_lock(1263815501)
-            ), candidate AS (
+            WITH candidate AS (
                 SELECT job.id, job.derivative_id
                 FROM media_jobs AS job
                 INNER JOIN file_derivatives AS derivative ON derivative.id = job.derivative_id
-                CROSS JOIN gate
                 WHERE job.status = 'QUEUED'
                   AND job.available_at <= @now
                   AND job.attempt_count < 3
                   AND derivative.status = 'PENDING'
-                  AND NOT EXISTS (SELECT 1 FROM media_jobs AS running WHERE running.status = 'RUNNING')
+                  AND (
+                      @claim_scope = 'ANY'
+                      OR (@claim_scope = 'THUMBNAIL' AND job.job_type IN ('THUMBNAIL', 'PDF_THUMBNAIL'))
+                      OR (@claim_scope = 'NON_THUMBNAIL' AND job.job_type NOT IN ('THUMBNAIL', 'PDF_THUMBNAIL'))
+                  )
+                  AND (
+                      SELECT count(*)
+                      FROM media_jobs AS running
+                      WHERE running.status = 'RUNNING'
+                        AND (
+                            @claim_scope = 'ANY'
+                            OR (@claim_scope = 'THUMBNAIL' AND running.job_type IN ('THUMBNAIL', 'PDF_THUMBNAIL'))
+                            OR (@claim_scope = 'NON_THUMBNAIL' AND running.job_type NOT IN ('THUMBNAIL', 'PDF_THUMBNAIL'))
+                        )
+                  ) < @maximum_concurrency
                 ORDER BY job.created_at, job.id
                 FOR UPDATE OF job, derivative SKIP LOCKED
                 LIMIT 1
@@ -60,15 +104,35 @@ public sealed class PostgreSqlMediaJobQueue(KuraStorageDbContext database) : IMe
             """;
         var jobId = await ExecuteScalarGuidAsync(sql, cancellationToken,
             new NpgsqlParameter("now", now),
-            new NpgsqlParameter("worker_token", workerToken));
+            new NpgsqlParameter("worker_token", workerToken),
+            new NpgsqlParameter("claim_scope", ClaimScopeValue(claimScope)),
+            new NpgsqlParameter("maximum_concurrency", maximumConcurrency));
         if (jobId is null)
         {
+            await transaction.CommitAsync(cancellationToken);
             return null;
         }
 
+        await transaction.CommitAsync(cancellationToken);
         database.ChangeTracker.Clear();
         return await database.MediaJobs.AsNoTracking().SingleAsync(job => job.Id == jobId, cancellationToken);
     }
+
+    private static string ClaimScopeValue(MediaJobClaimScope claimScope) => claimScope switch
+    {
+        MediaJobClaimScope.Any => "ANY",
+        MediaJobClaimScope.Thumbnail => "THUMBNAIL",
+        MediaJobClaimScope.NonThumbnail => "NON_THUMBNAIL",
+        _ => throw new ArgumentOutOfRangeException(nameof(claimScope)),
+    };
+
+    private static IReadOnlyList<int> ClaimLockKeys(MediaJobClaimScope claimScope) => claimScope switch
+    {
+        MediaJobClaimScope.Any => [1263815502, 1263815503],
+        MediaJobClaimScope.Thumbnail => [1263815502],
+        MediaJobClaimScope.NonThumbnail => [1263815503],
+        _ => throw new ArgumentOutOfRangeException(nameof(claimScope)),
+    };
 
     public async Task<bool> TryRecordHeartbeatAsync(
         Guid jobId,

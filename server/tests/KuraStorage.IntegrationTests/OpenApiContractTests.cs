@@ -24,6 +24,7 @@ public sealed class OpenApiContractTests
             "  /files/{fileId}/content:",
             "  /media-jobs/{jobId}:",
             "  /media-jobs/{jobId}/retry:",
+            "  /media/thumbnail-jobs/summary:",
             "  /trash:",
             "  /trash/{fileId}:",
             "  /files/{fileId}/restore:",
@@ -61,9 +62,11 @@ public sealed class OpenApiContractTests
         Assert.Contains("operationId: retryMediaJob", contract, StringComparison.Ordinal);
         Assert.Contains("MediaAcceptedResponse:", contract, StringComparison.Ordinal);
         Assert.Contains("MediaJob:", contract, StringComparison.Ordinal);
+        Assert.Contains("ThumbnailJobSummary:", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: getThumbnailJobSummary", contract, StringComparison.Ordinal);
         Assert.Contains("        retryable:", contract, StringComparison.Ordinal);
         Assert.Contains(
-            "enum: [original, thumbnail, image-low, image-medium, video-low, video-medium]",
+            "enum: [original, thumbnail, image-low, image-medium]",
             contract,
             StringComparison.Ordinal);
         Assert.Contains("MEDIA_VARIANT_UNSUPPORTED", contract, StringComparison.Ordinal);

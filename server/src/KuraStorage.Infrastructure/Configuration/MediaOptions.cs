@@ -52,6 +52,8 @@ public sealed class MediaOptions
 
     public int MaximumConcurrentMediaJobs { get; init; } = 1;
 
+    public int MaximumConcurrentThumbnailJobs { get; init; } = 2;
+
     public int MaximumConcurrentVideoJobs { get; init; } = 1;
 
     public string VipsPath { get; init; } = "/usr/bin/vips";

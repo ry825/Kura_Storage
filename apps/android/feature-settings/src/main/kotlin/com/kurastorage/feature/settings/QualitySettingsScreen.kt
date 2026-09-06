@@ -15,6 +15,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -30,44 +31,54 @@ fun QualitySettingsScreen(
     onReset: () -> Unit,
     onBack: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
-        Text("Media quality and data use", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            "These choices set the initial quality for photos and videos. " +
-                "You can always change quality while viewing.",
-        )
-        Text("Actual data use varies by file and format. Original content is never fetched before confirmation.")
-        NetworkQualityContext.entries.forEach { context ->
-            Text(context.label(), style = MaterialTheme.typography.titleMedium)
-            Text(context.description(), style = MaterialTheme.typography.bodyMedium)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MediaQuality.entries.forEach { quality ->
-                    FilterChip(
-                        modifier = Modifier.weight(1f),
-                        selected = state.preferences.qualityFor(context) == quality,
-                        onClick = { onSelect(context, quality) },
-                        enabled = !state.loading && !state.saving,
-                        label = { Text(quality.label()) },
-                    )
+        Column(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("Media quality and data use", style = MaterialTheme.typography.headlineMedium)
+            Text(
+                "These choices set the initial quality for photos. Videos always use the original file. " +
+                    "You can always change photo quality while viewing.",
+            )
+            Text("Actual data use varies by file and format. Original content is never fetched before confirmation.")
+            NetworkQualityContext.entries.forEach { context ->
+                Text(context.label(), style = MaterialTheme.typography.titleMedium)
+                Text(context.description(), style = MaterialTheme.typography.bodyMedium)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MediaQuality.entries.forEach { quality ->
+                        FilterChip(
+                            modifier = Modifier.weight(1f),
+                            selected = state.preferences.qualityFor(context) == quality,
+                            onClick = { onSelect(context, quality) },
+                            enabled = !state.loading && !state.saving,
+                            label = { Text(quality.label()) },
+                        )
+                    }
                 }
             }
+            Text(
+                text =
+                    "Mobile data is never available for automatic backup. " +
+                        "This screen changes initial viewer quality only.",
+            )
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Button(
+                onClick = onSave,
+                enabled = state.dirty && !state.saving,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text(if (state.saving) "Saving…" else "Save") }
+            OutlinedButton(
+                onClick = onReset,
+                enabled = !state.loading && !state.saving,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text("Reset to defaults") }
+            OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
         }
-        Text("Mobile data is never available for automatic backup. This screen changes initial viewer quality only.")
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(
-            onClick = onSave,
-            enabled = state.dirty && !state.saving,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) { Text(if (state.saving) "Saving…" else "Save") }
-        OutlinedButton(
-            onClick = onReset,
-            enabled = !state.loading && !state.saving,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) { Text("Reset to defaults") }
-        OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
     }
 }
 

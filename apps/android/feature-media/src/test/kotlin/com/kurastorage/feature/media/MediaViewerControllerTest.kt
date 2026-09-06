@@ -1,3 +1,5 @@
+@file:Suppress("LongParameterList", "MaxLineLength")
+
 package com.kurastorage.feature.media
 
 import com.kurastorage.core.data.media.MediaContentResult
@@ -26,6 +28,8 @@ import com.kurastorage.core.model.media.OriginalMetadata
 import com.kurastorage.core.model.media.QualityPreferences
 import com.kurastorage.core.model.media.VariantMetadata
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -112,16 +116,139 @@ class MediaViewerControllerTest {
         }
 
     @Test
-    fun `video original retains explicit transfer confirmation`() =
+    fun `video ignores configured derived quality and retains original confirmation`() =
         runTest {
-            val repository = FakeRepository()
-            val controller = controller(repository, ConnectionRoute.LOCAL_DIRECT, backgroundScope)
+            val repository = FakeRepository().apply { originalSize = 1024L * 1024 }
+            val controller =
+                controller(
+                    repository,
+                    ConnectionRoute.REMOTE_SECURE,
+                    backgroundScope,
+                    preferences = QualityPreferences(remoteMobile = MediaQuality.LOW),
+                )
 
             controller.start("video", 4, MediaKind.VIDEO)
 
+            assertEquals(MediaQuality.ORIGINAL, controller.state.value?.quality)
+            assertEquals(MediaVariant.ORIGINAL, controller.state.value?.requestedVariant)
             assertTrue(controller.state.value?.loadState is MediaLoadState.ConfirmingTransfer)
             assertNull(controller.requestTicket())
             controller.confirmOriginal()
+            assertEquals(MediaVariant.ORIGINAL, controller.requestTicket()?.source?.variant)
+        }
+
+    @Test
+    fun `video confirmation is limited to cellular files at least one mebibyte`() =
+        runTest {
+            listOf(
+                1_048_575L to false,
+                1_048_576L to true,
+            ).forEach { (size, confirmationExpected) ->
+                val repository = FakeRepository().apply { originalSize = size }
+                val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
+
+                controller.start("video-$size", 1, MediaKind.VIDEO)
+
+                assertEquals(confirmationExpected, controller.state.value?.confirmation != null)
+                assertEquals(!confirmationExpected, controller.requestTicket() != null)
+                assertEquals(0, repository.contentRequests)
+            }
+        }
+
+    @Test
+    fun `wifi ethernet and unknown transports prepare original video without a mobile dialog`() =
+        runTest {
+            listOf(NetworkTransport.WIFI, NetworkTransport.ETHERNET, NetworkTransport.OTHER_OR_UNKNOWN)
+                .forEach { transport ->
+                    val repository = FakeRepository().apply { originalSize = 2L * 1024 * 1024 }
+                    val controller =
+                        controller(
+                            repository,
+                            ConnectionRoute.REMOTE_SECURE,
+                            backgroundScope,
+                            network =
+                                NetworkCase(
+                                    ConnectionRoute.REMOTE_SECURE,
+                                    transport,
+                                    false,
+                                    NetworkQualityContext.UNREGISTERED_REMOTE_WIFI,
+                                    MediaVariant.ORIGINAL,
+                                ),
+                        )
+
+                    controller.start("video-${transport.name}", 1, MediaKind.VIDEO)
+
+                    assertNull(controller.state.value?.confirmation)
+                    assertEquals(MediaVariant.ORIGINAL, controller.requestTicket()?.source?.variant)
+                }
+        }
+
+    @Test
+    fun `unknown cellular size requires confirmation and cancel starts no content request`() =
+        runTest {
+            val repository = FakeRepository().apply { inspectError = KuraStorageException.Network(IOException("offline")) }
+            val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
+
+            controller.start("video", 1, MediaKind.VIDEO)
+            assertEquals(
+                "Size unavailable",
+                controller.state.value
+                    ?.confirmation
+                    ?.formattedSize,
+            )
+
+            controller.cancelOriginalConfirmation()
+
+            assertNull(controller.requestTicket())
+            assertEquals(0, repository.contentRequests)
+        }
+
+    @Test
+    fun `mobile approval is discarded when file identity changes`() =
+        runTest {
+            val repository = FakeRepository().apply { originalSize = 2L * 1024 * 1024 }
+            val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
+            controller.start("first", 1, MediaKind.VIDEO)
+            controller.confirmOriginal()
+            assertEquals("first", controller.requestTicket()?.source?.fileId)
+
+            controller.start("second", 2, MediaKind.VIDEO)
+
+            assertNull(controller.requestTicket())
+            assertEquals(
+                "second",
+                controller.state.value
+                    ?.confirmation
+                    ?.fileId,
+            )
+            assertEquals(
+                2L,
+                controller.state.value
+                    ?.confirmation
+                    ?.fileVersion,
+            )
+        }
+
+    @Test
+    fun `transport change reevaluates pending video without trusting wifi registration`() =
+        runTest {
+            val repository = FakeRepository().apply { originalSize = 2L * 1024 * 1024 }
+            val transport = MutableTransport(NetworkTransport.CELLULAR)
+            val controller =
+                controller(
+                    repository,
+                    ConnectionRoute.REMOTE_SECURE,
+                    backgroundScope,
+                    transportSource = transport,
+                )
+            controller.start("video", 1, MediaKind.VIDEO)
+            assertTrue(controller.state.value?.loadState is MediaLoadState.ConfirmingTransfer)
+
+            transport.update(NetworkTransport.ETHERNET)
+            runCurrent()
+
+            assertNull(controller.state.value?.confirmation)
+            assertEquals(NetworkTransport.ETHERNET, controller.state.value?.transport)
             assertEquals(MediaVariant.ORIGINAL, controller.requestTicket()?.source?.variant)
         }
 
@@ -206,7 +333,7 @@ class MediaViewerControllerTest {
                     jobs += job(MediaJobStatus.READY, retry = 0)
                 }
             val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
-            controller.start("file", 4, MediaKind.VIDEO)
+            controller.start("file", 4, MediaKind.IMAGE)
             val ticket = controller.requestTicket()!!
             controller.contentGenerating(ticket, job(MediaJobStatus.GENERATING, retry = 2))
 
@@ -220,7 +347,7 @@ class MediaViewerControllerTest {
             runCurrent()
             assertEquals(2, repository.jobRequests)
             assertTrue(controller.state.value?.loadState is MediaLoadState.Loading)
-            assertEquals(MediaVariant.VIDEO_LOW, controller.requestTicket()?.source?.variant)
+            assertEquals(MediaVariant.IMAGE_LOW, controller.requestTicket()?.source?.variant)
         }
 
     @Test
@@ -232,7 +359,7 @@ class MediaViewerControllerTest {
                     retryResult = job(MediaJobStatus.GENERATING, retry = 2)
                 }
             val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
-            controller.start("file", 4, MediaKind.VIDEO)
+            controller.start("file", 4, MediaKind.IMAGE)
             controller.contentGenerating(controller.requestTicket()!!, job(MediaJobStatus.GENERATING, retry = 1))
             advanceTimeBy(1_000)
             runCurrent()
@@ -250,7 +377,7 @@ class MediaViewerControllerTest {
         runTest {
             val repository = FakeRepository()
             val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
-            controller.start("file", 4, MediaKind.VIDEO)
+            controller.start("file", 4, MediaKind.IMAGE)
             val ticket = controller.requestTicket()!!
             val generating = job(MediaJobStatus.GENERATING, retry = 1)
             controller.contentGenerating(ticket, generating)
@@ -279,7 +406,7 @@ class MediaViewerControllerTest {
             controller.selectQuality(MediaQuality.ORIGINAL)
             controller.confirmOriginal()
             val stale = checkNotNull(controller.requestTicket())
-            controller.start("replacement", 2, MediaKind.VIDEO)
+            controller.start("replacement", 2, MediaKind.IMAGE)
             controller.contentFailed(stale, MediaUiError.PERMISSION_DENIED)
             assertEquals("replacement", controller.state.value?.fileId)
             assertTrue(controller.state.value?.loadState is MediaLoadState.Loading)
@@ -290,7 +417,7 @@ class MediaViewerControllerTest {
         runTest {
             val failedRepository = FakeRepository().apply { jobs += job(MediaJobStatus.FAILED, 0, false) }
             val failed = controller(failedRepository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
-            failed.start("file", 1, MediaKind.VIDEO)
+            failed.start("file", 1, MediaKind.IMAGE)
             failed.contentGenerating(failed.requestTicket()!!, job(MediaJobStatus.GENERATING, 1))
             advanceTimeBy(1_000)
             runCurrent()
@@ -302,7 +429,7 @@ class MediaViewerControllerTest {
                     jobError = KuraStorageException.Network(IOException("offline"))
                 }
             val disconnected = controller(disconnectedRepository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
-            disconnected.start("file", 1, MediaKind.VIDEO)
+            disconnected.start("file", 1, MediaKind.IMAGE)
             disconnected.contentGenerating(disconnected.requestTicket()!!, job(MediaJobStatus.GENERATING, 1))
             advanceTimeBy(1_000)
             runCurrent()
@@ -321,7 +448,7 @@ class MediaViewerControllerTest {
                     retryResult = job(MediaJobStatus.READY, 0)
                 }
             val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
-            controller.start("file", 1, MediaKind.VIDEO)
+            controller.start("file", 1, MediaKind.IMAGE)
             controller.contentGenerating(controller.requestTicket()!!, job(MediaJobStatus.GENERATING, 1))
             advanceTimeBy(1_000)
             runCurrent()
@@ -374,12 +501,13 @@ class MediaViewerControllerTest {
         scope: kotlinx.coroutines.CoroutineScope,
         preferences: QualityPreferences = QualityPreferences(),
         network: NetworkCase? = null,
+        transportSource: NetworkTransportSource? = null,
     ) = MediaViewerController(
         repository = repository,
         qualityStore = FakeQualityStore(preferences),
         contextResolver =
             NetworkQualityContextResolver(
-                NetworkTransportSource {
+                transportSource ?: NetworkTransportSource {
                     network?.transport
                         ?: when (route) {
                             ConnectionRoute.REMOTE_SECURE -> NetworkTransport.CELLULAR
@@ -404,6 +532,20 @@ class MediaViewerControllerTest {
         ) = Unit
     }
 
+    private class MutableTransport(
+        initial: NetworkTransport,
+    ) : NetworkTransportSource {
+        private val values = MutableStateFlow(initial)
+
+        override fun activeTransport(): NetworkTransport = values.value
+
+        override fun observe(): Flow<NetworkTransport> = values
+
+        fun update(value: NetworkTransport) {
+            values.value = value
+        }
+    }
+
     private data class NetworkCase(
         val route: ConnectionRoute,
         val transport: NetworkTransport,
@@ -421,11 +563,12 @@ class MediaViewerControllerTest {
         var jobError: KuraStorageException? = null
         var inspectError: KuraStorageException? = null
         var contentRequests = 0
+        var originalSize = 100L
         val variantSizes = mutableMapOf<MediaVariant, Long>()
 
         override suspend fun inspectOriginal(fileId: String): OriginalMetadata {
             inspectError?.let { throw it }
-            return OriginalMetadata(ByteCount(100), "image/jpeg", true)
+            return OriginalMetadata(ByteCount(originalSize), "image/jpeg", true)
         }
 
         override suspend fun inspectVariant(

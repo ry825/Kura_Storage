@@ -14,6 +14,8 @@ package com.kurastorage.core.data.backup
 
 import com.kurastorage.core.data.AuthenticatedCallResult
 import com.kurastorage.core.data.AuthenticatedRequestExecutor
+import com.kurastorage.core.data.PriorityTransferDispatcher
+import com.kurastorage.core.data.TransferPriority
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.backup.AccountScopeId
@@ -31,6 +33,9 @@ import com.kurastorage.core.network.NetworkCallResult
 import com.kurastorage.core.network.UploadSessionApi
 import com.kurastorage.core.network.UploadSessionDto
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -196,6 +201,7 @@ class BackupTransferRepository(
     private val telemetry: BackupTelemetry = BackupTelemetry {},
     private val clock: Clock = Clock.systemUTC(),
     private val random: Random = Random.Default,
+    private val transferDispatcher: PriorityTransferDispatcher = PriorityTransferDispatcher(),
 ) {
     @Suppress("LongMethod", "CyclomaticComplexMethod", "TooGenericExceptionCaught")
     suspend fun transfer(scope: AccountScopeId): BackupTransferBatchResult {
@@ -240,6 +246,8 @@ class BackupTransferRepository(
                     }
                     return@forEach
                 }
+            val pendingUploads = mutableListOf<PendingUpload>()
+            var plannedBytes = transferred
             for ((claimedItem, rule) in entries) {
                 currentCoroutineContext().ensureActive()
                 if (
@@ -267,20 +275,38 @@ class BackupTransferRepository(
                     BackupCompareDecision.NEW,
                     BackupCompareDecision.CHANGED,
                     -> {
-                        val remainingByteBudget = MAX_BATCH_BYTES - transferred
-                        if (transferred > 0 && claimedItem.size > remainingByteBudget) {
+                        val remainingByteBudget = MAX_BATCH_BYTES - plannedBytes
+                        if (plannedBytes > 0 && claimedItem.size > remainingByteBudget) {
                             store.save(claimedItem.waiting(BackupWaitReason.NONE))
                             capped = true
                             continue
                         }
-                        val result = upload(claimedItem, rule, comparison, remainingByteBudget, batchDeadline)
-                        completed += if (result.completed) 1 else 0
-                        transferred += result.bytes
-                        capped = capped || result.stoppedEarly
-                        retryRecommended = retryRecommended || result.retryRecommended
+                        pendingUploads += PendingUpload(claimedItem, rule, comparison, remainingByteBudget)
+                        plannedBytes += min(claimedItem.size, remainingByteBudget)
                     }
                 }
             }
+            val results =
+                coroutineScope {
+                    pendingUploads
+                        .map { pending ->
+                            async {
+                                transferDispatcher.run(TransferPriority.BACKUP) {
+                                    upload(
+                                        pending.item,
+                                        pending.rule,
+                                        pending.comparison,
+                                        pending.byteBudget,
+                                        batchDeadline,
+                                    )
+                                }
+                            }
+                        }.awaitAll()
+                }
+            completed += results.count(UploadResult::completed)
+            transferred += results.sumOf(UploadResult::bytes)
+            capped = capped || results.any(UploadResult::stoppedEarly)
+            retryRecommended = retryRecommended || results.any(UploadResult::retryRecommended)
         }
         store.cleanupHistory(scope, Instant.now(clock))
         telemetry.record(
@@ -480,6 +506,13 @@ class BackupTransferRepository(
         val completed: Boolean = false,
         val stoppedEarly: Boolean = false,
         val retryRecommended: Boolean = false,
+    )
+
+    private data class PendingUpload(
+        val item: LocalSyncItem,
+        val rule: LocalBackupRule,
+        val comparison: BackupCompareResult,
+        val byteBudget: Long,
     )
 }
 

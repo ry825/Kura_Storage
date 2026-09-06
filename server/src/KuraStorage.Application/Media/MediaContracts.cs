@@ -90,6 +90,7 @@ public sealed class MediaRuntimeOptions
     public int GenerationLeaseSeconds { get; init; } = 120;
     public int JobHeartbeatSeconds { get; init; } = 10;
     public int CacheTtlHours { get; init; } = 24;
+    public int MaximumConcurrentThumbnailJobs { get; init; } = 2;
 }
 
 public sealed record MediaJobView(
@@ -102,6 +103,12 @@ public sealed record MediaJobView(
     bool Retryable,
     int RetryAfterSeconds,
     string? ContentUrl);
+
+public sealed record ThumbnailJobSummaryView(
+    long QueuedCount,
+    long RunningCount,
+    long FailedCount,
+    DateTimeOffset ObservedAt);
 
 public static class MediaContractRules
 {

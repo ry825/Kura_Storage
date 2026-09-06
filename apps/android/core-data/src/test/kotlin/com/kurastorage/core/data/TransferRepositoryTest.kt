@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength")
+
 package com.kurastorage.core.data
 
 import android.content.Intent
@@ -58,6 +60,10 @@ class TransferRepositoryTest {
             repository.upload(operation).toList()
 
             assertArrayEquals("hello".toByteArray(), api.uploaded)
+            assertEquals("root", api.lastCreateRequest?.destinationFolderId)
+            assertEquals("hello.txt", api.lastCreateRequest?.fileName)
+            assertEquals(5L, api.lastCreateRequest?.size)
+            assertEquals("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", api.lastCreateRequest?.sha256)
             assertEquals(listOf(operation.idempotencyKey, operation.idempotencyKey), api.keys)
             assertTrue(first.any { it is TransferEvent.UploadStatus && it.operation.confirmedOffset == 5L })
             assertTrue(first.last() is TransferEvent.UploadCompleted)
@@ -353,6 +359,7 @@ class TransferRepositoryTest {
         var createSessionCalls = 0
         var getSessionCalls = 0
         var cancelCalls = 0
+        var lastCreateRequest: CreateUploadSessionRequestDto? = null
 
         override suspend fun createUploadSession(
             accessToken: String,
@@ -361,6 +368,7 @@ class TransferRepositoryTest {
         ): NetworkCallResult<UploadSessionDto> {
             createSessionCalls++
             keys += idempotencyKey
+            lastCreateRequest = request
             createFailure?.let { throw it }
             return NetworkCallResult.Success(session(request.size, confirmedOffset))
         }

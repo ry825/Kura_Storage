@@ -2,19 +2,71 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using System.Diagnostics;
 using KuraStorage.Application.Media;
+using KuraStorage.Application.Abstractions;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Media;
 using KuraStorage.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace KuraStorage.IntegrationTests;
 
 public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
     : IClassFixture<PostgreSqlAuthFlowFixture>
 {
+    [Fact]
+    public async Task ThumbnailJobSummary_RequiresAuthenticationReturnsOnlyCountsAndUsesErrorEnvelope()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync(
+            $"thumbnail-summary-{Guid.NewGuid():N}", "thumbnail-summary-password");
+        using var client = authenticated.Client;
+        var fileId = await SeedSourceAsync(client, "summary.jpg");
+        using (var accepted = await client.GetAsync($"/api/v1/files/{fileId}/content?variant=thumbnail"))
+        {
+            Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+        }
+
+        using (var response = await client.GetAsync("/api/v1/media/thumbnail-jobs/summary"))
+        {
+            response.EnsureSuccessStatusCode();
+            using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+            var root = json.RootElement;
+            Assert.Equal(4, root.EnumerateObject().Count());
+            Assert.Equal(1, root.GetProperty("queuedCount").GetInt64());
+            Assert.Equal(0, root.GetProperty("runningCount").GetInt64());
+            Assert.Equal(0, root.GetProperty("failedCount").GetInt64());
+            Assert.True(root.GetProperty("observedAt").TryGetDateTimeOffset(out _));
+            Assert.DoesNotContain("file", root.ToString(), StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("jobId", root.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        using (var anonymous = fixture.Factory.CreateClient())
+        using (var unauthorized = await anonymous.GetAsync("/api/v1/media/thumbnail-jobs/summary"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+            using var json = await JsonDocument.ParseAsync(await unauthorized.Content.ReadAsStreamAsync());
+            Assert.Equal("AUTHENTICATION_REQUIRED", json.RootElement.GetProperty("code").GetString());
+        }
+
+        using var failingFactory = fixture.Factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IThumbnailJobSummaryRepository>();
+                services.AddScoped<IThumbnailJobSummaryRepository, ThrowingThumbnailJobSummaryRepository>();
+            }));
+        using var failingClient = failingFactory.CreateClient();
+        failingClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", authenticated.AccessToken);
+        using var failed = await failingClient.GetAsync("/api/v1/media/thumbnail-jobs/summary");
+        Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
+        using var failedJson = await JsonDocument.ParseAsync(await failed.Content.ReadAsStreamAsync());
+        Assert.Equal("INTERNAL_ERROR", failedJson.RootElement.GetProperty("code").GetString());
+        Assert.True(failedJson.RootElement.TryGetProperty("requestId", out _));
+        Assert.True(failedJson.RootElement.TryGetProperty("details", out _));
+    }
+
     [Fact]
     public async Task OriginalHead_ReturnsMetadataAndRangeSupportWithoutBody()
     {
@@ -196,65 +248,33 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
     }
 
     [Fact]
-    public async Task VideoVariants_ReturnImmediatelyAndReadyMp4SupportsAuthorizedRanges()
+    public async Task VideoVariants_AreRejectedWithoutCreatingJobsOrDeletingHistoricalDerivatives()
     {
         var ownerAuth = await fixture.CreateAuthenticatedClientAsync(
             $"media-video-{Guid.NewGuid():N}", "media-video-password");
-        var strangerAuth = await fixture.CreateAuthenticatedClientAsync(
-            $"media-video-stranger-{Guid.NewGuid():N}", "media-video-stranger-password");
         using var owner = ownerAuth.Client;
-        using var stranger = strangerAuth.Client;
         var pendingFileId = await SeedSourceAsync(owner, "pending-video.mkv", "video/x-matroska");
-        var elapsed = Stopwatch.StartNew();
+        var (_, historicalDerivativeId) = await SeedReadyAsync(
+            owner,
+            "historical-video.mov",
+            "0123456789"u8.ToArray(),
+            DerivativeType.VideoLow,
+            "video/quicktime");
 
-        using var headRequest = new HttpRequestMessage(
-            HttpMethod.Head, $"/api/v1/files/{pendingFileId}/content?variant=video-medium");
-        using var headAccepted = await owner.SendAsync(headRequest);
-        Assert.Equal(HttpStatusCode.Accepted, headAccepted.StatusCode);
-        Assert.True(headAccepted.Headers.TryGetValues("X-Kura-Media-Job-Id", out var headJobIds));
-        var headJobId = Guid.Parse(Assert.Single(headJobIds));
-        Assert.Equal($"/api/v1/media-jobs/{headJobId}", headAccepted.Headers.Location!.ToString());
-        Assert.NotNull(headAccepted.Headers.RetryAfter);
-        Assert.Empty(await headAccepted.Content.ReadAsByteArrayAsync());
+        foreach (var variant in new[] { "video-low", "video-medium" })
+        {
+            using var response = await owner.GetAsync(
+                $"/api/v1/files/{pendingFileId}/content?variant={variant}");
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+            Assert.Equal(MediaErrorCodes.VariantUnsupported, json.RootElement.GetProperty("code").GetString());
+        }
 
-        using var accepted = await owner.GetAsync(
-            $"/api/v1/files/{pendingFileId}/content?variant=video-medium");
-
-        elapsed.Stop();
-        Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
-        Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(1));
-        using var acceptedJson = await JsonDocument.ParseAsync(await accepted.Content.ReadAsStreamAsync());
-        var jobId = acceptedJson.RootElement.GetProperty("jobId").GetGuid();
-        Assert.Equal(headJobId, jobId);
-        using var status = await owner.GetAsync($"/api/v1/media-jobs/{jobId}");
-        var view = await status.Content.ReadFromJsonAsync<MediaJobView>();
-        Assert.Equal("GENERATING", view!.Status);
-        Assert.True(view.QueuePosition >= 1);
-
-        var bytes = "0123456789"u8.ToArray();
-        var (readyFileId, _) = await SeedReadyAsync(
-            owner, "ready-video.mov", bytes, DerivativeType.VideoLow, "video/quicktime");
-        using var readyHeadRequest = new HttpRequestMessage(
-            HttpMethod.Head, $"/api/v1/files/{readyFileId}/content?variant=video-low");
-        using var readyHead = await owner.SendAsync(readyHeadRequest);
-        Assert.Equal(HttpStatusCode.OK, readyHead.StatusCode);
-        Assert.Equal(10, readyHead.Content.Headers.ContentLength);
-        Assert.Equal("video/mp4", readyHead.Content.Headers.ContentType!.MediaType);
-        Assert.Equal("bytes", Assert.Single(readyHead.Headers.AcceptRanges));
-        Assert.Empty(await readyHead.Content.ReadAsByteArrayAsync());
-        using var rangeRequest = new HttpRequestMessage(
-            HttpMethod.Get, $"/api/v1/files/{readyFileId}/content?variant=video-low");
-        rangeRequest.Headers.Range = new RangeHeaderValue(3, 6);
-        using var range = await owner.SendAsync(rangeRequest);
-        Assert.Equal(HttpStatusCode.PartialContent, range.StatusCode);
-        Assert.Equal("video/mp4", range.Content.Headers.ContentType!.MediaType);
-        Assert.Equal("bytes 3-6/10", range.Content.Headers.ContentRange!.ToString());
-        Assert.Equal("3456", await range.Content.ReadAsStringAsync());
-        Assert.Contains("ready-video_low.mp4", range.Content.Headers.ContentDisposition!.ToString());
-
-        using var hidden = await stranger.GetAsync(
-            $"/api/v1/files/{readyFileId}/content?variant=video-low");
-        Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        Assert.False(await database.MediaJobs.AnyAsync(job =>
+            job.JobType == DerivativeType.VideoLow || job.JobType == DerivativeType.VideoMedium));
+        Assert.True(await database.FileDerivatives.AnyAsync(item => item.Id == historicalDerivativeId));
     }
 
     [Fact]
@@ -540,5 +560,13 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
         payload = payload.Replace('-', '+').Replace('_', '/').PadRight((payload.Length + 3) / 4 * 4, '=');
         using var json = JsonDocument.Parse(Convert.FromBase64String(payload));
         return Guid.Parse(json.RootElement.GetProperty("sub").GetString()!);
+    }
+
+    private sealed class ThrowingThumbnailJobSummaryRepository : IThumbnailJobSummaryRepository
+    {
+        public Task<ThumbnailJobSummarySnapshot> GetAsync(
+            Guid actorUserId,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Synthetic summary failure.");
     }
 }

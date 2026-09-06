@@ -38,11 +38,38 @@ public sealed class MediaGenerationWorkerTests
 
         Assert.Equal(2, queue.RecoveryCount);
         Assert.Equal(2, queue.SnapshotCount);
-        Assert.Equal(3, runner.CallCount);
+        Assert.Equal(9, runner.CallCount);
         Assert.Equal(
             [new MediaTemporaryCandidate(queue.Candidate.JobId, queue.Candidate.Attempt),
              new MediaTemporaryCandidate(queue.Candidate.JobId, queue.Candidate.Attempt)],
             store.Deleted);
+    }
+
+    [Fact]
+    public async Task RunOnce_UsesConfiguredThumbnailSlotsAndOneSeparateNonThumbnailLane()
+    {
+        var clock = new MutableClock(new DateTimeOffset(2026, 9, 6, 0, 0, 0, TimeSpan.Zero));
+        var queue = new RecordingQueue();
+        var store = new RecordingStore();
+        var runner = new RecordingRunner();
+        await using var services = new ServiceCollection()
+            .AddScoped<IMediaJobQueue>(_ => queue)
+            .AddScoped<IDerivativeStore>(_ => store)
+            .AddScoped<IMediaJobRunner>(_ => runner)
+            .BuildServiceProvider();
+        var worker = new MediaGenerationWorker(
+            services.GetRequiredService<IServiceScopeFactory>(),
+            clock,
+            new MediaRuntimeOptions { MaximumConcurrentThumbnailJobs = 3 },
+            new MediaWorkerMetrics(),
+            NullLogger<MediaGenerationWorker>.Instance);
+
+        await worker.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(3, runner.ScopedCalls.Count(call =>
+            call.Scope == MediaJobClaimScope.Thumbnail && call.MaximumConcurrency == 3));
+        Assert.Single(runner.ScopedCalls, call =>
+            call.Scope == MediaJobClaimScope.NonThumbnail && call.MaximumConcurrency == 1);
     }
 
     private sealed class MutableClock(DateTimeOffset now) : ISystemClock
@@ -53,11 +80,21 @@ public sealed class MediaGenerationWorkerTests
     private sealed class RecordingRunner : IMediaJobRunner
     {
         public int CallCount { get; private set; }
+        public List<(MediaJobClaimScope Scope, int MaximumConcurrency)> ScopedCalls { get; } = [];
 
         public Task<bool> RunNextAsync(CancellationToken cancellationToken)
         {
             CallCount++;
             return Task.FromResult(false);
+        }
+
+        public Task<bool> RunNextAsync(
+            MediaJobClaimScope claimScope,
+            int maximumConcurrency,
+            CancellationToken cancellationToken)
+        {
+            ScopedCalls.Add((claimScope, maximumConcurrency));
+            return RunNextAsync(cancellationToken);
         }
     }
 

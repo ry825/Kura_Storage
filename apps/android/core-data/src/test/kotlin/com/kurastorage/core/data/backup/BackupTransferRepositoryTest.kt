@@ -13,6 +13,7 @@ import com.kurastorage.core.model.backup.LocalBackupRule
 import com.kurastorage.core.model.backup.LocalSyncItem
 import com.kurastorage.core.model.backup.LocalSyncItemId
 import com.kurastorage.core.model.backup.SyncLifecycleState
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,8 +26,39 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 class BackupTransferRepositoryTest {
+    @Test
+    fun independentUploadsRunInParallelWithinTheSharedLimit() =
+        runBlocking {
+            val candidates = (0 until 4).map { item("parallel-$it", 1) }
+            val store = FakeTransferStore(candidates, rule())
+            val remote = ConcurrentBackupRemote()
+
+            val outcome = repository(store, remote).transfer(SCOPE)
+
+            assertEquals(4, outcome.completedCount)
+            assertEquals(2, remote.maximumActive.get())
+            assertTrue(store.items.values.all { it.lifecycleState == SyncLifecycleState.COMPLETED })
+        }
+
+    @Test
+    fun retryableFailureInOneParallelUploadDoesNotCancelAnotherItem() =
+        runBlocking {
+            val failed = item("parallel-failure", 1)
+            val successful = item("parallel-success", 1)
+            val store = FakeTransferStore(listOf(failed, successful), rule())
+            val remote = ConcurrentBackupRemote(failLocalKey = failed.localDocumentKey)
+
+            val outcome = repository(store, remote).transfer(SCOPE)
+
+            assertEquals(1, outcome.completedCount)
+            assertTrue(outcome.retryRecommended)
+            assertEquals(SyncLifecycleState.PENDING, store.items.getValue(failed.id).lifecycleState)
+            assertEquals(SyncLifecycleState.COMPLETED, store.items.getValue(successful.id).lifecycleState)
+        }
+
     @Test
     fun compareCompletesAlreadyUploadedAndUploadsNewItemInPersistedChunks() =
         runBlocking {
@@ -223,7 +255,7 @@ class BackupTransferRepositoryTest {
 
     private fun repository(
         store: FakeTransferStore,
-        remote: FakeBackupRemote,
+        remote: BackupRemoteDataSource,
         options: RepositoryOptions = RepositoryOptions(),
     ) = BackupTransferRepository(
         store,
@@ -325,6 +357,65 @@ class BackupTransferRepositoryTest {
         val SCOPE = AccountScopeId("a".repeat(64))
         val RULE_ID = BackupRuleId(UUID.randomUUID().toString())
     }
+}
+
+private class ConcurrentBackupRemote(
+    private val failLocalKey: String? = null,
+) : BackupRemoteDataSource {
+    val maximumActive = AtomicInteger()
+    private val active = AtomicInteger()
+    private val firstPairEntered = CompletableDeferred<Unit>()
+    private val itemBySession = mutableMapOf<String, LocalSyncItem>()
+    private val offsetBySession = mutableMapOf<String, Long>()
+
+    override suspend fun compare(
+        destinationFolderId: String,
+        candidates: List<BackupCompareCandidate>,
+    ) = candidates.map { BackupCompareResult(it.localDocumentKey, BackupCompareDecision.NEW, null, null, null) }
+
+    override suspend fun createSession(
+        item: LocalSyncItem,
+        destinationFolderId: String,
+        idempotencyKey: String,
+        decision: BackupUploadDecision,
+    ): BackupRemoteSession {
+        val sessionId = UUID.randomUUID().toString()
+        itemBySession[sessionId] = item
+        offsetBySession[sessionId] = 0
+        return session(sessionId)
+    }
+
+    override suspend fun session(sessionId: String): BackupRemoteSession =
+        BackupRemoteSession(sessionId, "ACTIVE", offsetBySession.getValue(sessionId), 1, 1)
+
+    override suspend fun uploadChunk(
+        sessionId: String,
+        offset: Long,
+        bytes: ByteArray,
+    ): Long {
+        val count = active.incrementAndGet()
+        maximumActive.updateAndGet { previous -> maxOf(previous, count) }
+        if (count == 2) firstPairEntered.complete(Unit)
+        firstPairEntered.await()
+        if (itemBySession.getValue(sessionId).localDocumentKey == failLocalKey) {
+            active.decrementAndGet()
+            throw BackupRemoteException(BackupRemoteFailureKind.TRANSIENT)
+        }
+        offsetBySession[sessionId] = offset + bytes.size
+        active.decrementAndGet()
+        return offset + bytes.size
+    }
+
+    override suspend fun complete(sessionId: String): BackupRemoteSession =
+        BackupRemoteSession(
+            sessionId,
+            "COMPLETED",
+            offsetBySession.getValue(sessionId),
+            1,
+            1,
+            UUID.randomUUID().toString(),
+            1,
+        )
 }
 
 private class ElapsedBatchClock : Clock() {

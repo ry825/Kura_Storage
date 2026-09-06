@@ -12,6 +12,7 @@ import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
 import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaUiError
+import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.PlaybackRate
 import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.feature.media.MediaRequestTicket
@@ -47,8 +48,6 @@ class MediaPlayerViewModel(
     private var prepareJob: Job? = null
     private var activeTicket: MediaRequestTicket? = null
     private var pendingRestore = PlayerSnapshot()
-    private var lastPlayableQuality: MediaQuality? = null
-    private var previousQuality: MediaQuality? = null
 
     val state: StateFlow<MediaPlayerUiState> = mutableState.asStateFlow()
 
@@ -93,6 +92,7 @@ class MediaPlayerViewModel(
         val detachedSnapshot = engine?.snapshot
         prepareJob?.cancel()
         prepareJob = null
+        activeTicket = null
         engineCollection?.cancel()
         engineCollection = null
         engine?.pause()
@@ -103,41 +103,19 @@ class MediaPlayerViewModel(
         engine = null
     }
 
-    fun selectQuality(quality: MediaQuality) {
-        if (kind != MediaKind.VIDEO) return
-        val currentQuality = mutableState.value.media?.quality
-        if (quality == currentQuality) return
-        previousQuality = currentQuality
-        pendingRestore = (engine?.snapshot ?: mutableState.value.player)
-        mutableState.update { it.copy(reconnecting = false) }
-        activeTicket = null
-        prepareJob?.cancel()
-        viewModelScope.launch { mediaController.selectQuality(quality) }
-    }
-
     fun confirmOriginal() {
         mediaController.confirmOriginal()
         maybePrepare()
     }
 
     fun cancelOriginal() {
-        val fallback = previousQuality ?: lastPlayableQuality ?: MediaQuality.MEDIUM
-        if (kind == MediaKind.VIDEO && fallback != MediaQuality.ORIGINAL) {
-            viewModelScope.launch { mediaController.selectQuality(fallback) }
-        } else {
-            mediaController.cancelOriginalConfirmation()
-        }
-    }
-
-    fun retryGeneration() {
-        viewModelScope.launch { mediaController.retryGeneration() }
+        mediaController.cancelOriginalConfirmation()
     }
 
     fun retryPlayback() {
-        val quality = mutableState.value.media?.quality ?: return
         activeTicket = null
         mutableState.update { it.copy(reconnecting = true) }
-        viewModelScope.launch { mediaController.selectQuality(quality) }
+        viewModelScope.launch { mediaController.selectQuality(MediaQuality.ORIGINAL) }
     }
 
     fun play() = engine?.play()
@@ -169,7 +147,7 @@ class MediaPlayerViewModel(
     private fun maybePrepare() {
         val player = engine ?: return
         val ticket = mediaController.requestTicket() ?: return
-        if (ticket == activeTicket && prepareJob?.isActive == true) return
+        if (ticket == activeTicket) return
         activeTicket = ticket
         prepareJob?.cancel()
         prepareJob =
@@ -185,7 +163,13 @@ class MediaPlayerViewModel(
                                     pendingRestore.rate,
                                     pendingRestore.playWhenReady,
                                 )
-                            is MediaReadiness.Generating -> mediaController.contentGenerating(ticket, readiness.job)
+                            is MediaReadiness.Generating -> {
+                                if (ticket.source.variant == MediaVariant.ORIGINAL) {
+                                    mediaController.contentFailed(ticket, MediaUiError.GENERATION_FAILED)
+                                } else {
+                                    mediaController.contentGenerating(ticket, readiness.job)
+                                }
+                            }
                         }
                     }.onFailure {
                         if (it is CancellationException || engine !== player) return@onFailure
@@ -204,12 +188,15 @@ class MediaPlayerViewModel(
         }
         val ticket = activeTicket ?: return
         snapshot.generatingJob?.let {
-            mediaController.contentGenerating(ticket, it)
+            if (ticket.source.variant == MediaVariant.ORIGINAL) {
+                mediaController.contentFailed(ticket, MediaUiError.GENERATION_FAILED)
+            } else {
+                mediaController.contentGenerating(ticket, it)
+            }
             return
         }
         when (snapshot.phase) {
             PlayerPhase.READY -> {
-                lastPlayableQuality = mutableState.value.media?.quality
                 mediaController.contentReady(ticket)
             }
             PlayerPhase.FAILED -> mediaController.contentFailed(ticket, snapshot.error.toUiError())

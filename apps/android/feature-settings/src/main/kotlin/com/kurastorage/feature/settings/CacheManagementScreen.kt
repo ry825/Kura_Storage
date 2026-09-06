@@ -13,6 +13,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,69 +50,75 @@ fun CacheManagementScreen(
     onBack: () -> Unit,
 ) {
     var confirming by remember { mutableStateOf(false) }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().testTag("cache-management"),
-        contentPadding =
-            androidx.compose.foundation.layout
-                .PaddingValues(KuraTheme.spacing.md),
-        verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.md),
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
-        item {
-            Text(
-                "Cache management",
-                modifier = Modifier.testTag("cache-title"),
-                color = MaterialTheme.colorScheme.onBackground,
-                style = MaterialTheme.typography.headlineMedium,
-            )
-        }
-        if (state.loading && state.status == null) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-        state.error?.let { message ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().testTag("cache-management"),
+            contentPadding =
+                androidx.compose.foundation.layout
+                    .PaddingValues(KuraTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.md),
+        ) {
             item {
-                KuraStatusPanel(
-                    title =
-                        if (state.access == CacheAccessState.FORBIDDEN) {
-                            "Administrator access required"
-                        } else {
-                            "Cache status unavailable"
-                        },
-                    message = message,
-                    status = KuraStatus.ERROR,
-                    action =
-                        if (state.access ==
-                            CacheAccessState.FORBIDDEN
-                        ) {
-                            null
-                        } else {
-                            { TextButton(onClick = onRefresh) { Text("Refresh") } }
-                        },
+                Text(
+                    "Cache management",
+                    modifier = Modifier.testTag("cache-title"),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    style = MaterialTheme.typography.headlineMedium,
                 )
             }
-        }
-        state.status?.let { status ->
-            item { UsageCard(status) }
-            item { CacheRunCard(status) }
-            item { KuraSectionHeader("Ready cache breakdown") }
-            item { BreakdownCard(status) }
-            item {
-                KuraStatusPanel(
-                    title = "Regenerable display data",
-                    message =
-                        "Low and medium quality image and video cache can be regenerated. " +
-                            "Original files and thumbnails are not included in this limit.",
-                    status = KuraStatus.INFO,
-                )
-            }
-            item {
-                Button(
-                    onClick = { confirming = true },
-                    enabled = !state.requestingCleanup && state.access == CacheAccessState.AVAILABLE,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("cleanup-now"),
-                ) {
-                    Text(if (state.unknownCleanupOutcome) "Retry cleanup request" else "Clean up now")
+            if (state.loading && state.status == null) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            state.error?.let { message ->
+                item {
+                    KuraStatusPanel(
+                        title =
+                            if (state.access == CacheAccessState.FORBIDDEN) {
+                                "Administrator access required"
+                            } else {
+                                "Cache status unavailable"
+                            },
+                        message = message,
+                        status = KuraStatus.ERROR,
+                        action =
+                            if (state.access ==
+                                CacheAccessState.FORBIDDEN
+                            ) {
+                                null
+                            } else {
+                                { TextButton(onClick = onRefresh) { Text("Refresh") } }
+                            },
+                    )
                 }
             }
+            state.status?.let { status ->
+                item { UsageCard(status) }
+                item { CacheRunCard(status) }
+                item { KuraSectionHeader("Ready cache breakdown") }
+                item { BreakdownCard(status) }
+                item {
+                    KuraStatusPanel(
+                        title = "Regenerable display data",
+                        message =
+                            "Low and medium quality image and video cache can be regenerated. " +
+                                "Original files and thumbnails are not included in this limit.",
+                        status = KuraStatus.INFO,
+                    )
+                }
+                item {
+                    Button(
+                        onClick = { confirming = true },
+                        enabled = !state.requestingCleanup && state.access == CacheAccessState.AVAILABLE,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("cleanup-now"),
+                    ) {
+                        Text(if (state.unknownCleanupOutcome) "Retry cleanup request" else "Clean up now")
+                    }
+                }
+            }
+            item { OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") } }
         }
-        item { OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") } }
     }
     if (confirming) {
         AlertDialog(

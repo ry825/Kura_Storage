@@ -13,6 +13,8 @@ package com.kurastorage.feature.files
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,7 +23,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -37,8 +41,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +54,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -77,10 +85,10 @@ import com.kurastorage.core.ui.components.KuraIconButton
 import com.kurastorage.core.ui.components.KuraStatus
 import com.kurastorage.core.ui.components.KuraStatusBadge
 import com.kurastorage.core.ui.components.KuraStatusPanel
-import com.kurastorage.core.ui.components.KuraTopAppBar
 import com.kurastorage.core.ui.formatting.formatFileSize
 import com.kurastorage.core.ui.icons.KuraFileType
 import com.kurastorage.core.ui.icons.KuraFileTypeIcon
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.foundation.lazy.grid.items as gridItems
 
 @Composable
@@ -90,10 +98,12 @@ fun FileBrowserScreen(
     onOpen: (FileEntry) -> Unit,
     onShowDetails: (FileEntry) -> Unit,
     onBack: () -> Unit,
+    onBreadcrumb: (String?) -> Unit = {},
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onCreateFolder: (String) -> Unit,
     onChooseUpload: () -> Unit,
+    onChooseFolderUpload: () -> Unit = {},
     onChooseDownload: (FileEntry) -> Unit,
     onTrash: (FileEntry) -> Unit,
     onRestore: (FileEntry) -> Unit,
@@ -120,6 +130,12 @@ fun FileBrowserScreen(
     onCancelTransfer: () -> Unit,
     onRetryTransfer: () -> Unit,
     onOpenDownload: (String) -> Unit,
+    onCancelUpload: (String) -> Unit = {},
+    onRetryUpload: (String) -> Unit = {},
+    onDismissUpload: (String) -> Unit = {},
+    onUploadCompletionConsumed: () -> Unit = {},
+    onRetryFolderUpload: () -> Unit = {},
+    onScrollAnchor: (BrowserDisplayMode, Int, Int, String?) -> Unit = { _, _, _, _ -> },
     adminStorageState: AdminStorageState = AdminStorageState(loading = false),
     onRefreshAdminStorage: () -> Unit = {},
     onOpenTrashFromWarning: () -> Unit = {},
@@ -138,10 +154,22 @@ fun FileBrowserScreen(
     },
 ) {
     var showCreate by remember { mutableStateOf(false) }
+    var showUploadOptions by remember { mutableStateOf(false) }
     var pendingTrash by remember { mutableStateOf<FileEntry?>(null) }
     var pendingRestore by remember { mutableStateOf<FileEntry?>(null) }
     var displayModeName by rememberSaveable { mutableStateOf(defaultBrowserDisplayMode(trashMode).name) }
+    var dismissedThumbnailFailureCount by rememberSaveable { mutableStateOf<Long?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val displayMode = BrowserDisplayMode.valueOf(displayModeName)
+    LaunchedEffect(state.thumbnailSummary.failedCount) {
+        if (state.thumbnailSummary.failedCount == 0L) dismissedThumbnailFailureCount = null
+    }
+    LaunchedEffect(state.uploads.completionNotice) {
+        val notice = state.uploads.completionNotice ?: return@LaunchedEffect
+        val label = if (notice.completedCount == 1) "Upload completed" else "${notice.completedCount} uploads completed"
+        onUploadCompletionConsumed()
+        snackbarHostState.showSnackbar(label)
+    }
     if (state.loading && state.entries.isEmpty()) return LoadingState("Loading files")
     if (state.error != null && state.entries.isEmpty() && state.transfer == null) {
         return ErrorState(state.error.message, state.error.requestId, onRefresh)
@@ -163,14 +191,51 @@ fun FileBrowserScreen(
             else -> "Shared"
         }
     val breadcrumbTrail = state.breadcrumbs
+    val scrollContextKey =
+        browserScrollContextKey(state.locations.lastOrNull()?.id, trashMode, displayMode)
+    val savedAnchor = state.scrollAnchors[scrollContextKey]
+    val layoutEntryIds = browserLayoutEntryIds(visibleEntries, trashMode, displayMode)
+    val initialIndex = savedAnchor?.resolveIndex(layoutEntryIds) ?: 0
+    val initialOffset = savedAnchor?.offset ?: 0
+    val listState =
+        rememberSaveable(scrollContextKey, saver = LazyListState.Saver) {
+            LazyListState(initialIndex, initialOffset)
+        }
+    val gridState =
+        rememberSaveable(scrollContextKey, saver = LazyGridState.Saver) {
+            LazyGridState(initialIndex, initialOffset)
+        }
+    LaunchedEffect(scrollContextKey, layoutEntryIds, savedAnchor) {
+        val anchor = savedAnchor ?: return@LaunchedEffect
+        if (layoutEntryIds.isEmpty()) return@LaunchedEffect
+        val targetIndex = anchor.resolveIndex(layoutEntryIds)
+        if (displayMode == BrowserDisplayMode.GRID && !trashMode) {
+            if (gridState.firstVisibleItemIndex != targetIndex) gridState.scrollToItem(targetIndex, anchor.offset)
+        } else if (listState.firstVisibleItemIndex != targetIndex) {
+            listState.scrollToItem(targetIndex, anchor.offset)
+        }
+    }
+    LaunchedEffect(scrollContextKey, displayMode) {
+        if (displayMode == BrowserDisplayMode.GRID && !trashMode) {
+            snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
+                .distinctUntilChanged()
+                .collect { (index, offset) -> onScrollAnchor(displayMode, index, offset, layoutEntryIds.getOrNull(index)) }
+        } else {
+            snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+                .distinctUntilChanged()
+                .collect { (index, offset) -> onScrollAnchor(displayMode, index, offset, layoutEntryIds.getOrNull(index)) }
+        }
+    }
     KuraAppScaffold(
         topBar = {
             BrowserHeader(
                 title = folderTitle,
+                breadcrumbs = breadcrumbTrail,
                 trashMode = trashMode,
                 displayMode = displayMode,
                 refreshing = state.loading,
                 onBack = onBack,
+                onBreadcrumb = onBreadcrumb,
                 onRefresh = onRefresh,
                 onSearch = onSearch,
                 onList = { displayModeName = BrowserDisplayMode.LIST.name },
@@ -180,11 +245,12 @@ fun FileBrowserScreen(
         floatingActionButton = {
             if (!trashMode && currentCapabilities.canCreate) {
                 FloatingActionButton(
-                    onClick = onChooseUpload,
-                    modifier = Modifier.testTag("upload-fab").semantics { contentDescription = "Upload file" },
+                    onClick = { showUploadOptions = true },
+                    modifier = Modifier.testTag("upload-fab").semantics { contentDescription = "Upload" },
                 ) { Text("↑") }
             }
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { contentPadding ->
         Column(
             Modifier
@@ -193,15 +259,16 @@ fun FileBrowserScreen(
                 .padding(horizontal = KuraTheme.spacing.md),
             verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
         ) {
-            Text(
-                "Location: ${if (trashMode) "Trash" else breadcrumbTrail.joinToString(" / ") { it.label }}",
-                modifier = Modifier.testTag("file-breadcrumb"),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
             AdminStoragePanel(adminStorageState, onRefreshAdminStorage, onOpenTrashFromWarning)
+            if (!trashMode) {
+                ThumbnailSummaryPanel(
+                    state = state.thumbnailSummary,
+                    failureDismissed =
+                        state.thumbnailSummary.failedCount > 0L &&
+                            dismissedThumbnailFailureCount == state.thumbnailSummary.failedCount,
+                    onDismissFailure = { dismissedThumbnailFailureCount = state.thumbnailSummary.failedCount },
+                )
+            }
             if (!trashMode && currentCapabilities.canCreate) {
                 TextButton(onClick = { showCreate = true }, modifier = Modifier.align(Alignment.End)) { Text("New folder") }
             }
@@ -227,6 +294,20 @@ fun FileBrowserScreen(
                     action = { TextButton(onClick = onRefresh) { Text("Try again") } },
                 )
             }
+            state.folderUploadError?.let {
+                KuraStatusPanel(
+                    title = "Folder could not be prepared",
+                    message = it,
+                    status = KuraStatus.ERROR,
+                    modifier = Modifier.testTag("folder-upload-error"),
+                    action =
+                        if (state.folderUploadCanRetry) {
+                            { TextButton(onClick = onRetryFolderUpload) { Text("Retry") } }
+                        } else {
+                            null
+                        },
+                )
+            }
             if (visibleEntries.isEmpty()) {
                 Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     KuraStatusPanel(
@@ -238,6 +319,7 @@ fun FileBrowserScreen(
             } else if (displayMode == BrowserDisplayMode.GRID && !trashMode) {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(144.dp),
+                    state = gridState,
                     modifier = Modifier.weight(1f).testTag("file-grid"),
                     contentPadding = PaddingValues(bottom = KuraTheme.spacing.sm),
                     verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
@@ -256,6 +338,7 @@ fun FileBrowserScreen(
                 val folders = visibleEntries.filter { it.entryType == FileEntryType.FOLDER }
                 val files = visibleEntries.filter { it.entryType == FileEntryType.FILE }
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.weight(1f).testTag("file-list"),
                     contentPadding = PaddingValues(bottom = KuraTheme.spacing.sm),
                     verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
@@ -299,8 +382,34 @@ fun FileBrowserScreen(
                     }
                 }
             }
+            UploadQueuePanel(state.uploads, onCancelUpload, onRetryUpload, onDismissUpload)
             TransferPanel(state.transfer, onCancelTransfer, onRetryTransfer, onOpenDownload)
         }
+    }
+    if (showUploadOptions) {
+        AlertDialog(
+            onDismissRequest = { showUploadOptions = false },
+            title = { Text("Upload") },
+            text = { Text("Choose files or a folder to upload.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showUploadOptions = false
+                        onChooseUpload()
+                    },
+                    modifier = Modifier.testTag("upload-files-action"),
+                ) { Text("Files") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showUploadOptions = false
+                        onChooseFolderUpload()
+                    },
+                    modifier = Modifier.testTag("upload-folder-action"),
+                ) { Text("Folder") }
+            },
+        )
     }
     if (showCreate) {
         NameDialog(
@@ -394,6 +503,86 @@ fun FileBrowserScreen(
             onDismiss = onDismissMove,
             onRefresh = onRefreshPlacement,
         )
+    }
+}
+
+@Composable
+private fun ThumbnailSummaryPanel(
+    state: ThumbnailSummaryUiState,
+    failureDismissed: Boolean,
+    onDismissFailure: () -> Unit,
+) {
+    val showFailure = state.failedCount > 0L && !failureDismissed
+    val hasPendingJobs = state.queuedCount > 0L || state.runningCount > 0L || showFailure
+    if (!state.loading && !state.unavailable && !hasPendingJobs) {
+        return
+    }
+    val message =
+        buildString {
+            append("Waiting: ${state.queuedCount} · Generating: ${state.runningCount}")
+            if (showFailure) {
+                append("\nFailed: ${state.failedCount}. Open the affected file to retry.")
+            }
+            if (state.unavailable) {
+                append("\nStatus is temporarily unavailable. Files and existing thumbnails remain available.")
+            }
+        }
+    KuraStatusPanel(
+        title = if (state.loading) "Checking thumbnail generation" else "Thumbnail generation",
+        message = message,
+        status =
+            when {
+                showFailure -> KuraStatus.ERROR
+                state.queuedCount > 0 || state.runningCount > 0 -> KuraStatus.INFO
+                state.unavailable -> KuraStatus.WARNING
+                else -> KuraStatus.NEUTRAL
+            },
+        modifier = Modifier.testTag("thumbnail-job-summary"),
+        action =
+            if (showFailure) {
+                { TextButton(onClick = onDismissFailure) { Text("Dismiss") } }
+            } else {
+                null
+            },
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BrowserBreadcrumbBar(
+    breadcrumbs: List<BrowserBreadcrumb>,
+    trashMode: Boolean,
+    onBreadcrumb: (String?) -> Unit,
+) {
+    if (trashMode) {
+        Text("Location: Trash", modifier = Modifier.testTag("file-breadcrumb"))
+        return
+    }
+    FlowRow(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .testTag("file-breadcrumb"),
+        horizontalArrangement = Arrangement.Start,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        breadcrumbs.forEachIndexed { index, breadcrumb ->
+            if (index > 0) Text(" / ", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (index < breadcrumbs.lastIndex) {
+                TextButton(
+                    onClick = { onBreadcrumb(breadcrumb.id) },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("breadcrumb-${breadcrumb.id ?: "root"}"),
+                ) { Text(breadcrumb.label) }
+            } else {
+                Text(
+                    breadcrumb.label,
+                    modifier = Modifier.padding(horizontal = KuraTheme.spacing.sm),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
@@ -616,38 +805,51 @@ private fun DangerAction(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun BrowserHeader(
     title: String,
+    breadcrumbs: List<BrowserBreadcrumb>,
     trashMode: Boolean,
     displayMode: BrowserDisplayMode,
     refreshing: Boolean,
     onBack: () -> Unit,
+    onBreadcrumb: (String?) -> Unit,
     onRefresh: () -> Unit,
     onSearch: () -> Unit,
     onList: () -> Unit,
     onGrid: () -> Unit,
 ) {
-    KuraTopAppBar(
-        title = title,
-        navigationIcon = {
-            KuraIconButton(contentDescription = "Back", onClick = onBack) { Text("←") }
-        },
-        actions = {
-            if (!trashMode) {
-                KuraIconButton(contentDescription = "Search files", onClick = onSearch) { Text("⌕") }
-                if (displayMode == BrowserDisplayMode.GRID) {
-                    KuraIconButton(contentDescription = "Show as list", onClick = onList) { Text("☷") }
-                } else {
-                    KuraIconButton(contentDescription = "Show as grid", onClick = onGrid) { Text("▦") }
+    Column(Modifier.testTag("browser-header")) {
+        TopAppBar(
+            title = {
+                Text(
+                    if (!trashMode && breadcrumbs.size > 1) "Files" else title,
+                    modifier = Modifier.kuraHeading(),
+                )
+            },
+            navigationIcon = {
+                KuraIconButton(contentDescription = "Back", onClick = onBack) { Text("←") }
+            },
+            actions = {
+                if (!trashMode) {
+                    KuraIconButton(contentDescription = "Search files", onClick = onSearch) { Text("⌕") }
+                    if (displayMode == BrowserDisplayMode.GRID) {
+                        KuraIconButton(contentDescription = "Show as list", onClick = onList) { Text("☷") }
+                    } else {
+                        KuraIconButton(contentDescription = "Show as grid", onClick = onGrid) { Text("▦") }
+                    }
                 }
-            }
-            KuraIconButton(
-                contentDescription = if (refreshing) "Refreshing files" else "Refresh files",
-                onClick = onRefresh,
-                enabled = !refreshing,
-            ) { Text(if (refreshing) "…" else "↻") }
-        },
-    )
+                KuraIconButton(
+                    contentDescription = if (refreshing) "Refreshing files" else "Refresh files",
+                    onClick = onRefresh,
+                    enabled = !refreshing,
+                ) { Text(if (refreshing) "…" else "↻") }
+            },
+        )
+        if (!trashMode && breadcrumbs.size > 1) {
+            BrowserBreadcrumbBar(breadcrumbs, false, onBreadcrumb)
+        }
+    }
 }
 
 @Composable
@@ -732,16 +934,18 @@ private fun FileGridItem(
         variant = if (entry.status == FileEntryStatus.ACTIVE) KuraCardVariant.DEFAULT else KuraCardVariant.WARNING,
         onClick = { onOpen(entry) },
     ) {
-        thumbnail(entry, Modifier.fillMaxWidth().heightIn(min = 88.dp, max = 128.dp))
+        Box(Modifier.fillMaxWidth()) {
+            thumbnail(entry, Modifier.fillMaxWidth().heightIn(min = 88.dp, max = 128.dp))
+            KuraIconButton(
+                onClick = { onShowDetails(entry) },
+                contentDescription = "More actions for ${entry.name}",
+                modifier = Modifier.align(Alignment.TopEnd),
+            ) { Text("⋮") }
+        }
         Text(entry.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
         Text(metadata.primary, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
         metadata.secondary.forEach { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) }
         missingStatusText(entry)?.let { KuraStatusBadge(it, missingStatusStyle(entry.status)) }
-        KuraIconButton(
-            onClick = { onShowDetails(entry) },
-            contentDescription = "More actions for ${entry.name}",
-            modifier = Modifier.align(Alignment.End),
-        ) { Text("⋮") }
     }
 }
 
@@ -1051,6 +1255,85 @@ private fun MovePickerDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !state.submitting) { Text("Cancel") } },
     )
+}
+
+@Composable
+private fun UploadQueuePanel(
+    state: UploadQueueState,
+    onCancel: (String) -> Unit,
+    onRetry: (String) -> Unit,
+    onDismiss: (String) -> Unit,
+) {
+    var pendingCancelId by remember { mutableStateOf<String?>(null) }
+    if (state.displayState in setOf(TransferDisplayState.ACTIVE, TransferDisplayState.NEEDS_ATTENTION)) {
+        KuraCard(
+            modifier =
+                Modifier
+                    .testTag("transfer-status")
+                    .semantics {
+                        stateDescription =
+                            if (state.displayState == TransferDisplayState.NEEDS_ATTENTION) {
+                                "Upload needs attention"
+                            } else {
+                                "Upload in progress"
+                            }
+                    },
+        ) {
+            Text("Transfer status", modifier = Modifier.kuraHeading(), style = MaterialTheme.typography.titleMedium)
+            state.items.values.forEach { item ->
+                val fraction = if (item.totalBytes > 0) item.transferredBytes.toFloat() / item.totalBytes else 0f
+                Column(
+                    Modifier.fillMaxWidth().testTag("upload-status-${item.id}"),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(item.targetName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (item.operation.state != UploadState.COMPLETED) {
+                        LinearProgressIndicator({ fraction.coerceIn(0f, 1f) }, Modifier.fillMaxWidth())
+                    }
+                    Text("${formatFileSize(item.transferredBytes)} / ${formatFileSize(item.totalBytes)}")
+                    Text(item.message ?: item.operation.state.uploadLabel())
+                    if (item.canRetry) {
+                        Button(onClick = { onRetry(item.id) }, modifier = Modifier.testTag("resume-upload-${item.id}")) {
+                            Text("Resume from confirmed position")
+                        }
+                    }
+                    if (item.operation.state in
+                        setOf(
+                            UploadState.PREPARING,
+                            UploadState.CREATING_SESSION,
+                            UploadState.UPLOADING,
+                            UploadState.PAUSED,
+                            UploadState.VERIFYING,
+                        )
+                    ) {
+                        TextButton(
+                            onClick = { pendingCancelId = item.id },
+                            modifier = Modifier.testTag("cancel-upload-${item.id}"),
+                        ) { Text("Cancel upload") }
+                    } else if (item.operation.state == UploadState.FAILED && !item.canRetry) {
+                        TextButton(onClick = { onDismiss(item.id) }) { Text("Dismiss") }
+                    }
+                }
+            }
+        }
+    }
+    pendingCancelId?.let { itemId ->
+        AlertDialog(
+            onDismissRequest = { pendingCancelId = null },
+            title = { Text("Cancel upload?") },
+            text = { Text("The resumable server session and its temporary data will be removed.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingCancelId = null
+                        onCancel(itemId)
+                    },
+                    modifier = Modifier.testTag("confirm-cancel-upload"),
+                ) { Text("Cancel upload") }
+            },
+            dismissButton = { TextButton(onClick = { pendingCancelId = null }) { Text("Keep uploading") } },
+        )
+    }
 }
 
 @Composable

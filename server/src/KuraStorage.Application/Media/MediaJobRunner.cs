@@ -15,10 +15,21 @@ public sealed class MediaJobRunner(
     ISystemClock clock,
     MediaRuntimeOptions options) : IMediaJobRunner
 {
-    public async Task<bool> RunNextAsync(CancellationToken cancellationToken)
+    public Task<bool> RunNextAsync(CancellationToken cancellationToken) =>
+        RunNextAsync(MediaJobClaimScope.Any, 1, cancellationToken);
+
+    public async Task<bool> RunNextAsync(
+        MediaJobClaimScope claimScope,
+        int maximumConcurrency,
+        CancellationToken cancellationToken)
     {
         var workerToken = Guid.NewGuid();
-        var job = await queue.TryAcquireNextAsync(workerToken, clock.UtcNow, cancellationToken);
+        var job = await queue.TryAcquireNextAsync(
+            workerToken,
+            clock.UtcNow,
+            claimScope,
+            maximumConcurrency,
+            cancellationToken);
         if (job is null)
         {
             return false;

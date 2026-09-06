@@ -16,6 +16,7 @@ import com.kurastorage.core.network.media.MediaContentNetworkResult
 import com.kurastorage.core.network.media.MediaJobDto
 import com.kurastorage.core.network.media.MediaMetadataNetworkResult
 import com.kurastorage.core.network.media.OriginalMetadataDto
+import com.kurastorage.core.network.media.ThumbnailJobSummaryDto
 import com.kurastorage.core.network.media.VariantMetadataDto
 import kotlinx.coroutines.test.runTest
 import okhttp3.Call
@@ -35,6 +36,31 @@ import java.io.IOException
 import java.time.Instant
 
 class MediaRepositoryTest {
+    @Test
+    fun `thumbnail summary validates counts and observation time`() =
+        runTest {
+            val api = FakeMediaApi()
+            val repository = DefaultMediaRepository(api, AuthenticatedRequestExecutor(FakeAuthentication()))
+
+            val summary = repository.thumbnailJobSummary()
+
+            assertEquals(4L, summary.queuedCount)
+            assertEquals(2L, summary.runningCount)
+            assertEquals(1L, summary.failedCount)
+            assertEquals(Instant.parse("2026-09-06T12:34:56Z"), summary.observedAt)
+
+            api.summary = ThumbnailJobSummaryDto(-1, 0, 0, "2026-09-06T12:34:56Z")
+            assertTrue(
+                runCatching { repository.thumbnailJobSummary() }.exceptionOrNull()
+                    is com.kurastorage.core.model.KuraStorageException.InvalidServerResponse,
+            )
+            api.summary = ThumbnailJobSummaryDto(0, 0, 0, "not-an-instant")
+            assertTrue(
+                runCatching { repository.thumbnailJobSummary() }.exceptionOrNull()
+                    is com.kurastorage.core.model.KuraStorageException.InvalidServerResponse,
+            )
+        }
+
     @Test
     fun `metadata and jobs refresh once and map unknown states fail closed`() =
         runTest {
@@ -178,6 +204,7 @@ class MediaRepositoryTest {
         val contentRanges = mutableListOf<String?>()
         val headVariants = mutableListOf<MediaVariant>()
         var generateMetadata = false
+        var summary = ThumbnailJobSummaryDto(4, 2, 1, "2026-09-06T12:34:56Z")
 
         override suspend fun headContent(
             accessToken: String,
@@ -233,6 +260,8 @@ class MediaRepositoryTest {
             accessToken: String,
             jobId: String,
         ) = mediaJob(accessToken, jobId)
+
+        override suspend fun thumbnailJobSummary(accessToken: String) = NetworkCallResult.Success(summary)
 
         override fun contentRequest(
             accessToken: String,

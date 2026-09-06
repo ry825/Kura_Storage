@@ -14,11 +14,52 @@ public sealed class MediaGenerationWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var lanes = new List<Task>(options.MaximumConcurrentThumbnailJobs + 1);
+        for (var slot = 0; slot < options.MaximumConcurrentThumbnailJobs; slot++)
+        {
+            lanes.Add(RunLaneAsync(
+                MediaJobClaimScope.Thumbnail,
+                options.MaximumConcurrentThumbnailJobs,
+                runsMaintenance: slot == 0,
+                stoppingToken));
+        }
+
+        lanes.Add(RunLaneAsync(MediaJobClaimScope.NonThumbnail, 1, runsMaintenance: false, stoppingToken));
+        await Task.WhenAll(lanes);
+    }
+
+    public async Task<bool> RunOnceAsync(CancellationToken cancellationToken)
+    {
+        await RunMaintenanceAsync(cancellationToken);
+        var runs = new List<Task<bool>>(options.MaximumConcurrentThumbnailJobs + 1);
+        for (var slot = 0; slot < options.MaximumConcurrentThumbnailJobs; slot++)
+        {
+            runs.Add(RunJobAsync(
+                MediaJobClaimScope.Thumbnail,
+                options.MaximumConcurrentThumbnailJobs,
+                cancellationToken));
+        }
+
+        runs.Add(RunJobAsync(MediaJobClaimScope.NonThumbnail, 1, cancellationToken));
+        return (await Task.WhenAll(runs)).Any(processed => processed);
+    }
+
+    private async Task RunLaneAsync(
+        MediaJobClaimScope claimScope,
+        int maximumConcurrency,
+        bool runsMaintenance,
+        CancellationToken stoppingToken)
+    {
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var processed = await RunOnceAsync(stoppingToken);
+                if (runsMaintenance)
+                {
+                    await RunMaintenanceAsync(stoppingToken);
+                }
+
+                var processed = await RunJobAsync(claimScope, maximumConcurrency, stoppingToken);
                 if (!processed)
                 {
                     await Task.Delay(TimeSpan.FromMilliseconds(options.JobPollMilliseconds), stoppingToken);
@@ -30,13 +71,13 @@ public sealed class MediaGenerationWorker(
             }
             catch (Exception exception)
             {
-                logger.LogError(exception, "Media generation iteration failed.");
+                logger.LogError(exception, "Media generation {ClaimScope} lane iteration failed.", claimScope);
                 await Task.Delay(TimeSpan.FromMilliseconds(options.JobPollMilliseconds), stoppingToken);
             }
         }
     }
 
-    public async Task<bool> RunOnceAsync(CancellationToken cancellationToken)
+    private async Task RunMaintenanceAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var now = clock.UtcNow;
@@ -72,7 +113,16 @@ public sealed class MediaGenerationWorker(
         {
             metrics.RecordIteration(now);
         }
+    }
 
-        return await scope.ServiceProvider.GetRequiredService<IMediaJobRunner>().RunNextAsync(cancellationToken);
+    private async Task<bool> RunJobAsync(
+        MediaJobClaimScope claimScope,
+        int maximumConcurrency,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IMediaJobRunner>()
+            .RunNextAsync(claimScope, maximumConcurrency, cancellationToken);
     }
 }

@@ -98,6 +98,8 @@ public sealed class ConfigurationValidationTests
     [InlineData("Media:CleanupManualPollSeconds", "0")]
     [InlineData("Media:CleanupRunLeaseMinutes", "0")]
     [InlineData("Media:MaximumConcurrentMediaJobs", "2")]
+    [InlineData("Media:MaximumConcurrentThumbnailJobs", "0")]
+    [InlineData("Media:MaximumConcurrentThumbnailJobs", "9")]
     [InlineData("Media:MaximumConcurrentVideoJobs", "2")]
     public void MediaOptions_InvalidValue_IsRejected(string key, string value)
     {
