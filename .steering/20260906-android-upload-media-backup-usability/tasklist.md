@@ -584,7 +584,7 @@
 
 ### 13.4 全体振り返り
 
-- [ ] `steering`スキルのモード3-Bで全体振り返りを記録する。
+- [x] `steering`スキルのモード3-Bで全体振り返りを記録する。
   - フェーズ0〜13.3に未完了タスク`[ ]`が残っていないことを確認してから本文を書く。
   - 実装完了日、計画と実績、主な設計変更、技術的な学び、プロセス改善、次回提案を記録する。
   - 振り返り更新を同じBranchへCommit・Pushし、Pull Requestへ反映されたことを確認する。
@@ -623,4 +623,43 @@
 
 ## 全体振り返り
 
-全タスク、PR 1、Pull Request完了記録が完了した後にだけ、`steering`スキルのモード3-Bで記録する。
+### 実装完了
+
+- 完了日: 2026-09-06
+- Pull Request: [#64](https://github.com/ry825/Kura_Storage/pull/64)
+- フェーズ0〜13.3とPR 1完了記録に未完了項目がないことを確認してから、本振り返りを記録した。
+
+### 計画と実績
+
+- 計画どおり、Upload、File browser、Thumbnail、動画・写真・PDF、Settings・Trusted Wi-Fi、Backup、Server、契約、配備設定、検証・清掃を1本のPull Requestへまとめた。
+- 変更箇所に近いTest、Module／Repository標準検証、Emulator／物理端末、Raspberry Pi実Server E2E、性能測定の順で検証を拡張した。
+- 利用者の追加確認でBreadcrumb見切れとThumbnail failure bannerの常設性が判明したため、4.1.1と5.3.1を追加し、同じPR内で実装・回帰Test・実機確認まで完了した。
+- manifest exact IDによる清掃を最後まで実施し、既存データとproduction appを維持したまま今回のfixtureだけを除去した。
+
+### 主な設計変更と理由
+
+- Breadcrumbは横一列の省略表示では深い階層と大文字設定を両立できないため、祖先Linkを維持した折り返し`FlowRow`へ変更した。
+- Thumbnail失敗件数はServerの実状態を隠さず、利用者がFile操作を継続できるようfailure-only bannerへDismissを追加し、失敗件数が0へ戻ったときdismiss状態を解除する設計にした。
+- 動画は低・中品質派生生成を廃止してOriginal Range再生へ統一し、CellularではContent取得前にSize基準の確認を行う責務分離とした。
+- Thumbnailと端末転送は無制限な並列化を避け、実測で安全性と改善量を確認した既定値2を採用した。
+- File一覧位置はindexだけでなくstable File ID、offset、Folder／Sort／Filter contextを保存し、一覧変動後も安全に近傍へ復元する設計にした。
+
+### 技術的な学び
+
+- UIに残るエラー表示はstale stateとは限らず、集計API、Job DB、元fixtureを照合して実失敗か表示不整合かを分離する必要がある。
+- 狭い画面とfont scale 2.0ではHeaderの固定高より情報到達性を優先し、rootの省スペース性と深いFolderの全表示を画面状態別に設計するのが有効だった。
+- 並列数は処理単体の所要時間だけでなく、一覧p95、Range再生、CPU idle、I/O wait、swap、thermalを混合負荷で測ることで安全な既定値を決められる。
+- 実機のWi-Fi情報はAPI levelと権限だけでなくredaction挙動も考慮し、型付き結果と安全なfallbackを持つ必要がある。
+
+### プロセス改善
+
+- 最終検証後の小さなUI修正でもRepository標準検証を再実行したことで、import順序違反をPR前に検出して修正できた。
+- 作成直後にIDをmanifestへ記録し、清掃前にmembershipと状態を再検証する運用は、既存データを保護しながら実Server E2Eを完結させるうえで有効だった。
+- 実機確認とdeterministic testの担当範囲をevidenceへ分けて記録したことで、物理条件を必要とする確認と異常系の再現性を両立できた。
+
+### 次回への提案
+
+- Breadcrumb、Thumbnail summary、Backup throughputの物理端末smokeをRelease候補チェックリストへ定着させる。
+- Thumbnail失敗のFile単位再試行導線が必要になった場合は、情報開示を増やさず対象File画面から操作できる契約を別途設計する。
+- 性能値はServer storage、fixture、Network条件に依存するため、依存更新やRaspberry Pi構成変更時に同じbenchmark scriptで再測定する。
+- 後続Pull Requestへの未完了実装・引継ぎ事項: なし。
