@@ -564,7 +564,7 @@
 
 ### 13.2 Commit・Push・英語Pull Request
 
-- [ ] PR 1をCommit・Pushして英語Pull Requestを作成する。
+- [x] PR 1をCommit・Pushして英語Pull Requestを作成する。
   - 全実装、Test、正式文書、Steering進捗、秘密情報を含まないevidenceをCommitする。
   - Commit前に`git status`とstaged diffをreviewする。
   - PR 1 BranchをremoteへPushする。
@@ -575,7 +575,7 @@
 
 ### 13.3 Pull Request完了記録
 
-- [ ] `steering`スキルのモード3-Aで、本ファイルの「各Pull Request完了記録」へPR 1を記録する。
+- [x] `steering`スキルのモード3-Aで、本ファイルの「各Pull Request完了記録」へPR 1を記録する。
   - 完了日とPull Request番号/URLを記録する。
   - Test、Build、Lint、API/E2E、性能測定、実機確認、清掃結果を記録する。
   - 計画と実装の差分、追加タスクと理由、技術的取消と代替実装、引継ぎを記録する。
@@ -594,7 +594,30 @@
 
 ## 各Pull Request完了記録
 
-全タスク完了後、Pull Request作成時に`steering`スキルのモード3-Aで記録する。PR作成前には記録しない。
+### PR 1: Improve Android uploads, media playback, backup throughput, and navigation
+
+- 完了日: 2026-09-06
+- Pull Request: [#64](https://github.com/ry825/Kura_Storage/pull/64)
+- 対象: フェーズ0〜13.2。Android Upload／File browser／Media・PDF／Settings・Trusted Wi-Fi／Backupと、Server Thumbnail集計・並列生成を1本のPRへ統合した。
+- Test・Build・静的解析:
+  - Android標準検証は最終再実行1392 tasksが成功し、Unit Test、coverage gate、ktlint、detekt、Android Lint、SBOMを通過した。
+  - API 33 EmulatorとAndroid 13実機のInstrumented Testは全体103件が成功し、追加修正後のfeature-files 33件とfeature-backup 12件も成功した。
+  - Server標準検証はDomain 135件、Application 355件、Integration 236件の合計726件が成功し、build warning／errorは0件だった。
+  - Config、Security、Deployment標準検証が成功した。GitHub ActionsはAndroid、Server、Config、Securityの全4 Jobが成功した。
+- API／E2E・手動確認:
+  - OpenAPIと認可付きThumbnail Job集計をServer Testと実Serverで照合した。
+  - Android実機でUpload、折り返しBreadcrumb、Thumbnail失敗表示のDismiss、現在Wi-Fi登録、Original動画、Backup並列を確認した。
+  - 動画はhardware decoder生成まで1.771秒、目視rebuffer 0回、取得できた末尾128 frameの1 frame超gap 0件だった。
+- 性能:
+  - Thumbnail既定並列数2は、直列62.699秒から56.033秒へ10.6%改善し、安全条件を満たした。
+  - 4 MiB x 4件のBackupは最大同時2件、直列相当101.068秒に対して56.438秒で44.2%短縮し、重複Fileを作成しなかった。
+- 清掃:
+  - manifestへ記録したServer File／Folder 24件、Media job／Derivative各11件、保持された完了Upload session 21件、Android File 21件／空Folder 5件、作業用Backup Rule／Wi-Fi Policyをexact IDで清掃した。
+  - 最終再照会でmanifest Server ID、作業prefix File、失敗fixture Thumbnail Job、Android作業prefix、debug packageが0件で、既存root、既存Backup Rule、production appを維持した。
+- 計画と実装の差分: 利用者確認で判明した深いBreadcrumbの見切れに対して全階層を折り返す表示を追加した。`Thumbnail generation failed`はstale stateではなく破損／暗号化PDFの実Job失敗だったため、集計の正確性を維持しつつfailure-only bannerへDismissを追加した。初回最終検証でimport順序違反を検出し、修正後にAndroid標準検証を全再実行した。
+- 実装中に追加したタスクと理由: 4.1.1は全Breadcrumb表示の利用者指摘、5.3.1は実失敗通知が常設される操作性の指摘を受けて追加した。
+- 技術的取消と代替実装: なし。
+- 後続Pull Requestへの引継ぎ: なし。
 
 ---
 
