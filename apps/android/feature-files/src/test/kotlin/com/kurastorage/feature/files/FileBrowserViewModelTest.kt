@@ -2,9 +2,18 @@ package com.kurastorage.feature.files
 
 import android.content.Intent
 import com.kurastorage.core.data.FileRepository
+import com.kurastorage.core.data.FolderUploadEntry
+import com.kurastorage.core.data.FolderUploadFailure
+import com.kurastorage.core.data.FolderUploadPlan
+import com.kurastorage.core.data.FolderUploadRejection
+import com.kurastorage.core.data.FolderUploadSelectionResult
 import com.kurastorage.core.data.RecentFileRepository
 import com.kurastorage.core.data.RecentRecordOutcome
 import com.kurastorage.core.data.TransferRepository
+import com.kurastorage.core.data.UploadSelectionFailure
+import com.kurastorage.core.data.UploadSelectionResult
+import com.kurastorage.core.data.media.MediaContentResult
+import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.model.ApiError
 import com.kurastorage.core.model.DownloadOperation
 import com.kurastorage.core.model.ErrorCategory
@@ -21,11 +30,16 @@ import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadOperation
 import com.kurastorage.core.model.UploadState
+import com.kurastorage.core.model.media.MediaJobSnapshot
+import com.kurastorage.core.model.media.MediaVariant
+import com.kurastorage.core.model.media.OriginalMetadata
+import com.kurastorage.core.model.media.ThumbnailJobSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -54,6 +68,86 @@ class FileBrowserViewModelTest {
     @Before fun setUp() = Dispatchers.setMain(dispatcher)
 
     @After fun tearDown() = Dispatchers.resetMain()
+
+    @Test
+    fun `thumbnail polling distinguishes states rejects stale responses and backs off when idle or failed`() =
+        runTest(dispatcher) {
+            val repository =
+                SequenceSummaryMediaRepository(
+                    ArrayDeque(
+                        listOf(
+                            Result.success(summary(4, 2, 1, "2026-09-06T00:02:00Z")),
+                            Result.success(summary(9, 9, 9, "2026-09-06T00:01:00Z")),
+                            Result.success(summary(0, 0, 1, "2026-09-06T00:03:00Z")),
+                            Result.success(summary(1, 0, 0, "2026-09-06T00:04:00Z")),
+                            Result.success(summary(0, 0, 0, "2026-09-06T00:05:00Z")),
+                            Result.failure(IOException("offline")),
+                        ),
+                    ),
+                )
+            val polls = Channel<Unit>(Channel.UNLIMITED)
+            val delays = mutableListOf<Long>()
+            val viewModel =
+                FileBrowserViewModel(
+                    FakeFiles(),
+                    FakeTransfers(),
+                    media = repository,
+                    thumbnailPollDelay = {
+                        delays += it
+                        polls.receive()
+                    },
+                )
+
+            viewModel.startThumbnailSummaryPolling()
+            assertEquals(
+                ThumbnailSummaryUiState(4, 2, 1, Instant.parse("2026-09-06T00:02:00Z"), false, false),
+                viewModel.state.value.thumbnailSummary,
+            )
+            assertEquals(5_000L, delays.last())
+
+            polls.send(Unit)
+            assertEquals(4L, viewModel.state.value.thumbnailSummary.queuedCount)
+            polls.send(Unit)
+            assertEquals(1L, viewModel.state.value.thumbnailSummary.failedCount)
+            polls.send(Unit)
+            assertEquals(1L, viewModel.state.value.thumbnailSummary.queuedCount)
+            assertEquals(0L, viewModel.state.value.thumbnailSummary.failedCount)
+            polls.send(Unit)
+            assertEquals(0L, viewModel.state.value.thumbnailSummary.queuedCount)
+            assertEquals(30_000L, delays.last())
+            polls.send(Unit)
+            assertTrue(viewModel.state.value.thumbnailSummary.unavailable)
+            assertEquals(15_000L, delays.last())
+
+            val callsBeforeStop = repository.calls
+            viewModel.stopThumbnailSummaryPolling()
+            polls.send(Unit)
+            assertEquals(callsBeforeStop, repository.calls)
+        }
+
+    @Test
+    fun `thumbnail polling generation discards response from a stopped screen`() =
+        runTest(dispatcher) {
+            val first = CompletableDeferred<ThumbnailJobSummary>()
+            val repository = StaleSummaryMediaRepository(first)
+            val viewModel =
+                FileBrowserViewModel(
+                    FakeFiles(),
+                    FakeTransfers(),
+                    media = repository,
+                    thumbnailPollDelay = { awaitCancellation() },
+                )
+
+            viewModel.startThumbnailSummaryPolling()
+            viewModel.stopThumbnailSummaryPolling()
+            viewModel.startThumbnailSummaryPolling()
+            assertEquals(2L, viewModel.state.value.thumbnailSummary.runningCount)
+
+            first.complete(summary(8, 8, 8, "2026-09-06T00:01:00Z"))
+            assertEquals(2L, viewModel.state.value.thumbnailSummary.runningCount)
+            assertEquals(Instant.parse("2026-09-06T00:02:00Z"), viewModel.state.value.thumbnailSummary.observedAt)
+            viewModel.stopThumbnailSummaryPolling()
+        }
 
     @Test
     fun `refresh and load more append pages`() =
@@ -99,6 +193,35 @@ class FileBrowserViewModelTest {
             assertTrue(viewModel.back())
             assertEquals(
                 listOf("My files"),
+                viewModel.state.value.breadcrumbs
+                    .map { it.label },
+            )
+        }
+
+    @Test
+    fun `breadcrumb navigation accepts committed ancestor id and rejects stale id`() =
+        runTest(dispatcher) {
+            val viewModel = FileBrowserViewModel(BreadcrumbFiles(), FakeTransfers())
+            viewModel.open(folder("first", "root", "First"))
+            viewModel.open(folder("second", "first", "Second"))
+
+            viewModel.openBreadcrumb("first")
+            assertEquals(
+                listOf("My files", "first"),
+                viewModel.state.value.breadcrumbs
+                    .map { it.label },
+            )
+            assertEquals("first", viewModel.state.value.parentId)
+
+            viewModel.openBreadcrumb("second")
+            assertEquals(
+                listOf("My files", "first"),
+                viewModel.state.value.breadcrumbs
+                    .map { it.label },
+            )
+            viewModel.openBreadcrumb("first")
+            assertEquals(
+                listOf("My files", "first"),
                 viewModel.state.value.breadcrumbs
                     .map { it.label },
             )
@@ -321,18 +444,21 @@ class FileBrowserViewModelTest {
                 }
             val cancellableViewModel = FileBrowserViewModel(FakeFiles(), cancellableTransfers)
             cancellableViewModel.startUpload("content://source", "cancel.txt", 5, "text/plain")
-            assertEquals(TransferEvent.Progress(1, 5), cancellableViewModel.state.value.transfer)
+            assertEquals(
+                1,
+                cancellableViewModel.state.value.uploads.items.values
+                    .single()
+                    .transferredBytes,
+            )
 
             cancellableViewModel.cancelTransfer()
 
-            assertEquals(
-                UploadState.CANCELLED,
-                (cancellableViewModel.state.value.transfer as TransferEvent.UploadStatus).operation.state,
-            )
+            assertEquals(TransferDisplayState.IDLE, cancellableViewModel.state.value.uploads.displayState)
+            assertEquals(1, cancellableTransfers.cancellations.size)
         }
 
     @Test
-    fun `paused upload retry keeps authoritative session offset and double start is ignored`() =
+    fun `paused upload retry keeps authoritative session offset while another upload proceeds`() =
         runTest(dispatcher) {
             val gate = CompletableDeferred<Unit>()
             val transfers =
@@ -360,10 +486,11 @@ class FileBrowserViewModelTest {
 
             viewModel.startUpload("content://source", "video.mp4", 10, "video/mp4")
             viewModel.startUpload("content://other", "other.mp4", 10, "video/mp4")
-            assertEquals(1, transfers.uploads.size)
+            assertEquals(2, transfers.uploads.size)
             gate.complete(Unit)
             viewModel.retryTransfer()
 
+            assertEquals(3, transfers.uploads.size)
             assertEquals("session", transfers.uploads.last().sessionId)
             assertEquals(4, transfers.uploads.last().confirmedOffset)
             assertEquals(transfers.uploads.first().idempotencyKey, transfers.uploads.last().idempotencyKey)
@@ -386,6 +513,189 @@ class FileBrowserViewModelTest {
             assertFalse(transfers.uploads.first().idempotencyKey == transfers.uploads.last().idempotencyKey)
             assertNull(transfers.uploads.last().sessionId)
             assertEquals(0, transfers.uploads.last().confirmedOffset)
+        }
+
+    @Test
+    fun `successful upload leaves only a consumable completion notice`() =
+        runTest(dispatcher) {
+            val viewModel = FileBrowserViewModel(FakeFiles(), FakeTransfers())
+
+            viewModel.startUpload("content://source", "done.txt", 5, "text/plain")
+
+            assertEquals(TransferDisplayState.COMPLETED_NOTICE, viewModel.state.value.uploads.displayState)
+            assertEquals(
+                1,
+                viewModel.state.value.uploads.completionNotice
+                    ?.completedCount,
+            )
+            assertEquals(emptyMap<String, UploadQueueItem>(), viewModel.state.value.uploads.items)
+            assertNull(viewModel.state.value.transfer)
+
+            viewModel.consumeUploadCompletionNotice()
+            assertEquals(TransferDisplayState.IDLE, viewModel.state.value.uploads.displayState)
+        }
+
+    @Test
+    fun `failed upload remains actionable until retry succeeds`() =
+        runTest(dispatcher) {
+            val transfers =
+                FakeTransfers { operation, attempt ->
+                    if (attempt == 1) {
+                        flowOf(
+                            TransferEvent.UploadStatus(
+                                operation.copy(state = UploadState.FAILED),
+                                "Connection interrupted",
+                                canRetry = true,
+                            ),
+                        )
+                    } else {
+                        flowOf(TransferEvent.UploadCompleted(file(operation.fileName)))
+                    }
+                }
+            val viewModel = FileBrowserViewModel(FakeFiles(), transfers)
+
+            viewModel.startUpload("content://source", "retry.txt", 5, "text/plain")
+            val failed =
+                viewModel.state.value.uploads.retryableItems
+                    .single()
+            assertEquals(TransferDisplayState.NEEDS_ATTENTION, viewModel.state.value.uploads.displayState)
+
+            viewModel.retryUpload(failed.id)
+
+            assertEquals(2, transfers.uploads.size)
+            assertEquals(transfers.uploads.first().idempotencyKey, transfers.uploads.last().idempotencyKey)
+            assertEquals(TransferDisplayState.COMPLETED_NOTICE, viewModel.state.value.uploads.displayState)
+        }
+
+    @Test
+    fun `multiple selections upload independently and retain only rejected item`() =
+        runTest(dispatcher) {
+            val transfers = FakeTransfers()
+            val viewModel = FileBrowserViewModel(FakeFiles(), transfers)
+
+            viewModel.startUploads(
+                listOf(
+                    UploadSelectionResult.Ready("content://one", "one.txt", 1, "text/plain"),
+                    UploadSelectionResult.Rejected(
+                        "content://locked",
+                        "locked.txt",
+                        UploadSelectionFailure.PERMISSION_LOST,
+                    ),
+                    UploadSelectionResult.Ready("content://two", "two.txt", 2, "text/plain"),
+                ),
+            )
+
+            assertEquals(listOf("content://one", "content://two"), transfers.uploads.map { it.sourceUri })
+            assertEquals(3, viewModel.state.value.uploads.items.size)
+            assertEquals(
+                listOf(UploadState.COMPLETED, UploadState.FAILED, UploadState.COMPLETED),
+                viewModel.state.value.uploads.items.values
+                    .map { it.operation.state },
+            )
+            assertEquals(TransferDisplayState.NEEDS_ATTENTION, viewModel.state.value.uploads.displayState)
+            assertEquals(emptyList<UploadQueueItem>(), viewModel.state.value.uploads.retryableItems)
+        }
+
+    @Test
+    fun `folder selection keeps a valid plan and exposes selection failure`() =
+        runTest(dispatcher) {
+            val viewModel = FileBrowserViewModel(FolderUploadFiles(), FakeTransfers())
+            val plan =
+                FolderUploadPlan(
+                    listOf(FolderUploadEntry.Folder("root", listOf("Selected"))),
+                    emptyList(),
+                )
+
+            viewModel.acceptFolderUploadSelection(FolderUploadSelectionResult.Ready(plan))
+            assertNull(viewModel.state.value.pendingFolderUpload)
+            assertNull(viewModel.state.value.folderUploadError)
+
+            viewModel.acceptFolderUploadSelection(FolderUploadSelectionResult.Cancelled)
+            assertNull(viewModel.state.value.pendingFolderUpload)
+
+            viewModel.acceptFolderUploadSelection(FolderUploadSelectionResult.Rejected("Permission denied"))
+            assertNull(viewModel.state.value.pendingFolderUpload)
+            assertEquals("Permission denied", viewModel.state.value.folderUploadError)
+        }
+
+    @Test
+    fun `folder selection creates hierarchy and queues readable files independently`() =
+        runTest(dispatcher) {
+            val files = FolderUploadFiles()
+            val transfers = FakeTransfers()
+            val viewModel = FileBrowserViewModel(files, transfers)
+            val plan =
+                FolderUploadPlan(
+                    listOf(
+                        FolderUploadEntry.Folder("root-doc", listOf("Selected")),
+                        FolderUploadEntry.Folder("nested-doc", listOf("Selected", "Nested")),
+                        FolderUploadEntry.File(
+                            "file-doc",
+                            listOf("Selected", "Nested", "photo.jpg"),
+                            "content://photo",
+                            7,
+                            "image/jpeg",
+                        ),
+                    ),
+                    listOf(
+                        FolderUploadRejection(
+                            "locked-doc",
+                            listOf("Selected", "locked.jpg"),
+                            FolderUploadFailure.UNREADABLE,
+                        ),
+                    ),
+                )
+
+            viewModel.acceptFolderUploadSelection(FolderUploadSelectionResult.Ready(plan))
+
+            assertEquals(listOf("root:Selected", "server-Selected:Nested"), files.folderCalls)
+            assertEquals("server-Nested", transfers.uploads.single().destinationFolderId)
+            assertEquals("content://photo", transfers.uploads.single().sourceUri)
+            assertEquals(7, transfers.uploads.single().size)
+            assertEquals(
+                listOf("photo.jpg", "locked.jpg"),
+                viewModel.state.value.uploads.items.values
+                    .map { it.targetName },
+            )
+            assertEquals(
+                listOf(UploadState.COMPLETED, UploadState.FAILED),
+                viewModel.state.value.uploads.items.values
+                    .map { it.operation.state },
+            )
+            assertEquals(TransferDisplayState.NEEDS_ATTENTION, viewModel.state.value.uploads.displayState)
+        }
+
+    @Test
+    fun `folder preparation retry reuses existing parents and queues each file once`() =
+        runTest(dispatcher) {
+            val files = FolderUploadFiles(failOnceName = "Retry")
+            val transfers = FakeTransfers()
+            val viewModel = FileBrowserViewModel(files, transfers)
+            val plan =
+                FolderUploadPlan(
+                    listOf(
+                        FolderUploadEntry.Folder("root-doc", listOf("Selected")),
+                        FolderUploadEntry.Folder("retry-doc", listOf("Selected", "Retry")),
+                        FolderUploadEntry.File(
+                            "file-doc",
+                            listOf("Selected", "Retry", "later.txt"),
+                            "content://later",
+                            5,
+                            "text/plain",
+                        ),
+                    ),
+                    emptyList(),
+                )
+
+            viewModel.acceptFolderUploadSelection(FolderUploadSelectionResult.Ready(plan))
+            assertTrue(viewModel.state.value.folderUploadCanRetry)
+            assertEquals(emptyList<UploadOperation>(), transfers.uploads)
+
+            viewModel.retryFolderUpload()
+
+            assertEquals(1, files.created.count { it.name == "Selected" })
+            assertEquals(1, transfers.uploads.size)
+            assertNull(viewModel.state.value.folderUploadError)
         }
 
     @Test
@@ -835,6 +1145,39 @@ class FileBrowserViewModelTest {
         override suspend fun restore(fileId: String) = file(fileId)
     }
 
+    private class FolderUploadFiles(
+        private val failOnceName: String? = null,
+    ) : FakeFiles() {
+        val folderCalls = mutableListOf<String>()
+        val created = mutableListOf<FileEntry>()
+        private var failedOnce = false
+
+        override suspend fun list(
+            parentId: String?,
+            page: Int,
+            pageSize: Int,
+        ): FilePage {
+            if (parentId == null) return FilePage("root", emptyList(), 1, pageSize, 0)
+            val children = created.filter { it.parentId == parentId }
+            return FilePage(parentId, children, page, pageSize, children.size.toLong())
+        }
+
+        override suspend fun createFolder(
+            parentId: String?,
+            name: String,
+        ): FileEntry {
+            folderCalls += "$parentId:$name"
+            if (name == failOnceName && !failedOnce) {
+                failedOnce = true
+                throw KuraStorageException.Api(ApiError(ErrorCode.STORAGE_UNAVAILABLE, null, 503))
+            }
+            if (created.any { it.parentId == parentId && it.name == name }) {
+                throw KuraStorageException.Api(ApiError(ErrorCode.FILE_NAME_CONFLICT, null, 409))
+            }
+            return folder("server-$name", parentId, name).also(created::add)
+        }
+    }
+
     private class NavigationFiles : FakeFiles(empty = true) {
         val detailCalls = mutableListOf<String>()
         private val details = mutableMapOf<String, CompletableDeferred<FileEntry>>()
@@ -875,6 +1218,16 @@ class FileBrowserViewModelTest {
                 KuraStorageException.Api(ApiError(ErrorCode.STORAGE_UNAVAILABLE, "navigation", 503)),
             )
         }
+    }
+
+    private class BreadcrumbFiles : FakeFiles(empty = true) {
+        override suspend fun detail(fileId: String) = folder(fileId, null, fileId)
+
+        override suspend fun list(
+            parentId: String?,
+            page: Int,
+            pageSize: Int,
+        ) = FilePage(parentId ?: "root", emptyList(), page, pageSize, 0)
     }
 
     private class FakeTransfers(
@@ -1124,6 +1477,13 @@ class FileBrowserViewModelTest {
     }
 
     private companion object {
+        fun summary(
+            queued: Long,
+            running: Long,
+            failed: Long,
+            observedAt: String,
+        ) = ThumbnailJobSummary(queued, running, failed, Instant.parse(observedAt))
+
         fun file(id: String) =
             FileEntry(
                 id,
@@ -1167,5 +1527,45 @@ class FileBrowserViewModelTest {
             code: ErrorCode,
             status: Int,
         ) = KuraStorageException.Api(ApiError(code, "request-id", status))
+    }
+
+    private abstract class SummaryMediaRepository : MediaRepository {
+        override suspend fun inspectOriginal(fileId: String): OriginalMetadata = error("not used")
+
+        override suspend fun job(jobId: String): MediaJobSnapshot = error("not used")
+
+        override suspend fun retryJob(jobId: String): MediaJobSnapshot = error("not used")
+
+        override suspend fun openContent(
+            fileId: String,
+            variant: MediaVariant,
+            range: String?,
+        ): MediaContentResult = error("not used")
+    }
+
+    private class SequenceSummaryMediaRepository(
+        private val results: ArrayDeque<Result<ThumbnailJobSummary>>,
+    ) : SummaryMediaRepository() {
+        var calls = 0
+
+        override suspend fun thumbnailJobSummary(): ThumbnailJobSummary {
+            calls++
+            return results.removeFirst().getOrThrow()
+        }
+    }
+
+    private class StaleSummaryMediaRepository(
+        private val first: CompletableDeferred<ThumbnailJobSummary>,
+    ) : SummaryMediaRepository() {
+        private var calls = 0
+
+        override suspend fun thumbnailJobSummary(): ThumbnailJobSummary {
+            calls++
+            return if (calls == 1) {
+                withContext(NonCancellable) { first.await() }
+            } else {
+                summary(0, 2, 0, "2026-09-06T00:02:00Z")
+            }
+        }
     }
 }

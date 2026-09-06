@@ -10,11 +10,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -88,7 +91,7 @@ class BackupScreensTest {
                 state = BackupWifiState(loading = false, currentWifi = CurrentWifiResult.PermissionRequired(setOf("wifi"))),
                 onRefresh = {},
                 onRequestPermission = {},
-                onRegister = { _, _, _, _ -> },
+                onRegister = { _, _, _, _, _ -> },
                 onSave = {},
                 onDelete = {},
                 onOpenAppSettings = {},
@@ -108,11 +111,14 @@ class BackupScreensTest {
                 state =
                     BackupWifiState(
                         loading = false,
-                        currentWifi = CurrentWifiResult.Connected(ConnectedWifi("Private fixture", null, false)),
+                        currentWifi =
+                            CurrentWifiResult.Available(
+                                ConnectedWifi("\"Private fixture\"", "aa:bb:cc:dd:ee:ff", false),
+                            ),
                     ),
                 onRefresh = {},
                 onRequestPermission = {},
-                onRegister = { _, _, _, _ -> registrations += 1 },
+                onRegister = { _, _, _, _, _ -> registrations += 1 },
                 onSave = {},
                 onDelete = {},
                 onOpenAppSettings = {},
@@ -120,6 +126,10 @@ class BackupScreensTest {
             )
         }
 
+        compose.onNodeWithText("\"Private fixture\"").assertIsDisplayed()
+        compose.onNodeWithText("aa:bb:cc:dd:ee:ff").assertIsDisplayed()
+        compose.onNodeWithText("Use current Wi-Fi").assertHasClickAction()
+        assertEquals(0, registrations)
         compose.onNodeWithText("Display name").performTextInput("Home")
         compose.onNodeWithText("Register current Wi-Fi").performClick()
         compose.onNodeWithText("Allow this Wi-Fi?").assertIsDisplayed()
@@ -247,11 +257,11 @@ class BackupScreensTest {
                 state =
                     BackupWifiState(
                         loading = false,
-                        currentWifi = CurrentWifiResult.Connected(ConnectedWifi("Fixture Wi-Fi", null, false)),
+                        currentWifi = CurrentWifiResult.Available(ConnectedWifi("Fixture Wi-Fi", null, false)),
                     ),
                 onRefresh = {},
                 onRequestPermission = {},
-                onRegister = { _, _, _, _ -> },
+                onRegister = { _, _, _, _, _ -> },
                 onSave = {},
                 onDelete = {},
                 onOpenAppSettings = {},
@@ -262,6 +272,43 @@ class BackupScreensTest {
         compose.onNodeWithText("Currently connected Wi-Fi: Fixture Wi-Fi").assertIsDisplayed()
         compose.onNodeWithText("never as server identity", substring = true).assertIsDisplayed()
         compose.onNodeWithText("Enabled").assertIsDisplayed()
+    }
+
+    @Test
+    fun trustedWifiRegistrationRemainsReachableOnCompactLargeFontScreen() {
+        compose.setContent {
+            val density = LocalDensity.current.density
+            CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 2f)) {
+                MaterialTheme(colorScheme = darkColorScheme()) {
+                    Box(Modifier.size(width = 360.dp, height = 720.dp)) {
+                        BackupWifiScreen(
+                            state =
+                                BackupWifiState(
+                                    loading = false,
+                                    currentWifi =
+                                        CurrentWifiResult.Available(
+                                            ConnectedWifi("Fixture Wi-Fi", "aa:bb:cc:dd:ee:ff", false),
+                                        ),
+                                ),
+                            onRefresh = {},
+                            onRequestPermission = {},
+                            onRegister = { _, _, _, _, _ -> },
+                            onSave = {},
+                            onDelete = {},
+                            onOpenAppSettings = {},
+                            onBack = {},
+                        )
+                    }
+                }
+            }
+        }
+
+        compose.onNodeWithTag("backup-wifi-list").performScrollToNode(hasText("Display name"))
+        compose.onNodeWithText("Display name").performTextInput("Home")
+        compose.onNodeWithTag("backup-wifi-list").performScrollToNode(hasText("Register current Wi-Fi"))
+        compose.onNodeWithText("Register current Wi-Fi").assertHasClickAction().assertIsDisplayed()
+        compose.onNodeWithTag("backup-wifi-list").performScrollToNode(hasText("Back"))
+        compose.onNodeWithText("Back").assertHasClickAction().assertIsDisplayed()
     }
 
     private fun rule() =

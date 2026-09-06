@@ -3,6 +3,9 @@ package com.kurastorage.feature.media
 import com.kurastorage.core.data.media.MediaMetadataResult
 import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.data.media.NetworkQualityContextResolver
+import com.kurastorage.core.data.media.NetworkTransport
+import com.kurastorage.core.data.media.NetworkTransport.CELLULAR
+import com.kurastorage.core.data.media.NetworkTransport.OTHER_OR_UNKNOWN
 import com.kurastorage.core.data.media.QualityPreferenceStore
 import com.kurastorage.core.data.media.TransferConfirmationPolicy
 import com.kurastorage.core.data.media.TransferConfirmationPrompt
@@ -14,8 +17,10 @@ import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
 import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaUiError
+import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.MediaVariantResolver
 import com.kurastorage.core.model.media.NetworkQualityContext
+import com.kurastorage.core.model.media.NetworkQualityContext.REMOTE_MOBILE
 import com.kurastorage.core.model.media.OriginalMetadata
 import com.kurastorage.core.model.media.ReadyMediaSource
 import com.kurastorage.core.model.media.VariantMetadata
@@ -28,6 +33,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.coroutines.coroutineContext
@@ -48,6 +54,7 @@ data class MediaViewerState(
     val displayedSource: ReadyMediaSource? = null,
     val displayedMetadata: VariantMetadata? = null,
     val displayedSizeLabel: String? = null,
+    val transport: NetworkTransport = if (networkContext == REMOTE_MOBILE) CELLULAR else OTHER_OR_UNKNOWN,
 )
 
 data class MediaRequestTicket(
@@ -71,6 +78,7 @@ class MediaViewerController(
     private var generation = 0L
     private var approvedPrompt: TransferConfirmationPrompt? = null
     private var pollingJob: Job? = null
+    private var transportJob: Job? = null
     private var activeJob: MediaJobSnapshot? = null
     private var retrying = false
 
@@ -86,16 +94,33 @@ class MediaViewerController(
         invalidateRequests()
         approvedPrompt = null
         activeJob = null
-        val context = contextResolver.resolve(route)
-        val configured = qualityStore.read().qualityFor(context)
-        val initialQuality = if (kind == MediaKind.AUDIO || kind == MediaKind.PDF) MediaQuality.ORIGINAL else configured
+        val transport = contextResolver.activeTransport()
+        val context = contextResolver.resolve(route, transport)
+        val initialQuality =
+            if (kind == MediaKind.IMAGE) {
+                qualityStore.read().qualityFor(context)
+            } else {
+                MediaQuality.ORIGINAL
+            }
         mutableState.value =
-            MediaViewerState(fileId, fileVersion, kind, initialQuality, context, MediaLoadState.Idle)
+            MediaViewerState(
+                fileId = fileId,
+                fileVersion = fileVersion,
+                kind = kind,
+                quality = initialQuality,
+                networkContext = context,
+                loadState = MediaLoadState.Idle,
+                transport = transport,
+            )
         prepareSelectedQuality(generation)
+        observeTransportChanges()
     }
 
     suspend fun selectQuality(quality: MediaQuality) {
         val current = checkNotNull(mutableState.value) { "Media has not been started" }
+        require(current.kind == MediaKind.IMAGE || quality == MediaQuality.ORIGINAL) {
+            "${current.kind} only supports original content"
+        }
         MediaVariantResolver.resolve(current.kind, quality)
         invalidateRequests()
         approvedPrompt = null
@@ -155,6 +180,10 @@ class MediaViewerController(
         job: MediaJobSnapshot,
     ) {
         if (!ticket.isCurrent() || job.status != MediaJobStatus.GENERATING) return
+        if (ticket.source.variant == MediaVariant.ORIGINAL) {
+            contentFailed(ticket, MediaUiError.GENERATION_FAILED)
+            return
+        }
         pollingJob?.cancel()
         activeJob = job
         mutableState.value =
@@ -181,15 +210,17 @@ class MediaViewerController(
     @Suppress("ReturnCount")
     suspend fun retryGeneration() {
         val failed = activeJob?.takeIf { it.status == MediaJobStatus.FAILED && it.retryable } ?: return
+        val current = mutableState.value ?: return
+        if (current.requestedVariant == MediaVariant.ORIGINAL) return
         if (retrying) return
         retrying = true
         val expectedGeneration = generation
         try {
             val retried = repository.retryJob(failed.jobId)
             if (generation != expectedGeneration) return
-            val current = mutableState.value ?: return
-            val metadata = current.requestedMetadata
-            val ticket = MediaRequestTicket(generation, current.toSource(), metadata)
+            val latest = mutableState.value ?: return
+            val metadata = latest.requestedMetadata
+            val ticket = MediaRequestTicket(generation, latest.toSource(), metadata)
             if (retried.status == MediaJobStatus.GENERATING) {
                 contentGenerating(ticket, retried)
             } else if (retried.status == MediaJobStatus.READY) {
@@ -197,7 +228,7 @@ class MediaViewerController(
             } else {
                 activeJob = retried
                 mutableState.value =
-                    current.copy(
+                    latest.copy(
                         loadState = retried.toTerminalLoadState(),
                         canRetryGeneration = retried.status == MediaJobStatus.FAILED && retried.retryable,
                     )
@@ -211,6 +242,7 @@ class MediaViewerController(
 
     override fun close() {
         invalidateRequests()
+        transportJob?.cancel()
         scope.cancel()
         mutableState.value = null
     }
@@ -248,7 +280,7 @@ class MediaViewerController(
                             OriginalMetadata(metadata.size, metadata.mimeType, metadata.acceptsRanges),
                         )
                     if (generation != expectedGeneration) return
-                    if (current.kind == MediaKind.IMAGE) {
+                    if (!requiresConfirmation(current, prompt)) {
                         approvedPrompt = prompt
                         mutableState.value =
                             mutableState.value!!.copy(
@@ -285,17 +317,18 @@ class MediaViewerController(
     ) {
         val prompt = confirmationPolicy.prepare(current.fileId, current.fileVersion, current.kind)
         if (generation != expectedGeneration) return
-        approvedPrompt = prompt.takeIf { current.kind == MediaKind.IMAGE }
+        val requiresConfirmation = requiresConfirmation(current, prompt)
+        approvedPrompt = prompt.takeUnless { requiresConfirmation }
         mutableState.value =
             current.copy(
                 requestedMetadata = null,
                 loadState =
-                    if (current.kind == MediaKind.IMAGE) {
+                    if (!requiresConfirmation) {
                         MediaLoadState.Loading
                     } else {
                         MediaLoadState.ConfirmingTransfer
                     },
-                confirmation = prompt.takeUnless { current.kind == MediaKind.IMAGE },
+                confirmation = prompt.takeIf { requiresConfirmation },
                 originalSizeLabel = prompt.formattedSize,
             )
     }
@@ -358,6 +391,49 @@ class MediaViewerController(
         retrying = false
     }
 
+    private fun observeTransportChanges() {
+        transportJob?.cancel()
+        transportJob =
+            scope.launch {
+                contextResolver.observeTransport().collectLatest { transport ->
+                    val current = mutableState.value ?: return@collectLatest
+                    if (transport == current.transport) return@collectLatest
+                    val context = contextResolver.resolve(route, transport)
+                    if (current.kind != MediaKind.VIDEO || current.loadState is MediaLoadState.Ready) {
+                        mutableState.value = current.copy(networkContext = context, transport = transport)
+                        return@collectLatest
+                    }
+                    invalidateRequests()
+                    approvedPrompt = null
+                    activeJob = null
+                    mutableState.value =
+                        current.copy(
+                            networkContext = context,
+                            transport = transport,
+                            loadState = MediaLoadState.Idle,
+                            confirmation = null,
+                            canRetryGeneration = false,
+                            requestedMetadata = null,
+                        )
+                    prepareSelectedQuality(generation)
+                }
+            }
+    }
+
+    private fun requiresConfirmation(
+        state: MediaViewerState,
+        prompt: TransferConfirmationPrompt,
+    ): Boolean =
+        when (state.kind) {
+            MediaKind.IMAGE -> false
+            MediaKind.VIDEO ->
+                state.transport == NetworkTransport.CELLULAR &&
+                    (prompt.size?.value ?: MOBILE_VIDEO_CONFIRMATION_BYTES) >= MOBILE_VIDEO_CONFIRMATION_BYTES
+            MediaKind.AUDIO,
+            MediaKind.PDF,
+            -> true
+        }
+
     private fun fail(error: KuraStorageException) {
         val uiError =
             when (error) {
@@ -410,5 +486,6 @@ class MediaViewerController(
         const val HTTP_TOO_MANY_REQUESTS = 429
         const val HTTP_SERVER_ERROR_START = 500
         const val HTTP_SERVER_ERROR_END = 599
+        const val MOBILE_VIDEO_CONFIRMATION_BYTES = 1024L * 1024L
     }
 }

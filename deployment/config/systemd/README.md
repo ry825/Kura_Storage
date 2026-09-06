@@ -8,3 +8,6 @@ mount point. The API and retention Worker depend on that mount unit, run as
 `kurastorage-api`, and receive no Linux capabilities. The API binds only a Unix
 socket. The Worker has no listener, uses only Unix-domain access for PostgreSQL,
 and receives lower CPU and IO weights so purge work does not dominate requests.
+The Worker is also capped at `CPUQuota=125%`; this keeps foreground API and
+original-video Range traffic responsive while two thumbnail lanes are active on
+the four-core Raspberry Pi 4 reference host.

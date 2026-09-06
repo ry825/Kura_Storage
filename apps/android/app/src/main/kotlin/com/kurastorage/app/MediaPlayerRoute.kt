@@ -29,9 +29,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kurastorage.core.data.media.NetworkTransport
 import com.kurastorage.core.model.ConnectionRoute
 import com.kurastorage.core.model.media.MediaKind
-import com.kurastorage.core.model.media.NetworkQualityContext
 import com.kurastorage.feature.media.MediaViewerController
 import com.kurastorage.feature.media.player.AndroidMediaPlayerController
 import com.kurastorage.feature.media.player.MediaPlayerScreen
@@ -72,9 +72,12 @@ internal fun MediaPlayerRoute(
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     val lifecycleOwner = LocalLifecycleOwner.current
-    val mobile = state.media?.networkContext == NetworkQualityContext.REMOTE_MOBILE
+    val mobile =
+        remember(current.media.scopeId, fileId, kind, route) {
+            current.media.contextResolver.activeTransport() == NetworkTransport.CELLULAR
+        }
     val engine =
-        remember(current.media.scopeId, mobile) {
+        remember(current.media.scopeId, fileId, kind, route) {
             AndroidMediaPlayerController(context, current.media.repository, mobile, current.media.coroutineScope)
         }
     var fullscreen by rememberSaveable { mutableStateOf(false) }
@@ -136,12 +139,9 @@ internal fun MediaPlayerRoute(
         onSkipBack = playerViewModel::skipBack,
         onSkipForward = playerViewModel::skipForward,
         onRate = playerViewModel::setRate,
-        onQuality = playerViewModel::selectQuality,
         onConfirmOriginal = playerViewModel::confirmOriginal,
         onCancelOriginal = playerViewModel::cancelOriginal,
-        onRetryGeneration = playerViewModel::retryGeneration,
         onRetryPlayback = playerViewModel::retryPlayback,
-        onBackgroundGeneration = onBack,
         onFullscreen = {
             if (fullscreen) {
                 exitFullscreen()

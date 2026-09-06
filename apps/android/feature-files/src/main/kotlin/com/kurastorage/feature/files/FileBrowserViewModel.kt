@@ -2,12 +2,18 @@
 
 package com.kurastorage.feature.files
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kurastorage.core.data.FilePager
 import com.kurastorage.core.data.FileRepository
+import com.kurastorage.core.data.FolderUploadPlan
+import com.kurastorage.core.data.FolderUploadSelectionResult
+import com.kurastorage.core.data.FolderUploadServerPlanner
 import com.kurastorage.core.data.RecentFileRepository
 import com.kurastorage.core.data.TransferRepository
+import com.kurastorage.core.data.UploadSelectionResult
+import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.model.DownloadOperation
 import com.kurastorage.core.model.ErrorCategory
 import com.kurastorage.core.model.ErrorCode
@@ -22,13 +28,18 @@ import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadOperation
 import com.kurastorage.core.model.UploadState
 import com.kurastorage.core.model.filePermissionCapabilities
+import com.kurastorage.core.model.media.ThumbnailJobSummary
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Clock
+import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
@@ -40,6 +51,13 @@ data class FileBrowserState(
     val canLoadMore: Boolean = false,
     val selected: FileEntry? = null,
     val transfer: TransferEvent? = null,
+    val uploads: UploadQueueState = UploadQueueState(),
+    val scrollAnchors: Map<String, BrowserScrollAnchor> = emptyMap(),
+    val thumbnailSummary: ThumbnailSummaryUiState = ThumbnailSummaryUiState(),
+    val pendingFolderUpload: FolderUploadPlan? = null,
+    val folderUploadPreparing: Boolean = false,
+    val folderUploadCanRetry: Boolean = false,
+    val folderUploadError: String? = null,
     val rename: RenameState? = null,
     val movePicker: MovePickerState? = null,
     val permanentDelete: PermanentDeleteState? = null,
@@ -55,6 +73,15 @@ data class FileBrowserState(
     val currentFolder: FileEntry? get() = locations.lastOrNull()?.folder
     val breadcrumbs: List<BrowserBreadcrumb> get() = locations.map { BrowserBreadcrumb(it.id, it.label) }
 }
+
+data class ThumbnailSummaryUiState(
+    val queuedCount: Long = 0,
+    val runningCount: Long = 0,
+    val failedCount: Long = 0,
+    val observedAt: Instant? = null,
+    val loading: Boolean = true,
+    val unavailable: Boolean = false,
+)
 
 data class FolderLocation(
     val id: String?,
@@ -143,7 +170,11 @@ class FileBrowserViewModel(
     private val initialParentId: String? = null,
     private val initialSelectionId: String? = null,
     private val recentFiles: RecentFileRepository? = null,
+    savedStateHandle: SavedStateHandle? = null,
+    private val media: MediaRepository? = null,
+    private val thumbnailPollDelay: suspend (Long) -> Unit = { delay(it) },
 ) : ViewModel() {
+    private val scrollAnchorStore = BrowserScrollAnchorStore(savedStateHandle)
     private val initialLocation =
         FolderLocation(initialParentId, if (initialParentId == null) "My files" else "Shared")
     private val mutableState =
@@ -151,12 +182,17 @@ class FileBrowserViewModel(
             FileBrowserState(
                 personalRoot = initialParentId == null,
                 locations = listOf(initialLocation),
+                scrollAnchors = scrollAnchorStore.snapshot(),
             ),
         )
     val state: StateFlow<FileBrowserState> = mutableState.asStateFlow()
     private var pager = pager(initialParentId)
     private var movePager: FilePager? = null
     private var transferJob: Job? = null
+    private val uploadJobs = mutableMapOf<String, Job>()
+    private var folderUploadJob: Job? = null
+    private var folderUploadGeneration = 0L
+    private val queuedFolderItemKeys = mutableSetOf<String>()
     private var lastUpload: UploadOperation? = null
     private var lastDownload: DownloadOperation? = null
     private var lastWasUpload = false
@@ -166,6 +202,8 @@ class FileBrowserViewModel(
     private var navigationJob: Job? = null
     private var navigationGeneration = 0L
     private var navigationTargetId: String? = null
+    private var thumbnailPollingJob: Job? = null
+    private var thumbnailPollingGeneration = 0L
 
     init {
         if (initialParentId == null) refresh() else navigateTo(listOf(initialLocation), force = true)
@@ -193,6 +231,130 @@ class FileBrowserViewModel(
         }
 
     fun loadMore() = load(action = { pager.loadNext() })
+
+    fun startThumbnailSummaryPolling() {
+        val repository = media ?: return
+        if (thumbnailPollingJob?.isActive == true) return
+        val generation = ++thumbnailPollingGeneration
+        thumbnailPollingJob =
+            viewModelScope.launch {
+                while (generation == thumbnailPollingGeneration) {
+                    val interval = pollThumbnailSummary(repository, generation)
+                    thumbnailPollDelay(interval)
+                }
+            }
+    }
+
+    fun stopThumbnailSummaryPolling() {
+        thumbnailPollingGeneration++
+        thumbnailPollingJob?.cancel()
+        thumbnailPollingJob = null
+    }
+
+    private suspend fun pollThumbnailSummary(
+        repository: MediaRepository,
+        generation: Long,
+    ): Long =
+        try {
+            val summary = repository.thumbnailJobSummary()
+            if (generation == thumbnailPollingGeneration) applyThumbnailSummary(summary)
+            if (summary.queuedCount > 0 || summary.runningCount > 0 || summary.failedCount > 0) {
+                THUMBNAIL_ACTIVE_POLL_MILLISECONDS
+            } else {
+                THUMBNAIL_IDLE_POLL_MILLISECONDS
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            if (generation == thumbnailPollingGeneration) {
+                mutableState.update {
+                    it.copy(thumbnailSummary = it.thumbnailSummary.copy(loading = false, unavailable = true))
+                }
+            }
+            THUMBNAIL_ERROR_POLL_MILLISECONDS
+        }
+
+    private fun applyThumbnailSummary(summary: ThumbnailJobSummary) {
+        mutableState.update { state ->
+            val current = state.thumbnailSummary
+            if (current.observedAt != null && summary.observedAt.isBefore(current.observedAt)) {
+                state
+            } else {
+                state.copy(
+                    thumbnailSummary =
+                        ThumbnailSummaryUiState(
+                            queuedCount = summary.queuedCount,
+                            runningCount = summary.runningCount,
+                            failedCount = summary.failedCount,
+                            observedAt = summary.observedAt,
+                            loading = false,
+                            unavailable = false,
+                        ),
+                )
+            }
+        }
+    }
+
+    fun acceptFolderUploadSelection(result: FolderUploadSelectionResult) {
+        when (result) {
+            FolderUploadSelectionResult.Cancelled -> Unit
+            is FolderUploadSelectionResult.Ready -> {
+                folderUploadJob?.cancel()
+                folderUploadGeneration++
+                queuedFolderItemKeys.clear()
+                mutableState.update { it.copy(pendingFolderUpload = result.plan, folderUploadError = null) }
+                prepareFolderUpload(result.plan)
+            }
+            is FolderUploadSelectionResult.Rejected -> {
+                folderUploadJob?.cancel()
+                folderUploadGeneration++
+                mutableState.update {
+                    it.copy(
+                        pendingFolderUpload = null,
+                        folderUploadPreparing = false,
+                        folderUploadCanRetry = false,
+                        folderUploadError = result.message,
+                    )
+                }
+            }
+        }
+    }
+
+    fun retryFolderUpload() {
+        if (folderUploadJob?.isActive == true || !mutableState.value.folderUploadCanRetry) return
+        mutableState.value.pendingFolderUpload?.let(::prepareFolderUpload)
+    }
+
+    fun openBreadcrumb(folderId: String?) {
+        val locations = mutableState.value.locations
+        val targetIndex = locations.indexOfFirst { it.id == folderId }
+        if (targetIndex < 0 || targetIndex == locations.lastIndex) return
+        navigateTo(locations.take(targetIndex + 1))
+    }
+
+    fun recordScrollAnchor(
+        displayMode: BrowserDisplayMode,
+        firstVisibleIndex: Int,
+        offset: Int,
+        entryId: String?,
+    ) {
+        val safeIndex = firstVisibleIndex.coerceAtLeast(0)
+        val anchor =
+            BrowserScrollAnchor(
+                entryId = entryId,
+                index = safeIndex,
+                offset = offset.coerceAtLeast(0),
+            )
+        val key =
+            browserScrollContextKey(
+                mutableState.value.locations
+                    .lastOrNull()
+                    ?.id,
+                trashMode,
+                displayMode,
+            )
+        mutableState.update { it.copy(scrollAnchors = scrollAnchorStore.put(key, anchor)) }
+    }
 
     fun open(entry: FileEntry) {
         if (entry.entryType == FileEntryType.FOLDER && entry.status == FileEntryStatus.ACTIVE && !trashMode) {
@@ -576,17 +738,61 @@ class FileBrowserViewModel(
         size: Long,
         contentType: String?,
     ) {
-        if (transferJob?.isActive == true || !currentCapabilities().canCreate) return
+        if (!currentCapabilities().canCreate) return
         val destination = mutableState.value.parentId ?: error("Root folder has not loaded")
         lastUpload = transfers.newUpload(sourceUri, destination, fileName, size, contentType)
         lastWasUpload = true
-        runUpload(checkNotNull(lastUpload))
+        val itemId = UUID.randomUUID().toString()
+        val operation = checkNotNull(lastUpload)
+        mutableState.update { it.copy(uploads = it.uploads.enqueue(itemId, operation), transfer = null) }
+        runUpload(itemId, operation)
+    }
+
+    fun startUploads(selections: List<UploadSelectionResult>) {
+        if (selections.isEmpty() || !currentCapabilities().canCreate) return
+        val destination = mutableState.value.parentId ?: return
+        var queue = mutableState.value.uploads
+        val ready = mutableListOf<Pair<String, UploadOperation>>()
+        selections.forEach { selection ->
+            val itemId = UUID.randomUUID().toString()
+            when (selection) {
+                is UploadSelectionResult.Ready -> {
+                    val operation =
+                        transfers.newUpload(
+                            selection.sourceUri,
+                            destination,
+                            selection.displayName,
+                            selection.size,
+                            selection.contentType,
+                        )
+                    queue = queue.enqueue(itemId, operation)
+                    ready += itemId to operation
+                }
+                is UploadSelectionResult.Rejected -> {
+                    val operation =
+                        UploadOperation(
+                            sourceUri = selection.sourceUri,
+                            destinationFolderId = destination,
+                            fileName = selection.displayName?.takeIf(String::isNotBlank) ?: "Selected file",
+                            size = 0,
+                            contentType = null,
+                            idempotencyKey = UUID.randomUUID().toString(),
+                            state = UploadState.FAILED,
+                        )
+                    queue = queue.enqueue(itemId, operation).reject(itemId, selection.reason.userMessage)
+                }
+            }
+        }
+        mutableState.update { it.copy(uploads = queue, transfer = null) }
+        ready.forEach { (itemId, operation) -> runUpload(itemId, operation) }
     }
 
     fun retryTransfer() {
-        if (transferJob?.isActive == true) return
-        if (lastWasUpload) {
-            lastUpload?.let(::runUpload)
+        val upload =
+            mutableState.value.uploads.retryableItems
+                .firstOrNull()
+        if (upload != null) {
+            retryUpload(upload.id)
         } else {
             lastDownload?.let {
                 runTransfer(transfers.download(it), refreshAfter = false)
@@ -608,6 +814,10 @@ class FileBrowserViewModel(
     fun downloadedFileIntent(destinationUri: String) = transfers.openDownloadedFile(destinationUri, lastDownload?.file?.mimeType)
 
     fun cancelTransfer() {
+        mutableState.value.uploads.items.values.firstOrNull { it.operation.state != UploadState.COMPLETED }?.let {
+            cancelUpload(it.id)
+            return
+        }
         transferJob?.cancel()
         transferJob = null
         val operation = lastUpload
@@ -637,7 +847,184 @@ class FileBrowserViewModel(
         }
     }
 
-    private fun runUpload(operation: UploadOperation) = runTransfer(transfers.upload(operation), refreshAfter = true)
+    fun retryUpload(itemId: String) {
+        if (uploadJobs[itemId]?.isActive == true) return
+        val retried = mutableState.value.uploads.retry(itemId)
+        val operation = retried.items[itemId]?.operation ?: return
+        mutableState.update { it.copy(uploads = retried, transfer = null) }
+        lastUpload = operation
+        lastWasUpload = true
+        runUpload(itemId, operation)
+    }
+
+    fun cancelUpload(itemId: String) {
+        uploadJobs.remove(itemId)?.cancel()
+        val operation =
+            mutableState.value.uploads.items[itemId]
+                ?.operation ?: return
+        mutableState.update {
+            it.copy(
+                uploads =
+                    it.uploads.applyEvent(
+                        itemId,
+                        TransferEvent.UploadStatus(operation, "Cancelling upload"),
+                    ),
+                transfer = null,
+            )
+        }
+        viewModelScope.launch {
+            runCatching { transfers.cancelUpload(operation) }
+                .onSuccess {
+                    mutableState.update { state ->
+                        state.copy(
+                            uploads =
+                                state.uploads.applyEvent(
+                                    itemId,
+                                    TransferEvent.UploadStatus(
+                                        operation.copy(state = UploadState.CANCELLED),
+                                        "Upload cancelled",
+                                    ),
+                                ),
+                        )
+                    }
+                }.onFailure { failure ->
+                    mutableState.update { state ->
+                        state.copy(uploads = state.uploads.applyEvent(itemId, TransferEvent.Failed(failure)))
+                    }
+                }
+        }
+    }
+
+    fun dismissUpload(itemId: String) {
+        if (uploadJobs[itemId]?.isActive == true) return
+        mutableState.update { it.copy(uploads = it.uploads.dismiss(itemId)) }
+    }
+
+    fun consumeUploadCompletionNotice() {
+        mutableState.update { it.copy(uploads = it.uploads.consumeCompletionNotice()) }
+    }
+
+    @Suppress("LongMethod", "TooGenericExceptionCaught")
+    private fun prepareFolderUpload(plan: FolderUploadPlan) {
+        val destination = mutableState.value.parentId
+        if (destination == null || !currentCapabilities().canCreate) {
+            mutableState.update {
+                it.copy(
+                    folderUploadPreparing = false,
+                    folderUploadCanRetry = false,
+                    folderUploadError = "The destination folder is unavailable.",
+                )
+            }
+            return
+        }
+        val generation = ++folderUploadGeneration
+        folderUploadJob?.cancel()
+        mutableState.update {
+            it.copy(folderUploadPreparing = true, folderUploadCanRetry = false, folderUploadError = null)
+        }
+        folderUploadJob =
+            viewModelScope.launch {
+                val prepared =
+                    try {
+                        FolderUploadServerPlanner(files).prepare(destination, plan)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        if (generation == folderUploadGeneration) {
+                            mutableState.update {
+                                it.copy(
+                                    folderUploadPreparing = false,
+                                    folderUploadCanRetry = true,
+                                    folderUploadError = failure.toBrowserError().message,
+                                )
+                            }
+                        }
+                        return@launch
+                    }
+                if (generation != folderUploadGeneration) return@launch
+                var queue = mutableState.value.uploads
+                val uploads = mutableListOf<Pair<String, UploadOperation>>()
+                prepared.readyFiles.forEach { ready ->
+                    val key = "file:${ready.entry.documentId}"
+                    if (queuedFolderItemKeys.add(key)) {
+                        val itemId = UUID.randomUUID().toString()
+                        val operation =
+                            transfers.newUpload(
+                                ready.entry.sourceUri,
+                                ready.parentFolderId,
+                                ready.entry.relativeSegments.last(),
+                                ready.entry.size,
+                                ready.entry.contentType,
+                            )
+                        queue = queue.enqueue(itemId, operation)
+                        uploads += itemId to operation
+                    }
+                }
+                plan.rejections.forEach { rejection ->
+                    val key = "rejected:${rejection.documentId}:${rejection.relativeSegments.joinToString("/")}"
+                    if (queuedFolderItemKeys.add(key)) {
+                        val itemId = UUID.randomUUID().toString()
+                        val operation =
+                            UploadOperation(
+                                sourceUri = "saf-document:${rejection.documentId}",
+                                destinationFolderId = destination,
+                                fileName = rejection.relativeSegments.lastOrNull() ?: "Selected item",
+                                size = 0,
+                                contentType = null,
+                                idempotencyKey = UUID.randomUUID().toString(),
+                                state = UploadState.FAILED,
+                            )
+                        queue = queue.enqueue(itemId, operation).reject(itemId, rejection.reason.userMessage())
+                    }
+                }
+                val structureFailureCount = prepared.failures.size
+                mutableState.update {
+                    it.copy(
+                        uploads = queue,
+                        transfer = null,
+                        pendingFolderUpload = plan.takeIf { structureFailureCount > 0 },
+                        folderUploadPreparing = false,
+                        folderUploadCanRetry = structureFailureCount > 0,
+                        folderUploadError =
+                            if (structureFailureCount > 0) {
+                                "$structureFailureCount folder upload item(s) could not be prepared."
+                            } else {
+                                null
+                            },
+                    )
+                }
+                uploads.forEach { (itemId, operation) -> runUpload(itemId, operation) }
+                refresh()
+            }
+    }
+
+    private fun runUpload(
+        itemId: String,
+        operation: UploadOperation,
+    ) {
+        uploadJobs[itemId]?.cancel()
+        lateinit var job: Job
+        job =
+            viewModelScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    transfers.upload(operation).collect { event ->
+                        if (event is TransferEvent.UploadStatus) lastUpload = event.operation
+                        mutableState.update { state ->
+                            state.copy(
+                                uploads = state.uploads.applyEvent(itemId, event),
+                                transfer = null,
+                            )
+                        }
+                        if (event is TransferEvent.UploadCompleted) refresh()
+                        if (event is TransferEvent.Failed) authoritativeRefresh()
+                    }
+                } finally {
+                    uploadJobs.remove(itemId, job)
+                }
+            }
+        uploadJobs[itemId] = job
+        job.start()
+    }
 
     private fun runTransfer(
         flow: kotlinx.coroutines.flow.Flow<TransferEvent>,
@@ -1014,5 +1401,18 @@ class FileBrowserViewModel(
 
     private companion object {
         const val MAX_FILE_NAME_LENGTH = 255
+        const val THUMBNAIL_ACTIVE_POLL_MILLISECONDS = 5_000L
+        const val THUMBNAIL_ERROR_POLL_MILLISECONDS = 15_000L
+        const val THUMBNAIL_IDLE_POLL_MILLISECONDS = 30_000L
     }
 }
+
+private fun com.kurastorage.core.data.FolderUploadFailure.userMessage(): String =
+    when (this) {
+        com.kurastorage.core.data.FolderUploadFailure.INVALID_DOCUMENT_ID -> "The provider returned an invalid document ID."
+        com.kurastorage.core.data.FolderUploadFailure.INVALID_NAME -> "The item name is not safe to upload."
+        com.kurastorage.core.data.FolderUploadFailure.INVALID_SIZE -> "The provider returned an invalid file size."
+        com.kurastorage.core.data.FolderUploadFailure.UNREADABLE -> "The selected item cannot be read."
+        com.kurastorage.core.data.FolderUploadFailure.OUTSIDE_TREE -> "The provider returned an item outside the selected folder."
+        com.kurastorage.core.data.FolderUploadFailure.DUPLICATE_DOCUMENT -> "The provider returned the same item more than once."
+    }

@@ -265,7 +265,7 @@ private val PdfFailure.title: String
             PdfFailure.INCOMPLETE -> "Download incomplete"
             PdfFailure.CORRUPT -> "PDF is damaged"
             PdfFailure.PASSWORD_PROTECTED -> "Password-protected PDF"
-            PdfFailure.RENDER -> "Page could not be rendered"
+            PdfFailure.RENDER_UNSUPPORTED -> "Page could not be rendered"
             PdfFailure.NETWORK -> "Connection lost"
             PdfFailure.UNKNOWN -> "PDF unavailable"
         }
@@ -285,7 +285,7 @@ private fun PdfFailure.userMessage(): String =
         PdfFailure.INCOMPLETE -> "The transfer ended early or did not satisfy the media contract."
         PdfFailure.CORRUPT -> "The downloaded file is not a valid PDF."
         PdfFailure.PASSWORD_PROTECTED -> "Encrypted PDFs requiring a password are not supported by this viewer."
-        PdfFailure.RENDER -> "The current page could not be rendered. Retry opening the document."
+        PdfFailure.RENDER_UNSUPPORTED -> "The current page uses PDF features this device cannot render. Try saving a copy."
         PdfFailure.NETWORK -> "Reconnect and retry opening this PDF."
         PdfFailure.UNKNOWN -> "This PDF could not be opened safely."
     }

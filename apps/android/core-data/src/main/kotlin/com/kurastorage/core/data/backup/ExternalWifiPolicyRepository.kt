@@ -21,7 +21,7 @@ data class ConnectedWifi(
 )
 
 sealed interface CurrentWifiResult {
-    data class Connected(
+    data class Available(
         val wifi: ConnectedWifi,
     ) : CurrentWifiResult
 
@@ -33,9 +33,9 @@ sealed interface CurrentWifiResult {
 
     data object LocationServicesDisabled : CurrentWifiResult
 
-    data object NotConnectedToWifi : CurrentWifiResult
+    data object NotConnected : CurrentWifiResult
 
-    data object InformationUnavailable : CurrentWifiResult
+    data object Unavailable : CurrentWifiResult
 }
 
 fun interface CurrentWifiSource {
@@ -73,6 +73,7 @@ interface ExternalWifiPolicyRepository {
 
     suspend fun registerCurrent(
         accountScopeId: AccountScopeId,
+        wifi: ConnectedWifi,
         displayName: String,
         restrictToBssid: Boolean,
         treatAsMetered: Boolean,
@@ -106,14 +107,11 @@ class RoomExternalWifiPolicyRepository(
 
     override suspend fun registerCurrent(
         accountScopeId: AccountScopeId,
+        wifi: ConnectedWifi,
         displayName: String,
         restrictToBssid: Boolean,
         treatAsMetered: Boolean,
     ): ExternalWifiPolicy {
-        val wifi =
-            checkNotNull((wifiSource.read() as? CurrentWifiResult.Connected)?.wifi) {
-                "Current Wi-Fi information is unavailable"
-            }
         val now = Instant.now(clock)
         val normalizedSsid = WifiIdentifierNormalizer.normalizeSsid(wifi.ssid)
         val normalizedBssid =

@@ -1434,6 +1434,21 @@ app.MapMethods(
     });
 
 app.MapGet(
+    "/api/v1/media/thumbnail-jobs/summary",
+    async (
+        HttpContext context,
+        ThumbnailJobSummaryService summaries,
+        CancellationToken cancellationToken) =>
+    {
+        if (!TryAuthenticatedUserId(context, out var userId))
+        {
+            return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
+        }
+
+        return Results.Ok(await summaries.GetAsync(userId, cancellationToken));
+    });
+
+app.MapGet(
     "/api/v1/media-jobs/{jobId:guid}",
     async (Guid jobId, HttpContext context, PreviewService previews, CancellationToken cancellationToken) =>
     {

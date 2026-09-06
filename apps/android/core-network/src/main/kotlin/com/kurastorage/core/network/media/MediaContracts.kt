@@ -34,3 +34,11 @@ data class MediaJobDto(
     val retryAfterSeconds: Int,
     val contentUrl: String?,
 )
+
+@Serializable
+data class ThumbnailJobSummaryDto(
+    val queuedCount: Long,
+    val runningCount: Long,
+    val failedCount: Long,
+    val observedAt: String,
+)

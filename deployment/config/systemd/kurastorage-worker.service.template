@@ -38,6 +38,7 @@ ReadWritePaths=${KURASTORAGE_STORAGE_ROOT}
 LimitNOFILE=65536
 MemoryMax=3G
 CPUWeight=50
+CPUQuota=125%
 IOWeight=50
 TasksMax=128
 

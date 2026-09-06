@@ -1,5 +1,7 @@
 package com.kurastorage.core.model.media
 
+import java.time.Instant
+
 enum class MediaQuality {
     LOW,
     MEDIUM,
@@ -161,12 +163,7 @@ object MediaVariantResolver {
                     MediaQuality.MEDIUM -> MediaVariant.IMAGE_MEDIUM
                     MediaQuality.ORIGINAL -> MediaVariant.ORIGINAL
                 }
-            MediaKind.VIDEO ->
-                when (quality) {
-                    MediaQuality.LOW -> MediaVariant.VIDEO_LOW
-                    MediaQuality.MEDIUM -> MediaVariant.VIDEO_MEDIUM
-                    MediaQuality.ORIGINAL -> MediaVariant.ORIGINAL
-                }
+            MediaKind.VIDEO -> MediaVariant.ORIGINAL
             MediaKind.AUDIO,
             MediaKind.PDF,
             -> {
@@ -192,6 +189,19 @@ data class MediaJobSnapshot(
         require(progressPercent == null || progressPercent in MIN_PROGRESS_PERCENT..MAX_PROGRESS_PERCENT)
         require(queuePosition == null || queuePosition > 0)
         require(retryAfterSeconds in 0..MAX_RETRY_AFTER_SECONDS)
+    }
+}
+
+data class ThumbnailJobSummary(
+    val queuedCount: Long,
+    val runningCount: Long,
+    val failedCount: Long,
+    val observedAt: Instant,
+) {
+    init {
+        require(queuedCount >= 0)
+        require(runningCount >= 0)
+        require(failedCount >= 0)
     }
 }
 

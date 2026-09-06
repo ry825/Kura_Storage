@@ -173,7 +173,7 @@ flowchart LR
         direction TB
         Identity["認証・Device・Session"]
         Files["ファイル・共有・転送"]
-        Media["プレビュー・動画変換"]
+        Media["プレビュー・写真派生生成"]
         Backup["バックアップ・索引・清掃"]
         Audit["監査ログ"]
     end
@@ -237,7 +237,7 @@ KuraStorageのDevice失効時はRefresh Sessionを失効する。ネットワー
 | DBアクセス              | Entity Framework Core + Npgsql                | PostgreSQLとの型安全な永続化                                                           |
 | データベース            | PostgreSQL                                    | 複数端末の同時処理、検索、共有権限、ジョブ状態を扱える                                 |
 | 画像変換（MVP後）       | libvips系ライブラリまたは同等実装             | Preview追加時に選定する                                                                 |
-| 動画変換（MVP後）       | FFmpeg                                        | Media変換追加時に導入する                                                               |
+| 動画再生（MVP後）       | Media3 ExoPlayer                              | OriginalのRange再生に使用し、サーバー側動画変換は行わない                               |
 | 変更検知（MVP後）       | Linux inotify + 定期再スキャン                | 外部変更監視追加時に導入する                                                            |
 | リバースプロキシ        | Nginx                                         | HTTPS終端、リクエスト制限、静的Web配信に対応                                           |
 | Web（Phase 2）          | React + TypeScript                            | 共通APIを利用するブラウザUIを構築する                                                  |
@@ -979,7 +979,7 @@ flowchart LR
 
 ```
 
-- 写真や動画のサムネイル、低画質、中画質データを`FileDerivative`として管理する。
+- 写真・動画・PDFのサムネイルと、写真の低画質・中画質データを`FileDerivative`として管理する。既存の動画低・中画質データは互換的に保持できるが、新規生成・配信には使用しない。
 
 - 同じ元ファイルでも、品質や変換設定ごとに異なるFileDerivativeを作成できる。
 
@@ -1221,10 +1221,10 @@ SSIDやBSSIDは`LOCAL_DIRECT`の判定条件に使用しない。同一IPサブ�
 **責務**
 
 - ネットワーク種別ごとの初期画質を決定する。
-- 接続環境に関係なく、写真・動画の低・中・元画質を選択可能にする。
-- 写真・動画の品質変更を実行する。
+- 接続環境に関係なく、写真の低・中・元画質を選択可能にする。
+- 写真の品質変更と、動画のOriginal固定Range再生を実行する。
 - Media3へ再生URL、認証ヘッダー、シーク、速度設定を渡す。
-- 元画質取得前にサイズ確認を行う。
+- 動画はCellularで1 MiB以上またはSize不明の場合に限り、Content取得前にサイズ確認を行う。
 
 ### 6.1.6 MVP後: BackupCoordinator
 
@@ -1910,12 +1910,12 @@ Access Tokenは15分、Refresh Tokenは発行または前回ローテーショ�
 
 #### `GET /api/v1/files/{fileId}/content`
 
-`variant`省略または`original`は従来の元ファイル配信を保つ。`thumbnail`、`image-low`、`image-medium`は永続Media Jobで生成した完成済みWebP、`video-low`と`video-medium`は完成・ffprobe検証済みMP4だけをLease付きで配信する。`Range`がない場合は`200`、単一Rangeには`206`と`Content-Range`、不正または範囲外には`416 RANGE_NOT_SATISFIABLE`を返す。生成中の動画要求は待機せず`202 Accepted`と状態URLを返す。
+`variant`省略または`original`は元ファイル配信を保つ。`thumbnail`、`image-low`、`image-medium`は永続Media Jobで生成した完成済みWebPだけをLease付きで配信する。動画は`original`だけを許可し、`video-low`と`video-medium`は`400 MEDIA_VARIANT_UNSUPPORTED`で拒否して新規Jobを作成しない。`Range`がない場合は`200`、単一Rangeには`206`と`Content-Range`、不正または範囲外には`416 RANGE_NOT_SATISFIABLE`を返す。
 
 - `original`: 元ファイルを送信する。
 - `thumbnail`: 写真・動画・PDFの完成済み一覧用WebPだけを送信する。
 - `image-low` / `image-medium`: 画像派生データだけを送信する。
-- `video-low` / `video-medium`: 完成・検証済みの動画派生データだけを送信する。
+- `video-low` / `video-medium`: 非対応。既存派生データの有無にかかわらず新規要求を拒否する。既存データは一括削除せずTTL／LRU清掃に委ねる。
 - `disposition=inline`: 閲覧・再生用として返す。
 - `disposition=attachment`: ダウンロード用として返し、`Content-Disposition`を設定する。
 - 生成中の場合は`202 Accepted`を返す。
@@ -1958,15 +1958,21 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 - `FAILED`かつRetry可能な派生生成だけを、監査可能な新しい`QUEUED` Jobとして明示的に再登録する。
 - 再試行時にも元ファイルの閲覧権限と現在Versionを再確認する。
 
+#### `GET /api/v1/media/thumbnail-jobs/summary`
+
+- 認証済み利用者が現在閲覧できる`ACTIVE`なFileの`THUMBNAIL`と`PDF_THUMBNAIL`だけを集計する。
+- 派生物ごとに有効中または最新のJobを1件選び、retry履歴を二重計上しない。
+- `queuedCount`、`runningCount`、`failedCount`、Serverでの観測時刻`observedAt`を返す。
+- Androidは失敗数を表示したまま利用者が当該バナーをDismissできる。待機中・生成中の件数がある場合は情報表示を継続し、`failedCount=0`を受けた後の新規失敗は再度案内する。
+- File ID、File名、Job ID、他Userの情報は返さない。認証・Session失効は共通`401`、予期しないServer障害は共通`500 INTERNAL_ERROR`のError envelopeを使用する。
+
 #### `HEAD /api/v1/files/{fileId}/content?variant={variant}`
 
-`original`、`image-low`、`image-medium`、`video-low`、`video-medium`について、そのvariant自身のファイルサイズ、MIMEタイプ、Range対応を本文なしで確認する。完成済みの場合は`200`と`Content-Length`、`Content-Type`、`Accept-Ranges: bytes`を返す。派生データが未生成または生成中の場合は`202`と`X-Kura-Media-Job-Id`、`Location`、`Retry-After`を返し、元FileのSizeで代用しない。認証・認可・存在秘匿と生成失敗はGETと同じ型付きError契約を使用する。
+`original`、`image-low`、`image-medium`について、そのvariant自身のファイルサイズ、MIMEタイプ、Range対応を本文なしで確認する。完成済みの場合は`200`と`Content-Length`、`Content-Type`、`Accept-Ranges: bytes`を返す。派生データが未生成または生成中の場合は`202`と`X-Kura-Media-Job-Id`、`Location`、`Retry-After`を返し、元FileのSizeで代用しない。認証・認可・存在秘匿と生成失敗はGETと同じ型付きError契約を使用する。
 
 ### 8.6 MVP後: 動画・音声再生
 
-動画の低画質または中画質は、`GET /api/v1/files/{fileId}/content?variant=video-low|video-medium&disposition=inline`を使用する。完成・ffprobe検証済みMP4は`200`または単一Rangeの`206`で返し、未生成または生成中は`202 Accepted`、Job ID、状態URL、進捗、Queue位置、再試行待機秒を返す。HLS、`.m3u8`、Playback Session、生成途中のFileは使用しない。
-
-動画の元画質は、利用者が`HEAD /api/v1/files/{fileId}/content?variant=original`でサイズまたは推定通信量を確認して明示的に選択した場合だけ、`variant=original`をRange再生する。低・中品質から元画質へ自動Fallbackしない。
+動画はOriginalのみとし、`HEAD /api/v1/files/{fileId}/content?variant=original`でサイズとRange対応を確定してから`variant=original`をRange再生する。Wi-Fi、Ethernet、Other／Unknownでは明示確認なしでContent GETを開始する。Cellularで1 MiB以上またはSize不明の場合は明示確認を必須とし、Cancel時はContent GETを開始しない。
 
 音声は低・中品質派生と変換Jobを作らず、同じHEAD確認後に`variant=original`だけをRange再生する。
 
@@ -2693,7 +2699,7 @@ flowchart LR
 
 ## 11.3 ファイル一覧
 
-FilesとSharedは共通のTop app barを使い、Backを左端、Search・List/Grid切替・Refreshを右端の48dp以上のIcon操作とする。Refresh中は同操作を無効化し、長い現在位置は1行のbreadcrumbとして省略可能に表示する。
+FilesとSharedは共通のTop app barを使い、Backを左端、Search・List/Grid切替・Refreshを右端の48dp以上のIcon操作とする。Refresh中は同操作を無効化する。Rootでは単一Top app bar高を維持し、子Folderでは下段の折り返し可能なbreadcrumbにRootから現在地までの全階層を省略せず表示する。
 
 Trash以外はadaptive gridを初期表示とし、List/Gridの選択は画面再生成後も保持する。写真・動画・PDFは既存派生サムネイルを使用し、生成失敗、Folder、非対応Fileは種類Iconへfallbackする。UploadはFloating action、New folderはcompact actionとし、いずれも書込権限がある場合だけ表示する。
 
@@ -2710,6 +2716,10 @@ Trash以外はadaptive gridを初期表示とし、List/Gridの選択は画面�
 一覧用サムネイル取得時に元画像を取得しない。項目名に`Folder:`または`File:`接頭辞を付けず、項目本体のタップはOpen、縦overflowは詳細・補助操作とする。個人FilesのOwnerと通常Permissionは省略し、Sharedでは共有元、`Read only`、`Can add files`、`Can edit`、`Can manage`等の利用者向け権限、書込可否を表示する。
 
 Folder位置は`FolderLocation`のstack/snapshotを唯一の正とし、現在Folder、breadcrumb、Back可否を同じsnapshotから導出する。Folder open、Top app bar Back、system Back、breadcrumb選択は共通`navigateTo(targetId)`へ集約し、単調増加するnavigation generationとtarget IDが一致する最新応答だけを反映する。同一targetへの読込中の再要求は無視し、異なるtargetの連続要求では古い成功・失敗・refreshを破棄する。子Folder取得に失敗した場合は直前の成功snapshotへ戻し、Back時は1階層だけpopして同じ規則で再読込する。
+
+HeaderはRootの単一Top app barと、子Folderで必要な場合だけ複数行に折り返すbreadcrumbへ集約する。Upload、検索、並べ替え、List/Grid切替の48dp操作を維持しつつ、深い階層でも全祖先Linkと現在地を切り捨てない。一覧離脱時はFolder ID、Sort、Filterをcontext keyとして、先頭可視File ID、index、pixel offsetだけを保存する。復帰時は安定File IDを優先し、削除・非表示なら保存indexを現在範囲へclampする。Refreshや再Compositionだけではanchorを消さない。
+
+手動Uploadは単一Fileに加えて複数FileとSAF Folder treeを受け付ける。複数FileはURIを重複排除して項目別にmetadataと結果を保持する。Folder treeはDocument IDと親子関係を検証し、空Folderを含めて親優先でServer Folder IDへ解決した後、各Fileを既存の再開可能Transferへ投入する。Root外参照、循環相当、空名、`.`、`..`、区切り文字を拒否し、独立項目の失敗で他項目を取り消さない。
 
 ## 11.4 ファイル詳細画面
 
@@ -2749,9 +2759,11 @@ Folder位置は`FolderLocation`のstack/snapshotを唯一の正とし、現在Fo
 - お気に入り追加・解除、Tag付与・解除
 - 詳細情報
 
-初期画質は通信環境別設定から決定し、写真では確認Dialogを挟まず対応variantの取得を開始する。ローカル直接接続を含むすべての手動閲覧可能な接続で、低・中・元画質へ切り替えられ、元画質のサイズまたは推定転送量をViewer内に表示する。動画・音声・PDFの元画質取得前確認は維持する。
+初期画質は通信環境別設定から決定し、写真では確認Dialogを挟まず対応variantの取得を開始する。ローカル直接接続を含むすべての手動閲覧可能な接続で、低・中・元画質へ切り替えられ、元画質のサイズまたは推定転送量をViewer内に表示する。動画はOriginal固定とし、Cellularで1 MiB以上またはSize不明の場合だけContent取得前に確認する。音声とPDF本文の取得前確認は維持する。
 
 写真CanvasはSystem barとTop app barを除く利用可能領域へ追従し、Portraitでは写真下、Landscapeでは写真横へcompact操作面を配置する。Previous／NextはCanvasへ重ねず、等倍時は水平方向Swipeでも1 gestureにつき1項目だけ移動する。Zoom中のPanは前後移動に使用しない。希望画質と現在表示中variantを分離し、request generationに一致する最新結果だけを表示する。
+
+通常表示と全画面表示は同じ写真surfaceを使用し、intrinsic sizeとviewportから縦横同一の`Fit`倍率を算出する。小さい画像は既定状態で元pixel相当を超えて拡大せず、明示pinch zoomだけ追加拡大を許可する。pan境界は描画後Sizeからclampし、File ID、version、表示variantが変わる場合だけzoom／panをresetする。
 
 `app`は表示中File IDごとの`EntryOrganizationViewModel`を保持し、表示用Favorite／Tag状態とCallbackを`feature-media`へ渡す。FavoriteとTagはServer成功応答後だけ更新し、pending中の重複操作を抑止する。Tagは縦scroll可能なBottom sheetで追加・解除、Error、Refresh、Tag管理導線を提供する。
 
@@ -2764,7 +2776,7 @@ Folder位置は`FolderLocation`のstack/snapshotを唯一の正とし、現在Fo
 - アプリ内表示の上限は1ファイル256MiBとし、超過時はStorage Access Frameworkを使用するダウンロード操作へ案内する。
 - PDF本体は64KiB単位でアプリ専用一時領域へストリーミング保存し、ファイル全体をメモリへ読み込まない。保存完了までは一時名を使用し、Content-LengthとPDFシグネチャを検証してから確定名へ変更する。
 - `Open PDF`は閲覧専用取得stateとして扱い、確認後にprivate cacheへ取得して直接開く。SAF保存は独立した`Save a copy` action/stateとし、Viewerを開くための前提にしない。
-- Viewer取得失敗はauthentication、permission、not found、too large、storage不足、incomplete、corrupt、password protected、render、networkへ分類し、再試行可能な場合は`Retry open`を第一actionとして表示する。
+- Viewer取得失敗はauthentication、permission、not found、too large、storage不足、incomplete、corrupt、password protected、render unsupported、networkへ分類し、再試行可能な場合は`Retry open`を第一actionとして表示する。空FileとContent-Length不一致はincomplete、PDF signature不正はcorruptとして区別する。
 - PDF一時ファイルのセッション合計上限は512MiBとし、保存前に`Content-Length + 64MiB`以上の空き容量を確認する。
 - OSの`PdfRenderer`で1ページずつ描画し、現在ページ、総ページ数、ページ移動、1〜4倍の拡大・縮小を提供する。描画Bitmapは長辺4096px、推定32MiBを上限とする。
 - 一時ファイルのTTLは1時間とし、画面離脱、セッション終了、ログアウト、次回起動時に清掃する。表示中のファイル記述子は清掃対象外とする。
@@ -2779,15 +2791,13 @@ Folder位置は`FolderLocation`のstack/snapshotを唯一の正とし、現在Fo
 - 動画・音声は3秒戻る・進む
 - 動画・音声は10秒戻る・進む
 - 0.5〜3.0倍速
-- 動画の画質選択（接続環境に関係なく低 / 中 / 元を選択可能）
+- 動画はOriginal固定。低・中画質の選択と変換Jobは表示しない
 - 音声は元ファイルだけをRange再生
 - 現在時間・総時間
-- 変換キュー待ち・変換中・進捗・失敗表示
-- 変換中の操作: 完了まで待つ / バックグラウンドで続ける / 元画質で再生
-- 元画質を選択する前のファイルサイズ・推定通信量表示
+- Cellularで1 MiB以上またはSize不明の場合の通信量確認
 - 通信切断時の再接続表示
 
-動画の低・中画質が未生成の場合、アプリは元画質へ自動切替しない。ユーザーが「バックグラウンドで続ける」を選択した場合は画面を離れても動画変換Jobを継続し、後から同じファイルを開いた際に状態を再取得する。動画の画質変更時は現在再生位置を保持し、準備完了後に同じ位置付近から再開する。音声再生では品質選択と変換Jobを表示せず、元ファイルのサイズまたは推定通信量を確認してから再生する。
+動画はWi-Fi、Ethernet、Other/UnknownではOriginalを直接準備する。CellularではOriginalが1 MiB以上またはSize不明の場合だけ確認し、Cancel時はPlayerへSourceを渡さない。通常／全画面は同じPlayer・MediaItem・操作overlayを共有し、元の縦横比を`Fit`で維持する。同じFile ID、version、routeの再Compositionでは再prepareしない。音声は品質選択と変換Jobを表示せず、元ファイルのサイズまたは推定通信量を確認してから再生する。
 
 実装受け入れは`minSdk 29`のBuild／LintとAndroid 13物理端末を用い、LOCAL_DIRECTとREMOTE_SECUREの両Route、全Android Instrumented Test、通信切断・再接続、非対応Codecのfail-closed、およびリソース上限を検証する。Android 10実行有無を含む実行端末範囲、再現手順、実測値は対象PRの`docs/testing/`記録を正とする。
 
@@ -2810,6 +2820,7 @@ Folder位置は`FolderLocation`のstack/snapshotを唯一の正とし、現在Fo
 - 概要画面は最終成功日時、保留・Upload中・成功・失敗件数、Rule別件数、待機理由を文字とsemanticsで表示する。今すぐ実行、一時停止／再開、失敗retryは一意WorkとRoom transactionへ収束させる。
 - File別履歴は状態、匿名化した表示名、最終試行日時、retry回数、失敗理由と次操作を表示し、Source本文・物理Path・端末文書Keyは保存・表示・Log出力しない。完了・失敗履歴は90日または最新10,000件へ収める。
 - 端末削除をServerへ反映しない一方向Backupであり双方向同期ではないこと、強制停止後はアプリを再度開くまで予約実行できないことを常時説明する。
+- 1回のWorkManager実行内で独立Queue項目を端末共通転送dispatcherへ投入する。既定合計上限は2、設定可能範囲は1〜8で、手動Uploadと自動Backupの合計を制限する。待機中は手動Uploadを優先し、実行中Backupはpreemptしない。Queue claim、Upload Session、Idempotency Key、expected version、checkpoint、receiptはFile単位で分離し、1件のretryable failureで他項目をcancelしない。
 
 ## 11.9 MVP後: 許可Wi-Fi設定
 
@@ -2822,7 +2833,9 @@ Folder位置は`FolderLocation`のstack/snapshotを唯一の正とし、現在Fo
 - 従量制扱い
 - 有効状態
 
-登録画面では現在接続中Wi-Fiを読み取り、別の確認Dialogでユーザーが登録を明示確定する。Wi-Fi情報取得権限の目的、拒否時のfail-closed、端末設定への導線を説明する。SSID／BSSIDはPolicy照合にだけ使用し、ZeroTier、TLS／Hostname、Server identity、User／Device／Session認証の代替にしない。
+登録画面ではAndroid version別にWi-Fi transport、`NEARBY_WIFI_DEVICES`、必要なlocation permission、位置情報Serviceを確認し、`Available`、`PermissionRequired`、`LocationServicesDisabled`、`NotConnected`、`Unavailable`を区別する。`UNKNOWN_SSID`、空SSID、masked／invalid BSSIDを候補から除外する。検出したSSIDと任意BSSIDをFormへ固定し、別の確認Dialogでユーザーが登録を明示確定する。権限request後とSettings復帰後は再取得する。Wi-Fi情報取得権限の目的、拒否時のfail-closed、端末設定への導線を説明する。SSID／BSSIDはPolicy照合にだけ使用し、ZeroTier、TLS／Hostname、Server identity、User／Device／Session認証の代替にしない。
+
+Settings Hubと全下位画面は`MaterialTheme.colorScheme.background`／`onBackground`のSurfaceを画面境界に持ち、Text、Input、Dialog、selected、disabled、focused、errorはMaterial theme tokenから色を取得する。Light/Dark、360dp、Landscape、fontScale 2.0でも主要操作はscrollで到達可能にする。
 
 ## 11.10 MVP後: 画質・通信量設定
 
@@ -2833,7 +2846,7 @@ Folder位置は`FolderLocation`のstack/snapshotを唯一の正とし、現在Fo
 | 未登録Wi-Fi＋ZeroTier       | 低画質 |
 | モバイル通信＋ZeroTier      | 低画質 |
 
-利用者は環境別の初期値を変更できる。これらはビューアー起動時の既定値であり、写真Viewerは現在接続に対応する値を確認Dialogなしで自動適用する。手動閲覧中は接続環境に関係なく低画質、中画質、元画質へ変更できる。ただしモバイル通信での自動バックアップは変更不可で禁止とする。
+利用者は環境別の写真初期値を変更できる。写真Viewerは現在接続に対応する値を確認Dialogなしで自動適用し、手動閲覧中は接続環境に関係なく低画質、中画質、元画質へ変更できる。動画はこの設定を使用せずOriginal固定とする。モバイル通信での自動バックアップは変更不可で禁止とする。
 
 ## 11.11 MVP後: キャッシュ状態画面
 
@@ -2928,7 +2941,7 @@ TLS検証失敗と`REMOTE_SECURE`未到達は通信層の状態として扱う�
 4. Server全体の同時Upload数を初期値2へ制限する。
 5. 任意SHA-256は受信Streamと同時に計算し、検証のために全体を再読込しない。
 
-検索、Thumbnail、低・中画質、動画変換、Cache、WorkManagerの最適化は、それぞれのMVP後機能を追加する際に定義する。
+検索、Thumbnail、写真の低・中画質、動画Original Range再生、Cache、WorkManagerの最適化は、それぞれのMVP後機能を追加する際に定義する。
 
 ---
 
@@ -3105,10 +3118,9 @@ TLS検証失敗と`REMOTE_SECURE`未到達は通信層の状態として扱う�
 - 写真低画質キャッシュの生成・再利用・期限切れ
 - キャッシュ生成後に元ファイルを名前変更または移動し、再生成せず同じキャッシュを利用できること
 - 名前変更後に派生データをダウンロードし、変更後の名称と品質識別子を持つファイル名が返ること
-- 動画変換ジョブの重複防止
-- 動画変換ジョブのキュー待ち、進捗、完了、失敗遷移
-- クライアントが画面を離れてもジョブが継続すること
-- 生成途中の動画派生データが配信されないこと
+- 動画低・中画質要求が`MEDIA_VARIANT_UNSUPPORTED`になること
+- 動画Originalが単一Range Sourceで再生されること
+- Cellularで1 MiB以上またはSize不明の動画を取消した場合にContent GETが開始されないこと
 - Range Request
 - ファイル直接共有のアクセス制御
 - フォルダ共有配下のアクセス制御
@@ -3133,10 +3145,10 @@ TLS検証失敗と`REMOTE_SECURE`未到達は通信層の状態として扱う�
 - ZeroTier切断時の転送一時停止
 - WorkManagerの再実行
 - Roomの保留キュー復元
-- 画質変更時の再生位置維持
-- 動画変換中の待機、バックグラウンド生成、元画質再生の選択
-- 低・中画質未準備時に元画質へ自動フォールバックしないこと
-- 低画質表示時に元画質APIを呼ばないこと
+- 写真の画質変更中に旧Sourceを維持すること
+- 動画がOriginal固定で、同一File/versionの再Composition時に再prepareしないこと
+- 写真の低・中画質未準備時に元画質へ自動フォールバックしないこと
+- 写真の低画質表示時に元画質APIを呼ばないこと
 - 未登録端末がLOCAL_DIRECTから初回登録できること
 - 未登録端末がZeroTier経由で登録できないこと
 - Device失効エラー時にローカルTokenを無効化すること
@@ -3277,7 +3289,7 @@ Androidの自動バックアップに必要なサーバー側処理を実装す�
 
 **完了条件:** 同一端末から同じファイルを再送しても不要な重複が発生せず、内容変更時だけ更新できる。
 
-#### Server Step 7（MVP後）: サムネイル・低中画質・動画変換
+#### Server Step 7（MVP後）: サムネイル・写真低中画質・動画Original Range再生
 
 基本的なファイル閲覧が動作した後に、通信量と表示速度を改善する。
 
@@ -3286,10 +3298,8 @@ Androidの自動バックアップに必要なサーバー側処理を実装す�
 - 写真・動画・PDFサムネイルの必要時生成後の完全削除まで保持（長辺512px、WebP品質75）
 - 写真低画質・中画質生成
 - 写真生成の待機閾値と`202 Accepted`
-- 動画変換キュー
-- Raspberry Pi 4での動画変換並列数1
-- 720p低画質、1080p中画質、完成済みMP4生成
-- 変換進捗・状態API
+- 動画低・中画質要求の`MEDIA_VARIANT_UNSUPPORTED`拒否
+- 動画OriginalのHTTP Range配信
 - 完成・検証・atomic rename後だけ`READY`として公開
 - 24時間TTL
 - 低・中画質キャッシュが10GBを超えた場合の6GB以下までのLRU清掃
@@ -3439,13 +3449,11 @@ Androidの自動バックアップに必要なサーバー側処理を実装す�
 
 - 一覧用サムネイル表示
 - ネットワーク種別に応じた初期画質
-- 写真・動画の低画質、中画質、元画質選択
+- 写真の低画質、中画質、元画質選択と動画のOriginal固定再生
 - 写真生成中の待機表示と再取得
-- 動画変換のキュー位置、進捗、失敗表示
-- 変換完了後の自動再取得
-- 完成済みMP4のRange再生
+- 動画OriginalのRange再生
 - シークと再生速度変更
-- 元画質取得前のサイズ表示と確認
+- Cellularで1 MiB以上またはSize不明の動画を取得する前のサイズ表示と確認
 - 低・中画質未準備時に元画質へ自動切替しない制御
 
 **完了条件:** 各品質を明示的に選択でき、生成中状態を扱い、意図しない元画質通信が発生しない。
@@ -3478,7 +3486,7 @@ Androidの自動バックアップに必要なサーバー側処理を実装す�
 | 3 | Server Step 4 | Android Step 4〜5 | 一覧、閲覧、アップロード、ダウンロード、変更操作、再試行 |
 | 4 | Server Step 5 | Android Step 6 | 共有権限、検索、最近使用、許可・拒否の一致 |
 | 5 | Server Step 6 | Android Step 7 | 差分判定、WorkManager、自動実行条件、重複防止 |
-| 6 | Server Step 7 | Android Step 8 | サムネイル、写真生成、動画変換、品質切替、Range再生 |
+| 6 | Server Step 7 | Android Step 8 | サムネイル、写真生成、写真品質切替、動画Original Range再生 |
 
 ### 18.5 Phase 2 Webアプリ準備
 

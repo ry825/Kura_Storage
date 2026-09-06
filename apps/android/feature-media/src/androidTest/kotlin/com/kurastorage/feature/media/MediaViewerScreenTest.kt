@@ -321,6 +321,10 @@ class MediaViewerScreenTest {
             .performScrollTo()
             .assertIsDisplayed()
             .assertIsEnabled()
+        compose.onNodeWithContentDescription("Full screen").performScrollTo().performClick()
+        compose.onNodeWithTag("photo-fullscreen").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Exit full screen").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("photo-fullscreen").assertDoesNotExist()
     }
 
     @Test

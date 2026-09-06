@@ -40,7 +40,12 @@ class MediaQualityPolicyTest {
             )
             assertEquals(
                 NetworkQualityContext.UNREGISTERED_REMOTE_WIFI,
-                NetworkQualityContextResolver(FakeTransport(NetworkTransport.UNKNOWN), FakeWifi(true))
+                NetworkQualityContextResolver(FakeTransport(NetworkTransport.OTHER_OR_UNKNOWN), FakeWifi(true))
+                    .resolve(ConnectionRoute.REMOTE_SECURE),
+            )
+            assertEquals(
+                NetworkQualityContext.UNREGISTERED_REMOTE_WIFI,
+                NetworkQualityContextResolver(FakeTransport(NetworkTransport.ETHERNET), FakeWifi(true))
                     .resolve(ConnectionRoute.REMOTE_SECURE),
             )
         }

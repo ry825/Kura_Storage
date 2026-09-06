@@ -49,6 +49,13 @@ class PlayerCommandControllerTest {
         }
     }
 
+    @Test
+    fun `next playback rate advances and wraps unknown or final values`() {
+        assertEquals(1.25f, PlayerCommandController.nextRate(PlaybackRate(1f)).value)
+        assertEquals(0.5f, PlayerCommandController.nextRate(PlaybackRate(3f)).value)
+        assertEquals(0.5f, PlayerCommandController.nextRate(PlaybackRate(1.1f)).value)
+    }
+
     private class FakePlayerEngine(
         initial: PlayerSnapshot = PlayerSnapshot(),
     ) : PlayerEngine {

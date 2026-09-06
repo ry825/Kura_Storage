@@ -44,15 +44,20 @@ class PhotoViewerViewModel(
     private val candidates = orderedFileIds.distinct().ifEmpty { listOf(initialFileId) }
     private val mutableState = MutableStateFlow(PhotoViewerUiState())
     private var currentIndex = candidates.indexOf(initialFileId).coerceAtLeast(0)
+    private var displayedSource: com.kurastorage.core.model.media.ReadyMediaSource? = null
 
     val state: StateFlow<PhotoViewerUiState> = mutableState.asStateFlow()
 
     init {
         viewModelScope.launch {
             controller.state.collect { media ->
+                val nextSource = media?.displayedSource
+                val resetZoom = displayedSource != null && nextSource != null && displayedSource != nextSource
+                displayedSource = nextSource ?: displayedSource
                 mutableState.update {
                     it.copy(
                         media = media,
+                        zoom = if (resetZoom) MIN_ZOOM else it.zoom,
                         originalSizeLabel =
                             media?.originalSizeLabel
                                 ?: media?.confirmation?.formattedSize
@@ -127,6 +132,7 @@ class PhotoViewerViewModel(
     }
 
     private suspend fun show(file: FileEntry) {
+        displayedSource = null
         mutableState.value =
             PhotoViewerUiState(
                 file = file,

@@ -1481,6 +1481,23 @@ paths:
           $ref: "#/components/responses/NotFound"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /media/thumbnail-jobs/summary:
+    get:
+      tags: [Media]
+      operationId: getThumbnailJobSummary
+      summary: Get thumbnail generation counts visible to the authenticated user
+      description: Counts only the latest THUMBNAIL or PDF_THUMBNAIL job for active files the current user can read. No file or job identity is returned.
+      responses:
+        "200":
+          description: A consistent snapshot of visible thumbnail generation states.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThumbnailJobSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /media-jobs/{jobId}:
     parameters:
       - name: jobId
@@ -2861,7 +2878,7 @@ components:
     MediaVariant:
       type: string
       default: original
-      enum: [original, thumbnail, image-low, image-medium, video-low, video-medium]
+      enum: [original, thumbnail, image-low, image-medium]
     MediaDisposition:
       type: string
       default: inline
@@ -2916,6 +2933,26 @@ components:
           minimum: 0
         contentUrl:
           type: [string, "null"]
+    ThumbnailJobSummary:
+      type: object
+      additionalProperties: false
+      required: [queuedCount, runningCount, failedCount, observedAt]
+      properties:
+        queuedCount:
+          type: integer
+          format: int64
+          minimum: 0
+        runningCount:
+          type: integer
+          format: int64
+          minimum: 0
+        failedCount:
+          type: integer
+          format: int64
+          minimum: 0
+        observedAt:
+          type: string
+          format: date-time
     SearchFileCategory:
       type: string
       enum: [IMAGE, VIDEO, AUDIO, DOCUMENT, ARCHIVE, OTHER]

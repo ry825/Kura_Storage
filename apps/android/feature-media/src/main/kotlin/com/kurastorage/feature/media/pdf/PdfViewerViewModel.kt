@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kurastorage.core.data.FileRepository
+import com.kurastorage.core.data.media.IncompletePdfException
 import com.kurastorage.core.data.media.InsufficientPdfStorageException
 import com.kurastorage.core.data.media.InvalidPdfException
 import com.kurastorage.core.data.media.MediaRepository
@@ -16,6 +17,7 @@ import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.media.OriginalMetadata
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +36,7 @@ enum class PdfFailure {
     INCOMPLETE,
     CORRUPT,
     PASSWORD_PROTECTED,
-    RENDER,
+    RENDER_UNSUPPORTED,
     NETWORK,
     UNKNOWN,
 }
@@ -59,6 +61,7 @@ class PdfViewerViewModel(
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(PdfViewerUiState())
     private var document: PdfDocumentController? = null
+    private var loadJob: Job? = null
     private var renderJob: Job? = null
     private var viewportWidth = DEFAULT_VIEWPORT_WIDTH
     private var viewportHeight = DEFAULT_VIEWPORT_HEIGHT
@@ -93,18 +96,23 @@ class PdfViewerViewModel(
         file: FileEntry,
         metadata: OriginalMetadata,
     ) {
-        viewModelScope.launch {
-            mutableState.update { it.copy(loadState = PdfLoadState.DOWNLOADING, failure = null) }
-            runCatching {
-                val cached = store.download(file.id, file.fileVersion, metadata)
-                PdfDocumentController.open(store.acquire(cached))
-            }.onSuccess { opened ->
-                document?.close()
-                document = opened
-                mutableState.update { it.copy(pageCount = opened.pageCount, pageIndex = 0) }
-                render()
-            }.onFailure { fail(it, PdfFailure.CORRUPT) }
-        }
+        loadJob?.cancel()
+        loadJob =
+            viewModelScope.launch {
+                mutableState.update { it.copy(loadState = PdfLoadState.DOWNLOADING, failure = null) }
+                runCatching {
+                    val cached = store.download(file.id, file.fileVersion, metadata)
+                    PdfDocumentController.open(store.acquire(cached))
+                }.onSuccess { opened ->
+                    document?.close()
+                    document = opened
+                    mutableState.update { it.copy(pageCount = opened.pageCount, pageIndex = 0) }
+                    render()
+                }.onFailure { error ->
+                    if (error is CancellationException) throw error
+                    fail(error, PdfFailure.CORRUPT)
+                }
+            }
     }
 
     fun setViewport(
@@ -145,6 +153,7 @@ class PdfViewerViewModel(
                         .substringBefore(';')
                         .trim()
                         .lowercase() != "application/pdf" -> fail(InvalidPdfException(), PdfFailure.CORRUPT)
+                    metadata.size.value == 0L -> fail(IncompletePdfException(), PdfFailure.INCOMPLETE)
                     !metadata.acceptsRanges -> fail(InvalidPdfException(), PdfFailure.INCOMPLETE)
                     metadata.size.value > TemporaryPdfStore.MAX_FILE_BYTES -> fail(PdfTooLargeException(), PdfFailure.TOO_LARGE)
                     else -> mutableState.value = PdfViewerUiState(file, metadata, PdfLoadState.CONFIRMING)
@@ -176,7 +185,10 @@ class PdfViewerViewModel(
                             current
                         }
                     }
-                }.onFailure { fail(it, PdfFailure.RENDER) }
+                }.onFailure { error ->
+                    if (error is CancellationException) throw error
+                    fail(error, PdfFailure.RENDER_UNSUPPORTED)
+                }
             }
     }
 
@@ -195,6 +207,8 @@ class PdfViewerViewModel(
     }
 
     fun closeDocument() {
+        loadJob?.cancel()
+        loadJob = null
         renderJob?.cancel()
         document?.close()
         document = null
@@ -219,6 +233,7 @@ private fun Throwable.toPdfFailure(fallback: PdfFailure): PdfFailure =
     when (this) {
         is PdfTooLargeException -> PdfFailure.TOO_LARGE
         is InsufficientPdfStorageException -> PdfFailure.STORAGE
+        is IncompletePdfException -> PdfFailure.INCOMPLETE
         is InvalidPdfException -> PdfFailure.CORRUPT
         is KuraStorageException.CredentialUnavailable -> PdfFailure.AUTHENTICATION
         is KuraStorageException.Network -> PdfFailure.NETWORK
@@ -236,6 +251,7 @@ private fun Throwable.toPdfFailure(fallback: PdfFailure): PdfFailure =
             } else {
                 PdfFailure.PERMISSION
             }
+        is UnsupportedOperationException -> PdfFailure.RENDER_UNSUPPORTED
         else -> fallback
     }
 

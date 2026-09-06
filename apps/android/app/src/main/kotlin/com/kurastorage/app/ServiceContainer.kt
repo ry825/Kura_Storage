@@ -18,6 +18,7 @@ import com.kurastorage.core.data.DefaultSearchRepository
 import com.kurastorage.core.data.DefaultSharingRepository
 import com.kurastorage.core.data.DefaultTextFileRepository
 import com.kurastorage.core.data.DefaultTransferRepository
+import com.kurastorage.core.data.PriorityTransferDispatcher
 import com.kurastorage.core.data.backup.AccountScopeHasher
 import com.kurastorage.core.data.backup.AndroidCurrentWifiSource
 import com.kurastorage.core.data.backup.AndroidPersistableSourcePermissionController
@@ -89,6 +90,7 @@ class ServiceContainer(
                 applicationContext.getSystemService(ConnectivityManager::class.java),
             ),
         )
+    private val transferDispatcher = PriorityTransferDispatcher()
 
     init {
         MediaImageLoaderFactory.cleanupPreviousSessions(applicationContext)
@@ -110,6 +112,7 @@ class ServiceContainer(
             applicationContext.getSystemService(ConnectivityManager::class.java),
             localNetworkSource,
             connectionDetector,
+            transferDispatcher,
             object : BackupSessionFactory {
                 override fun create(route: ConnectionRoute): BackupSessionServices = backupSessionServices(route)
 
@@ -181,6 +184,7 @@ class ServiceContainer(
                     api,
                     executor,
                     AndroidContentStreamProvider(applicationContext),
+                    transferDispatcher = transferDispatcher,
                 ),
             qualityPreferences = qualityPreferenceStore,
             media = createMediaSession(apiClient, executor),

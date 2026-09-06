@@ -1,6 +1,7 @@
 package com.kurastorage.feature.backup
 
 import com.kurastorage.core.data.backup.BackupRuleRepository
+import com.kurastorage.core.data.backup.ConnectedWifi
 import com.kurastorage.core.data.backup.CreateBackupRuleCommand
 import com.kurastorage.core.data.backup.ExternalWifiPolicyRepository
 import com.kurastorage.core.model.backup.AccountScopeId
@@ -49,10 +50,11 @@ class ExternalWifiPolicyUseCases(
 
     suspend fun registerCurrent(
         accountScopeId: AccountScopeId,
+        wifi: ConnectedWifi,
         displayName: String,
         restrictToBssid: Boolean,
         treatAsMetered: Boolean,
-    ) = repository.registerCurrent(accountScopeId, displayName, restrictToBssid, treatAsMetered)
+    ) = repository.registerCurrent(accountScopeId, wifi, displayName, restrictToBssid, treatAsMetered)
 
     suspend fun save(
         accountScopeId: AccountScopeId,

@@ -796,12 +796,19 @@ core-network/src/main/kotlin/com/kurastorage/core/network/
 
 ```text
 core-data/src/main/kotlin/com/kurastorage/core/data/
+├── PriorityTransferDispatcher.kt
+├── UploadSelectionReader.kt
+├── FolderUploadPlanner.kt
+├── FolderUploadSelectionReader.kt
+├── FolderUploadServerPlanner.kt
 ├── repository/
 ├── mapper/
 ├── transfer/
 ├── backup/
 │   ├── AndroidBackupDocumentSources.kt
 │   ├── BackupScanCoordinator.kt
+│   ├── BackupTransferRepository.kt
+│   ├── AndroidCurrentWifiSource.kt
 │   └── RoomBackupScanStore.kt
 └── errors/
 ```
@@ -1000,6 +1007,7 @@ feature-media/src/
 ├── main/kotlin/com/kurastorage/feature/media/MediaViewerController.kt
 ├── main/kotlin/com/kurastorage/feature/media/photo/
 │   ├── PhotoViewerScreen.kt
+│   ├── PhotoFitPolicy.kt
 │   └── PhotoViewerViewModel.kt
 ├── main/kotlin/com/kurastorage/feature/media/pdf/
 │   ├── PdfDocumentController.kt

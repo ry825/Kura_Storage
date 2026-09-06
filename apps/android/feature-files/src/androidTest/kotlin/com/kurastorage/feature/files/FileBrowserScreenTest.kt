@@ -22,6 +22,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -50,6 +51,7 @@ import com.kurastorage.core.model.TransferEvent
 import com.kurastorage.core.model.UploadOperation
 import com.kurastorage.core.model.UploadState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -59,6 +61,100 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class FileBrowserScreenTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test
+    fun thumbnailSummarySeparatesWaitingRunningFailureAndDoesNotBlockFilesOnError() {
+        var screenState by
+            mutableStateOf(
+                FileBrowserState(
+                    loading = false,
+                    entries = listOf(file()),
+                    thumbnailSummary =
+                        ThumbnailSummaryUiState(
+                            queuedCount = 3,
+                            runningCount = 2,
+                            failedCount = 1,
+                            observedAt = Instant.parse("2026-09-06T12:34:56Z"),
+                            loading = false,
+                        ),
+                ),
+            )
+        compose.setContent {
+            FileBrowserScreen(
+                state = screenState,
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("Waiting: 3 · Generating: 2", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Failed: 1", substring = true).assertIsDisplayed()
+
+        compose.runOnIdle {
+            screenState =
+                screenState.copy(
+                    thumbnailSummary =
+                        ThumbnailSummaryUiState(
+                            loading = false,
+                            unavailable = true,
+                        ),
+                )
+        }
+        compose.onNodeWithText("Waiting: 0 · Generating: 0", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("temporarily unavailable", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("document.txt").assertIsDisplayed()
+    }
+
+    @Test
+    fun thumbnailFailureOnlyBannerCanBeDismissed() {
+        compose.setContent {
+            FileBrowserScreen(
+                state =
+                    FileBrowserState(
+                        loading = false,
+                        entries = listOf(file()),
+                        thumbnailSummary =
+                            ThumbnailSummaryUiState(
+                                failedCount = 2,
+                                observedAt = Instant.parse("2026-09-06T12:34:56Z"),
+                                loading = false,
+                            ),
+                    ),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("Failed: 2", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Dismiss").performClick()
+        compose.onAllNodesWithTag("thumbnail-job-summary").assertCountEquals(0)
+    }
 
     @Test
     fun fileGridShowsOverflowAndEntry() {
@@ -88,7 +184,7 @@ class FileBrowserScreenTest {
         }
 
         compose.onNodeWithText("My files").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Upload file").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Upload").assertIsDisplayed()
         compose.onNodeWithText("document.txt").assertIsDisplayed()
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithContentDescription("Refresh files").performClick()
@@ -98,6 +194,152 @@ class FileBrowserScreenTest {
             assertTrue(refreshed)
             assertTrue(searched)
         }
+    }
+
+    @Test
+    fun uploadActionOffersFilesAndFolderChoices() {
+        var choseFiles = false
+        var choseFolder = false
+        compose.setContent {
+            FileBrowserScreen(
+                state = FileBrowserState(loading = false),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = { choseFiles = true },
+                onChooseFolderUpload = { choseFolder = true },
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithTag("upload-fab").performClick()
+        compose.onNodeWithTag("upload-folder-action").performClick()
+        compose.runOnIdle {
+            assertFalse(choseFiles)
+            assertTrue(choseFolder)
+        }
+    }
+
+    @Test
+    fun breadcrumbAncestorsAreClickableAndCurrentLocationIsNot() {
+        var selectedId: String? = "unset"
+        val album = folder("album", null, "Album")
+        compose.setContent {
+            FileBrowserScreen(
+                state =
+                    FileBrowserState(
+                        loading = false,
+                        locations = listOf(FolderLocation(null, "My files"), FolderLocation("album", "Album", album)),
+                    ),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onBreadcrumb = { selectedId = it },
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithTag("breadcrumb-root").performClick()
+        compose.runOnIdle { assertEquals(null, selectedId) }
+        compose.onAllNodesWithTag("breadcrumb-album").assertCountEquals(0)
+    }
+
+    @Test
+    fun deepBreadcrumbShowsEveryLevelOnCompactLargeTextScreen() {
+        val locations =
+            listOf(
+                FolderLocation(null, "My files"),
+                FolderLocation("one", "First long folder", folder("one", null, "First long folder")),
+                FolderLocation("two", "Second long folder", folder("two", "one", "Second long folder")),
+                FolderLocation("three", "Third long folder", folder("three", "two", "Third long folder")),
+                FolderLocation("four", "Current long folder", folder("four", "three", "Current long folder")),
+            )
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                Box(Modifier.size(width = 360.dp, height = 800.dp)) {
+                    FileBrowserScreen(
+                        state = FileBrowserState(loading = false, locations = locations),
+                        trashMode = false,
+                        onOpen = {},
+                        onShowDetails = {},
+                        onBack = {},
+                        onRefresh = {},
+                        onLoadMore = {},
+                        onCreateFolder = {},
+                        onChooseUpload = {},
+                        onChooseDownload = {},
+                        onTrash = {},
+                        onRestore = {},
+                        onDismissDetail = {},
+                        onCancelTransfer = {},
+                        onRetryTransfer = {},
+                        onOpenDownload = {},
+                    )
+                }
+            }
+        }
+
+        listOf("My files", "First long folder", "Second long folder", "Third long folder", "Current long folder")
+            .forEach { compose.onNodeWithText(it).assertIsDisplayed() }
+        listOf("root", "one", "two", "three")
+            .forEach { compose.onNodeWithTag("breadcrumb-$it").assertIsDisplayed() }
+        compose.onAllNodesWithTag("breadcrumb-four").assertCountEquals(0)
+    }
+
+    @Test
+    fun savedStableAnchorRestoresADeepGridPosition() {
+        val entries = (0 until 40).map { index -> file().copy(id = "file-$index", name = "document-$index.txt") }
+        val key = browserScrollContextKey(null, false, BrowserDisplayMode.GRID)
+        compose.setContent {
+            FileBrowserScreen(
+                state =
+                    FileBrowserState(
+                        loading = false,
+                        entries = entries,
+                        scrollAnchors = mapOf(key to BrowserScrollAnchor("file-24", 24, 0)),
+                    ),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("document-24.txt").assertIsDisplayed()
+        compose.onNodeWithText("document-0.txt").assertDoesNotExist()
     }
 
     @Test
@@ -286,6 +528,40 @@ class FileBrowserScreenTest {
         compose.onNodeWithText("10 B / 10 B").assertIsDisplayed()
         compose.onNodeWithText("Upload completed").assertIsDisplayed()
         compose.onAllNodesWithTag("cancel-upload").assertCountEquals(0)
+    }
+
+    @Test
+    fun completedUploadUsesSnackbarAndDoesNotKeepTransferPanel() {
+        var consumed = false
+        compose.setContent {
+            FileBrowserScreen(
+                state =
+                    FileBrowserState(
+                        loading = false,
+                        uploads = UploadQueueState(completionNotice = UploadCompletionNotice(2)),
+                    ),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+                onUploadCompletionConsumed = { consumed = true },
+            )
+        }
+
+        compose.onNodeWithText("2 uploads completed").assertIsDisplayed()
+        compose.onAllNodesWithTag("transfer-status").assertCountEquals(0)
+        compose.runOnIdle { assertEquals(true, consumed) }
     }
 
     @Test
@@ -1079,6 +1355,39 @@ class FileBrowserScreenTest {
         compose.onNodeWithTag("file-grid").assertIsDisplayed()
         compose.onNodeWithTag("upload-fab").assertIsDisplayed()
         compose.onNodeWithTag("files-compact").captureEvidence("pr1-files-grid-360dp-200pct-dark.png")
+    }
+
+    @Test
+    fun compactHeaderUsesSingleTopBarHeight() {
+        compose.setContent {
+            Box(Modifier.size(width = 360.dp, height = 800.dp)) {
+                FileBrowserScreen(
+                    state = FileBrowserState(loading = false, entries = listOf(file())),
+                    trashMode = false,
+                    onOpen = {},
+                    onShowDetails = {},
+                    onBack = {},
+                    onRefresh = {},
+                    onLoadMore = {},
+                    onCreateFolder = {},
+                    onChooseUpload = {},
+                    onChooseDownload = {},
+                    onTrash = {},
+                    onRestore = {},
+                    onDismissDetail = {},
+                    onCancelTransfer = {},
+                    onRetryTransfer = {},
+                    onOpenDownload = {},
+                )
+            }
+        }
+
+        val headerBounds =
+            compose
+                .onNodeWithTag("browser-header")
+                .getUnclippedBoundsInRoot()
+        val headerHeightDp = headerBounds.bottom.value - headerBounds.top.value
+        assertEquals(64f, headerHeightDp, 0.5f)
     }
 
     @Test

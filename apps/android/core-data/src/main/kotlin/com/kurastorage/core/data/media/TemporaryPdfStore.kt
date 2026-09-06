@@ -22,6 +22,8 @@ class InsufficientPdfStorageException : IllegalStateException("Not enough privat
 
 class InvalidPdfException : IllegalStateException("Downloaded content is not a valid PDF")
 
+class IncompletePdfException : IllegalStateException("PDF transfer is empty or incomplete")
+
 class TemporaryPdfStore(
     cacheRoot: File,
     private val scopeId: String,
@@ -68,7 +70,7 @@ class TemporaryPdfStore(
                         result.content.use { content ->
                             FileOutputStream(partial).use { output ->
                                 val copied = content.copyTo(output, MAX_FILE_BYTES) { downloadContext.ensureActive() }
-                                if (copied != metadata.size.value) throw InvalidPdfException()
+                                if (copied != metadata.size.value) throw IncompletePdfException()
                                 output.fd.sync()
                             }
                         }
@@ -111,14 +113,17 @@ class TemporaryPdfStore(
     }
 
     private fun validateMetadata(metadata: OriginalMetadata) {
-        if (metadata.mimeType
-                .substringBefore(';')
-                .trim()
-                .lowercase() != PDF_MIME
-        ) {
-            throw InvalidPdfException()
-        }
-        if (metadata.size.value > MAX_FILE_BYTES) throw PdfTooLargeException()
+        val failure =
+            when {
+                metadata.mimeType
+                    .substringBefore(';')
+                    .trim()
+                    .lowercase() != PDF_MIME -> InvalidPdfException()
+                metadata.size.value == 0L -> IncompletePdfException()
+                metadata.size.value > MAX_FILE_BYTES -> PdfTooLargeException()
+                else -> null
+            }
+        if (failure != null) throw failure
     }
 
     @Synchronized

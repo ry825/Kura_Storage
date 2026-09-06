@@ -32,7 +32,7 @@ class BackupNetworkPolicyTest {
 
     @Test
     fun localDirectRequiresBoundWifiOrEthernetButNeverAnSsidPolicy() {
-        val decision = evaluate(connection = local(BaseNetworkTransport.ETHERNET), wifi = CurrentWifiResult.InformationUnavailable)
+        val decision = evaluate(connection = local(BaseNetworkTransport.ETHERNET), wifi = CurrentWifiResult.Unavailable)
 
         assertTrue(decision.allowed)
         assertEquals(ConnectionRoute.LOCAL_DIRECT, decision.route)
@@ -51,7 +51,7 @@ class BackupNetworkPolicyTest {
         val metered =
             evaluate(
                 connection = remote(),
-                wifi = CurrentWifiResult.Connected(ConnectedWifi("allowed", "aa:bb:cc:dd:ee:ff", true)),
+                wifi = CurrentWifiResult.Available(ConnectedWifi("allowed", "aa:bb:cc:dd:ee:ff", true)),
                 policies = listOf(policy()),
             )
         assertEquals(BackupExecutionMode.BLOCKED, metered.mode)
@@ -123,7 +123,7 @@ class BackupNetworkPolicyTest {
         )
 
         val wrongBssid =
-            CurrentWifiResult.Connected(
+            CurrentWifiResult.Available(
                 ConnectedWifi("allowed", "11:22:33:44:55:66", systemMetered = false),
             )
         assertEquals(
@@ -144,7 +144,7 @@ class BackupNetworkPolicyTest {
         rule: LocalBackupRule = rule(),
         connection: BackupConnectionSnapshot,
         power: BackupPowerSnapshot = BackupPowerSnapshot(80, true),
-        wifi: CurrentWifiResult = CurrentWifiResult.Connected(ConnectedWifi("allowed", "aa:bb:cc:dd:ee:ff", false)),
+        wifi: CurrentWifiResult = CurrentWifiResult.Available(ConnectedWifi("allowed", "aa:bb:cc:dd:ee:ff", false)),
         policies: List<ExternalWifiPolicy> = emptyList(),
         authenticated: Boolean = true,
         sourcePermission: Boolean = true,

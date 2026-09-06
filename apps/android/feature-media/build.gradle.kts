@@ -10,6 +10,7 @@ dependencies {
     implementation(project(":core-model"))
     implementation(project(":core-data"))
     implementation(project(":core-ui"))
+    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(platform(libs.androidx.compose.bom))

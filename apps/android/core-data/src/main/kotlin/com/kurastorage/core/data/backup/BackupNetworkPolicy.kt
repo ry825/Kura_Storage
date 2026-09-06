@@ -146,7 +146,7 @@ class NetworkPolicyEvaluator(
             )
         }
         val wifi =
-            (context.currentWifi as? CurrentWifiResult.Connected)?.wifi
+            (context.currentWifi as? CurrentWifiResult.Available)?.wifi
                 ?: return BackupPolicyDecision(
                     BackupExecutionMode.BLOCKED,
                     BackupWaitReason.ALLOWED_WIFI,

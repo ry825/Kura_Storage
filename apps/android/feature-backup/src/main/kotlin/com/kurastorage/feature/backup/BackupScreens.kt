@@ -29,6 +29,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,6 +48,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.kurastorage.core.data.backup.ConnectedWifi
 import com.kurastorage.core.data.backup.CurrentWifiResult
 import com.kurastorage.core.model.backup.BackupFailureReason
 import com.kurastorage.core.model.backup.BackupNetworkMode
@@ -62,23 +64,35 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable
+private fun SettingsScreenSurface(content: @Composable () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
+        content = content,
+    )
+}
+
+@Composable
 fun BackupSettingsScreen(
     onOverview: () -> Unit,
     onRules: () -> Unit,
     onWifi: () -> Unit,
     onBack: () -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text("Automatic backup", style = MaterialTheme.typography.headlineMedium)
-        Text("One-way backup adds and updates server files. Deleting a source from this device never deletes the server copy.")
-        Text("Android cannot run scheduled work after you force-stop KuraStorage. Open the app again to resume scheduling.")
-        LargeButton("Backup status and history", onOverview)
-        LargeButton("Backup rules", onRules)
-        LargeButton("Allowed external Wi-Fi", onWifi)
-        OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
+    SettingsScreenSurface {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("Automatic backup", style = MaterialTheme.typography.headlineMedium)
+            Text("One-way backup adds and updates server files. Deleting a source from this device never deletes the server copy.")
+            Text("Android cannot run scheduled work after you force-stop KuraStorage. Open the app again to resume scheduling.")
+            LargeButton("Backup status and history", onOverview)
+            LargeButton("Backup rules", onRules)
+            LargeButton("Allowed external Wi-Fi", onWifi)
+            OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
+        }
     }
 }
 
@@ -94,62 +108,64 @@ fun BackupOverviewScreen(
 ) {
     val progress = state.progress
     val paused = state.rules.isNotEmpty() && state.rules.all { it.pausedAt != null }
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Backup status", style = MaterialTheme.typography.headlineMedium)
-        Text("Last success: ${formatInstant(progress?.lastCompletedAt)}")
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusCount("Pending", progress?.pendingCount() ?: 0, Modifier.weight(1f))
-            StatusCount("Uploading", progress?.count(SyncLifecycleState.UPLOADING) ?: 0, Modifier.weight(1f))
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusCount("Succeeded", progress?.count(SyncLifecycleState.COMPLETED) ?: 0, Modifier.weight(1f))
-            StatusCount("Failed", progress?.count(SyncLifecycleState.FAILED) ?: 0, Modifier.weight(1f))
-        }
-        progress?.primaryWaitReason()?.let {
-            Text("Waiting: ${it.label()}", modifier = Modifier.testTag("backup-wait-reason"))
-        } ?: Text("Policy status: ready when an allowed connection and device conditions are available.")
-        state.rules.forEach { rule ->
-            val counts = progress?.ruleStateCounts?.get(rule.id).orEmpty()
-            Text(
-                "${rule.displayName}: ${counts[SyncLifecycleState.PENDING] ?: 0} pending, " +
-                    "${counts[SyncLifecycleState.UPLOADING] ?: 0} uploading, " +
-                    "${counts[SyncLifecycleState.FAILED] ?: 0} failed",
-            )
-        }
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = onRunNow,
-                enabled = !state.actionRunning && state.rules.any { it.enabled },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) {
-                Text("Back up now")
+    SettingsScreenSurface {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Backup status", style = MaterialTheme.typography.headlineMedium)
+            Text("Last success: ${formatInstant(progress?.lastCompletedAt)}")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatusCount("Pending", progress?.pendingCount() ?: 0, Modifier.weight(1f))
+                StatusCount("Uploading", progress?.count(SyncLifecycleState.UPLOADING) ?: 0, Modifier.weight(1f))
             }
-            OutlinedButton(
-                onClick = { onPause(!paused) },
-                enabled = !state.actionRunning && state.rules.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) {
-                Text(if (paused) "Resume" else "Pause")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatusCount("Succeeded", progress?.count(SyncLifecycleState.COMPLETED) ?: 0, Modifier.weight(1f))
+                StatusCount("Failed", progress?.count(SyncLifecycleState.FAILED) ?: 0, Modifier.weight(1f))
             }
-            if ((progress?.count(SyncLifecycleState.FAILED) ?: 0) > 0) {
-                OutlinedButton(
-                    onClick = onRetryAll,
-                    enabled = !state.actionRunning,
+            progress?.primaryWaitReason()?.let {
+                Text("Waiting: ${it.label()}", modifier = Modifier.testTag("backup-wait-reason"))
+            } ?: Text("Policy status: ready when an allowed connection and device conditions are available.")
+            state.rules.forEach { rule ->
+                val counts = progress?.ruleStateCounts?.get(rule.id).orEmpty()
+                Text(
+                    "${rule.displayName}: ${counts[SyncLifecycleState.PENDING] ?: 0} pending, " +
+                        "${counts[SyncLifecycleState.UPLOADING] ?: 0} uploading, " +
+                        "${counts[SyncLifecycleState.FAILED] ?: 0} failed",
+                )
+            }
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onRunNow,
+                    enabled = !state.actionRunning && state.rules.any { it.enabled },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) { Text("Retry failures") }
+                ) {
+                    Text("Back up now")
+                }
+                OutlinedButton(
+                    onClick = { onPause(!paused) },
+                    enabled = !state.actionRunning && state.rules.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    Text(if (paused) "Resume" else "Pause")
+                }
+                if ((progress?.count(SyncLifecycleState.FAILED) ?: 0) > 0) {
+                    OutlinedButton(
+                        onClick = onRetryAll,
+                        enabled = !state.actionRunning,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text("Retry failures") }
+                }
             }
-        }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (state.loading) Text("Loading backup status…")
-        Text("File history", style = MaterialTheme.typography.titleLarge)
-        if (!state.loading && state.items.isEmpty()) Text("No backup history yet.")
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(state.visibleItems, key = { it.id.value }) { item ->
-                BackupHistoryRow(item, state.actionRunning, onRetry)
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (state.loading) Text("Loading backup status…")
+            Text("File history", style = MaterialTheme.typography.titleLarge)
+            if (!state.loading && state.items.isEmpty()) Text("No backup history yet.")
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(state.visibleItems, key = { it.id.value }) { item ->
+                    BackupHistoryRow(item, state.actionRunning, onRetry)
+                }
+                if (state.canLoadMore) item { OutlinedButton(onClick = onLoadMore) { Text("Load more") } }
             }
-            if (state.canLoadMore) item { OutlinedButton(onClick = onLoadMore) { Text("Load more") } }
+            OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
         }
-        OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
     }
 }
 
@@ -210,50 +226,52 @@ fun BackupRulesScreen(
     var creating by rememberSaveable { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<LocalBackupRule?>(null) }
     val editing = state.rules.firstOrNull { it.id.value == editingId }
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Backup rules", style = MaterialTheme.typography.headlineMedium)
-        Text("These are one-way backup rules, not two-way sync. Device deletions never delete server files.")
-        Button(onClick = {
-            creating = true
-            editingId = null
-        }, enabled = !state.saving) { Text("Add rule") }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (!state.loading && state.rules.isEmpty()) Text("No backup rules.")
-        LazyColumn(Modifier.weight(1f)) {
-            items(state.rules, key = { it.id.value }) { rule ->
-                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    Text(rule.displayName, style = MaterialTheme.typography.titleMedium)
-                    Text("Source: ${rule.sourceType.label()}")
-                    Text("Server destination: Selected server folder")
-                    Text("${rule.networkMode.label()} • minimum battery ${rule.minimumBatteryPercent}%")
-                    Text(
-                        "Last state: " +
-                            when {
-                                !rule.enabled -> "Disabled"
-                                rule.pausedAt != null -> "Paused"
-                                else -> "Enabled and waiting for the next scan"
-                            },
-                    )
-                    if (rule.sourceType == BackupSourceType.SAF_TREE) {
-                        Text("Source permission: retained access is checked when scanning. Re-select the folder if access is lost.")
-                    }
-                    Text("If server access changes, choose Edit and re-select an allowed destination.")
-                    if (rule.pausedAt != null) Text("Paused")
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Enabled", Modifier.weight(1f))
-                        Switch(checked = rule.enabled, onCheckedChange = { onToggle(rule, it) }, enabled = !state.saving)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = {
-                            editingId = rule.id.value
-                            creating = true
-                        }) { Text("Edit") }
-                        TextButton(onClick = { deleting = rule }) { Text("Delete") }
+    SettingsScreenSurface {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Backup rules", style = MaterialTheme.typography.headlineMedium)
+            Text("These are one-way backup rules, not two-way sync. Device deletions never delete server files.")
+            Button(onClick = {
+                creating = true
+                editingId = null
+            }, enabled = !state.saving) { Text("Add rule") }
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (!state.loading && state.rules.isEmpty()) Text("No backup rules.")
+            LazyColumn(Modifier.weight(1f)) {
+                items(state.rules, key = { it.id.value }) { rule ->
+                    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                        Text(rule.displayName, style = MaterialTheme.typography.titleMedium)
+                        Text("Source: ${rule.sourceType.label()}")
+                        Text("Server destination: Selected server folder")
+                        Text("${rule.networkMode.label()} • minimum battery ${rule.minimumBatteryPercent}%")
+                        Text(
+                            "Last state: " +
+                                when {
+                                    !rule.enabled -> "Disabled"
+                                    rule.pausedAt != null -> "Paused"
+                                    else -> "Enabled and waiting for the next scan"
+                                },
+                        )
+                        if (rule.sourceType == BackupSourceType.SAF_TREE) {
+                            Text("Source permission: retained access is checked when scanning. Re-select the folder if access is lost.")
+                        }
+                        Text("If server access changes, choose Edit and re-select an allowed destination.")
+                        if (rule.pausedAt != null) Text("Paused")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Enabled", Modifier.weight(1f))
+                            Switch(checked = rule.enabled, onCheckedChange = { onToggle(rule, it) }, enabled = !state.saving)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = {
+                                editingId = rule.id.value
+                                creating = true
+                            }) { Text("Edit") }
+                            TextButton(onClick = { deleting = rule }) { Text("Delete") }
+                        }
                     }
                 }
             }
+            OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
         }
-        OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
     }
     if (creating) {
         RuleEditorDialog(
@@ -418,7 +436,7 @@ fun BackupWifiScreen(
     state: BackupWifiState,
     onRefresh: () -> Unit,
     onRequestPermission: (Set<String>) -> Unit,
-    onRegister: (String, Boolean, Boolean, Boolean) -> Unit,
+    onRegister: (String, ConnectedWifi, Boolean, Boolean, Boolean) -> Unit,
     onSave: (ExternalWifiPolicy) -> Unit,
     onDelete: (ExternalWifiPolicy) -> Unit,
     onOpenAppSettings: () -> Unit,
@@ -428,42 +446,100 @@ fun BackupWifiScreen(
     var restrictBssid by rememberSaveable { mutableStateOf(false) }
     var metered by rememberSaveable { mutableStateOf(false) }
     var enabled by rememberSaveable { mutableStateOf(true) }
+    var candidate by remember { mutableStateOf((state.currentWifi as? CurrentWifiResult.Available)?.wifi) }
     var confirmRegistration by rememberSaveable { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<ExternalWifiPolicy?>(null) }
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Allowed external Wi-Fi", style = MaterialTheme.typography.headlineMedium)
-        Text("Wi-Fi matching only selects a policy. ZeroTier, TLS, server identity, and sign-in are still required.")
-        WifiAvailability(state.currentWifi, onRequestPermission, onOpenAppSettings)
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Display name") })
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(restrictBssid, { restrictBssid = it })
-            Text("Restrict to current access point")
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(metered, { metered = it })
-            Text("Treat as metered (automatic backup disabled)")
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Enabled", Modifier.weight(1f))
-            Switch(checked = enabled && !metered, onCheckedChange = { enabled = it }, enabled = !metered)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = { confirmRegistration = true },
-                enabled =
-                    name.isNotBlank() && state.currentWifi is CurrentWifiResult.Connected && !state.saving,
-            ) { Text("Register current Wi-Fi") }
-            OutlinedButton(onClick = onRefresh) { Text("Refresh") }
-        }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (state.saving) Text("Saving Wi-Fi policy…")
-        LazyColumn(Modifier.weight(1f)) {
+    LaunchedEffect(state.currentWifi) {
+        candidate = (state.currentWifi as? CurrentWifiResult.Available)?.wifi
+    }
+    SettingsScreenSurface {
+        LazyColumn(
+            Modifier.fillMaxSize().padding(16.dp).testTag("backup-wifi-list"),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { Text("Allowed external Wi-Fi", style = MaterialTheme.typography.headlineMedium) }
+            item { Text("Wi-Fi matching only selects a policy. ZeroTier, TLS, server identity, and sign-in are still required.") }
+            item { WifiAvailability(state.currentWifi, onRequestPermission, onOpenAppSettings) }
+            item {
+                OutlinedTextField(
+                    value = candidate?.ssid.orEmpty(),
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = candidate != null,
+                    label = { Text("Detected Wi-Fi name") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                OutlinedTextField(
+                    value = candidate?.bssid.orEmpty(),
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = candidate?.bssid != null,
+                    label = { Text("Detected access point (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                OutlinedButton(
+                    onClick = { candidate = (state.currentWifi as? CurrentWifiResult.Available)?.wifi },
+                    enabled = state.currentWifi is CurrentWifiResult.Available,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) { Text("Use current Wi-Fi") }
+            }
+            item {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Display name") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(restrictBssid, { restrictBssid = it }, enabled = candidate?.bssid != null)
+                    Text("Restrict to current access point")
+                }
+            }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(metered, { metered = it })
+                    Text("Treat as metered (automatic backup disabled)")
+                }
+            }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enabled", Modifier.weight(1f))
+                    Switch(checked = enabled && !metered, onCheckedChange = { enabled = it }, enabled = !metered)
+                }
+            }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { confirmRegistration = true },
+                        enabled = name.isNotBlank() && candidate != null && !state.saving,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text("Register current Wi-Fi") }
+                    OutlinedButton(
+                        onClick = onRefresh,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text("Refresh") }
+                }
+            }
+            state.error?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }
+            if (state.saving) item { Text("Saving Wi-Fi policy…") }
             items(state.policies, key = { it.id.value }) { policy ->
                 Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                     Text(policy.displayName, style = MaterialTheme.typography.titleMedium)
                     Text("Wi-Fi name: ${policy.normalizedSsid}")
-                    Text(if (policy.normalizedBssid == null) "All access points with this Wi-Fi name" else "Restricted to one access point")
-                    val connected = state.currentWifi as? CurrentWifiResult.Connected
+                    Text(
+                        if (policy.normalizedBssid == null) {
+                            "All access points with this Wi-Fi name"
+                        } else {
+                            "Restricted to one access point"
+                        },
+                    )
+                    val connected = state.currentWifi as? CurrentWifiResult.Available
                     val matchesCurrent =
                         connected?.wifi?.ssid == policy.normalizedSsid &&
                             (policy.normalizedBssid == null || connected.wifi.bssid == policy.normalizedBssid)
@@ -484,8 +560,13 @@ fun BackupWifiScreen(
                     }
                 }
             }
+            item {
+                OutlinedButton(
+                    onClick = onBack,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) { Text("Back") }
+            }
         }
-        OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
     }
     if (confirmRegistration) {
         AlertDialog(
@@ -500,7 +581,7 @@ fun BackupWifiScreen(
             confirmButton = {
                 Button(onClick = {
                     confirmRegistration = false
-                    onRegister(name, restrictBssid, metered, enabled && !metered)
+                    candidate?.let { onRegister(name, it, restrictBssid, metered, enabled && !metered) }
                 }) { Text("Allow current Wi-Fi") }
             },
             dismissButton = { TextButton(onClick = { confirmRegistration = false }) { Text("Cancel") } },
@@ -551,7 +632,7 @@ private fun WifiAvailability(
     settings: () -> Unit,
 ) {
     when (current) {
-        is CurrentWifiResult.Connected ->
+        is CurrentWifiResult.Available ->
             Column {
                 Text("Currently connected Wi-Fi: ${current.wifi.ssid}")
                 Text("This identity is used only for backup policy matching, never as server identity.")
@@ -572,8 +653,8 @@ private fun WifiAvailability(
             Text(
                 "Location services must be enabled for Android to provide Wi-Fi identity. Automatic backup is stopped.",
             )
-        CurrentWifiResult.NotConnectedToWifi -> Text("Connect to the Wi-Fi you want to register.")
-        CurrentWifiResult.InformationUnavailable -> Text("Wi-Fi information is unavailable. Automatic backup is stopped.")
+        CurrentWifiResult.NotConnected -> Text("Connect to the Wi-Fi you want to register, then refresh.")
+        CurrentWifiResult.Unavailable -> Text("Wi-Fi identity is unavailable. Check Wi-Fi and location settings, then refresh.")
     }
 }
 

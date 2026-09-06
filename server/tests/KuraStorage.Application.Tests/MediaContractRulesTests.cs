@@ -129,5 +129,15 @@ public sealed class MediaContractRulesTests
         Assert.False(result.IsSuccess);
         Assert.Equal(MediaErrorCodes.VariantUnsupported, result.Failure!.Code);
         Assert.Equal(MediaFailureKind.BadRequest, result.Failure.Kind);
+
+        foreach (var videoVariant in new[] { "video-low", "video-medium" })
+        {
+            var videoResult = await service.RequestAsync(
+                new MediaContentRequest(Guid.NewGuid(), Guid.NewGuid(), videoVariant, "inline"),
+                CancellationToken.None);
+            Assert.False(videoResult.IsSuccess);
+            Assert.Equal(MediaErrorCodes.VariantUnsupported, videoResult.Failure!.Code);
+            Assert.Equal(MediaFailureKind.BadRequest, videoResult.Failure.Kind);
+        }
     }
 }

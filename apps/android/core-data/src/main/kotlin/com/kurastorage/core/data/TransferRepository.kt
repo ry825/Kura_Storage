@@ -87,6 +87,7 @@ class DefaultTransferRepository(
     private val executor: AuthenticatedRequestExecutor,
     private val streams: ContentStreamProvider,
     private val uploadSessions: UploadSessionApi? = api as? UploadSessionApi,
+    private val transferDispatcher: PriorityTransferDispatcher = PriorityTransferDispatcher(),
 ) : TransferRepository {
     override fun newUpload(
         sourceUri: String,
@@ -106,132 +107,143 @@ class DefaultTransferRepository(
     @Suppress("TooGenericExceptionCaught", "LongMethod", "CyclomaticComplexMethod")
     override fun upload(operation: UploadOperation): Flow<TransferEvent> =
         channelFlow {
-            var current = operation.copy(state = UploadState.PREPARING)
+            transferDispatcher.run(TransferPriority.MANUAL) {
+                var current = operation.copy(state = UploadState.PREPARING)
 
-            suspend fun status(
-                message: String? = null,
-                canRetry: Boolean = false,
-            ) {
-                send(TransferEvent.UploadStatus(current, message, canRetry))
-            }
-            status("Preparing upload")
-            try {
-                val sessionApi = uploadSessions ?: throw KuraStorageException.ServerUpgradeRequired()
-                val sourceSha = hashSource(current)
-                if (current.sha256 != null && current.sha256 != sourceSha) {
-                    throw KuraStorageException.UploadSourceChanged()
+                suspend fun status(
+                    message: String? = null,
+                    canRetry: Boolean = false,
+                ) {
+                    send(TransferEvent.UploadStatus(current, message, canRetry))
                 }
-                current = current.copy(sha256 = sourceSha, state = UploadState.CREATING_SESSION)
-                status("Creating upload session")
-                var session =
-                    if (current.sessionId == null) {
-                        try {
-                            authenticated { token ->
-                                sessionApi.createUploadSession(
-                                    token,
-                                    current.idempotencyKey,
-                                    CreateUploadSessionRequestDto(
-                                        current.destinationFolderId,
-                                        current.fileName,
-                                        current.contentType,
-                                        current.size,
-                                        sourceSha,
-                                    ),
-                                )
-                            }
-                        } catch (error: KuraStorageException.Api) {
-                            if (error.error.statusCode == HTTP_NOT_FOUND && error.error.code == ErrorCode.UNKNOWN) {
-                                throw KuraStorageException.ServerUpgradeRequired()
-                            }
-                            throw error
-                        }
-                    } else {
-                        authenticated { sessionApi.getUploadSession(it, checkNotNull(current.sessionId)) }
-                    }
-                current = current.fromSession(session, UploadState.UPLOADING)
-                status(if (current.confirmedOffset > 0) "Resuming from confirmed position" else "Uploading")
-                val chunkBytes = minOf(session.preferredChunkBytes, session.maximumChunkBytes)
-                require(chunkBytes > 0) { "Server returned an invalid chunk size" }
-                var retries = 0
-                var source = openSourceAt(current)
+                status("Preparing upload")
                 try {
-                    while (current.confirmedOffset < current.size) {
-                        currentCoroutineContext().ensureActive()
-                        val chunk = readChunk(source, current.size - current.confirmedOffset, chunkBytes)
-                        val chunkSha = chunk.sha256()
-                        try {
-                            val response =
+                    val sessionApi = uploadSessions ?: throw KuraStorageException.ServerUpgradeRequired()
+                    val sourceSha = hashSource(current)
+                    if (current.sha256 != null && current.sha256 != sourceSha) {
+                        throw KuraStorageException.UploadSourceChanged()
+                    }
+                    current = current.copy(sha256 = sourceSha, state = UploadState.CREATING_SESSION)
+                    status("Creating upload session")
+                    var session =
+                        if (current.sessionId == null) {
+                            try {
                                 authenticated { token ->
-                                    sessionApi.uploadChunk(
+                                    sessionApi.createUploadSession(
                                         token,
-                                        checkNotNull(current.sessionId),
-                                        current.confirmedOffset,
-                                        chunkSha,
-                                        chunk.toRequestBody(OCTET_STREAM),
+                                        current.idempotencyKey,
+                                        CreateUploadSessionRequestDto(
+                                            current.destinationFolderId,
+                                            current.fileName,
+                                            current.contentType,
+                                            current.size,
+                                            sourceSha,
+                                        ),
                                     )
                                 }
-                            check(response.sha256.equals(chunkSha, ignoreCase = true)) {
-                                "Server chunk checksum differed"
+                            } catch (error: KuraStorageException.Api) {
+                                if (error.error.statusCode == HTTP_NOT_FOUND && error.error.code == ErrorCode.UNKNOWN) {
+                                    throw KuraStorageException.ServerUpgradeRequired()
+                                }
+                                throw error
                             }
-                            check(response.nextOffset >= current.confirmedOffset) {
-                                "Server offset moved backwards"
-                            }
-                            current =
-                                current.copy(
-                                    confirmedOffset = response.nextOffset,
-                                    expiresAt = Instant.parse(response.expiresAt),
-                                    state = UploadState.UPLOADING,
-                                )
-                            retries = 0
-                            status("Uploading")
-                        } catch (error: KuraStorageException.Api) {
-                            if (!error.isResynchronizable() || retries >= MAX_RESYNCHRONIZATION_ATTEMPTS) throw error
-                            current = current.copy(state = UploadState.PAUSED)
-                            status("Connection interrupted; checking server position", canRetry = true)
-                            delay((error.error.retryAfterSeconds ?: DEFAULT_RETRY_SECONDS) * MILLISECONDS_PER_SECOND)
-                            session = authenticated { sessionApi.getUploadSession(it, checkNotNull(current.sessionId)) }
-                            current = current.fromSession(session, UploadState.UPLOADING)
-                            source.close()
-                            source = openSourceAt(current)
-                            retries++
-                            status("Resuming from confirmed position")
-                        } catch (error: KuraStorageException.Network) {
-                            if (retries >= MAX_RESYNCHRONIZATION_ATTEMPTS) throw error
-                            current = current.copy(state = UploadState.PAUSED)
-                            status("Connection interrupted; checking server position", canRetry = true)
-                            delay(DEFAULT_RETRY_SECONDS * MILLISECONDS_PER_SECOND)
-                            session = authenticated { sessionApi.getUploadSession(it, checkNotNull(current.sessionId)) }
-                            current = current.fromSession(session, UploadState.UPLOADING)
-                            source.close()
-                            source = openSourceAt(current)
-                            retries++
-                            status("Resuming from confirmed position")
+                        } else {
+                            authenticated { sessionApi.getUploadSession(it, checkNotNull(current.sessionId)) }
                         }
+                    current = current.fromSession(session, UploadState.UPLOADING)
+                    status(if (current.confirmedOffset > 0) "Resuming from confirmed position" else "Uploading")
+                    val chunkBytes = minOf(session.preferredChunkBytes, session.maximumChunkBytes)
+                    require(chunkBytes > 0) { "Server returned an invalid chunk size" }
+                    var retries = 0
+                    var source = openSourceAt(current)
+                    try {
+                        while (current.confirmedOffset < current.size) {
+                            currentCoroutineContext().ensureActive()
+                            val chunk = readChunk(source, current.size - current.confirmedOffset, chunkBytes)
+                            val chunkSha = chunk.sha256()
+                            try {
+                                val response =
+                                    authenticated { token ->
+                                        sessionApi.uploadChunk(
+                                            token,
+                                            checkNotNull(current.sessionId),
+                                            current.confirmedOffset,
+                                            chunkSha,
+                                            chunk.toRequestBody(OCTET_STREAM),
+                                        )
+                                    }
+                                check(response.sha256.equals(chunkSha, ignoreCase = true)) {
+                                    "Server chunk checksum differed"
+                                }
+                                check(response.nextOffset >= current.confirmedOffset) {
+                                    "Server offset moved backwards"
+                                }
+                                current =
+                                    current.copy(
+                                        confirmedOffset = response.nextOffset,
+                                        expiresAt = Instant.parse(response.expiresAt),
+                                        state = UploadState.UPLOADING,
+                                    )
+                                retries = 0
+                                status("Uploading")
+                            } catch (error: KuraStorageException.Api) {
+                                if (!error.isResynchronizable() || retries >= MAX_RESYNCHRONIZATION_ATTEMPTS) {
+                                    throw error
+                                }
+                                current = current.copy(state = UploadState.PAUSED)
+                                status("Connection interrupted; checking server position", canRetry = true)
+                                val retrySeconds = error.error.retryAfterSeconds ?: DEFAULT_RETRY_SECONDS
+                                delay(retrySeconds * MILLISECONDS_PER_SECOND)
+                                session =
+                                    authenticated {
+                                        sessionApi.getUploadSession(it, checkNotNull(current.sessionId))
+                                    }
+                                current = current.fromSession(session, UploadState.UPLOADING)
+                                source.close()
+                                source = openSourceAt(current)
+                                retries++
+                                status("Resuming from confirmed position")
+                            } catch (error: KuraStorageException.Network) {
+                                if (retries >= MAX_RESYNCHRONIZATION_ATTEMPTS) throw error
+                                current = current.copy(state = UploadState.PAUSED)
+                                status("Connection interrupted; checking server position", canRetry = true)
+                                delay(DEFAULT_RETRY_SECONDS * MILLISECONDS_PER_SECOND)
+                                session =
+                                    authenticated {
+                                        sessionApi.getUploadSession(it, checkNotNull(current.sessionId))
+                                    }
+                                current = current.fromSession(session, UploadState.UPLOADING)
+                                source.close()
+                                source = openSourceAt(current)
+                                retries++
+                                status("Resuming from confirmed position")
+                            }
+                        }
+                    } finally {
+                        source.close()
                     }
-                } finally {
-                    source.close()
+                    current = current.copy(state = UploadState.VERIFYING)
+                    status("Verifying upload")
+                    val result = authenticated { sessionApi.completeUploadSession(it, checkNotNull(current.sessionId)) }
+                    current = current.copy(state = UploadState.COMPLETED, confirmedOffset = current.size)
+                    status("Upload completed")
+                    send(TransferEvent.UploadCompleted(result.toModel()))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    val retryable = error.canRetryUpload()
+                    current =
+                        current.copy(
+                            state =
+                                when {
+                                    current.state == UploadState.CANCELLED -> UploadState.CANCELLED
+                                    retryable -> UploadState.PAUSED
+                                    else -> UploadState.FAILED
+                                },
+                        )
+                    send(TransferEvent.Failed(error))
+                    send(TransferEvent.UploadStatus(current, error.uploadMessage(), retryable))
                 }
-                current = current.copy(state = UploadState.VERIFYING)
-                status("Verifying upload")
-                val result = authenticated { sessionApi.completeUploadSession(it, checkNotNull(current.sessionId)) }
-                current = current.copy(state = UploadState.COMPLETED, confirmedOffset = current.size)
-                status("Upload completed")
-                send(TransferEvent.UploadCompleted(result.toModel()))
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Throwable) {
-                val retryable = error.canRetryUpload()
-                current =
-                    current.copy(
-                        state =
-                            when {
-                                current.state == UploadState.CANCELLED -> UploadState.CANCELLED
-                                retryable -> UploadState.PAUSED
-                                else -> UploadState.FAILED
-                            },
-                    )
-                send(TransferEvent.Failed(error))
-                send(TransferEvent.UploadStatus(current, error.uploadMessage(), retryable))
             }
         }
 

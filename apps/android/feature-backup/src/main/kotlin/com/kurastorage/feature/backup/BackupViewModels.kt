@@ -225,7 +225,7 @@ class BackupRulesViewModel(
 data class BackupWifiState(
     val loading: Boolean = true,
     val policies: List<ExternalWifiPolicy> = emptyList(),
-    val currentWifi: CurrentWifiResult = CurrentWifiResult.InformationUnavailable,
+    val currentWifi: CurrentWifiResult = CurrentWifiResult.Unavailable,
     val saving: Boolean = false,
     val error: String? = null,
 )
@@ -248,14 +248,17 @@ class BackupWifiViewModel(
     fun refreshCurrent() = mutableState.update { it.copy(currentWifi = repository.currentWifi(), error = null) }
 
     fun register(
+        wifi: com.kurastorage.core.data.backup.ConnectedWifi,
         displayName: String,
         restrictToBssid: Boolean,
         treatAsMetered: Boolean,
         enabled: Boolean = true,
-    ) = action {
-        val policy = repository.registerCurrent(scope, displayName, restrictToBssid, treatAsMetered)
-        if (!enabled) repository.save(scope, policy.copy(enabled = false))
-        refreshCurrent()
+    ) {
+        action {
+            val policy = repository.registerCurrent(scope, wifi, displayName, restrictToBssid, treatAsMetered)
+            if (!enabled) repository.save(scope, policy.copy(enabled = false))
+            refreshCurrent()
+        }
     }
 
     fun save(policy: ExternalWifiPolicy) = action { repository.save(scope, policy) }

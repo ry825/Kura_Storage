@@ -17,17 +17,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -52,27 +53,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.kurastorage.core.data.media.NetworkTransport
 import com.kurastorage.core.model.media.LONG_SKIP_MS
-import com.kurastorage.core.model.media.MediaJobStatus
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaUiError
-import com.kurastorage.core.model.media.NetworkQualityContext
 import com.kurastorage.core.model.media.PlaybackRate
 import com.kurastorage.core.model.media.SHORT_SKIP_MS
 import com.kurastorage.core.ui.KuraTheme
 import com.kurastorage.core.ui.accessibility.kuraHeading
 import com.kurastorage.core.ui.accessibility.kuraSelected
 import com.kurastorage.core.ui.components.KuraCard
-import com.kurastorage.core.ui.components.KuraSegmentedControl
 import com.kurastorage.core.ui.components.KuraStatus
-import com.kurastorage.core.ui.components.KuraStatusBadge
 import com.kurastorage.core.ui.components.KuraStatusPanel
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -87,12 +85,9 @@ fun MediaPlayerScreen(
     onSkipBack: (Long) -> Unit,
     onSkipForward: (Long) -> Unit,
     onRate: (PlaybackRate) -> Unit,
-    onQuality: (MediaQuality) -> Unit,
     onConfirmOriginal: () -> Unit,
     onCancelOriginal: () -> Unit,
-    onRetryGeneration: () -> Unit,
     onRetryPlayback: () -> Unit,
-    onBackgroundGeneration: () -> Unit,
     onFullscreen: () -> Unit,
     fullscreen: Boolean = false,
     videoSurface: @Composable () -> Unit = {},
@@ -106,17 +101,20 @@ fun MediaPlayerScreen(
         !state.player.playWhenReady ||
             state.player.phase in setOf(PlayerPhase.IDLE, PlayerPhase.BUFFERING, PlayerPhase.FAILED, PlayerPhase.ENDED) ||
             state.player.error != null ||
-            controlsFocused
+            controlsFocused ||
+            seeking
     LaunchedEffect(fullscreen, videoControlsVisible, state.player.playWhenReady, state.player.phase, seeking, controlsFocused) {
-        val canScheduleAutoHide = fullscreen && videoControlsVisible && !controlsMustRemainVisible
+        val canScheduleAutoHide = videoControlsVisible && !controlsMustRemainVisible
         if (canScheduleAutoHide && !seeking && !controlsFocused) {
             delay(CONTROL_AUTO_HIDE_MS)
             videoControlsVisible = false
         }
     }
     if (fullscreen && state.kind == MediaKind.VIDEO) {
-        FullscreenVideoPlayer(
+        VideoPlayerFrame(
             state = state,
+            fullscreen = true,
+            modifier = Modifier.fillMaxSize().testTag("fullscreen-player"),
             controlsVisible = videoControlsVisible || controlsMustRemainVisible,
             onToggleControls = { videoControlsVisible = !videoControlsVisible },
             onPlay = onPlay,
@@ -125,7 +123,7 @@ fun MediaPlayerScreen(
             onSkipBack = onSkipBack,
             onSkipForward = onSkipForward,
             onRate = onRate,
-            onExitFullscreen = onFullscreen,
+            onFullscreen = onFullscreen,
             onSeeking = {
                 seeking = it
                 if (it) videoControlsVisible = true
@@ -146,28 +144,32 @@ fun MediaPlayerScreen(
                 PlayerHeader(state, onBack)
 
                 if (state.kind == MediaKind.VIDEO) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(16f / 9f)
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        videoSurface()
-                        VideoControlTapLayer { videoControlsVisible = !videoControlsVisible }
-                        if (state.player.phase == PlayerPhase.BUFFERING) CircularProgressIndicator()
-                        if (state.player.phase == PlayerPhase.READY) {
-                            KuraStatusBadge(
-                                if (state.player.playWhenReady) "Playing" else "Paused",
-                                KuraStatus.NEUTRAL,
-                                Modifier.align(Alignment.TopStart).padding(KuraTheme.spacing.sm),
-                            )
-                        }
+                    val aspectRatio = state.player.videoAspectRatio.safeAspectRatio()
+                    val maximumHeight = LocalConfiguration.current.screenHeightDp.dp * 0.55f
+                    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        val frameWidth = minOf(maxWidth, maximumHeight * aspectRatio)
+                        val frameHeight = maxOf(frameWidth / aspectRatio, minOf(maximumHeight, 320.dp))
+                        VideoPlayerFrame(
+                            state = state,
+                            fullscreen = false,
+                            modifier = Modifier.requiredSize(frameWidth, frameHeight),
+                            controlsVisible = videoControlsVisible || controlsMustRemainVisible,
+                            onToggleControls = { videoControlsVisible = !videoControlsVisible },
+                            onPlay = onPlay,
+                            onPause = onPause,
+                            onSeek = onSeek,
+                            onSkipBack = onSkipBack,
+                            onSkipForward = onSkipForward,
+                            onRate = onRate,
+                            onFullscreen = onFullscreen,
+                            onSeeking = {
+                                seeking = it
+                                if (it) videoControlsVisible = true
+                            },
+                            onControlsFocused = { controlsFocused = it },
+                            videoSurface = videoSurface,
+                        )
                     }
-                    OutlinedButton(onClick = onFullscreen, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) {
-                        Text(if (fullscreen) "Exit full screen" else "Full screen")
-                    }
-                    QualityControls(media?.quality, onQuality)
                 } else {
                     KuraCard {
                         Box(
@@ -184,14 +186,14 @@ fun MediaPlayerScreen(
 
                 KuraCard {
                     Text("Media details", style = MaterialTheme.typography.titleMedium, modifier = Modifier.kuraHeading())
-                    Text("Connection: ${media?.networkContext.userLabel()}")
+                    Text("Connection: ${media?.transport.userLabel()}")
                     Text("Displayed size: ${media?.displayedSizeLabel ?: "Not ready"}")
-                    Text(if (state.kind == MediaKind.VIDEO) "Quality: ${media?.quality.userLabel()}" else "Quality: Original")
+                    Text("Quality: Original")
                 }
 
-                PlayerStatus(state, load, onRetryGeneration, onRetryPlayback, onBackgroundGeneration, onQuality)
+                PlayerStatus(state, load, onRetryPlayback)
 
-                if (state.kind != MediaKind.VIDEO || videoControlsVisible) {
+                if (state.kind != MediaKind.VIDEO) {
                     PlayerControls(state.player, onPlay, onPause, onSeek, onSkipBack, onSkipForward, onRate, onSeeking = {})
                 }
             }
@@ -204,7 +206,7 @@ fun MediaPlayerScreen(
             title = { Text(if (state.kind == MediaKind.AUDIO) "Play original audio?" else "Play original video?") },
             text = {
                 Text(
-                    "Estimated transfer: ${prompt.formattedSize}. Current connection: ${media.networkContext.userLabel()}. " +
+                    "Estimated transfer: ${prompt.formattedSize}. Current connection: ${media.transport.userLabel()}. " +
                         "Range playback may receive less data than the full file. Actual usage can vary.",
                 )
             },
@@ -215,8 +217,10 @@ fun MediaPlayerScreen(
 }
 
 @Composable
-private fun FullscreenVideoPlayer(
+private fun VideoPlayerFrame(
     state: MediaPlayerUiState,
+    fullscreen: Boolean,
+    modifier: Modifier,
     controlsVisible: Boolean,
     onToggleControls: () -> Unit,
     onPlay: () -> Unit,
@@ -225,19 +229,20 @@ private fun FullscreenVideoPlayer(
     onSkipBack: (Long) -> Unit,
     onSkipForward: (Long) -> Unit,
     onRate: (PlaybackRate) -> Unit,
-    onExitFullscreen: () -> Unit,
+    onFullscreen: () -> Unit,
     onSeeking: (Boolean) -> Unit,
     onControlsFocused: (Boolean) -> Unit,
     videoSurface: @Composable () -> Unit,
 ) {
-    Surface(Modifier.fillMaxSize().testTag("fullscreen-player"), color = Color.Black) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.Black),
-            contentAlignment = Alignment.Center,
-        ) {
-            videoSurface()
+    val aspectRatio = state.player.videoAspectRatio.safeAspectRatio()
+    Surface(modifier, color = Color.Black) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            val containerAspectRatio = maxWidth.value / maxHeight.value.coerceAtLeast(1f)
+            val contentWidth = if (aspectRatio >= containerAspectRatio) maxWidth else maxHeight * aspectRatio
+            val contentHeight = if (aspectRatio >= containerAspectRatio) maxWidth / aspectRatio else maxHeight
+            val videoModifier =
+                Modifier.requiredSize(width = contentWidth, height = contentHeight)
+            Box(videoModifier.testTag("video-content"), contentAlignment = Alignment.Center) { videoSurface() }
             VideoControlTapLayer(onToggleControls)
             if (state.player.phase == PlayerPhase.BUFFERING) CircularProgressIndicator()
             if (controlsVisible) {
@@ -252,12 +257,18 @@ private fun FullscreenVideoPlayer(
                         .testTag("player-overlay"),
                     verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
                 ) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        OutlinedButton(onClick = onExitFullscreen, modifier = Modifier.heightIn(min = 48.dp)) {
-                            Text("Exit full screen")
-                        }
-                    }
-                    CompactPlayerControls(state.player, onPlay, onPause, onSeek, onSkipBack, onSkipForward, onRate, onSeeking)
+                    VideoPlaybackControls(
+                        state.player,
+                        onPlay,
+                        onPause,
+                        onSeek,
+                        onSkipBack,
+                        onSkipForward,
+                        onRate,
+                        onSeeking,
+                        onFullscreen,
+                        fullscreen,
+                    )
                 }
             }
         }
@@ -276,7 +287,7 @@ private fun BoxScope.VideoControlTapLayer(onToggleControls: () -> Unit) {
 }
 
 @Composable
-private fun CompactPlayerControls(
+private fun VideoPlaybackControls(
     player: PlayerSnapshot,
     onPlay: () -> Unit,
     onPause: () -> Unit,
@@ -285,6 +296,8 @@ private fun CompactPlayerControls(
     onSkipForward: (Long) -> Unit,
     onRate: (PlaybackRate) -> Unit,
     onSeeking: (Boolean) -> Unit,
+    onFullscreen: () -> Unit,
+    fullscreen: Boolean,
 ) {
     val duration = player.durationMs.coerceAtLeast(0)
     val position = player.positionMs.coerceIn(0, duration)
@@ -337,6 +350,9 @@ private fun CompactPlayerControls(
             onClick = { onRate(nextRate) },
             modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Playback speed ${player.rate.value} times" },
         ) { Text("Speed ${player.rate.value}×") }
+        OutlinedButton(onClick = onFullscreen, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text(if (fullscreen) "Exit full screen" else "Full screen")
+        }
     }
 }
 
@@ -361,29 +377,10 @@ private fun PlayerHeader(
 }
 
 @Composable
-private fun QualityControls(
-    selected: MediaQuality?,
-    onQuality: (MediaQuality) -> Unit,
-) {
-    KuraCard {
-        Text("Video quality", style = MaterialTheme.typography.titleMedium, modifier = Modifier.kuraHeading())
-        KuraSegmentedControl(
-            labels = listOf("Low", "Medium", "Original"),
-            selectedIndex = selected?.ordinal ?: -1,
-            onSelected = { onQuality(MediaQuality.entries[it]) },
-        )
-        Text("Low and Medium never fall back to Original automatically.")
-    }
-}
-
-@Composable
 private fun PlayerStatus(
     state: MediaPlayerUiState,
     load: MediaLoadState?,
-    onRetryGeneration: () -> Unit,
     onRetryPlayback: () -> Unit,
-    onBackgroundGeneration: () -> Unit,
-    onQuality: (MediaQuality) -> Unit,
 ) {
     when (load) {
         MediaLoadState.Idle, MediaLoadState.Loading ->
@@ -392,7 +389,12 @@ private fun PlayerStatus(
                 if (state.reconnecting) "Waiting for the current connection." else "Preparing the selected source.",
                 KuraStatus.INFO,
             )
-        is MediaLoadState.Generating -> GenerationPanel(load, onRetryGeneration, onBackgroundGeneration, onQuality)
+        is MediaLoadState.Generating ->
+            KuraStatusPanel(
+                "Media unavailable",
+                "Original playback does not require a conversion job.",
+                KuraStatus.ERROR,
+            )
         is MediaLoadState.Failed ->
             KuraStatusPanel(
                 "Media unavailable",
@@ -400,13 +402,7 @@ private fun PlayerStatus(
                 KuraStatus.ERROR,
                 action = {
                     Column(verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs)) {
-                        if (state.media?.canRetryGeneration == true) Button(onClick = onRetryGeneration) { Text("Retry conversion") }
                         OutlinedButton(onClick = onRetryPlayback) { Text("Reconnect") }
-                        if (state.kind ==
-                            MediaKind.VIDEO
-                        ) {
-                            OutlinedButton(onClick = { onQuality(MediaQuality.ORIGINAL) }) { Text("Play original") }
-                        }
                     }
                 },
             )
@@ -419,35 +415,6 @@ private fun PlayerStatus(
     }
     state.player.error?.let { KuraStatusPanel("Playback stopped", it.userMessage(), KuraStatus.ERROR) }
     state.error?.let { KuraStatusPanel("Cannot play this file", it.userMessage(), KuraStatus.ERROR) }
-}
-
-@Composable
-private fun GenerationPanel(
-    load: MediaLoadState.Generating,
-    onRetry: () -> Unit,
-    onBackground: () -> Unit,
-    onQuality: (MediaQuality) -> Unit,
-) {
-    val job = load.job
-    val status =
-        when {
-            job.status == MediaJobStatus.FAILED -> "Conversion failed"
-            job.queuePosition != null -> "Queued: position ${job.queuePosition}"
-            job.progressPercent != null -> "Converting: ${job.progressPercent}%"
-            else -> "Waiting for the media worker"
-        }
-    KuraStatusPanel(
-        "Preparing selected video quality",
-        status,
-        if (job.status == MediaJobStatus.FAILED) KuraStatus.ERROR else KuraStatus.INFO,
-        action = {
-            Column(Modifier.semantics { contentDescription = status }, verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs)) {
-                if (job.retryable) Button(onClick = onRetry) { Text("Retry conversion") }
-                OutlinedButton(onClick = onBackground) { Text("Continue in background") }
-                OutlinedButton(onClick = { onQuality(MediaQuality.ORIGINAL) }) { Text("Play original") }
-            }
-        },
-    )
 }
 
 @Composable
@@ -561,14 +528,12 @@ private fun SkipButton(
     ) { Text(label) }
 }
 
-private fun MediaQuality?.userLabel(): String = this?.name?.lowercase()?.replaceFirstChar(Char::uppercase) ?: "Checking"
-
-private fun NetworkQualityContext?.userLabel(): String =
+private fun NetworkTransport?.userLabel(): String =
     when (this) {
-        NetworkQualityContext.LOCAL_DIRECT -> "Local direct"
-        NetworkQualityContext.REGISTERED_REMOTE_WIFI -> "Registered Wi-Fi"
-        NetworkQualityContext.UNREGISTERED_REMOTE_WIFI -> "Other Wi-Fi"
-        NetworkQualityContext.REMOTE_MOBILE -> "Mobile network"
+        NetworkTransport.WIFI -> "Wi-Fi"
+        NetworkTransport.ETHERNET -> "Ethernet"
+        NetworkTransport.CELLULAR -> "Mobile network"
+        NetworkTransport.OTHER_OR_UNKNOWN -> "Other or unknown network"
         null -> "Checking"
     }
 
@@ -582,7 +547,7 @@ private fun MediaUiError.userMessage(): String =
         MediaUiError.RANGE_INVALID -> "The server cannot resume this playback range."
         MediaUiError.RESPONSE_INCOMPLETE -> "The media response ended unexpectedly."
         MediaUiError.SERVER_ERROR -> "The server could not provide this media response. Try again."
-        MediaUiError.GENERATION_FAILED -> "The selected video quality could not be prepared."
+        MediaUiError.GENERATION_FAILED -> "Original media could not be prepared."
         MediaUiError.UNSUPPORTED -> "This codec is not supported on this device. Return to choose another file."
         MediaUiError.UNKNOWN -> "Playback stopped safely because of an unexpected error."
     }
@@ -604,5 +569,7 @@ private fun formatDuration(milliseconds: Long): String {
     val seconds = milliseconds.coerceAtLeast(0) / 1_000
     return "%d:%02d".format(Locale.US, seconds / 60, seconds % 60)
 }
+
+private fun Float.safeAspectRatio(): Float = takeIf { isFinite() && this > 0f } ?: DEFAULT_VIDEO_ASPECT_RATIO
 
 private const val CONTROL_AUTO_HIDE_MS = 3_000L

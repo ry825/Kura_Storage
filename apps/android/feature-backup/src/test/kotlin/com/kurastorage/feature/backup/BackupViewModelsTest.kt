@@ -155,9 +155,9 @@ class BackupViewModelsTest {
             dispatcher.scheduler.advanceUntilIdle()
             assertTrue(model.state.value.currentWifi is CurrentWifiResult.PermissionRequired)
 
-            repository.current = CurrentWifiResult.Connected(ConnectedWifi("Family", null, false))
+            repository.current = CurrentWifiResult.Available(ConnectedWifi("Family", null, false))
             model.refreshCurrent()
-            model.register("Home", false, false)
+            model.register(ConnectedWifi("Family", null, false), "Home", false, false)
             dispatcher.scheduler.advanceUntilIdle()
 
             assertEquals(
@@ -306,6 +306,7 @@ class BackupViewModelsTest {
 
         override suspend fun registerCurrent(
             accountScopeId: AccountScopeId,
+            wifi: ConnectedWifi,
             displayName: String,
             restrictToBssid: Boolean,
             treatAsMetered: Boolean,
@@ -314,9 +315,9 @@ class BackupViewModelsTest {
                 ExternalWifiPolicyId(UUID.randomUUID().toString()),
                 accountScopeId,
                 displayName,
-                "Family",
-                null,
-                treatAsMetered,
+                wifi.ssid,
+                if (restrictToBssid) wifi.bssid else null,
+                treatAsMetered || wifi.systemMetered,
                 true,
                 Instant.EPOCH,
                 Instant.EPOCH,

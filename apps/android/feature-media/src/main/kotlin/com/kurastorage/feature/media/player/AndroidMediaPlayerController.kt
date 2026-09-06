@@ -54,6 +54,7 @@ class AndroidMediaPlayerController(
     private val mutableStates = MutableStateFlow(PlayerSnapshot())
     private val closed = AtomicBoolean(false)
     private val ticker: Job
+    private var preparedSource: ReadyMediaSource? = null
 
     override val states: StateFlow<PlayerSnapshot> = mutableStates.asStateFlow()
     override val snapshot: PlayerSnapshot get() = mutableStates.value
@@ -104,6 +105,8 @@ class AndroidMediaPlayerController(
         playWhenReady: Boolean,
     ) {
         check(!closed.get()) { "Player is closed" }
+        if (source == preparedSource && player.playerError == null && player.playbackState != Player.STATE_IDLE) return
+        preparedSource = source
         val mediaSource =
             ProgressiveMediaSource
                 .Factory(KuraMediaDataSource.Factory(repository, source))
@@ -152,7 +155,14 @@ class AndroidMediaPlayerController(
                     },
                 error = null,
                 generatingJob = null,
+                videoAspectRatio = player.videoSize.toDisplayAspectRatio(),
             )
+    }
+
+    private fun androidx.media3.common.VideoSize.toDisplayAspectRatio(): Float {
+        if (width <= 0 || height <= 0 || pixelWidthHeightRatio <= 0f) return snapshot.videoAspectRatio
+        val displayed = width * pixelWidthHeightRatio / height
+        return displayed.takeIf { it.isFinite() && it > 0f } ?: snapshot.videoAspectRatio
     }
 
     private fun PlaybackException.toFailure(): PlayerFailure {
