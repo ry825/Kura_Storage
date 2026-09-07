@@ -14,6 +14,7 @@
     <ProjectReference Include="../../src/KuraStorage.Infrastructure/KuraStorage.Infrastructure.csproj" />
     <ProjectReference Include="../../src/KuraStorage.Api/KuraStorage.Api.csproj" />
     <ProjectReference Include="../../src/KuraStorage.Worker/KuraStorage.Worker.csproj" />
+    <ProjectReference Include="../../src/KuraStorage.AdminCli/KuraStorage.AdminCli.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../../../contracts/fixtures/*.json" Link="ContractFixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

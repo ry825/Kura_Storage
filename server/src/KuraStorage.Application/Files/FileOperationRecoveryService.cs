@@ -1,8 +1,10 @@
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Activity;
+using KuraStorage.Application.Media;
 using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Media;
 
 namespace KuraStorage.Application.Files;
 
@@ -15,7 +17,8 @@ public sealed class FileOperationRecoveryService(
     FileVersionService? fileVersions = null,
     IFileVersionRepository? versions = null,
     IFileVersionStore? versionStore = null,
-    UserActivityFactory? activities = null)
+    UserActivityFactory? activities = null,
+    IRequiredPhotoDerivativeProvisioner? requiredPhotoDerivatives = null)
 {
     public async Task RecoverAsync(CancellationToken cancellationToken)
     {
@@ -314,6 +317,11 @@ public sealed class FileOperationRecoveryService(
             var now = clock.UtcNow;
             await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
             entry.ApplyManagedContentChange(record.Size, previousVersion, now);
+            if (requiredPhotoDerivatives is not null)
+            {
+                _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                    entry, MediaJobOrigin.Ingest, now, cancellationToken);
+            }
             if (activities is not null &&
                 record.ActorUserId is Guid actorUserId &&
                 record.ActorDeviceId is Guid actorDeviceId)

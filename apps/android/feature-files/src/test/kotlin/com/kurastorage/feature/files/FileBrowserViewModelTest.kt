@@ -168,6 +168,87 @@ class FileBrowserViewModelTest {
         }
 
     @Test
+    fun `failed pagination keeps loaded entries and retry appends once`() =
+        runTest(dispatcher) {
+            val files =
+                object : FakeFiles() {
+                    var failPageTwo = true
+
+                    override suspend fun list(
+                        parentId: String?,
+                        page: Int,
+                        pageSize: Int,
+                    ): FilePage {
+                        if (page == 2 && failPageTwo) {
+                            failPageTwo = false
+                            throw KuraStorageException.Api(
+                                ApiError(ErrorCode.STORAGE_UNAVAILABLE, "page-two", 503),
+                            )
+                        }
+                        return super.list(parentId, page, pageSize)
+                    }
+                }
+            val viewModel = FileBrowserViewModel(files, FakeTransfers())
+
+            viewModel.loadMore()
+            assertEquals(
+                listOf("file-1"),
+                viewModel.state.value.entries
+                    .map { it.id },
+            )
+            assertEquals(
+                "page-two",
+                viewModel.state.value.paginationError
+                    ?.requestId,
+            )
+
+            viewModel.loadMore()
+            assertEquals(
+                listOf("file-1", "file-2"),
+                viewModel.state.value.entries
+                    .map { it.id },
+            )
+            assertNull(viewModel.state.value.paginationError)
+        }
+
+    @Test
+    fun `concurrent pagination requests are coalesced and append the expected page once`() =
+        runTest(dispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            val files =
+                object : FakeFiles() {
+                    var pageTwoCalls = 0
+
+                    override suspend fun list(
+                        parentId: String?,
+                        page: Int,
+                        pageSize: Int,
+                    ): FilePage {
+                        if (page == 2) {
+                            pageTwoCalls++
+                            gate.await()
+                        }
+                        return super.list(parentId, page, pageSize)
+                    }
+                }
+            val viewModel = FileBrowserViewModel(files, FakeTransfers())
+
+            viewModel.loadMore()
+            viewModel.loadMore()
+
+            assertEquals(1, files.pageTwoCalls)
+            gate.complete(Unit)
+
+            assertEquals(1, files.pageTwoCalls)
+            assertEquals(
+                listOf("file-1", "file-2"),
+                viewModel.state.value.entries
+                    .map { it.id },
+            )
+            assertFalse(viewModel.state.value.canLoadMore)
+        }
+
+    @Test
     fun `empty page is represented without an error`() =
         runTest(dispatcher) {
             val viewModel = FileBrowserViewModel(FakeFiles(empty = true), FakeTransfers())

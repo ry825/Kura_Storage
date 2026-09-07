@@ -565,14 +565,14 @@ KuraStorage.Infrastructure/
 │   ├── Configurations/
 │   │   ├── FileDerivativeConfiguration.cs
 │   │   ├── MediaJobConfiguration.cs
-│   │   ├── DerivativeLeaseConfiguration.cs
-│   │   └── MediaCleanupRunConfiguration.cs
+│   │   └── DerivativeLeaseConfiguration.cs
 │   ├── Migrations/<timestamp>_AddMediaDerivativeFoundation.cs
-│   ├── Migrations/<timestamp>_AddMediaCleanupRuns.cs
+│   ├── Migrations/<timestamp>_MakeImageLowPersistent.cs
+│   ├── Migrations/<timestamp>_RemoveMediaCacheCleanup.cs
 │   ├── PostgreSqlMediaJobQueue.cs
 │   ├── PostgreSqlMediaRepository.cs
 │   ├── PostgreSqlMediaHeartbeat.cs
-│   ├── PostgreSqlMediaCleanupRepository.cs
+│   ├── PostgreSqlMediaMaintenanceRepository.cs
 │   └── MediaDeletionParticipant.cs
 ├── Media/
 │   ├── MediaProcessRunner.cs
@@ -580,9 +580,9 @@ KuraStorage.Infrastructure/
 └── Storage/DerivativeStore.cs
 ```
 
-Workerの生成Loopと清掃Loopはそれぞれ`Workers/MediaGenerationWorker.cs`、`Workers/MediaCleanupWorker.cs`へ置き、清掃のApplication Serviceは`Application/Media/MediaCleanupService.cs`へ置く。対応Testは`KuraStorage.Domain.Tests/MediaDerivativeTests.cs`、`KuraStorage.Application.Tests/MediaContractRulesTests.cs`、`MediaCleanupServiceTests.cs`、`MediaCleanupWorkerTests.cs`、`ConfigurationValidationTests.cs`、`KuraStorage.IntegrationTests/MediaPersistenceTests.cs`、`MediaCleanupPersistenceTests.cs`、`DerivativeStoreTests.cs`、`MediaProcessRunnerTests.cs`、`ExternalMediaGeneratorTests.cs`、`ExternalMediaToolIntegrationTests.cs`、`MediaApiTests.cs`、`LeasedMediaResultTests.cs`へ置く。
+Workerの生成Loopと保守Loopはそれぞれ`Workers/MediaGenerationWorker.cs`、`Workers/MediaMaintenanceWorker.cs`へ置き、保守のApplication Serviceは`Application/Media/MediaMaintenanceService.cs`へ置く。保守はstale Job、terminal Job、途中出力、`DELETING`、orphan、旧Version/Profileを安全に収束させるものであり、期限・access・LRU・watermarkによる写真Low削除は行わない。対応Testは`KuraStorage.Domain.Tests/MediaDerivativeTests.cs`、`KuraStorage.Application.Tests/MediaContractRulesTests.cs`、`RequiredPhotoDerivativeProvisionerTests.cs`、`StorageCapacityServiceTests.cs`、`MediaJobRunnerTests.cs`、`ConfigurationValidationTests.cs`、`KuraStorage.IntegrationTests/MediaPersistenceTests.cs`、`PersistentLowMigrationTests.cs`、`AdminCliMediaTests.cs`、`DerivativeStoreTests.cs`、`MediaProcessRunnerTests.cs`、`ExternalMediaGeneratorTests.cs`、`ExternalMediaToolIntegrationTests.cs`、`MediaApiTests.cs`、`LeasedMediaResultTests.cs`へ置く。
 
-Admin Cache状態と永続手動清掃は`Domain/Media/MediaCleanupRun.cs`、`Application/Media/AdminMediaCacheService.cs`、既存`Application/Abstractions/MediaAbstractions.cs`、`Infrastructure/Persistence/PostgreSqlMediaCleanupRepository.cs`、`Infrastructure/Persistence/Configurations/MediaCleanupRunConfiguration.cs`、`Worker/Workers/MediaCleanupWorker.cs`に分離する。APIは`KuraStorage.Api/Program.cs`のAdmin限定Endpointにとどめる。Domain状態遷移、Application契約、Worker、PostgreSQL/Migration、API認可のTestを各既存Test projectへ配置する。
+永続Lowの登録は`Application/Media/RequiredPhotoDerivativeProvisioner.cs`、集計は`Application/Media/MediaDerivativeStatusService.cs`、容量取得は`Application/Maintenance/StorageCapacityService.cs`に分離する。旧Cache cleanup APIは公開せず、Medium purgeとLow backfillは`KuraStorage.AdminCli`の明示commandで実行する。旧動画派生と中間出力を収束させる内部maintenance構造は移行中のみ維持する。
 
 ### 6.3 配置ルール
 

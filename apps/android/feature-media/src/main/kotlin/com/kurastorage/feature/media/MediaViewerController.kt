@@ -15,13 +15,13 @@ import com.kurastorage.core.model.media.MediaJobSnapshot
 import com.kurastorage.core.model.media.MediaJobStatus
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaUiError
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.MediaVariantResolver
 import com.kurastorage.core.model.media.NetworkQualityContext
 import com.kurastorage.core.model.media.NetworkQualityContext.REMOTE_MOBILE
 import com.kurastorage.core.model.media.OriginalMetadata
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.model.media.ReadyMediaSource
 import com.kurastorage.core.model.media.VariantMetadata
 import com.kurastorage.core.ui.formatting.formatFileSize
@@ -42,14 +42,14 @@ data class MediaViewerState(
     val fileId: String,
     val fileVersion: Long,
     val kind: MediaKind,
-    val quality: MediaQuality,
+    val quality: PhotoDisplayMode,
     val networkContext: NetworkQualityContext,
     val loadState: MediaLoadState,
     val confirmation: TransferConfirmationPrompt? = null,
     val canRetryGeneration: Boolean = false,
     val originalSizeLabel: String? = null,
     val requestedVariant: com.kurastorage.core.model.media.MediaVariant =
-        MediaVariantResolver.resolve(kind, quality),
+        resolveVariant(kind, quality),
     val requestedMetadata: VariantMetadata? = null,
     val displayedSource: ReadyMediaSource? = null,
     val displayedMetadata: VariantMetadata? = null,
@@ -81,6 +81,7 @@ class MediaViewerController(
     private var transportJob: Job? = null
     private var activeJob: MediaJobSnapshot? = null
     private var retrying = false
+    private var manualOriginalConfirmationRequired = false
 
     val state: StateFlow<MediaViewerState?> = mutableState.asStateFlow()
 
@@ -94,13 +95,20 @@ class MediaViewerController(
         invalidateRequests()
         approvedPrompt = null
         activeJob = null
+        manualOriginalConfirmationRequired = false
         val transport = contextResolver.activeTransport()
         val context = contextResolver.resolve(route, transport)
         val initialQuality =
             if (kind == MediaKind.IMAGE) {
-                qualityStore.read().qualityFor(context)
+                when (context) {
+                    NetworkQualityContext.LOCAL_DIRECT -> PhotoDisplayMode.ORIGINAL
+                    NetworkQualityContext.REMOTE_MOBILE -> PhotoDisplayMode.FAST
+                    NetworkQualityContext.REGISTERED_REMOTE_WIFI,
+                    NetworkQualityContext.UNREGISTERED_REMOTE_WIFI,
+                    -> qualityStore.read().qualityFor(context)
+                }
             } else {
-                MediaQuality.ORIGINAL
+                PhotoDisplayMode.ORIGINAL
             }
         mutableState.value =
             MediaViewerState(
@@ -116,22 +124,26 @@ class MediaViewerController(
         observeTransportChanges()
     }
 
-    suspend fun selectQuality(quality: MediaQuality) {
+    suspend fun selectQuality(quality: PhotoDisplayMode) {
         val current = checkNotNull(mutableState.value) { "Media has not been started" }
-        require(current.kind == MediaKind.IMAGE || quality == MediaQuality.ORIGINAL) {
+        require(current.kind == MediaKind.IMAGE || quality == PhotoDisplayMode.ORIGINAL) {
             "${current.kind} only supports original content"
         }
-        MediaVariantResolver.resolve(current.kind, quality)
+        resolveVariant(current.kind, quality)
         invalidateRequests()
         approvedPrompt = null
         activeJob = null
+        manualOriginalConfirmationRequired =
+            current.kind == MediaKind.IMAGE &&
+            quality == PhotoDisplayMode.ORIGINAL &&
+            current.networkContext != NetworkQualityContext.LOCAL_DIRECT
         mutableState.value =
             current.copy(
                 quality = quality,
                 loadState = MediaLoadState.Idle,
                 confirmation = null,
                 canRetryGeneration = false,
-                requestedVariant = MediaVariantResolver.resolve(current.kind, quality),
+                requestedVariant = resolveVariant(current.kind, quality),
                 requestedMetadata = null,
             )
         prepareSelectedQuality(generation)
@@ -141,6 +153,7 @@ class MediaViewerController(
         val current = checkNotNull(mutableState.value)
         val prompt = checkNotNull(current.confirmation) { "No original transfer is awaiting confirmation" }
         approvedPrompt = prompt
+        manualOriginalConfirmationRequired = false
         mutableState.value = current.copy(loadState = MediaLoadState.Loading, confirmation = null)
     }
 
@@ -155,7 +168,7 @@ class MediaViewerController(
     fun requestTicket(): MediaRequestTicket? {
         val current = mutableState.value ?: return null
         if (current.loadState !is MediaLoadState.Loading) return null
-        val variant = MediaVariantResolver.resolve(current.kind, current.quality)
+        val variant = resolveVariant(current.kind, current.quality)
         if (variant == com.kurastorage.core.model.media.MediaVariant.ORIGINAL) {
             val approved = approvedPrompt ?: return null
             if (!approved.approve().matches(current.fileId, current.fileVersion, variant, approved.size)) return null
@@ -250,7 +263,7 @@ class MediaViewerController(
     @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")
     private suspend fun prepareSelectedQuality(expectedGeneration: Long) {
         val current = mutableState.value ?: return
-        val variant = MediaVariantResolver.resolve(current.kind, current.quality)
+        val variant = resolveVariant(current.kind, current.quality)
         try {
             when (val inspection = repository.inspectVariant(current.fileId, variant)) {
                 is MediaMetadataResult.Generating -> {
@@ -425,7 +438,7 @@ class MediaViewerController(
         prompt: TransferConfirmationPrompt,
     ): Boolean =
         when (state.kind) {
-            MediaKind.IMAGE -> false
+            MediaKind.IMAGE -> manualOriginalConfirmationRequired
             MediaKind.VIDEO ->
                 state.transport == NetworkTransport.CELLULAR &&
                     (prompt.size?.value ?: MOBILE_VIDEO_CONFIRMATION_BYTES) >= MOBILE_VIDEO_CONFIRMATION_BYTES
@@ -473,8 +486,8 @@ class MediaViewerController(
         return generation == this.generation && currentSource == source
     }
 
-    private fun MediaViewerState.toSource(): ReadyMediaSource =
-        ReadyMediaSource(fileId, fileVersion, MediaVariantResolver.resolve(kind, quality))
+    @Suppress("MaxLineLength")
+    private fun MediaViewerState.toSource(): ReadyMediaSource = ReadyMediaSource(fileId, fileVersion, resolveVariant(kind, quality))
 
     private companion object {
         const val MILLIS_PER_SECOND = 1_000L
@@ -489,3 +502,14 @@ class MediaViewerController(
         const val MOBILE_VIDEO_CONFIRMATION_BYTES = 1024L * 1024L
     }
 }
+
+private fun resolveVariant(
+    kind: MediaKind,
+    mode: PhotoDisplayMode,
+): MediaVariant =
+    if (kind == MediaKind.IMAGE) {
+        MediaVariantResolver.resolvePhoto(mode)
+    } else {
+        require(mode == PhotoDisplayMode.ORIGINAL) { "$kind only supports original content" }
+        MediaVariant.ORIGINAL
+    }

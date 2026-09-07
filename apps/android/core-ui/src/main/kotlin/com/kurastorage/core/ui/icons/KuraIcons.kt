@@ -63,6 +63,44 @@ fun KuraLogo(
     }
 }
 
+@Composable
+fun KuraFastDisplayIcon(
+    modifier: Modifier = Modifier,
+    size: Dp = 24.dp,
+    contentDescription: String? = "Fast display",
+) {
+    val color = MaterialTheme.colorScheme.primary
+    val semantics =
+        if (contentDescription == null) {
+            Modifier.clearAndSetSemantics { }
+        } else {
+            Modifier.semantics { this.contentDescription = contentDescription }
+        }
+    Canvas(modifier = modifier.size(size).then(semantics)) {
+        val strokeWidth = this.size.minDimension * 0.08f
+        repeat(3) { index ->
+            val y = this.size.height * (0.28f + index * 0.22f)
+            drawLine(
+                color = color,
+                start = Offset(this.size.width * 0.05f, y),
+                end = Offset(this.size.width * (0.28f - index * 0.04f), y),
+                strokeWidth = strokeWidth,
+            )
+        }
+        val bolt =
+            Path().apply {
+                moveTo(this@Canvas.size.width * 0.62f, this@Canvas.size.height * 0.04f)
+                lineTo(this@Canvas.size.width * 0.32f, this@Canvas.size.height * 0.55f)
+                lineTo(this@Canvas.size.width * 0.57f, this@Canvas.size.height * 0.55f)
+                lineTo(this@Canvas.size.width * 0.43f, this@Canvas.size.height * 0.96f)
+                lineTo(this@Canvas.size.width * 0.9f, this@Canvas.size.height * 0.4f)
+                lineTo(this@Canvas.size.width * 0.65f, this@Canvas.size.height * 0.4f)
+                close()
+            }
+        drawPath(path = bolt, color = color)
+    }
+}
+
 enum class KuraFileType(
     val accessibilityLabel: String,
     internal val shortLabel: String,

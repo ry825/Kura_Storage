@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,6 +54,7 @@ fun HomeScreen(
     adminStorageState: AdminStorageState = AdminStorageState(loading = false),
     onRefreshAdminStorage: () -> Unit = {},
     onRefreshRecent: () -> Unit = {},
+    onRefreshCapacity: () -> Unit = {},
     onFiles: () -> Unit,
     onShared: () -> Unit = {},
     onSearch: () -> Unit = {},
@@ -87,6 +89,7 @@ fun HomeScreen(
             KuraSectionHeader("Current status")
             StatusCards(connection, state)
         }
+        item { StorageCapacityCard(state, onRefreshCapacity) }
         if (adminStorageState.visible) {
             item {
                 AdminStoragePanel(adminStorageState, onRefreshAdminStorage, onTrash)
@@ -143,6 +146,58 @@ fun HomeScreen(
                 KuraListRow("Activity", onClick = onActivity)
                 KuraListRow("Trash", onClick = onTrash)
                 KuraListRow("Search all files", onClick = onSearch)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StorageCapacityCard(
+    state: HomeUiState,
+    onRetry: () -> Unit,
+) {
+    KuraCard(modifier = Modifier.fillMaxWidth().testTag("home-storage-capacity")) {
+        Text("KuraStorage capacity", style = MaterialTheme.typography.titleMedium)
+        when {
+            state.capacityLoading -> CircularProgressIndicator()
+            state.capacityError || state.capacity?.storage != "AVAILABLE" -> {
+                Text("Storage capacity is unavailable.", style = MaterialTheme.typography.bodyMedium)
+                HomeTextAction("Retry", onRetry)
+            }
+            else -> {
+                val capacity = checkNotNull(state.capacity)
+                val total = capacity.totalBytes
+                val used = capacity.usedBytes
+                val available = capacity.availableBytes
+                val capacityValues = listOf(total, used, available)
+                val hasInvalidValue = capacityValues.any { it == null || it < 0 }
+                val exceedsTotal =
+                    !hasInvalidValue &&
+                        (
+                            checkNotNull(used) > checkNotNull(total) ||
+                                checkNotNull(available) > checkNotNull(total) - checkNotNull(used)
+                        )
+                if (hasInvalidValue || exceedsTotal) {
+                    Text("Storage capacity is unavailable.", style = MaterialTheme.typography.bodyMedium)
+                    HomeTextAction("Retry", onRetry)
+                } else {
+                    val safeTotal = checkNotNull(total)
+                    val safeUsed = checkNotNull(used)
+                    val safeAvailable = checkNotNull(available)
+                    val fraction =
+                        if (safeTotal == 0L) {
+                            0f
+                        } else {
+                            (safeUsed.toDouble() / safeTotal.toDouble()).toFloat().coerceIn(0f, 1f)
+                        }
+                    Text("${formatFileSize(safeUsed)} used of ${formatFileSize(safeTotal)}")
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier.fillMaxWidth().testTag("home-storage-progress"),
+                    )
+                    Text("${formatFileSize(safeAvailable)} available")
+                    Text("Volume usage includes KuraStorage derivatives and other data on the same disk.")
+                }
             }
         }
     }

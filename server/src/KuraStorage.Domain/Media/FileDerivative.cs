@@ -81,6 +81,9 @@ public sealed class FileDerivative
     public bool IsThumbnail =>
         DerivativeType is DerivativeType.Thumbnail or DerivativeType.PdfThumbnail;
 
+    public bool IsPersistent =>
+        DerivativeType is DerivativeType.Thumbnail or DerivativeType.PdfThumbnail or DerivativeType.ImageLow;
+
     public void Start(DateTimeOffset now)
     {
         EnsureStatus(DerivativeStatus.Pending);
@@ -106,12 +109,12 @@ public sealed class FileDerivative
             throw new ArgumentOutOfRangeException(nameof(verifiedSize));
         }
 
-        if (IsThumbnail && expiresAt is not null)
+        if (IsPersistent && expiresAt is not null)
         {
-            throw new InvalidOperationException("Thumbnails cannot expire.");
+            throw new InvalidOperationException("Persistent derivatives cannot expire.");
         }
 
-        if (!IsThumbnail && (expiresAt is null || expiresAt <= now))
+        if (!IsPersistent && (expiresAt is null || expiresAt <= now))
         {
             throw new ArgumentOutOfRangeException(nameof(expiresAt));
         }
@@ -119,7 +122,7 @@ public sealed class FileDerivative
         RelativePath = relativePath;
         Size = verifiedSize;
         Status = DerivativeStatus.Ready;
-        LastAccessedAt = IsThumbnail ? null : now;
+        LastAccessedAt = IsPersistent ? null : now;
         ExpiresAt = expiresAt;
         ErrorCode = null;
         Touch(now);
@@ -164,6 +167,24 @@ public sealed class FileDerivative
         Touch(now);
     }
 
+    public bool RestoreAfterSourceAvailable(DateTimeOffset now)
+    {
+        EnsureStatus(DerivativeStatus.BlockedSourceMissing);
+        ErrorCode = null;
+        if (RelativePath is not null && Size > 0)
+        {
+            Status = DerivativeStatus.Ready;
+            LastAccessedAt = IsPersistent ? null : now;
+        }
+        else
+        {
+            Status = DerivativeStatus.Pending;
+            ClearPublishedData();
+        }
+        Touch(now);
+        return Status == DerivativeStatus.Ready;
+    }
+
     public void BeginDeleting(DateTimeOffset now)
     {
         if (Status is not (DerivativeStatus.Ready or DerivativeStatus.Failed or DerivativeStatus.BlockedSourceMissing))
@@ -178,9 +199,9 @@ public sealed class FileDerivative
     public void RecordAccess(DateTimeOffset now, DateTimeOffset expiresAt)
     {
         EnsureStatus(DerivativeStatus.Ready);
-        if (IsThumbnail)
+        if (IsPersistent)
         {
-            throw new InvalidOperationException("Thumbnail access does not update cache expiry.");
+            throw new InvalidOperationException("Persistent derivative access does not update cache expiry.");
         }
 
         if (expiresAt <= now)

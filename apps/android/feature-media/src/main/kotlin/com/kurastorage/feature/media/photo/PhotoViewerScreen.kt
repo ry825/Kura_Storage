@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -39,6 +40,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -66,12 +68,13 @@ import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
 import com.kurastorage.core.data.media.KuraMediaImage
 import com.kurastorage.core.data.media.MediaGeneratingException
+import com.kurastorage.core.data.media.QualityPreferencesCodec
 import com.kurastorage.core.model.TagItem
 import com.kurastorage.core.model.media.MediaLoadState
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaUiError
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.NetworkQualityContext
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.ui.KuraTheme
 import com.kurastorage.core.ui.components.KuraAppScaffold
 import com.kurastorage.core.ui.components.KuraIconButton
@@ -79,6 +82,7 @@ import com.kurastorage.core.ui.components.KuraSegmentedControl
 import com.kurastorage.core.ui.components.KuraStatus
 import com.kurastorage.core.ui.components.KuraStatusPanel
 import com.kurastorage.core.ui.components.KuraTopAppBar
+import com.kurastorage.core.ui.icons.KuraFastDisplayIcon
 import com.kurastorage.feature.media.MediaRequestTicket
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -119,7 +123,9 @@ fun PhotoViewerScreen(
     onImageReady: (MediaRequestTicket) -> Unit,
     onGenerating: (MediaRequestTicket, MediaGeneratingException) -> Unit,
     onImageFailed: (MediaRequestTicket) -> Unit,
-    onQuality: (MediaQuality) -> Unit,
+    onQuality: (PhotoDisplayMode) -> Unit,
+    onConfirmOriginal: () -> Unit = {},
+    onCancelOriginalConfirmation: () -> Unit = {},
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onZoom: (Float) -> Unit,
@@ -146,6 +152,20 @@ fun PhotoViewerScreen(
             onZoom(state.zoom * zoomChange)
             offset = if (state.zoom <= 1f) Offset.Zero else offset + panChange
         }
+    media?.confirmation?.let { confirmation ->
+        AlertDialog(
+            onDismissRequest = onCancelOriginalConfirmation,
+            title = { Text("Load original photo?") },
+            text = {
+                Text(
+                    "The original is ${confirmation.formattedSize}. " +
+                        "It may use significant data over this connection.",
+                )
+            },
+            confirmButton = { TextButton(onClick = onConfirmOriginal) { Text("Load original") } },
+            dismissButton = { TextButton(onClick = onCancelOriginalConfirmation) { Text("Cancel") } },
+        )
+    }
     LaunchedEffect(file?.id, readySource, state.previousPrefetch?.id, state.nextPrefetch?.id) {
         val source = readySource ?: return@LaunchedEffect
         if (source.variant == MediaVariant.ORIGINAL && media.networkContext == NetworkQualityContext.REMOTE_MOBILE) return@LaunchedEffect
@@ -332,7 +352,7 @@ private fun PhotoControls(
     state: PhotoViewerUiState,
     organization: PhotoOrganizationUiState,
     download: PhotoDownloadUiState,
-    onQuality: (MediaQuality) -> Unit,
+    onQuality: (PhotoDisplayMode) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onZoom: (Float) -> Unit,
@@ -354,11 +374,15 @@ private fun PhotoControls(
             Text("Navigate")
             KuraIconButton("Next photo", onNext, enabled = state.canGoNext) { Text("→") }
         }
-        Text("Viewing quality", style = MaterialTheme.typography.titleSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            KuraFastDisplayIcon(contentDescription = null)
+            Text("Viewing quality", style = MaterialTheme.typography.titleSmall)
+        }
+        val qualityChoices = QualityPreferencesCodec.manualChoices
         KuraSegmentedControl(
-            labels = listOf("Low", "Medium", "Original"),
-            selectedIndex = media?.quality?.ordinal ?: -1,
-            onSelected = { onQuality(MediaQuality.entries[it]) },
+            labels = listOf("Fast display", "Original"),
+            selectedIndex = qualityChoices.indexOf(media?.quality).coerceAtLeast(0),
+            onSelected = { onQuality(qualityChoices[it]) },
             enabled = state.file != null,
         )
         Text(qualityStatus(media), modifier = Modifier.testTag("quality-status"), style = MaterialTheme.typography.bodySmall)
@@ -672,13 +696,17 @@ private fun qualityStatus(media: com.kurastorage.feature.media.MediaViewerState?
 
 private fun MediaVariant.qualityLabel(): String =
     when (this) {
-        MediaVariant.IMAGE_LOW, MediaVariant.VIDEO_LOW -> "Low"
-        MediaVariant.IMAGE_MEDIUM, MediaVariant.VIDEO_MEDIUM -> "Medium"
+        MediaVariant.IMAGE_LOW, MediaVariant.VIDEO_LOW, MediaVariant.VIDEO_MEDIUM -> "Fast display"
         MediaVariant.ORIGINAL -> "Original"
         MediaVariant.THUMBNAIL -> "Thumbnail"
     }
 
-private fun MediaQuality?.userLabel(): String = this?.name?.lowercase()?.replaceFirstChar(Char::uppercase) ?: "selected quality"
+private fun PhotoDisplayMode?.userLabel(): String =
+    when (this) {
+        PhotoDisplayMode.FAST -> "Fast display"
+        PhotoDisplayMode.ORIGINAL -> "Original"
+        null -> "selected quality"
+    }
 
 private fun NetworkQualityContext?.userLabel(): String =
     when (this) {

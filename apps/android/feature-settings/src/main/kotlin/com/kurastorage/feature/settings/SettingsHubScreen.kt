@@ -79,8 +79,8 @@ fun SettingsHubScreen(
             }
             item {
                 KuraListRow(
-                    headline = "Media quality and data use",
-                    supportingText = "Choose the initial viewing quality for each connection",
+                    headline = "Fast display (data saving)",
+                    supportingText = "Choose fast photo loading for external Wi-Fi connections",
                     onClick = onMediaSettings,
                 )
             }
@@ -95,8 +95,8 @@ fun SettingsHubScreen(
                 }
                 item {
                     KuraListRow(
-                        headline = "Cache management",
-                        supportingText = "View ready cache usage and request safe cleanup",
+                        headline = "Fast display status",
+                        supportingText = "Photo coverage, storage use, and generation failures",
                         onClick = onCacheManagement,
                     )
                 }

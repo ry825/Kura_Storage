@@ -1,7 +1,9 @@
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Indexing;
+using KuraStorage.Application.Media;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Indexing;
+using KuraStorage.Domain.Media;
 using Xunit;
 
 namespace KuraStorage.Application.Tests;
@@ -25,6 +27,27 @@ public sealed class IndexEventServiceTests
         var entry = Assert.Single(fixture.Repository.Entries, entry => entry.Name == "new.txt");
         Assert.Equal(FileEntryStatus.Active, entry.Status);
         Assert.Equal(4, entry.Size);
+    }
+
+    [Fact]
+    public async Task Reconcile_PhotoDiscoveryAndContentChange_EnsureTheCurrentLow()
+    {
+        var fixture = new Fixture();
+        var path = fixture.Path("new.jpg");
+        fixture.Snapshot.Entries[path] = fixture.Observed("new.jpg", size: 4, mimeType: "image/jpeg");
+
+        await fixture.Service.ReconcileAsync(
+            new IndexChangeEvent(IndexChangeKind.Reconcile, path, ContentMayHaveChanged: true),
+            CancellationToken.None);
+        var entry = Assert.Single(fixture.Repository.Entries, item => item.Name == "new.jpg");
+        fixture.Snapshot.Entries[path] = fixture.Observed("new.jpg", size: 5, mimeType: "image/jpeg");
+
+        await fixture.Service.ReconcileAsync(
+            new IndexChangeEvent(IndexChangeKind.Reconcile, path, ContentMayHaveChanged: true),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { entry.Id, entry.Id }, fixture.RequiredLow.SourceIds);
+        Assert.All(fixture.RequiredLow.Origins, origin => Assert.Equal(MediaJobOrigin.Ingest, origin));
     }
 
     [Fact]
@@ -77,6 +100,7 @@ public sealed class IndexEventServiceTests
         Assert.Equal(oldId, entry.Id);
         Assert.Equal(target, entry.RelativePath);
         Assert.Equal(1, entry.FileVersion);
+        Assert.Empty(fixture.RequiredLow.SourceIds);
     }
 
     [Fact]
@@ -122,6 +146,30 @@ public sealed class IndexEventServiceTests
         Assert.Equal(FileEntryStatus.Active, entry.Status);
         Assert.Equal(5, entry.Size);
         Assert.Single(fixture.Repository.Entries, candidate => candidate.Name == "recreated.txt");
+    }
+
+    [Fact]
+    public async Task Reconcile_MissingPhotoDoesNotEnsureUntilTheSameIdentityIsObservedAgain()
+    {
+        var fixture = new Fixture();
+        var path = fixture.Path("returning.jpg");
+        fixture.Snapshot.Entries[path] = fixture.Observed("returning.jpg", 4, "image/jpeg");
+        await fixture.Service.ReconcileAsync(
+            new IndexChangeEvent(IndexChangeKind.Reconcile, path), CancellationToken.None);
+        var entry = Assert.Single(fixture.Repository.Entries, item => item.Name == "returning.jpg");
+        fixture.Snapshot.Entries.Remove(path);
+
+        await fixture.Service.ReconcileAsync(
+            new IndexChangeEvent(IndexChangeKind.Reconcile, path), CancellationToken.None);
+        Assert.Equal(FileEntryStatus.MissingCandidate, entry.Status);
+        Assert.Single(fixture.RequiredLow.SourceIds);
+
+        fixture.Snapshot.Entries[path] = fixture.Observed("returning.jpg", 4, "image/jpeg");
+        await fixture.Service.ReconcileAsync(
+            new IndexChangeEvent(IndexChangeKind.Reconcile, path), CancellationToken.None);
+
+        Assert.Equal(FileEntryStatus.Active, entry.Status);
+        Assert.Equal(new[] { entry.Id, entry.Id }, fixture.RequiredLow.SourceIds);
     }
 
     [Fact]
@@ -174,12 +222,14 @@ public sealed class IndexEventServiceTests
         {
             Root = FileEntry.CreateRoot(ownerId, Now);
             Repository.Entries.Add(Root);
-            Service = new IndexEventService(Repository, Snapshot, Storage, new FixedClock(Now));
+            Service = new IndexEventService(
+                Repository, Snapshot, Storage, new FixedClock(Now), requiredPhotoDerivatives: RequiredLow);
         }
 
         public FakeRepository Repository { get; } = new();
         public FakeSnapshot Snapshot { get; } = new();
         public FakeStorageGuard Storage { get; } = new();
+        public RecordingRequiredLowProvisioner RequiredLow { get; } = new();
         public FileEntry Root { get; }
         public IndexEventService Service { get; }
 
@@ -203,7 +253,7 @@ public sealed class IndexEventServiceTests
             return entry;
         }
 
-        public ObservedStorageEntry Observed(string name, long size) =>
+        public ObservedStorageEntry Observed(string name, long size, string mimeType = "text/plain") =>
             new(
                 ownerId,
                 RelativeStoragePath.Create(Path(name)),
@@ -211,7 +261,7 @@ public sealed class IndexEventServiceTests
                 FileName.Create(name),
                 FileEntryType.File,
                 size,
-                "text/plain",
+                mimeType,
                 Now.AddMinutes(1),
                 "00000001:00000001:0000000000000001");
     }
@@ -283,5 +333,22 @@ public sealed class IndexEventServiceTests
         public Task CleanupStagingAsync(DateTimeOffset cutoff, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<IIndexScanLock?> TryAcquireScanLockAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IIndexScanWorkspace> CreateWorkspaceAsync(Guid scanId, IndexScanMode mode, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class RecordingRequiredLowProvisioner : IRequiredPhotoDerivativeProvisioner
+    {
+        public List<Guid> SourceIds { get; } = [];
+        public List<MediaJobOrigin> Origins { get; } = [];
+
+        public Task<bool> EnsureLowAsync(
+            FileEntry source,
+            MediaJobOrigin origin,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            SourceIds.Add(source.Id);
+            Origins.Add(origin);
+            return Task.FromResult(true);
+        }
     }
 }

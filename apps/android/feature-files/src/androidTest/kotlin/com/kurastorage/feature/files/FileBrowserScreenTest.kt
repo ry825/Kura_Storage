@@ -32,6 +32,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
@@ -61,6 +62,41 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class FileBrowserScreenTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test
+    fun paginationRetryExposesItsPurposeAndActionToAccessibilityServices() {
+        var retries = 0
+        compose.setContent {
+            FileBrowserScreen(
+                state =
+                    FileBrowserState(
+                        loading = false,
+                        entries = listOf(file()),
+                        paginationError = BrowserError("Page two timed out", ErrorCategory.CONNECTION),
+                    ),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = { retries++ },
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("More files could not be loaded").assertIsDisplayed()
+        compose.onNodeWithText("Your current position and loaded files were kept.").assertIsDisplayed()
+        compose.onNodeWithText("Retry").performClick()
+        compose.runOnIdle { assertEquals(1, retries) }
+    }
 
     @Test
     fun thumbnailSummarySeparatesWaitingRunningFailureAndDoesNotBlockFilesOnError() {
@@ -340,6 +376,40 @@ class FileBrowserScreenTest {
 
         compose.onNodeWithText("document-24.txt").assertIsDisplayed()
         compose.onNodeWithText("document-0.txt").assertDoesNotExist()
+    }
+
+    @Test
+    fun viewerReturnTargetScrollsToTheCurrentPhotoAndIsConsumedOnce() {
+        var consumed = 0
+        val entries =
+            (0 until 40).map { index ->
+                file().copy(id = "photo-$index", name = "photo-$index.jpg", mimeType = "image/jpeg")
+            }
+        compose.setContent {
+            FileBrowserScreen(
+                state = FileBrowserState(loading = false, entries = entries),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+                returnTargetId = "photo-22",
+                onReturnTargetConsumed = { consumed++ },
+            )
+        }
+
+        compose.onNodeWithText("photo-22.jpg").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(1, consumed) }
     }
 
     @Test
@@ -1418,6 +1488,54 @@ class FileBrowserScreenTest {
         compose.onNodeWithTag("file-grid").assertIsDisplayed()
         compose.onNodeWithContentDescription("More actions for document.txt").assertIsDisplayed()
         compose.onNodeWithTag("files-landscape").captureToImage()
+    }
+
+    @Test
+    fun scrollingNearTheEndOfALargeListRequestsTheNextPageOnceAndKeepsTheCurrentItems() {
+        var loadMoreRequests = 0
+        var screenState by
+            mutableStateOf(
+                FileBrowserState(
+                    loading = false,
+                    canLoadMore = true,
+                    entries =
+                        (0 until 100).map { index ->
+                            file().copy(id = "page-one-$index", name = "photo-$index.jpg", mimeType = "image/jpeg")
+                        },
+                ),
+            )
+        compose.setContent {
+            FileBrowserScreen(
+                state = screenState,
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {
+                    loadMoreRequests++
+                    screenState = screenState.copy(loading = true)
+                },
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithContentDescription("Show as list").performClick()
+        compose.onNodeWithTag("file-list").performScrollToIndex(95)
+
+        compose.runOnIdle {
+            assertEquals(1, loadMoreRequests)
+            assertTrue(screenState.entries.any { it.id == "page-one-0" })
+            assertTrue(screenState.entries.any { it.id == "page-one-95" })
+        }
     }
 
     @Test

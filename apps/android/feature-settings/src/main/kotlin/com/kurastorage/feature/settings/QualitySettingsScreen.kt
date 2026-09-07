@@ -12,21 +12,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.NetworkQualityContext
+import com.kurastorage.core.model.media.PhotoDisplayMode
+import com.kurastorage.core.ui.icons.KuraFastDisplayIcon
 
 @Composable
 fun QualitySettingsScreen(
     state: QualitySettingsState,
-    onSelect: (NetworkQualityContext, MediaQuality) -> Unit,
+    onSelect: (NetworkQualityContext, PhotoDisplayMode) -> Unit,
     onSave: () -> Unit,
     onReset: () -> Unit,
     onBack: () -> Unit,
@@ -40,31 +41,18 @@ fun QualitySettingsScreen(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Media quality and data use", style = MaterialTheme.typography.headlineMedium)
+            Text("Fast display (data saving)", style = MaterialTheme.typography.headlineMedium)
             Text(
                 "These choices set the initial quality for photos. Videos always use the original file. " +
                     "You can always change photo quality while viewing.",
             )
             Text("Actual data use varies by file and format. Original content is never fetched before confirmation.")
-            NetworkQualityContext.entries.forEach { context ->
-                Text(context.label(), style = MaterialTheme.typography.titleMedium)
-                Text(context.description(), style = MaterialTheme.typography.bodyMedium)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MediaQuality.entries.forEach { quality ->
-                        FilterChip(
-                            modifier = Modifier.weight(1f),
-                            selected = state.preferences.qualityFor(context) == quality,
-                            onClick = { onSelect(context, quality) },
-                            enabled = !state.loading && !state.saving,
-                            label = { Text(quality.label()) },
-                        )
-                    }
-                }
-            }
+            FastDisplayPreferenceControls(state, onSelect)
             Text(
                 text =
                     "Mobile data is never available for automatic backup. " +
-                        "This screen changes initial viewer quality only.",
+                        "Mobile + VPN always starts in fast display. Local direct always starts with the original. " +
+                        "This screen changes external Wi-Fi viewing only.",
             )
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Button(
@@ -78,6 +66,36 @@ fun QualitySettingsScreen(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) { Text("Reset to defaults") }
             OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") }
+        }
+    }
+}
+
+@Composable
+private fun FastDisplayPreferenceControls(
+    state: QualitySettingsState,
+    onSelect: (NetworkQualityContext, PhotoDisplayMode) -> Unit,
+) {
+    listOf(
+        NetworkQualityContext.REGISTERED_REMOTE_WIFI,
+        NetworkQualityContext.UNREGISTERED_REMOTE_WIFI,
+    ).forEach { context ->
+        Text(context.label(), style = MaterialTheme.typography.titleMedium)
+        Text(context.description(), style = MaterialTheme.typography.bodyMedium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                KuraFastDisplayIcon(contentDescription = null)
+                Text("Fast display (data saving)")
+            }
+            Switch(
+                checked = state.preferences.qualityFor(context) != PhotoDisplayMode.ORIGINAL,
+                onCheckedChange = { enabled ->
+                    onSelect(context, if (enabled) PhotoDisplayMode.FAST else PhotoDisplayMode.ORIGINAL)
+                },
+                enabled = !state.loading && !state.saving,
+            )
         }
     }
 }
@@ -99,11 +117,4 @@ private fun NetworkQualityContext.description(): String =
             "External Wi-Fi not enabled in trusted Wi-Fi settings."
         NetworkQualityContext.REMOTE_MOBILE ->
             "Initial viewing quality on mobile data; original still requires viewer confirmation."
-    }
-
-private fun MediaQuality.label(): String =
-    when (this) {
-        MediaQuality.LOW -> "Low"
-        MediaQuality.MEDIUM -> "Medium"
-        MediaQuality.ORIGINAL -> "Original"
     }

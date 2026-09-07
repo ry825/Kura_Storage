@@ -1,8 +1,8 @@
 package com.kurastorage.feature.settings
 
 import com.kurastorage.core.data.media.QualityPreferenceStore
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.NetworkQualityContext
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.model.media.QualityPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -32,12 +32,12 @@ class QualitySettingsViewModelTest {
             val viewModel = QualitySettingsViewModel(store)
             dispatcher.scheduler.advanceUntilIdle()
 
-            viewModel.update(NetworkQualityContext.REMOTE_MOBILE, MediaQuality.MEDIUM)
+            viewModel.update(NetworkQualityContext.REMOTE_MOBILE, PhotoDisplayMode.ORIGINAL)
             dispatcher.scheduler.advanceUntilIdle()
 
-            assertEquals(MediaQuality.MEDIUM, viewModel.state.value.preferences.remoteMobile)
-            assertEquals(MediaQuality.ORIGINAL, viewModel.state.value.preferences.localDirect)
-            assertEquals(NetworkQualityContext.REMOTE_MOBILE to MediaQuality.MEDIUM, store.updated)
+            assertEquals(PhotoDisplayMode.ORIGINAL, viewModel.state.value.preferences.remoteMobile)
+            assertEquals(PhotoDisplayMode.ORIGINAL, viewModel.state.value.preferences.localDirect)
+            assertEquals(NetworkQualityContext.REMOTE_MOBILE to PhotoDisplayMode.ORIGINAL, store.updated)
         }
 
     @Test
@@ -47,16 +47,16 @@ class QualitySettingsViewModelTest {
             val viewModel = QualitySettingsViewModel(store)
             dispatcher.scheduler.advanceUntilIdle()
             NetworkQualityContext.entries.forEach { context ->
-                viewModel.update(context, MediaQuality.LOW)
+                viewModel.update(context, PhotoDisplayMode.FAST)
                 dispatcher.scheduler.advanceUntilIdle()
             }
-            assertEquals(MediaQuality.LOW, viewModel.state.value.preferences.localDirect)
-            assertEquals(MediaQuality.LOW, viewModel.state.value.preferences.registeredRemoteWifi)
-            assertEquals(MediaQuality.LOW, viewModel.state.value.preferences.unregisteredRemoteWifi)
-            assertEquals(MediaQuality.LOW, viewModel.state.value.preferences.remoteMobile)
+            assertEquals(PhotoDisplayMode.FAST, viewModel.state.value.preferences.localDirect)
+            assertEquals(PhotoDisplayMode.FAST, viewModel.state.value.preferences.registeredRemoteWifi)
+            assertEquals(PhotoDisplayMode.FAST, viewModel.state.value.preferences.unregisteredRemoteWifi)
+            assertEquals(PhotoDisplayMode.FAST, viewModel.state.value.preferences.remoteMobile)
 
             store.updateFailure = IllegalStateException("write")
-            viewModel.update(NetworkQualityContext.LOCAL_DIRECT, MediaQuality.ORIGINAL)
+            viewModel.update(NetworkQualityContext.LOCAL_DIRECT, PhotoDisplayMode.ORIGINAL)
             dispatcher.scheduler.advanceUntilIdle()
             assertEquals("Quality setting could not be saved", viewModel.state.value.error)
 
@@ -75,11 +75,15 @@ class QualitySettingsViewModelTest {
             NetworkQualityContext.entries.forEach { context ->
                 viewModel.select(
                     context,
-                    if (context == NetworkQualityContext.LOCAL_DIRECT) MediaQuality.LOW else MediaQuality.ORIGINAL,
+                    if (context == NetworkQualityContext.LOCAL_DIRECT) {
+                        PhotoDisplayMode.FAST
+                    } else {
+                        PhotoDisplayMode.ORIGINAL
+                    },
                 )
             }
             assertEquals(true, viewModel.state.value.dirty)
-            assertEquals(emptyList<Pair<NetworkQualityContext, MediaQuality>>(), store.updates)
+            assertEquals(emptyList<Pair<NetworkQualityContext, PhotoDisplayMode>>(), store.updates)
 
             viewModel.save()
             dispatcher.scheduler.advanceUntilIdle()
@@ -94,8 +98,8 @@ class QualitySettingsViewModelTest {
     private class FakeStore(
         private val readFailure: Throwable? = null,
     ) : QualityPreferenceStore {
-        var updated: Pair<NetworkQualityContext, MediaQuality>? = null
-        val updates = mutableListOf<Pair<NetworkQualityContext, MediaQuality>>()
+        var updated: Pair<NetworkQualityContext, PhotoDisplayMode>? = null
+        val updates = mutableListOf<Pair<NetworkQualityContext, PhotoDisplayMode>>()
         var updateFailure: Throwable? = null
 
         override suspend fun read(): QualityPreferences {
@@ -105,7 +109,7 @@ class QualitySettingsViewModelTest {
 
         override suspend fun update(
             context: NetworkQualityContext,
-            quality: MediaQuality,
+            quality: PhotoDisplayMode,
         ) {
             updateFailure?.let { throw it }
             updated = context to quality

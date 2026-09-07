@@ -2,9 +2,8 @@ package com.kurastorage.core.model.media
 
 import java.time.Instant
 
-enum class MediaQuality {
-    LOW,
-    MEDIUM,
+enum class PhotoDisplayMode {
+    FAST,
     ORIGINAL,
 }
 
@@ -13,7 +12,6 @@ enum class MediaVariant(
 ) {
     THUMBNAIL("thumbnail"),
     IMAGE_LOW("image-low"),
-    IMAGE_MEDIUM("image-medium"),
     VIDEO_LOW("video-low"),
     VIDEO_MEDIUM("video-medium"),
     ORIGINAL("original"),
@@ -152,24 +150,10 @@ value class PlaybackRate(
 }
 
 object MediaVariantResolver {
-    fun resolve(
-        kind: MediaKind,
-        quality: MediaQuality,
-    ): MediaVariant =
-        when (kind) {
-            MediaKind.IMAGE ->
-                when (quality) {
-                    MediaQuality.LOW -> MediaVariant.IMAGE_LOW
-                    MediaQuality.MEDIUM -> MediaVariant.IMAGE_MEDIUM
-                    MediaQuality.ORIGINAL -> MediaVariant.ORIGINAL
-                }
-            MediaKind.VIDEO -> MediaVariant.ORIGINAL
-            MediaKind.AUDIO,
-            MediaKind.PDF,
-            -> {
-                require(quality == MediaQuality.ORIGINAL) { "$kind only supports original content" }
-                MediaVariant.ORIGINAL
-            }
+    fun resolvePhoto(mode: PhotoDisplayMode): MediaVariant =
+        when (mode) {
+            PhotoDisplayMode.FAST -> MediaVariant.IMAGE_LOW
+            PhotoDisplayMode.ORIGINAL -> MediaVariant.ORIGINAL
         }
 }
 

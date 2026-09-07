@@ -11,7 +11,7 @@ public sealed class MediaContractRulesTests
     [InlineData("original", MediaVariant.Original)]
     [InlineData("thumbnail", MediaVariant.Thumbnail)]
     [InlineData("image-low", MediaVariant.ImageLow)]
-    [InlineData("image-medium", MediaVariant.ImageMedium)]
+    [InlineData("image-medium", MediaVariant.ImageLow)]
     [InlineData("video-low", MediaVariant.VideoLow)]
     [InlineData("video-medium", MediaVariant.VideoMedium)]
     [InlineData(" IMAGE-LOW ", MediaVariant.ImageLow)]
@@ -33,11 +33,6 @@ public sealed class MediaContractRulesTests
     [InlineData("video/webm", MediaVariant.VideoMedium, true)]
     [InlineData("image/jpeg", MediaVariant.VideoLow, false)]
     [InlineData("text/plain", MediaVariant.Thumbnail, false)]
-    [InlineData("image/webp", MediaVariant.ImageMedium, true)]
-    [InlineData("image/gif", MediaVariant.ImageMedium, true)]
-    [InlineData("image/avif", MediaVariant.ImageMedium, true)]
-    [InlineData("image/heic", MediaVariant.ImageMedium, true)]
-    [InlineData("image/heif", MediaVariant.ImageMedium, true)]
     [InlineData("video/quicktime", MediaVariant.Thumbnail, true)]
     [InlineData("video/webm", MediaVariant.Thumbnail, true)]
     [InlineData("video/x-matroska", MediaVariant.Thumbnail, true)]
@@ -56,19 +51,14 @@ public sealed class MediaContractRulesTests
             MediaContractRules.ToDerivativeType("image/png", MediaVariant.Thumbnail));
         Assert.Equal(DerivativeType.ImageLow,
             MediaContractRules.ToDerivativeType("image/jpeg", MediaVariant.ImageLow));
-        Assert.Equal(DerivativeType.ImageMedium,
-            MediaContractRules.ToDerivativeType("image/jpeg", MediaVariant.ImageMedium));
         Assert.Equal(7, MediaContractRules.ProfileVersion(MediaVariant.Thumbnail, 7, 9, 11));
         Assert.Equal(9, MediaContractRules.ProfileVersion(MediaVariant.ImageLow, 7, 9, 11));
-        Assert.Equal(9, MediaContractRules.ProfileVersion(MediaVariant.ImageMedium, 7, 9, 11));
         Assert.Equal(11, MediaContractRules.ProfileVersion(MediaVariant.VideoLow, 7, 9, 11));
         Assert.Equal(11, MediaContractRules.ProfileVersion(MediaVariant.VideoMedium, 7, 9, 11));
         Assert.Equal("family.photo_thumbnail.webp",
             MediaContractRules.DownloadName("family.photo.JPG", MediaVariant.Thumbnail));
         Assert.Equal("family.photo_low.webp",
             MediaContractRules.DownloadName("family.photo.JPG", MediaVariant.ImageLow));
-        Assert.Equal("family.photo_medium.webp",
-            MediaContractRules.DownloadName("family.photo.JPG", MediaVariant.ImageMedium));
         Assert.Equal("family.video_low.mp4",
             MediaContractRules.DownloadName("family.video.MOV", MediaVariant.VideoLow));
         Assert.Equal("family.video_medium.mp4",
@@ -76,7 +66,6 @@ public sealed class MediaContractRulesTests
         Assert.Equal("thumbnail", MediaContractRules.PublishedVariant(DerivativeType.Thumbnail));
         Assert.Equal("thumbnail", MediaContractRules.PublishedVariant(DerivativeType.PdfThumbnail));
         Assert.Equal("image-low", MediaContractRules.PublishedVariant(DerivativeType.ImageLow));
-        Assert.Equal("image-medium", MediaContractRules.PublishedVariant(DerivativeType.ImageMedium));
         Assert.Equal("video-low", MediaContractRules.PublishedVariant(DerivativeType.VideoLow));
         Assert.Equal("video-medium", MediaContractRules.PublishedVariant(DerivativeType.VideoMedium));
         Assert.Equal("image/webp", MediaContractRules.ContentType(DerivativeType.Thumbnail));

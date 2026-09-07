@@ -457,7 +457,7 @@ public sealed class ExternalMediaGenerator(
             DerivativeType.Thumbnail => MediaContractRules.Supports(context.SourceMimeType, MediaVariant.Thumbnail),
             DerivativeType.PdfThumbnail => context.SourceMimeType == "application/pdf",
             DerivativeType.ImageLow => MediaContractRules.Supports(context.SourceMimeType, MediaVariant.ImageLow),
-            DerivativeType.ImageMedium => MediaContractRules.Supports(context.SourceMimeType, MediaVariant.ImageMedium),
+            DerivativeType.ImageMedium => false,
             DerivativeType.VideoLow => MediaContractRules.Supports(context.SourceMimeType, MediaVariant.VideoLow),
             DerivativeType.VideoMedium => MediaContractRules.Supports(context.SourceMimeType, MediaVariant.VideoMedium),
             _ => false,

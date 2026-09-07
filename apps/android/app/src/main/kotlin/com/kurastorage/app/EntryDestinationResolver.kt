@@ -66,6 +66,8 @@ internal fun directEntryRoute(
     entry: FileEntry,
     candidates: List<EntryNavigationCandidate>,
     contexts: MediaNavigationContextStore,
+    sourceDestinationKey: String = "test-source",
+    scopeId: String = "test-scope",
 ): String? =
     when (val destination = EntryDestinationResolver.resolve(entry)) {
         EntryDestination.PHOTO,
@@ -77,7 +79,7 @@ internal fun directEntryRoute(
                     .filter { EntryDestinationResolver.resolve(it) == destination }
                     .map(EntryNavigationCandidate::id)
                     .let { ids -> if (entry.id in ids) ids else ids + entry.id }
-            val contextId = contexts.registerIds(orderedIds)
+            val contextId = contexts.registerIds(orderedIds, sourceDestinationKey, scopeId, entry.id)
             val route =
                 when (destination) {
                     EntryDestination.PHOTO -> AppDestination.PHOTO_VIEWER.route
@@ -102,8 +104,9 @@ internal fun favoriteEntryRoute(
     entry: FileEntry,
     favorites: List<SearchResultItem>,
     contexts: MediaNavigationContextStore,
+    scopeId: String = "test-scope",
 ): String =
-    directEntryRoute(entry, favorites.map(SearchResultItem::navigationCandidate), contexts)
+    directEntryRoute(entry, favorites.map(SearchResultItem::navigationCandidate), contexts, "favorites", scopeId)
         ?: entryRoute(entry.id, entry.entryType)
 
 internal fun FileEntry.navigationCandidate(): EntryNavigationCandidate =

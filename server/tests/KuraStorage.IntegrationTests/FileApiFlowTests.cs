@@ -14,6 +14,7 @@ using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Maintenance;
+using KuraStorage.Domain.Media;
 using KuraStorage.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
@@ -25,6 +26,92 @@ namespace KuraStorage.IntegrationTests;
 public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
     : IClassFixture<PostgreSqlAuthFlowFixture>
 {
+    [Fact]
+    public async Task PhotoUploadAtomicallyStagesExactlyOneIngestLowJob()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("direct-photo-low-job", "photo-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var content = new byte[] { 0xff, 0xd8, 0xff, 0xd9 };
+        var idempotencyKey = Guid.NewGuid().ToString();
+
+        var uploaded = await UploadAsync(
+            client,
+            rootId,
+            "queued-photo.jpg",
+            content,
+            idempotencyKey,
+            "image/jpeg");
+        var replay = await UploadAsync(
+            client,
+            rootId,
+            "queued-photo.jpg",
+            content,
+            idempotencyKey,
+            "image/jpeg");
+        Assert.Equal(uploaded.Id, replay.Id);
+
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        var derivative = await database.FileDerivatives.SingleAsync(item =>
+            item.SourceFileId == uploaded.Id && item.DerivativeType == DerivativeType.ImageLow);
+        var job = await database.MediaJobs.SingleAsync(item => item.DerivativeId == derivative.Id);
+        Assert.Equal(DerivativeStatus.Pending, derivative.Status);
+        Assert.Equal(MediaJobStatus.Queued, job.Status);
+        Assert.Equal(MediaJobOrigin.Ingest, job.Origin);
+    }
+
+    [Fact]
+    public async Task PhotoVersionRestoreRecovery_StagesTheRestoredVersionLowDerivative()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("photo-restore-low", "photo-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var file = await UploadAsync(
+            client, rootId, "restore.jpg", [0xff, 0xd8, 0xff, 0xd9], Guid.NewGuid().ToString(), "image/jpeg");
+        var operationId = Guid.NewGuid();
+
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var entry = await database.FileEntries.SingleAsync(item => item.Id == file.Id);
+            var restored = new byte[] { 0xff, 0xd8, 0xff, 0xe0, 0, 0, 0xff, 0xd9 };
+            var versionStore = scope.ServiceProvider.GetRequiredService<IFileVersionStore>();
+            await using var source = new MemoryStream(restored, writable: false);
+            var published = Assert.IsType<PublishedFileVersion>(await versionStore.TryPublishAsync(
+                entry.OwnerUserId, entry.Id, 2, operationId, source, restored.LongLength, CancellationToken.None));
+            var operation = new FileOperation(
+                operationId, entry.OwnerUserId, FileOperationType.VersionRestore, entry.Id,
+                operationId.ToString("D"), published.TemporaryPath.Value, entry.RelativePath,
+                restored.LongLength, published.Sha256, DateTimeOffset.UtcNow);
+            operation.RecordPublishedVersion(
+                1, 2, published.TemporaryPath.Value, published.Path.Value, published.Sha256, DateTimeOffset.UtcNow);
+            operation.MarkFilesystemDone(DateTimeOffset.UtcNow);
+            database.FileVersionRecords.Add(new FileVersionRecord(
+                Guid.NewGuid(), entry.Id, 2, published.Size, published.Sha256, published.Path.Value,
+                FileVersionChangeKind.Restore, null, null, DateTimeOffset.UtcNow));
+            database.FileOperations.Add(operation);
+            await database.SaveChangesAsync();
+        }
+
+        await using (var recovery = fixture.Factory.Services.CreateAsyncScope())
+        {
+            await recovery.ServiceProvider.GetRequiredService<FileOperationRecoveryService>()
+                .RecoverAsync(CancellationToken.None);
+        }
+
+        await using var verify = fixture.Factory.Services.CreateAsyncScope();
+        var databaseAfterRecovery = verify.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        Assert.Equal(2, await databaseAfterRecovery.FileEntries
+            .Where(item => item.Id == file.Id).Select(item => item.FileVersion).SingleAsync());
+        var derivative = await databaseAfterRecovery.FileDerivatives.SingleAsync(item =>
+            item.SourceFileId == file.Id && item.SourceVersion == 2 &&
+            item.DerivativeType == DerivativeType.ImageLow);
+        Assert.Equal(DerivativeStatus.Pending, derivative.Status);
+        Assert.Equal(MediaJobOrigin.Ingest, await databaseAfterRecovery.MediaJobs
+            .Where(item => item.DerivativeId == derivative.Id).Select(item => item.Origin).SingleAsync());
+    }
+
     [Fact]
     public async Task AdminOnlyPolicy_RequiresAdminRole()
     {
@@ -1451,114 +1538,69 @@ public sealed class FileApiFlowTests(PostgreSqlAuthFlowFixture fixture)
     }
 
     [Fact]
-    public async Task AdminMediaCache_AcceptsOnePersistentRunAndEnforcesAdminSessionBoundary()
+    public async Task StorageCapacityAndMediaDerivativeStatus_EnforceAuthenticationAndAdminBoundaries()
     {
         var suffix = Guid.NewGuid().ToString("N");
         var admin = await fixture.CreateAuthenticatedClientAsync(
-            $"cache-admin-{suffix}",
-            "cache-admin-password",
+            $"derivative-admin-{suffix}",
+            "derivative-admin-password",
             UserRole.Admin);
         using var adminClient = admin.Client;
 
-        using (var missingKey = await adminClient.PostAsync(
-            "/api/v1/admin/media-cache/cleanup-requests", null))
+        using (var capacity = await adminClient.GetAsync("/api/v1/storage/capacity"))
         {
-            Assert.Equal(HttpStatusCode.BadRequest, missingKey.StatusCode);
-            Assert.Contains(FileErrorCodes.ValidationFailed, await missingKey.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+            capacity.EnsureSuccessStatusCode();
+            using var body = await JsonDocument.ParseAsync(await capacity.Content.ReadAsStreamAsync());
+            var storage = body.RootElement.GetProperty("storage").GetString();
+            Assert.Contains(storage, new[] { "AVAILABLE", "UNAVAILABLE" });
+            if (storage == "AVAILABLE")
+            {
+                Assert.Equal(
+                    body.RootElement.GetProperty("totalBytes").GetInt64() -
+                        body.RootElement.GetProperty("availableBytes").GetInt64(),
+                    body.RootElement.GetProperty("usedBytes").GetInt64());
+            }
+            else
+            {
+                Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("totalBytes").ValueKind);
+                Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("usedBytes").ValueKind);
+                Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("availableBytes").ValueKind);
+            }
         }
 
-        using (var malformed = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/media-cache/cleanup-requests"))
-        {
-            malformed.Headers.Add("Idempotency-Key", "plaintext-not-a-uuid");
-            using var malformedResponse = await adminClient.SendAsync(malformed);
-            Assert.Equal(HttpStatusCode.BadRequest, malformedResponse.StatusCode);
-        }
-
-        var idempotencyKey = Guid.NewGuid().ToString("D");
-        Guid firstRunId;
-        using (var first = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/media-cache/cleanup-requests"))
-        {
-            first.Headers.Add("Idempotency-Key", idempotencyKey);
-            using var accepted = await adminClient.SendAsync(first);
-            Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
-            using var body = await JsonDocument.ParseAsync(await accepted.Content.ReadAsStreamAsync());
-            firstRunId = body.RootElement.GetProperty("id").GetGuid();
-            Assert.Equal("MANUAL", body.RootElement.GetProperty("trigger").GetString());
-            Assert.Equal("PENDING", body.RootElement.GetProperty("status").GetString());
-        }
-
-        using (var replay = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/media-cache/cleanup-requests"))
-        {
-            replay.Headers.Add("Idempotency-Key", idempotencyKey);
-            using var accepted = await adminClient.SendAsync(replay);
-            Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
-            using var body = await JsonDocument.ParseAsync(await accepted.Content.ReadAsStreamAsync());
-            Assert.Equal(firstRunId, body.RootElement.GetProperty("id").GetGuid());
-        }
-
-        using (var status = await adminClient.GetAsync("/api/v1/admin/media-cache"))
+        using (var status = await adminClient.GetAsync("/api/v1/admin/media-derivatives"))
         {
             status.EnsureSuccessStatusCode();
             var responseText = await status.Content.ReadAsStringAsync();
             using var body = JsonDocument.Parse(responseText);
-            Assert.Equal(10_737_418_240, body.RootElement.GetProperty("highWatermarkBytes").GetInt64());
-            Assert.Equal(6_442_450_944, body.RootElement.GetProperty("lowWatermarkBytes").GetInt64());
-            Assert.True(body.RootElement.GetProperty("pendingRunCount").GetInt32() >= 1);
-            Assert.Equal(firstRunId, body.RootElement.GetProperty("lastCleanupRun").GetProperty("id").GetGuid());
-            Assert.DoesNotContain(idempotencyKey, responseText, StringComparison.OrdinalIgnoreCase);
+            Assert.True(body.RootElement.GetProperty("profileVersion").GetInt32() > 0);
+            Assert.True(body.RootElement.GetProperty("photoCount").GetInt64() >= 0);
             Assert.DoesNotContain("relativePath", responseText, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("fileName", responseText, StringComparison.OrdinalIgnoreCase);
-        }
-
-        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
-        {
-            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
-            var persisted = await database.MediaCleanupRuns
-                .AsNoTracking()
-                .Where(run => run.Id == firstRunId)
-                .SingleAsync();
-            Assert.Equal(64, persisted.IdempotencyKeyHash?.Length);
-            Assert.DoesNotContain(idempotencyKey, persisted.IdempotencyKeyHash!, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("userName", responseText, StringComparison.OrdinalIgnoreCase);
         }
 
         var member = await fixture.CreateAuthenticatedClientAsync(
-            $"cache-member-{suffix}",
-            "cache-member-password");
+            $"derivative-member-{suffix}",
+            "derivative-member-password");
         using (member.Client)
-        using (var forbiddenGet = await member.Client.GetAsync("/api/v1/admin/media-cache"))
-        using (var forbiddenPost = await SendCleanupRequestAsync(member.Client, Guid.NewGuid().ToString("D")))
+        using (var memberCapacity = await member.Client.GetAsync("/api/v1/storage/capacity"))
+        using (var forbidden = await member.Client.GetAsync("/api/v1/admin/media-derivatives"))
         {
-            Assert.Equal(HttpStatusCode.Forbidden, forbiddenGet.StatusCode);
-            Assert.Equal(HttpStatusCode.Forbidden, forbiddenPost.StatusCode);
+            memberCapacity.EnsureSuccessStatusCode();
+            Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
         }
 
         using (var anonymous = fixture.Factory.CreateClient())
-        using (var unauthorized = await anonymous.GetAsync("/api/v1/admin/media-cache"))
+        using (var unauthorizedCapacity = await anonymous.GetAsync("/api/v1/storage/capacity"))
+        using (var unauthorizedStatus = await anonymous.GetAsync("/api/v1/admin/media-derivatives"))
         {
-            Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedCapacity.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedStatus.StatusCode);
         }
 
-        var token = new JwtSecurityTokenHandler().ReadJwtToken(admin.AccessToken);
-        var userId = Guid.Parse(token.Subject);
-        var deviceId = Guid.Parse(token.Claims.Single(claim => claim.Type == "device_id").Value);
-        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
-        {
-            await scope.ServiceProvider.GetRequiredService<IdentityService>().RevokeDeviceAsync(
-                userId,
-                deviceId,
-                "admin-media-cache-test",
-                CancellationToken.None);
-        }
-
-        using (var revoked = await SendCleanupRequestAsync(adminClient, Guid.NewGuid().ToString("D")))
-        {
-            Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
-        }
-
-        Assert.DoesNotContain(
-            fixture.LogMessages,
-            message => message.Contains(idempotencyKey, StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("plaintext-not-a-uuid", StringComparison.Ordinal));
+        using var retiredCacheEndpoint = await adminClient.GetAsync("/api/v1/admin/media-cache");
+        Assert.Equal(HttpStatusCode.NotFound, retiredCacheEndpoint.StatusCode);
     }
 
     [Fact]

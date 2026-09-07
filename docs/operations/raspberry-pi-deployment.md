@@ -1,5 +1,13 @@
 # Raspberry Pi deployment
 
+## Persistent photo Low rollout
+
+1. Database backupとStorage identity/空き容量を確認し、`MakeImageLowPersistent`マイグレーションを適用する。
+2. `kurastorage-admin media low status`で写真母数、Low状態、既存bytes、推定追加容量、Storage状態を記録する。出力にFile名・User名・pathは含めない。
+3. `kurastorage-admin media low backfill --batch-size 100 --max-items 1000`を小さく開始し、Worker/HDD/DB負荷を確認する。中断後は同じcommandを再実行すれば不足分だけが再開される。
+4. 失敗原因を是正後、`kurastorage-admin media low retry`を使用する。
+5. Low不足と0を確認し、`kurastorage-admin media medium purge --dry-run`で対象を記録してから`--apply`を有界batchで実行する。Original、Low、Thumbnail、PDF thumbnailの件数は前後で照合する。
+
 ## Scope and prerequisites
 
 This procedure installs the MVP API and trash-retention Worker on Debian 12 ARM64 with PostgreSQL 17,
@@ -156,32 +164,29 @@ and `kurastorage.media.queue.oldest_wait`; tool failures appear in the bounded
 Media Job result and retry metrics. These metrics never use Job, File, path,
 file-name, or user identifiers as labels.
 
-Media cache cleanup runs at Worker start and every 30 minutes under one global
-PostgreSQL advisory lock. Monitor aggregate counters only:
+Media maintenance runs at Worker start and every configured interval under one
+global PostgreSQL advisory lock. It only completes rows already in `DELETING`
+and removes terminal Jobs past retention; source lifecycle operations mark old
+versions, profiles, and orphans for this path. Inspect the Worker service log
+and aggregate Media Job queue metrics; do not add File, path, filename, or user
+identifiers to monitoring labels.
 
-- cumulative `kurastorage.media.cleanup.candidates`, `.deleted`,
-  `.deleted_bytes`, `.failures`, and `.terminal_jobs`
-- last-run `kurastorage.media.cleanup.candidate_count`, `.deleted_count`,
-  `.deleted_bytes_last_run`, `.remaining_bytes`, and `.failure_count`
-- `kurastorage.media.cleanup.duration` and `.last_run`
-
-READY low/medium cache is expired at `expires_at <= Server UTC now`. Capacity
-cleanup starts only above 10 GiB and removes one stable oldest LRU candidate at
-a time until the recalculated total is at or below 6 GiB. Thumbnail rows,
-PENDING/RUNNING work, and active generation or delivery leases are excluded.
-Interrupted `DELETING` rows use a dedicated recovery pass. A filesystem delete
-failure returns the row to retryable READY state and must never trigger source
-file deletion or an HDD-wide scan.
+Persistent photo Low is never expired or removed for capacity recovery. The
+maintenance path rechecks generation and delivery leases before a physical
+delete. Interrupted `DELETING` rows use the same bounded recovery pass. A
+filesystem delete failure stays recoverable and must never trigger source file
+deletion or an HDD-wide scan.
 
 For queue backlog, inspect queue depth, oldest wait, Worker iteration, and
 bounded job error codes. For stale generation, confirm the two-minute heartbeat
 threshold and absence of an active generation lease before allowing recovery.
-For cache pressure, compare READY low/medium database bytes with derivative-root
-growth and HDD free space; thumbnail capacity is monitored separately. Repeated
-FFmpeg failure requires checking the recorded runtime package inventory, codec
-verification, resource limits, and only the bounded Media Job error code. On
-HDD loss, stop mutation processing, restore the reviewed mount and identical
-Storage ID, then restart; never treat an empty mount point as an empty catalog.
+For capacity pressure, compare the read-only capacity API, derivative aggregate
+status, and HDD free space. Use `media low status` before a bounded backfill;
+never delete persistent Low as a pressure response. Repeated FFmpeg failure
+requires checking the recorded runtime package inventory, codec verification,
+resource limits, and only the bounded Media Job error code. On HDD loss, stop
+mutation processing, restore the reviewed mount and identical Storage ID, then
+restart; never treat an empty mount point as an empty catalog.
 
 On graceful stop, the Worker stops acquiring new jobs. `TimeoutStopSec=45s`
 allows in-flight cleanup; if conversion cannot finish, the process tree is

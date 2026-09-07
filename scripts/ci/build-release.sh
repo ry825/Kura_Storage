@@ -29,6 +29,7 @@ required_environment=(
     KURASTORAGE_RELEASE_KEYSTORE
     KURASTORAGE_RELEASE_KEY_ALIAS
     KURASTORAGE_ANDROID_SIGNING_CERT_SHA256
+    KURASTORAGE_ANDROID_VERSION_CODE
     KURASTORAGE_RELEASE_STORE_PASSWORD_FILE
     KURASTORAGE_RELEASE_KEY_PASSWORD_FILE
 )
@@ -38,6 +39,10 @@ for name in "${required_environment[@]}"; do
         exit 2
     }
 done
+[[ "${KURASTORAGE_ANDROID_VERSION_CODE}" =~ ^[1-9][0-9]*$ ]] || {
+    printf 'KURASTORAGE_ANDROID_VERSION_CODE must be a positive integer.\n' >&2
+    exit 2
+}
 [[ -x "${JAVA_HOME}/bin/java" ]] || {
     printf 'JAVA_HOME must reference a JDK 17 installation.\n' >&2
     exit 2
@@ -145,7 +150,7 @@ tar --create --gzip \
     --file "${output_directory}/kurastorage-server-${version}-linux-arm64.tar.gz" \
     --directory "${staging_directory}" .
 
-version_code="${KURASTORAGE_ANDROID_VERSION_CODE:-1}"
+version_code="${KURASTORAGE_ANDROID_VERSION_CODE}"
 export ANDROID_SDK_ROOT="${android_sdk_root}"
 export JAVA_HOME="${java_home}"
 (

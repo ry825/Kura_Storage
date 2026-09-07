@@ -16,6 +16,7 @@ import com.kurastorage.core.data.DefaultOrganizationRepository
 import com.kurastorage.core.data.DefaultRecentFileRepository
 import com.kurastorage.core.data.DefaultSearchRepository
 import com.kurastorage.core.data.DefaultSharingRepository
+import com.kurastorage.core.data.DefaultStorageCapacityRepository
 import com.kurastorage.core.data.DefaultTextFileRepository
 import com.kurastorage.core.data.DefaultTransferRepository
 import com.kurastorage.core.data.PriorityTransferDispatcher
@@ -29,7 +30,7 @@ import com.kurastorage.core.data.backup.RoomBackupRuleRepository
 import com.kurastorage.core.data.backup.RoomExternalWifiPolicyRepository
 import com.kurastorage.core.data.media.AndroidNetworkTransportSource
 import com.kurastorage.core.data.media.DataStoreQualityPreferenceStore
-import com.kurastorage.core.data.media.DefaultAdminMediaCacheRepository
+import com.kurastorage.core.data.media.DefaultAdminMediaDerivativeRepository
 import com.kurastorage.core.data.media.DefaultMediaRepository
 import com.kurastorage.core.data.media.MediaContentDownloader
 import com.kurastorage.core.data.media.MediaOriginalDownloadCoordinator
@@ -93,7 +94,6 @@ class ServiceContainer(
     private val transferDispatcher = PriorityTransferDispatcher()
 
     init {
-        MediaImageLoaderFactory.cleanupPreviousSessions(applicationContext)
         TemporaryPdfStore.cleanupPreviousSessions(applicationContext.cacheDir)
     }
 
@@ -177,7 +177,8 @@ class ServiceContainer(
             recentFiles = DefaultRecentFileRepository(api, executor),
             organization = DefaultOrganizationRepository(api, executor),
             adminStorage = DefaultAdminStorageRepository(api, executor, auth),
-            adminMediaCache = DefaultAdminMediaCacheRepository(api, executor),
+            storageCapacity = DefaultStorageCapacityRepository(api, executor),
+            adminMediaDerivatives = DefaultAdminMediaDerivativeRepository(api, executor),
             activity = DefaultActivityRepository(api, executor),
             transfers =
                 DefaultTransferRepository(
@@ -187,8 +188,24 @@ class ServiceContainer(
                     transferDispatcher = transferDispatcher,
                 ),
             qualityPreferences = qualityPreferenceStore,
-            media = createMediaSession(apiClient, executor),
+            media = createMediaSession(route, apiClient, executor, null),
         )
+    }
+
+    fun refreshMediaScope(
+        session: SessionServices,
+        route: ConnectionRoute,
+    ) {
+        val userId = requireNotNull(session.authentication.userId()) { "An authenticated user is required" }
+        session.media.clearCache()
+        session.media.close()
+        session.media =
+            createMediaSession(
+                route,
+                createApiClient(route),
+                AuthenticatedRequestExecutor(session.authentication),
+                userId,
+            )
     }
 
     private fun createApi(route: ConnectionRoute): KuraStorageApi =
@@ -224,15 +241,18 @@ class ServiceContainer(
         )
 
     private fun createMediaSession(
+        route: ConnectionRoute,
         apiClient: OkHttpClient,
         executor: AuthenticatedRequestExecutor,
+        userId: String?,
     ): MediaSessionScope {
         val repository =
             DefaultMediaRepository(
                 OkHttpMediaApi("https://${BuildConfig.API_HOSTNAME}/api/v1", apiClient),
                 executor,
             )
-        val scopeId = UUID.randomUUID().toString()
+        val scopeId =
+            mediaCacheScopeId(BuildConfig.API_HOSTNAME, route, userId)
         val downloader = MediaContentDownloader(repository)
         return MediaSessionScope(
             scopeId = scopeId,
@@ -256,6 +276,16 @@ class ServiceContainer(
     }
 }
 
+internal fun mediaCacheScopeId(
+    apiHostname: String,
+    route: ConnectionRoute,
+    accountId: String?,
+): String =
+    UUID
+        .nameUUIDFromBytes(
+            "$apiHostname\u0000${route.name}\u0000${accountId ?: "unauthenticated"}".toByteArray(Charsets.UTF_8),
+        ).toString()
+
 data class SessionServices(
     val sessionId: String,
     val authentication: DefaultAuthenticationRepository,
@@ -266,13 +296,16 @@ data class SessionServices(
     val recentFiles: DefaultRecentFileRepository,
     val organization: DefaultOrganizationRepository,
     val adminStorage: DefaultAdminStorageRepository,
-    val adminMediaCache: DefaultAdminMediaCacheRepository,
+    val storageCapacity: DefaultStorageCapacityRepository,
+    val adminMediaDerivatives: DefaultAdminMediaDerivativeRepository,
     val activity: DefaultActivityRepository,
     val transfers: DefaultTransferRepository,
     val qualityPreferences: QualityPreferenceStore,
-    val media: MediaSessionScope,
+    var media: MediaSessionScope,
 ) : Closeable {
     override fun close() = media.close()
+
+    fun clearMediaCache() = media.clearCache()
 }
 
 data class BackupUiServices(
@@ -303,7 +336,8 @@ class MediaSessionScope(
         if (!closed.compareAndSet(false, true)) return
         coroutineScope.cancel()
         imageLoader.shutdown()
-        cleanupImageCache()
         temporaryPdfStore.close()
     }
+
+    fun clearCache() = cleanupImageCache()
 }

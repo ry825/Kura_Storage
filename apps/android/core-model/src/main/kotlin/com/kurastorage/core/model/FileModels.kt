@@ -70,6 +70,13 @@ data class AdminStorageStatus(
     val lastPurgeRun: TrashPurgeRunSummary?,
 )
 
+data class StorageCapacityStatus(
+    val storage: String,
+    val totalBytes: Long?,
+    val usedBytes: Long?,
+    val availableBytes: Long?,
+)
+
 data class FilePage(
     val parentId: String?,
     val items: List<FileEntry>,

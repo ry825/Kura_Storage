@@ -13,7 +13,6 @@ public sealed class ExternalMediaGeneratorTests
     [Theory]
     [InlineData(DerivativeType.Thumbnail, "512", "75")]
     [InlineData(DerivativeType.ImageLow, "1280", "70")]
-    [InlineData(DerivativeType.ImageMedium, "2560", "82")]
     public async Task GenerateImage_UsesBoundedVipsProfileAndValidatesWebp(
         DerivativeType type,
         string dimension,

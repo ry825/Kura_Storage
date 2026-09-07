@@ -23,9 +23,9 @@ import com.kurastorage.core.model.media.ByteCount
 import com.kurastorage.core.model.media.MediaJobSnapshot
 import com.kurastorage.core.model.media.MediaJobStatus
 import com.kurastorage.core.model.media.MediaLoadState
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.OriginalMetadata
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.model.media.QualityPreferences
 import com.kurastorage.core.model.media.VariantMetadata
 import com.kurastorage.feature.media.MediaViewerController
@@ -138,7 +138,7 @@ class PhotoViewerViewModelTest {
             viewModel.previous()
             assertFalse(viewModel.state.value.canGoPrevious)
 
-            viewModel.selectQuality(MediaQuality.MEDIUM)
+            viewModel.selectQuality(PhotoDisplayMode.FAST)
             val ticket = checkNotNull(viewModel.requestTicket())
             val generating = MediaJobSnapshot("job", MediaJobStatus.GENERATING, null, null, null, null, 1, false)
             viewModel.contentGenerating(ticket, MediaGeneratingException(generating))
@@ -152,12 +152,17 @@ class PhotoViewerViewModelTest {
                     ?.loadState is MediaLoadState.Failed,
             )
 
-            viewModel.selectQuality(MediaQuality.MEDIUM)
+            viewModel.selectQuality(PhotoDisplayMode.FAST)
             viewModel.contentReady(checkNotNull(viewModel.requestTicket()))
             viewModel.setZoom(2f)
             assertEquals(2f, viewModel.state.value.zoom)
 
-            viewModel.selectQuality(MediaQuality.ORIGINAL)
+            viewModel.selectQuality(PhotoDisplayMode.ORIGINAL)
+            assertTrue(
+                viewModel.state.value.media
+                    ?.confirmation != null,
+            )
+            viewModel.confirmOriginal()
             val original = checkNotNull(viewModel.requestTicket())
             viewModel.contentReady(original)
             assertTrue(
@@ -229,7 +234,7 @@ class PhotoViewerViewModelTest {
 
         override suspend fun update(
             context: com.kurastorage.core.model.media.NetworkQualityContext,
-            quality: MediaQuality,
+            quality: PhotoDisplayMode,
         ) = Unit
     }
 

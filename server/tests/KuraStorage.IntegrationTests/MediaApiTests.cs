@@ -165,6 +165,75 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
     }
 
     [Fact]
+    public async Task ReadyImageLow_StreamsOnlyTheCurrentPersistentDerivativeWithoutTtlAccessMutation()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync(
+            $"media-low-ready-{Guid.NewGuid():N}", "media-low-password");
+        using var client = authenticated.Client;
+        var (fileId, derivativeId) = await SeedReadyAsync(
+            client, "current-low.jpg", [9, 8, 7], DerivativeType.ImageLow);
+
+        using (var response = await client.GetAsync($"/api/v1/files/{fileId}/content?variant=image-low"))
+        {
+            response.EnsureSuccessStatusCode();
+            Assert.Equal([9, 8, 7], await response.Content.ReadAsByteArrayAsync());
+        }
+
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        var derivative = await database.FileDerivatives.SingleAsync(item => item.Id == derivativeId);
+        Assert.Equal(DerivativeStatus.Ready, derivative.Status);
+        Assert.Null(derivative.ExpiresAt);
+        Assert.Null(derivative.LastAccessedAt);
+    }
+
+    [Fact]
+    public async Task FailedImageLow_DoesNotFallbackToOriginalContent()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync(
+            $"media-low-failed-{Guid.NewGuid():N}", "media-low-password");
+        using var client = authenticated.Client;
+        var original = new byte[] { 1, 2, 3, 4 };
+        var fileId = await SeedStoredSourceAsync(client, "failed-low.jpg", "image/jpeg", original);
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var file = await database.FileEntries.SingleAsync(item => item.Id == fileId);
+            var now = DateTimeOffset.UtcNow;
+            var derivative = new FileDerivative(
+                Guid.NewGuid(), file.Id, file.FileVersion, DerivativeType.ImageLow, 1, now);
+            derivative.Start(now);
+            derivative.Fail(MediaErrorCodes.GenerationFailed, now);
+            database.FileDerivatives.Add(derivative);
+            await database.SaveChangesAsync();
+        }
+
+        using var response = await client.GetAsync($"/api/v1/files/{fileId}/content?variant=image-low");
+        Assert.NotEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotEqual(original, await response.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
+    public async Task MissingSource_RejectsAReadyImageLow()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync(
+            $"media-low-missing-{Guid.NewGuid():N}", "media-low-password");
+        using var client = authenticated.Client;
+        var (fileId, _) = await SeedReadyAsync(
+            client, "missing-low.jpg", [4, 5, 6], DerivativeType.ImageLow);
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var file = await database.FileEntries.SingleAsync(item => item.Id == fileId);
+            file.MarkMissingCandidate(Guid.NewGuid(), DateTimeOffset.UtcNow);
+            await database.SaveChangesAsync();
+        }
+
+        using var response = await client.GetAsync($"/api/v1/files/{fileId}/content?variant=image-low");
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
     public async Task PendingThumbnail_ConcurrentRequestsShareJobAndRetryOnlyTransientFailure()
     {
         var authenticated = await fixture.CreateAuthenticatedClientAsync(
@@ -432,7 +501,7 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
         var physical = Path.Combine(fixture.StorageRootPath, relative.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(physical)!);
         await File.WriteAllBytesAsync(physical, [4, 3, 2, 1]);
-        derivative.MarkReady(relative, 4, now, now.AddHours(24));
+        derivative.MarkReady(relative, 4, now, null);
         job.Start(worker, now);
         job.Complete(worker, now);
         await using (var scope = fixture.Factory.Services.CreateAsyncScope())
@@ -464,6 +533,7 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
         derivative.Start(DateTimeOffset.UtcNow);
         var segment = derivativeType switch
         {
+            DerivativeType.ImageLow => "image-low.webp",
             DerivativeType.VideoLow => "video-low.mp4",
             DerivativeType.VideoMedium => "video-medium.mp4",
             _ => "thumbnail.webp",
@@ -473,7 +543,7 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
             relative,
             derivativeBytes.Length,
             DateTimeOffset.UtcNow,
-            derivativeType is DerivativeType.VideoLow or DerivativeType.VideoMedium
+            !derivative.IsPersistent
                 ? DateTimeOffset.UtcNow.AddHours(24)
                 : null);
         database.FileDerivatives.Add(derivative);

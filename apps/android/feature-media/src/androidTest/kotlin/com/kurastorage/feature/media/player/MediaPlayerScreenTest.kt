@@ -23,9 +23,9 @@ import com.kurastorage.core.data.media.TransferConfirmationPrompt
 import com.kurastorage.core.model.media.ByteCount
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.NetworkQualityContext
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.model.media.PlaybackRate
 import com.kurastorage.feature.media.MediaViewerState
 import org.junit.Assert.assertTrue
@@ -99,7 +99,7 @@ class MediaPlayerScreenTest {
                                 "file",
                                 1,
                                 MediaKind.VIDEO,
-                                MediaQuality.ORIGINAL,
+                                PhotoDisplayMode.ORIGINAL,
                                 NetworkQualityContext.REMOTE_MOBILE,
                                 MediaLoadState.ConfirmingTransfer,
                                 TransferConfirmationPrompt(
@@ -148,7 +148,7 @@ class MediaPlayerScreenTest {
                                 "file",
                                 1,
                                 MediaKind.VIDEO,
-                                MediaQuality.ORIGINAL,
+                                PhotoDisplayMode.ORIGINAL,
                                 NetworkQualityContext.REMOTE_MOBILE,
                                 MediaLoadState.Failed(com.kurastorage.core.model.media.MediaUiError.GENERATION_FAILED),
                             ),
@@ -186,7 +186,7 @@ class MediaPlayerScreenTest {
                                 "file",
                                 1,
                                 MediaKind.VIDEO,
-                                MediaQuality.ORIGINAL,
+                                PhotoDisplayMode.ORIGINAL,
                                 NetworkQualityContext.REMOTE_MOBILE,
                                 MediaLoadState.Failed(com.kurastorage.core.model.media.MediaUiError.GENERATION_FAILED),
                             ),
@@ -277,7 +277,7 @@ class MediaPlayerScreenTest {
                                         "file",
                                         1,
                                         MediaKind.VIDEO,
-                                        MediaQuality.ORIGINAL,
+                                        PhotoDisplayMode.ORIGINAL,
                                         NetworkQualityContext.REGISTERED_REMOTE_WIFI,
                                         MediaLoadState.Ready(
                                             com.kurastorage.core.model.media.ReadyMediaSource(

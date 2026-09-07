@@ -17,8 +17,9 @@ public sealed class AdminStorageServiceTests
         var repository = new StatusRepository(run);
         var service = new AdminStorageService(
             repository,
-            new CapacityStore(new StorageCapacity(1_000, 100)),
-            new FixedGuard(StorageStatus.Available),
+            new StorageCapacityService(
+                new CapacityStore(new StorageCapacity(1_000, 100)),
+                new FixedGuard(StorageStatus.Available)),
             new FixedClock(now),
             new TrashPurgeOptions { RetentionDays = 30 },
             100);
@@ -41,8 +42,9 @@ public sealed class AdminStorageServiceTests
     {
         var service = new AdminStorageService(
             new StatusRepository(null),
-            new CapacityStore(new StorageCapacity(-1, -1)),
-            new FixedGuard(StorageStatus.Unavailable),
+            new StorageCapacityService(
+                new CapacityStore(new StorageCapacity(-1, -1)),
+                new FixedGuard(StorageStatus.Unavailable)),
             new FixedClock(DateTimeOffset.UtcNow),
             new TrashPurgeOptions(),
             100);

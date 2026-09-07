@@ -217,43 +217,21 @@ app.MapGet(
     .AllowAnonymous();
 
 app.MapGet(
+        "/api/v1/storage/capacity",
+        async (StorageCapacityService capacityService, CancellationToken cancellationToken) =>
+            Results.Ok(await capacityService.GetAsync(cancellationToken)))
+    .RequireAuthorization();
+
+app.MapGet(
         "/api/v1/admin/storage",
         async (AdminStorageService storageService, CancellationToken cancellationToken) =>
             Results.Ok(await storageService.GetAsync(cancellationToken)))
     .RequireAuthorization("AdminOnly");
 
 app.MapGet(
-        "/api/v1/admin/media-cache",
-        async (AdminMediaCacheService mediaCache, CancellationToken cancellationToken) =>
-            Results.Ok(await mediaCache.GetAsync(cancellationToken)))
-    .RequireAuthorization("AdminOnly");
-
-app.MapPost(
-        "/api/v1/admin/media-cache/cleanup-requests",
-        async (
-            HttpContext context,
-            AdminMediaCacheService mediaCache,
-            CancellationToken cancellationToken) =>
-        {
-            if (!TryAuthenticatedUserId(context, out var userId))
-            {
-                return Error(StatusCodes.Status401Unauthorized, "AUTHENTICATION_REQUIRED", context);
-            }
-
-            var result = await mediaCache.RequestManualAsync(
-                userId,
-                context.Request.Headers["Idempotency-Key"].ToString(),
-                cancellationToken);
-            return result.Failure switch
-            {
-                MediaCleanupRequestFailure.Validation =>
-                    Error(StatusCodes.Status400BadRequest, FileErrorCodes.ValidationFailed, context),
-                MediaCleanupRequestFailure.IdempotencyConflict =>
-                    Error(StatusCodes.Status409Conflict, FileErrorCodes.IdempotencyConflict, context),
-                null => Results.Json(result.Run, statusCode: StatusCodes.Status202Accepted),
-                _ => throw new InvalidOperationException("Unknown media cleanup request result."),
-            };
-        })
+        "/api/v1/admin/media-derivatives",
+        async (MediaDerivativeStatusService derivatives, CancellationToken cancellationToken) =>
+            Results.Ok(await derivatives.GetAsync(cancellationToken)))
     .RequireAuthorization("AdminOnly");
 
 app.MapPost(

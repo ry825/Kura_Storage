@@ -144,8 +144,8 @@ import com.kurastorage.feature.search.SearchScreen
 import com.kurastorage.feature.search.SearchViewModel
 import com.kurastorage.feature.search.TagsScreen
 import com.kurastorage.feature.search.TagsViewModel
-import com.kurastorage.feature.settings.CacheManagementScreen
-import com.kurastorage.feature.settings.CacheManagementViewModel
+import com.kurastorage.feature.settings.DerivativeStatusScreen
+import com.kurastorage.feature.settings.DerivativeStatusViewModel
 import com.kurastorage.feature.settings.QualitySettingsScreen
 import com.kurastorage.feature.settings.QualitySettingsViewModel
 import com.kurastorage.feature.settings.SettingsHubScreen
@@ -158,7 +158,9 @@ import com.kurastorage.feature.text.TextEditorViewModel
 import com.kurastorage.feature.text.VersionHistoryScreen
 import com.kurastorage.feature.text.VersionHistoryViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -255,6 +257,7 @@ private fun KuraStorageApp(
                     onConnected = { state ->
                         val replaceSession = connected?.route != state.route || services == null
                         if (replaceSession) {
+                            services?.clearMediaCache()
                             services?.close()
                             mediaContexts.clear()
                             backupUi = null
@@ -291,7 +294,9 @@ private fun KuraStorageApp(
                     onRetry = navController::navigateToConnection,
                     onAuthenticated = {
                         mediaContexts.clear()
-                        backupUi = container.backupUiServices(checkNotNull(services))
+                        val authenticatedServices = checkNotNull(services)
+                        container.refreshMediaScope(authenticatedServices, route)
+                        backupUi = container.backupUiServices(authenticatedServices)
                         navController.navigate(AppDestination.HOME.route) {
                             popUpTo(AppDestination.AUTHENTICATION.route) { inclusive = true }
                         }
@@ -316,7 +321,16 @@ private fun KuraStorageApp(
                         key = "home-${current.sessionId}-${backup.scope.value}",
                         factory =
                             simpleViewModelFactory {
-                                HomeViewModel(current.recentFiles, backup.state, backup.scope)
+                                HomeViewModel(
+                                    current.recentFiles,
+                                    current.storageCapacity,
+                                    backup.state,
+                                    backup.scope,
+                                    current.media.contextResolver
+                                        .observeTransport()
+                                        .drop(1)
+                                        .map { Unit },
+                                )
                             },
                     )
                 val homeState by homeViewModel.state.collectAsStateWithLifecycle()
@@ -336,6 +350,7 @@ private fun KuraStorageApp(
                     adminStorageState = storageState,
                     onRefreshAdminStorage = { storageViewModel?.refresh() },
                     onRefreshRecent = homeViewModel::refreshRecent,
+                    onRefreshCapacity = homeViewModel::refreshCapacity,
                     onFiles = { navController.navigateToTopLevel(TopLevelDestination.FILES) },
                     onShared = { navController.navigateToTopLevel(TopLevelDestination.SHARING) },
                     onSearch = { navController.navigateToTopLevel(TopLevelDestination.SEARCH) },
@@ -385,6 +400,7 @@ private fun KuraStorageApp(
                     onTrash = { navController.navigate(AppDestination.TRASH.route) },
                     onLogout = {
                         logoutViewModel.logout {
+                            services?.clearMediaCache()
                             services?.close()
                             mediaContexts.clear()
                             services = null
@@ -421,16 +437,15 @@ private fun KuraStorageApp(
                     navController.navigateToConnection()
                     return@composable
                 }
-                val model: CacheManagementViewModel =
+                val model: DerivativeStatusViewModel =
                     viewModel(
-                        key = "cache-management-${current.sessionId}",
-                        factory = simpleViewModelFactory { CacheManagementViewModel(current.adminMediaCache) },
+                        key = "derivative-status-${current.sessionId}",
+                        factory = simpleViewModelFactory { DerivativeStatusViewModel(current.adminMediaDerivatives) },
                     )
                 val state by model.state.collectAsStateWithLifecycle()
-                CacheManagementScreen(
+                DerivativeStatusScreen(
                     state = state,
                     onRefresh = model::refresh,
-                    onCleanup = model::requestCleanup,
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -607,7 +622,8 @@ private fun KuraStorageApp(
                     onOrganization = { entryId -> navController.navigate(organizationRoute(entryId)) },
                     media = current.media,
                     onOpenMedia = { entry, entries ->
-                        mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
+                        mediaRoute(entry, entries, mediaContexts, "files", current.media.scopeId)
+                            ?.let(navController::navigate) != null
                     },
                     onOpenText = { entry -> textRoute(entry)?.let(navController::navigate) != null },
                     onOpenTextOverride = { entry ->
@@ -615,6 +631,8 @@ private fun KuraStorageApp(
                     },
                     requestedDetailsId = mediaContexts.requestedDetailsId,
                     onDetailsConsumed = mediaContexts::consumeDetails,
+                    returnTarget = mediaContexts.returnTarget("files", current.media.scopeId),
+                    onReturnTargetConsumed = { mediaContexts.consumeReturn("files", current.media.scopeId) },
                 )
             }
             composable(AppDestination.TRASH.route) {
@@ -871,7 +889,12 @@ private fun KuraStorageApp(
                     onOpen = { item ->
                         favoritesViewModel.open(item) { entry ->
                             navController.navigate(
-                                favoriteEntryRoute(entry, state.items.map { it.metadata }, mediaContexts),
+                                favoriteEntryRoute(
+                                    entry,
+                                    state.items.map { it.metadata },
+                                    mediaContexts,
+                                    current.media.scopeId,
+                                ),
                             )
                         }
                     },
@@ -976,7 +999,13 @@ private fun KuraStorageApp(
                     onOrganization = { entryId -> navController.navigate(organizationRoute(entryId)) },
                     media = current.media,
                     onOpenMedia = { entry, entries ->
-                        mediaRoute(entry, entries, mediaContexts)?.let(navController::navigate) != null
+                        mediaRoute(
+                            entry,
+                            entries,
+                            mediaContexts,
+                            "shared-entry-$entryId",
+                            current.media.scopeId,
+                        ).let { route -> route?.let(navController::navigate) != null }
                     },
                     onOpenText = { entry -> textRoute(entry)?.let(navController::navigate) != null },
                     onOpenTextOverride = { entry ->
@@ -984,6 +1013,10 @@ private fun KuraStorageApp(
                     },
                     requestedDetailsId = mediaContexts.requestedDetailsId,
                     onDetailsConsumed = mediaContexts::consumeDetails,
+                    returnTarget = mediaContexts.returnTarget("shared-entry-$entryId", current.media.scopeId),
+                    onReturnTargetConsumed = {
+                        mediaContexts.consumeReturn("shared-entry-$entryId", current.media.scopeId)
+                    },
                 )
             }
             composable(
@@ -1138,6 +1171,9 @@ private fun KuraStorageApp(
                     )
                 val photoState by photoViewModel.state.collectAsStateWithLifecycle()
                 val displayedPhotoId = photoState.file?.id
+                LaunchedEffect(contextId, displayedPhotoId) {
+                    displayedPhotoId?.let { mediaContexts.updateCurrent(contextId, it) }
+                }
                 val organizationViewModel =
                     displayedPhotoId?.let { entryId ->
                         viewModel<EntryOrganizationViewModel>(
@@ -1199,11 +1235,13 @@ private fun KuraStorageApp(
                     onGenerating = photoViewModel::contentGenerating,
                     onImageFailed = photoViewModel::contentFailed,
                     onQuality = photoViewModel::selectQuality,
+                    onConfirmOriginal = photoViewModel::confirmOriginal,
+                    onCancelOriginalConfirmation = photoViewModel::cancelOriginalConfirmation,
                     onPrevious = photoViewModel::previous,
                     onNext = photoViewModel::next,
                     onZoom = photoViewModel::setZoom,
                     onDetails = {
-                        photoState.file?.id?.let(mediaContexts::requestDetails)
+                        mediaContexts.requestReturn(contextId, openDetails = true)
                         navController.popBackStack()
                     },
                     onDownloadOriginal = {
@@ -1217,7 +1255,10 @@ private fun KuraStorageApp(
                             mediaDownloadPicker.launch(file.name)
                         }
                     },
-                    onBack = { navController.popBackStack() },
+                    onBack = {
+                        mediaContexts.requestReturn(contextId)
+                        navController.popBackStack()
+                    },
                     organization = organizationState?.toPhotoOrganizationUiState() ?: PhotoOrganizationUiState(),
                     onRefreshOrganization = { organizationViewModel?.refresh() },
                     onToggleFavorite = { organizationViewModel?.toggleFavorite() },
@@ -1380,6 +1421,8 @@ private fun FileRoute(
     onOpenTextOverride: (FileEntry) -> Boolean = onOpenText,
     requestedDetailsId: String? = null,
     onDetailsConsumed: () -> Unit = {},
+    returnTarget: MediaNavigationContextStore.ReturnTarget? = null,
+    onReturnTargetConsumed: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -1490,6 +1533,8 @@ private fun FileRoute(
         onUploadCompletionConsumed = viewModel::consumeUploadCompletionNotice,
         onRetryFolderUpload = viewModel::retryFolderUpload,
         onScrollAnchor = viewModel::recordScrollAnchor,
+        returnTargetId = returnTarget?.fileId,
+        onReturnTargetConsumed = onReturnTargetConsumed,
         onOpenDownload = { uri ->
             runCatching { context.startActivity(viewModel.downloadedFileIntent(uri)) }
         },
@@ -1811,12 +1856,20 @@ internal fun mediaRoute(
     entry: FileEntry,
     entries: List<FileEntry>,
     contexts: MediaNavigationContextStore,
+    sourceDestinationKey: String = "test-source",
+    scopeId: String = "test-scope",
 ): String? =
     if (
         EntryDestinationResolver.resolve(entry) in
         setOf(EntryDestination.PHOTO, EntryDestination.VIDEO, EntryDestination.AUDIO, EntryDestination.PDF)
     ) {
-        directEntryRoute(entry, entries.map(FileEntry::navigationCandidate), contexts)
+        directEntryRoute(
+            entry,
+            entries.map(FileEntry::navigationCandidate),
+            contexts,
+            sourceDestinationKey,
+            scopeId,
+        )
     } else {
         null
     }

@@ -88,7 +88,6 @@ class KuraMediaFetcherMockWebServerTest {
             val cases =
                 listOf(
                     MediaVariant.IMAGE_LOW to "image-low",
-                    MediaVariant.IMAGE_MEDIUM to "image-medium",
                     MediaVariant.ORIGINAL to "original",
                 )
             cases.forEach { (variant, wireValue) ->
@@ -119,12 +118,12 @@ class KuraMediaFetcherMockWebServerTest {
                     .setBody("""{"code":"FILE_NOT_FOUND","message":"denied","requestId":"media-403","details":{}}"""),
             )
 
-            val failure = runCatching { fetcher(MediaVariant.IMAGE_MEDIUM).fetch() }.exceptionOrNull()
+            val failure = runCatching { fetcher(MediaVariant.IMAGE_LOW).fetch() }.exceptionOrNull()
 
             assertTrue(failure != null)
             assertEquals(1, server.requestCount)
             assertEquals(
-                "/api/v1/files/$FILE_ID/content?variant=image-medium&disposition=inline",
+                "/api/v1/files/$FILE_ID/content?variant=image-low&disposition=inline",
                 server.takeRequest().path,
             )
         }

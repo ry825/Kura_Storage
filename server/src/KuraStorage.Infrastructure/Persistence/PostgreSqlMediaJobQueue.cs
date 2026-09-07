@@ -76,7 +76,11 @@ public sealed class PostgreSqlMediaJobQueue(KuraStorageDbContext database) : IMe
                             OR (@claim_scope = 'NON_THUMBNAIL' AND running.job_type NOT IN ('THUMBNAIL', 'PDF_THUMBNAIL'))
                         )
                   ) < @maximum_concurrency
-                ORDER BY job.created_at, job.id
+                ORDER BY GREATEST(
+                             0,
+                             job.priority - FLOOR(EXTRACT(EPOCH FROM (@now - job.created_at)) / 3600)::integer),
+                         job.available_at,
+                         job.id
                 FOR UPDATE OF job, derivative SKIP LOCKED
                 LIMIT 1
             ), acquired AS (

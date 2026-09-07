@@ -5,8 +5,7 @@ namespace KuraStorage.Application.Maintenance;
 
 public sealed class AdminStorageService(
     IFileRepository repository,
-    IFileStore fileStore,
-    IStorageGuard storageGuard,
+    StorageCapacityService capacityService,
     ISystemClock clock,
     TrashPurgeOptions purgeOptions,
     long capacityWarningFreeBytes)
@@ -19,31 +18,15 @@ public sealed class AdminStorageService(
         var recoveryRequiredCount = await repository.CountRecoveryRequiredPurgesAsync(cancellationToken);
         var latest = await repository.FindLatestPurgeRunAsync(cancellationToken);
 
-        var storageAvailable =
-            await storageGuard.InspectAsync(StorageIntent.Read, cancellationToken) == StorageStatus.Available;
-        StorageCapacity? capacity = null;
-        if (storageAvailable)
-        {
-            try
-            {
-                capacity = await fileStore.GetCapacityAsync(cancellationToken);
-            }
-            catch (IOException)
-            {
-                storageAvailable = false;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                storageAvailable = false;
-            }
-        }
+        var capacity = await capacityService.GetAsync(cancellationToken);
+        var storageAvailable = capacity.Storage == "AVAILABLE";
 
         return new AdminStorageStatus(
             storageAvailable ? "AVAILABLE" : "UNAVAILABLE",
-            capacity?.TotalBytes,
-            capacity?.AvailableBytes,
+            capacity.TotalBytes,
+            capacity.AvailableBytes,
             capacityWarningFreeBytes,
-            capacity is null ? null : capacity.AvailableBytes <= capacityWarningFreeBytes,
+            capacity.AvailableBytes is null ? null : capacity.AvailableBytes <= capacityWarningFreeBytes,
             trashBytes,
             expiredCount,
             purgeOptions.RetentionDays,

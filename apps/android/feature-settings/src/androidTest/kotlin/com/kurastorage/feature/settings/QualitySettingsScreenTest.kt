@@ -7,9 +7,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -36,11 +38,10 @@ class QualitySettingsScreenTest {
             )
         }
 
-        compose.onNodeWithText("Media quality and data use").assertIsDisplayed()
-        compose.onNodeWithText("Local direct connection").assertIsDisplayed()
+        compose.onAllNodesWithText("Fast display (data saving)").assertCountEquals(3)
         compose.onNodeWithText("Registered external Wi-Fi + ZeroTier").assertIsDisplayed()
         compose.onNodeWithText("Unregistered Wi-Fi + ZeroTier").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Mobile + ZeroTier").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Medium").assertDoesNotExist()
         compose
             .onNodeWithText(
                 "Mobile data is never available for automatic backup.",

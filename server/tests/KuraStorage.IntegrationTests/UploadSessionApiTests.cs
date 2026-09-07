@@ -9,6 +9,7 @@ using System.Text.Json;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Transfers;
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Media;
 using KuraStorage.Domain.Transfers;
 using KuraStorage.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -197,6 +198,46 @@ public sealed class UploadSessionApiTests(PostgreSqlAuthFlowFixture fixture)
     }
 
     [Fact]
+    public async Task PhotoCompletionAtomicallyStagesExactlyOneIngestLowJob()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync("photo-low-job", "photo-password");
+        using var client = authenticated.Client;
+        var rootId = await GetRootIdAsync(client);
+        var content = new byte[] { 0xff, 0xd8, 0xff, 0xd9 };
+        var sessionId = await CreateSessionIdAsync(
+            client,
+            rootId,
+            "queued-photo.jpg",
+            content.Length,
+            Sha(content),
+            "image/jpeg");
+        using (var chunk = await SendChunkAsync(client, sessionId, 0, content, Sha(content)))
+        {
+            chunk.EnsureSuccessStatusCode();
+        }
+
+        Guid fileId;
+        using (var complete = await client.PostAsync($"/api/v1/upload-sessions/{sessionId}/complete", null))
+        {
+            complete.EnsureSuccessStatusCode();
+            fileId = (await complete.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        }
+        using (var replay = await client.PostAsync($"/api/v1/upload-sessions/{sessionId}/complete", null))
+        {
+            replay.EnsureSuccessStatusCode();
+        }
+
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        var derivative = await database.FileDerivatives.SingleAsync(item =>
+            item.SourceFileId == fileId && item.DerivativeType == DerivativeType.ImageLow);
+        var job = await database.MediaJobs.SingleAsync(item => item.DerivativeId == derivative.Id);
+        Assert.Equal(DerivativeStatus.Pending, derivative.Status);
+        Assert.Equal(MediaJobStatus.Queued, job.Status);
+        Assert.Equal(MediaJobOrigin.Ingest, job.Origin);
+    }
+
+    [Fact]
     public async Task RecoveryAndExpiry_ReconcileTemporaryLengthAndNeverPublishIncompleteFiles()
     {
         var authenticated = await fixture.CreateAuthenticatedClientAsync("resumable-recovery", "recovery-password");
@@ -323,7 +364,8 @@ public sealed class UploadSessionApiTests(PostgreSqlAuthFlowFixture fixture)
         using var client = authenticated.Client;
         var rootId = await GetRootIdAsync(client);
         var content = RandomNumberGenerator.GetBytes(UploadSessionOptions.MinimumChunkBytes);
-        var sessionId = await CreateSessionIdAsync(client, rootId, "recovered.bin", content.Length, Sha(content));
+        var sessionId = await CreateSessionIdAsync(
+            client, rootId, "recovered.jpg", content.Length, Sha(content), "image/jpeg");
         using (var accepted = await SendChunkAsync(client, sessionId, 0, content, Sha(content)))
         {
             accepted.EnsureSuccessStatusCode();
@@ -373,6 +415,11 @@ public sealed class UploadSessionApiTests(PostgreSqlAuthFlowFixture fixture)
             Assert.Equal(UploadSessionStatus.Completed, (await database.UploadSessions.SingleAsync(item => item.Id == sessionId)).Status);
             Assert.Equal(FileOperationStatus.Completed, (await database.FileOperations.SingleAsync(item => item.Id == operationId)).Status);
             Assert.Single(await database.FileEntries.Where(item => item.Id == fileId).ToListAsync());
+            var low = await database.FileDerivatives.SingleAsync(item =>
+                item.SourceFileId == fileId && item.DerivativeType == DerivativeType.ImageLow);
+            Assert.Equal(DerivativeStatus.Pending, low.Status);
+            Assert.Equal(MediaJobOrigin.Ingest, (await database.MediaJobs.SingleAsync(item =>
+                item.DerivativeId == low.Id)).Origin);
             Assert.Single(await database.AuditLogs.Where(audit =>
                 audit.TargetId == sessionId.ToString() && audit.Action == "UPLOAD_SESSION_RECOVER").ToListAsync());
         }
@@ -807,7 +854,8 @@ public sealed class UploadSessionApiTests(PostgreSqlAuthFlowFixture fixture)
         Guid destinationFolderId,
         string fileName,
         long size,
-        string sha256)
+        string sha256,
+        string contentType = "application/octet-stream")
     {
         using var response = await CreateSessionAsync(
             client,
@@ -815,7 +863,8 @@ public sealed class UploadSessionApiTests(PostgreSqlAuthFlowFixture fixture)
             fileName,
             size,
             sha256,
-            Guid.NewGuid().ToString());
+            Guid.NewGuid().ToString(),
+            contentType);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
     }
@@ -826,11 +875,12 @@ public sealed class UploadSessionApiTests(PostgreSqlAuthFlowFixture fixture)
         string fileName,
         long size,
         string sha256,
-        string key)
+        string key,
+        string contentType = "application/octet-stream")
     {
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/upload-sessions")
         {
-            Content = JsonContent.Create(new { destinationFolderId, fileName, size, contentType = "application/octet-stream", sha256 }),
+            Content = JsonContent.Create(new { destinationFolderId, fileName, size, contentType, sha256 }),
         };
         request.Headers.Add("Idempotency-Key", key);
         return client.SendAsync(request);

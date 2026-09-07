@@ -3,8 +3,8 @@ package com.kurastorage.feature.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kurastorage.core.data.media.QualityPreferenceStore
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.NetworkQualityContext
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.model.media.QualityPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,7 +44,7 @@ class QualitySettingsViewModel(
 
     fun select(
         context: NetworkQualityContext,
-        quality: MediaQuality,
+        quality: PhotoDisplayMode,
     ) {
         if (mutableState.value.loading || mutableState.value.saving) return
         val next = mutableState.value.preferences.withQuality(context, quality)
@@ -66,7 +66,7 @@ class QualitySettingsViewModel(
     /** Retained for non-UI callers that intentionally persist one context immediately. */
     fun update(
         context: NetworkQualityContext,
-        quality: MediaQuality,
+        quality: PhotoDisplayMode,
     ) {
         if (mutableState.value.loading || mutableState.value.saving) return
         persist(mutableState.value.preferences.withQuality(context, quality))
@@ -93,7 +93,7 @@ class QualitySettingsViewModel(
 
 private fun QualityPreferences.withQuality(
     context: NetworkQualityContext,
-    quality: MediaQuality,
+    quality: PhotoDisplayMode,
 ): QualityPreferences =
     when (context) {
         NetworkQualityContext.LOCAL_DIRECT -> copy(localDirect = quality)

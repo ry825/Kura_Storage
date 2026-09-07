@@ -34,6 +34,7 @@ import com.kurastorage.core.model.SearchFileCategory
 import com.kurastorage.core.model.SearchResultItem
 import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.StorageAvailability
+import com.kurastorage.core.model.StorageCapacityStatus
 import com.kurastorage.core.ui.KuraStorageTheme
 import com.kurastorage.feature.files.AdminStorageState
 import org.junit.Assert.assertEquals
@@ -101,6 +102,62 @@ class HomeScreenTest {
             }
         }
         compose.onNodeWithText("Storage capacity warning").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun homeShowsPhysicalCapacityForMembersAndRetriesUnavailableState() {
+        var retries = 0
+        compose.setContent {
+            KuraStorageTheme {
+                HomeScreen(
+                    connection = connected(),
+                    state =
+                        HomeUiState(
+                            recentLoading = false,
+                            backupLoading = false,
+                            capacityLoading = false,
+                            capacity = StorageCapacityStatus("AVAILABLE", 1_000, 600, 400),
+                        ),
+                    onRefreshCapacity = { retries++ },
+                    onFiles = {},
+                    onTrash = {},
+                )
+            }
+        }
+
+        compose.scrollHomeTo("600 B used of 1,000 B").assertIsDisplayed()
+        compose.onNodeWithText("400 B available").assertIsDisplayed()
+        compose
+            .onNodeWithText("Volume usage includes KuraStorage derivatives and other data on the same disk.")
+            .assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, retries) }
+    }
+
+    @Test
+    fun unavailableOrInvalidCapacityNeverRendersZeroAndOffersRetry() {
+        var retries = 0
+        compose.setContent {
+            KuraStorageTheme {
+                HomeScreen(
+                    connection = connected(),
+                    state =
+                        HomeUiState(
+                            recentLoading = false,
+                            backupLoading = false,
+                            capacityLoading = false,
+                            capacity = StorageCapacityStatus("AVAILABLE", 100, 80, 40),
+                        ),
+                    onRefreshCapacity = { retries++ },
+                    onFiles = {},
+                    onTrash = {},
+                )
+            }
+        }
+
+        compose.scrollHomeTo("Storage capacity is unavailable.").assertIsDisplayed()
+        compose.onNodeWithText("Retry").performClick()
+        compose.onAllNodesWithText("0 B used of 0 B").assertCountEquals(0)
+        compose.runOnIdle { assertEquals(1, retries) }
     }
 
     @Test

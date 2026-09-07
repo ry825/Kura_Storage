@@ -3,15 +3,18 @@ package com.kurastorage.app
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kurastorage.core.data.RecentFileRepository
+import com.kurastorage.core.data.StorageCapacityRepository
 import com.kurastorage.core.data.backup.BackupProgressSnapshot
 import com.kurastorage.core.data.backup.BackupStateRepository
 import com.kurastorage.core.model.RecentFileItem
+import com.kurastorage.core.model.StorageCapacityStatus
 import com.kurastorage.core.model.backup.AccountScopeId
 import com.kurastorage.core.model.backup.SyncLifecycleState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -58,18 +61,29 @@ data class HomeUiState(
     val backupLoading: Boolean = true,
     val backupSummary: HomeBackupSummary? = null,
     val backupError: Boolean = false,
+    val capacityLoading: Boolean = true,
+    val capacity: StorageCapacityStatus? = null,
+    val capacityError: Boolean = false,
 )
 
 class HomeViewModel(
     private val recentFiles: RecentFileRepository,
+    private val storageCapacity: StorageCapacityRepository,
     backupState: BackupStateRepository,
     accountScopeId: AccountScopeId,
+    connectionRecovery: kotlinx.coroutines.flow.Flow<Unit> = emptyFlow(),
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = mutableState.asStateFlow()
 
     init {
         refreshRecent()
+        refreshCapacity()
+        viewModelScope.launch {
+            connectionRecovery.collect {
+                if (mutableState.value.capacityError) refreshCapacity()
+            }
+        }
         viewModelScope.launch {
             backupState
                 .observeProgress(accountScopeId)
@@ -102,6 +116,23 @@ class HomeViewModel(
                     }
                 }.onFailure {
                     mutableState.update { state -> state.copy(recentLoading = false, recentError = true) }
+                }
+        }
+    }
+
+    fun refreshCapacity() {
+        if (mutableState.value.capacityLoading && mutableState.value.capacity != null) return
+        mutableState.update { it.copy(capacityLoading = true, capacityError = false) }
+        viewModelScope.launch {
+            runCatching { storageCapacity.get() }
+                .onSuccess { capacity ->
+                    mutableState.update {
+                        it.copy(capacityLoading = false, capacity = capacity, capacityError = false)
+                    }
+                }.onFailure {
+                    mutableState.update { state ->
+                        state.copy(capacityLoading = false, capacityError = true)
+                    }
                 }
         }
     }

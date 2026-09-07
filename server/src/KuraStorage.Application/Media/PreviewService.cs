@@ -172,8 +172,11 @@ public sealed class PreviewService(
                     throw new IOException("The derivative size does not match its catalog record.");
                 }
 
-                await media.RecordDeliveryAccessAsync(
-                    snapshot.Derivative.Id, clock.UtcNow, TimeSpan.FromHours(options.CacheTtlHours), cancellationToken);
+                if (!snapshot.Derivative.IsPersistent)
+                {
+                    await media.RecordDeliveryAccessAsync(
+                        snapshot.Derivative.Id, clock.UtcNow, TimeSpan.FromHours(options.VideoCacheTtlHours), cancellationToken);
+                }
                 return new MediaRequestResult(
                     MediaRequestStatus.Ready,
                     new MediaContent(

@@ -610,61 +610,19 @@ interface MediaJob {
 (source_file_id, source_version, derivative_type, profile_version)
 ```
 
-`THUMBNAIL`と`PDF_THUMBNAIL`は最初の要求時に必要時生成し、通常キャッシュ10GBの集計対象外として元ファイルの完全削除まで保持する。長辺最大512px、WebP品質75、縦横比維持、拡大なしで生成し、TTLと容量上限を設定しない。低・中画質データだけを24時間TTLと容量上限の対象とする。
+`THUMBNAIL`と`PDF_THUMBNAIL`は最初の要求時に必要時生成し、元ファイルの完全削除まで保持する。長辺最大512px、WebP品質75、縦横比維持、拡大なしで生成し、TTLと容量上限を設定しない。写真`IMAGE_LOW`も同様に永続派生であり、現行Source Version/Profileの完成済み行を再利用する。移行中の旧動画派生だけは既存保守の対象になり得るが、写真LowへTTL、LRU、watermarkを適用してはならない。
 
 `MediaJob`はすべての派生種別の生成履歴を表す。同じ派生データに対する`QUEUED`または`RUNNING`の有効Jobは最大1件とし、初回を含む実行回数上限は3回、自動Retryは最大2回、Backoffは30秒・2分、stale判定はHeartbeat途絶から2分、terminal Job保持は7日とする。`CANCELLED`はSource Version変更、Purge等により生成が不要になった場合だけ使用し、Client切断では使用しない。
 
 `DerivativeLease`は派生データごとに`GENERATION`または`DELIVERY`、Owner token、期限を保持する。同じOwner tokenのLeaseは更新可能とし、別Ownerの更新・解放を拒否する。`FileDerivative.leaseUntil`はactive Lease最大期限の保守的な投影であり、削除可否の正は`derivative_leases`行とする。
 
-`file_derivatives`、`media_jobs`、`derivative_leases`をPostgreSQLへ保持し、Queue取得・Heartbeat・進捗・完了・失敗・明示Retry・stale回収、変換、HTTP API、配信Lease、Cache清掃をApplication境界から提供する。
+`file_derivatives`、`media_jobs`、`derivative_leases`をPostgreSQLへ保持し、Queue取得・Heartbeat・進捗・完了・失敗・明示Retry・stale回収、変換、HTTP API、配信Lease、old version/profile・途中出力の安全な保守をApplication境界から提供する。永続Lowを空き容量回収のために削除しない。terminal Media Jobは7日を超え、active retryが参照しない行だけを日次削除する。
 
-`MediaCleanupWorker`は起動時と既定30分周期に固定PostgreSQL advisory lockを取得し、同時清掃を1実行に限定する。期限切れCacheは最大100件を`expiresAt <= Server UTC now`でclaimする。容量清掃はREADYな低・中画質Cache合計が10 GiBを超えた場合だけ開始し、`lastAccessedAt`、`createdAt`、IDの安定順で1件ずつclaim・物理削除・再集計して6 GiB以下で停止する。Thumbnail、PENDING、RUNNING、有効Lease付き行は候補外とする。通常候補から除外する`DELETING`は専用復旧経路で再開し、物理削除失敗時はREADYへ戻して次回再試行する。terminal Media Jobは7日を超え、active retryが参照しない行だけを日次削除する。
+#### 管理者向け派生状態
 
-#### 管理者向けCache状態と永続Cleanup run
-
-```typescript
-type MediaCleanupTrigger = "SCHEDULED" | "MANUAL";
-type MediaCleanupRunStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
-
-interface MediaCleanupRunSummary {
-  id: string;
-  trigger: MediaCleanupTrigger;
-  status: MediaCleanupRunStatus;
-  requestedAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  examinedCount: number;
-  deletedCount: number;
-  releasedBytes: number;
-  failureCount: number;
-  remainingCacheBytes?: number;
-  failureCode?: "STORAGE_UNAVAILABLE" | "PARTIAL_DELETE_FAILURE" | "CLEANUP_FAILED";
-}
-
-interface AdminMediaCacheStatus {
-  cacheBytes: number;
-  imageLowBytes: number;
-  imageMediumBytes: number;
-  videoLowBytes: number;
-  videoMediumBytes: number;
-  highWatermarkBytes: number;
-  lowWatermarkBytes: number;
-  queuedJobCount: number;
-  runningJobCount: number;
-  failedJobCount: number;
-  pendingRunCount: number;
-  runningRunCount: number;
-  lastCleanupRun?: MediaCleanupRunSummary;
-}
-```
-
-- `GET /api/v1/admin/media-cache`は`AdminOnly`で上記集計と最新Runを返す。Cache容量は`IMAGE_LOW`、`IMAGE_MEDIUM`、`VIDEO_LOW`、`VIDEO_MEDIUM`の`READY`行だけをDBで集計し、Thumbnail、PDF thumbnail、Path、File名、User名、Job入力、有効Leaseの個別値を返さない。Job件数は`media_jobs`の状態別集計とする。
-- `POST /api/v1/admin/media-cache/cleanup-requests`は空の要求bodyとUUID形式の`Idempotency-Key`を必須とし、Run summaryを`202 Accepted`で返す。APIはCache削除を実行せず、`media_cleanup_runs`へmanual/pending行を登録するだけとする。
-- Idempotency keyはUTF-8バイトのSHA-256 hexだけを保存し、平文をDB・Response・Log・Metricへ残さない。同一requesting Admin・key hashは部分Unique Indexで1行にし、固定payload fingerprintが一致する再送は既存Runを返し、異なpayload再利用は`409 IDEMPOTENCY_CONFLICT`とする。UUID不正は`400 VALIDATION_FAILED`とする。
-- Run作成、冪等再送判定、pending/stale-running claimはPostgreSQL Transactionと`FOR UPDATE SKIP LOCKED`を使う。claimはworker tokenとlease expiryを書き、状態確定は同じtokenを条件にする。Worker停止後はlease期限に到達した`RUNNING`を再claimし、既存の冪等Cleanupを再実行する。
-- Workerは既定5秒以下のpollでmanual runを先にclaimし、起動時と既定30分周期にscheduled runを登録する。どちらも`IMediaCleanupService`と固定advisory lockを使う。lock未取得はRunをpendingへ戻し、Storage unavailableは`FAILED/STORAGE_UNAVAILABLE`、一部削除失敗は`FAILED/PARTIAL_DELETE_FAILURE`、その他の境界例外は`FAILED/CLEANUP_FAILED`とし、自由形式の内部Errorを永続化しない。
-- scheduled/manualが同時に存在してもRun claimと既存advisory lockで清掃全体を1実行に収束させる。生成中または有効Derivative Lease中のCacheは従来どおり候補から除外する。
-- AndroidはPOSTごとにUUID keyを生成し、通信結果不明時は同じkeyとpayloadで再送する。受理後はGETを有界間隔でpollし、Serverが返す`PENDING/RUNNING/COMPLETED/FAILED`をそのまま表示する。Clientは通信失敗から清掃成功を合成しない。
+- `GET /api/v1/admin/media-derivatives`は`AdminOnly`で永続Lowのcoverage、状態別件数、bytes、profile version、重複/orphan件数と集計時刻を返す。Path、File名、User名は返さない。
+- 旧`GET /api/v1/admin/media-cache`と`POST /api/v1/admin/media-cache/cleanup-requests`は公開APIから削除する。破壊操作はHTTP APIに置かず、Low backfill/retryとMedium移行削除はStorage guardと有界batchを持つAdmin CLIから明示実行する。
+- stale generation、terminal Job、temporary/途中出力、`DELETING`、orphan、旧Version/Profileの保守はWorkerで継続する。物理削除前にgeneration/delivery leaseを確認し、Original、Low、Thumbnail、PDF thumbnailをMedium purge対象へ混入させない。
 
 ### 5.5 転送と操作ジャーナル
 
@@ -1344,13 +1302,12 @@ Roomに次を保存する。
 
 ### 6.2.7 MVP後: PreviewService
 
-- 派生キャッシュの有無・元バージョンを確認する。
+- 現行Version/Profileの永続派生の有無を確認する。
 - 写真・動画・PDFの生成要求をPostgreSQL永続Media Jobへ登録し、API Processでは変換しない。
-- 写真とサムネイルは要求処理内で既定2秒までJob完了を待機する。
-- 設定済み待機閾値を超える場合、`202 Accepted`を返して独立Workerで生成を継続する。
+- 未準備の写真Lowとサムネイルでは`202 Accepted`を返して独立Workerで生成を継続する。
 - 同一派生データの重複生成を防止する。
 - 元画質再生はクライアントが明示的に選択した場合だけ許可する。
-- 配信時に`lastAccessedAt`と`expiresAt`を更新する。
+- 写真Lowの配信時に`lastAccessedAt`または`expiresAt`を更新しない。
 
 ### 6.2.8 MVP後: MediaGenerationWorker
 
@@ -1367,14 +1324,12 @@ Roomに次を保存する。
 
 MVP後の初回Media実装では、低・中画質動画をバックグラウンドで全体生成し、完成済みMP4（H.264＋AAC）として検証後に配信する。再生はHTTP Range Requestを使用し、HLSおよび生成途中のセグメント配信は対象外とする。
 
-### 6.2.9 MVP後: CacheCleanupService
+### 6.2.9 MVP後: MediaMaintenanceService
 
-- 30分ごとに期限切れキャッシュを検索する。
-- 24時間未利用の低・中画質キャッシュを削除する。
-- 合計容量が10GBを超えた場合、LRU順で6GB以下まで削除する。
-- 写真・動画・PDFのサムネイルはTTL・容量清掃の対象外とし、元ファイルの完全削除まで保持する。
-- `PENDING`、`RUNNING`、`DELETING`、`leaseUntil > now`を除外する。
-- 削除失敗を記録し、次回再試行する。
+- stale generation Job、terminal Job、temporary/途中出力、`DELETING`、orphan、旧Version/Profileを有界batchで保守する。
+- 写真Low、Thumbnail、PDF thumbnailをTTL、LRU、watermark、容量回収の候補に入れない。
+- 物理削除の直前にgeneration/delivery leaseを再確認し、削除失敗を再試行可能な状態で残す。
+- HTTP上のmanual Cache cleanupを提供しない。Low backfill/retryとlegacy Medium purgeはStorage guardを通すAdmin CLIで明示実行する。
 
 ### 6.2.10 MVP後: IndexingService
 
@@ -1910,11 +1865,11 @@ Access Tokenは15分、Refresh Tokenは発行または前回ローテーショ�
 
 #### `GET /api/v1/files/{fileId}/content`
 
-`variant`省略または`original`は元ファイル配信を保つ。`thumbnail`、`image-low`、`image-medium`は永続Media Jobで生成した完成済みWebPだけをLease付きで配信する。動画は`original`だけを許可し、`video-low`と`video-medium`は`400 MEDIA_VARIANT_UNSUPPORTED`で拒否して新規Jobを作成しない。`Range`がない場合は`200`、単一Rangeには`206`と`Content-Range`、不正または範囲外には`416 RANGE_NOT_SATISFIABLE`を返す。
+`variant`省略または`original`は元ファイル配信を保つ。`thumbnail`と`image-low`は永続Media Jobで生成した完成済みWebPだけをLease付きで配信する。旧`image-medium`は非公開互換parserで`image-low`へ正規化する。動画は`original`だけを許可し、`video-low`と`video-medium`は`400 MEDIA_VARIANT_UNSUPPORTED`で拒否する。
 
 - `original`: 元ファイルを送信する。
 - `thumbnail`: 写真・動画・PDFの完成済み一覧用WebPだけを送信する。
-- `image-low` / `image-medium`: 画像派生データだけを送信する。
+- `image-low`: 高速表示用の永続画像派生データだけを送信する。
 - `video-low` / `video-medium`: 非対応。既存派生データの有無にかかわらず新規要求を拒否する。既存データは一括削除せずTTL／LRU清掃に委ねる。
 - `disposition=inline`: 閲覧・再生用として返す。
 - `disposition=attachment`: ダウンロード用として返し、`Content-Disposition`を設定する。
@@ -1968,7 +1923,7 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 
 #### `HEAD /api/v1/files/{fileId}/content?variant={variant}`
 
-`original`、`image-low`、`image-medium`について、そのvariant自身のファイルサイズ、MIMEタイプ、Range対応を本文なしで確認する。完成済みの場合は`200`と`Content-Length`、`Content-Type`、`Accept-Ranges: bytes`を返す。派生データが未生成または生成中の場合は`202`と`X-Kura-Media-Job-Id`、`Location`、`Retry-After`を返し、元FileのSizeで代用しない。認証・認可・存在秘匿と生成失敗はGETと同じ型付きError契約を使用する。
+`original`と`image-low`について、そのvariant自身のファイルサイズ、MIMEタイプ、Range対応を本文なしで確認する。完成済みの場合は`200`と`Content-Length`、`Content-Type`、`Accept-Ranges: bytes`を返す。派生データが未生成または生成中の場合は`202`と`X-Kura-Media-Job-Id`、`Location`、`Retry-After`を返し、元FileのSizeで代用しない。認証・認可・存在秘匿と生成失敗はGETと同じ型付きError契約を使用する。
 
 ### 8.6 MVP後: 動画・音声再生
 

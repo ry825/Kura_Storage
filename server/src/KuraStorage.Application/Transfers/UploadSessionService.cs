@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Indexing;
+using KuraStorage.Application.Media;
 using KuraStorage.Application.Sharing;
 using KuraStorage.Application.Activity;
 using KuraStorage.Application.Backup;
@@ -11,6 +12,7 @@ using KuraStorage.Domain.Backup;
 using KuraStorage.Domain.Audit;
 using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Media;
 using KuraStorage.Domain.Sharing;
 using KuraStorage.Domain.Transfers;
 
@@ -29,7 +31,8 @@ public sealed class UploadSessionService(
     FileVersionService? fileVersions = null,
     UserActivityFactory? activities = null,
     IBackupRepository? backups = null,
-    IManagedFileSystemSnapshotReader? snapshotReader = null)
+    IManagedFileSystemSnapshotReader? snapshotReader = null,
+    IRequiredPhotoDerivativeProvisioner? requiredPhotoDerivatives = null)
 {
     private static readonly Meter Meter = new("KuraStorage.Transfers");
     private static readonly Counter<long> SessionCounter = Meter.CreateCounter<long>("kurastorage.upload.sessions");
@@ -664,6 +667,11 @@ public sealed class UploadSessionService(
 
         await using var transaction = await files.BeginTransactionAsync(cancellationToken);
         files.Add(entry);
+        if (requiredPhotoDerivatives is not null)
+        {
+            _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                entry, MediaJobOrigin.Ingest, now, cancellationToken);
+        }
         if (session.GetBackupContext() is { Decision: BackupUploadDecision.New } newBackup && backups is not null)
         {
             backups.Add(new BackupReceipt(
@@ -890,6 +898,11 @@ public sealed class UploadSessionService(
         await using var transaction = await files.BeginTransactionAsync(cancellationToken);
         entry.ApplyManagedContentChange(session.ExpectedSize, backup.ExpectedRemoteFileVersion!.Value, now);
         ApplyManagedObservation(entry, managedObservation, now);
+        if (requiredPhotoDerivatives is not null)
+        {
+            _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                entry, MediaJobOrigin.Ingest, now, cancellationToken);
+        }
         receipt.UpdateCompletion(
             entry.Id,
             backup.RelativePath,
@@ -1098,6 +1111,11 @@ public sealed class UploadSessionService(
         }
 
         await using var transaction = await files.BeginTransactionAsync(cancellationToken);
+        if (requiredPhotoDerivatives is not null)
+        {
+            _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                existing, MediaJobOrigin.Ingest, now, cancellationToken);
+        }
         if (session.GetBackupContext() is { Decision: BackupUploadDecision.New } pendingBackup &&
             backups is not null && existingReceipt is null)
         {
@@ -1221,6 +1239,11 @@ public sealed class UploadSessionService(
                 now);
         }
         ApplyManagedObservation(entry, managedObservation, now);
+        if (requiredPhotoDerivatives is not null)
+        {
+            _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                entry, MediaJobOrigin.Ingest, now, cancellationToken);
+        }
         await activities.AddEditAsync(
             operation.Id,
             session.ActorUserId,

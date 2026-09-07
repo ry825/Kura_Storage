@@ -1,6 +1,8 @@
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Media;
 
+using System.Diagnostics.Metrics;
+
 namespace KuraStorage.Application.Media;
 
 public enum MediaVariant
@@ -8,7 +10,6 @@ public enum MediaVariant
     Original,
     Thumbnail,
     ImageLow,
-    ImageMedium,
     VideoLow,
     VideoMedium,
 }
@@ -89,7 +90,7 @@ public sealed class MediaRuntimeOptions
     public int DeliveryLeaseRenewalSeconds { get; init; } = 30;
     public int GenerationLeaseSeconds { get; init; } = 120;
     public int JobHeartbeatSeconds { get; init; } = 10;
-    public int CacheTtlHours { get; init; } = 24;
+    public int VideoCacheTtlHours { get; init; } = 24;
     public int MaximumConcurrentThumbnailJobs { get; init; } = 2;
 }
 
@@ -112,14 +113,21 @@ public sealed record ThumbnailJobSummaryView(
 
 public static class MediaContractRules
 {
+    private static readonly Meter ContractMeter = new("KuraStorage.Media.Contracts");
+    private static readonly Counter<long> LegacyMediumRequests =
+        ContractMeter.CreateCounter<long>("kurastorage.media.legacy_image_medium_requests");
+
     public static bool TryParseVariant(string? value, out MediaVariant variant)
     {
-        variant = value?.Trim().ToLowerInvariant() switch
+        var normalized = value?.Trim().ToLowerInvariant();
+        if (normalized == "image-medium") LegacyMediumRequests.Add(1);
+        variant = normalized switch
         {
             null or "" or "original" => MediaVariant.Original,
             "thumbnail" => MediaVariant.Thumbnail,
             "image-low" => MediaVariant.ImageLow,
-            "image-medium" => MediaVariant.ImageMedium,
+            // Compatibility for installed clients: Medium now resolves to the persistent fast-display Low.
+            "image-medium" => MediaVariant.ImageLow,
             "video-low" => MediaVariant.VideoLow,
             "video-medium" => MediaVariant.VideoMedium,
             _ => (MediaVariant)(-1),
@@ -142,7 +150,7 @@ public static class MediaContractRules
     {
         MediaVariant.Original => true,
         MediaVariant.Thumbnail => IsImage(mimeType) || IsVideo(mimeType) || IsPdf(mimeType),
-        MediaVariant.ImageLow or MediaVariant.ImageMedium => IsImage(mimeType),
+        MediaVariant.ImageLow => IsImage(mimeType),
         MediaVariant.VideoLow or MediaVariant.VideoMedium => IsVideo(mimeType),
         _ => false,
     };
@@ -152,7 +160,6 @@ public static class MediaContractRules
         MediaVariant.Thumbnail when IsPdf(mimeType) => DerivativeType.PdfThumbnail,
         MediaVariant.Thumbnail => DerivativeType.Thumbnail,
         MediaVariant.ImageLow => DerivativeType.ImageLow,
-        MediaVariant.ImageMedium => DerivativeType.ImageMedium,
         MediaVariant.VideoLow => DerivativeType.VideoLow,
         MediaVariant.VideoMedium => DerivativeType.VideoMedium,
         _ => throw new ArgumentOutOfRangeException(nameof(variant)),
@@ -165,7 +172,6 @@ public static class MediaContractRules
         {
             MediaVariant.Thumbnail => "_thumbnail",
             MediaVariant.ImageLow => "_low",
-            MediaVariant.ImageMedium => "_medium",
             MediaVariant.VideoLow => "_low",
             MediaVariant.VideoMedium => "_medium",
             _ => throw new ArgumentOutOfRangeException(nameof(variant)),
@@ -177,7 +183,7 @@ public static class MediaContractRules
     public static int ProfileVersion(MediaVariant variant, int thumbnail, int image, int video) => variant switch
     {
         MediaVariant.Thumbnail => thumbnail,
-        MediaVariant.ImageLow or MediaVariant.ImageMedium => image,
+        MediaVariant.ImageLow => image,
         MediaVariant.VideoLow or MediaVariant.VideoMedium => video,
         _ => throw new ArgumentOutOfRangeException(nameof(variant)),
     };
