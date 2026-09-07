@@ -202,8 +202,11 @@ public sealed class AdminCliMediaTests
         string storageRoot,
         params string[] arguments)
     {
+        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name
+            ?? throw new InvalidOperationException("Unable to determine the test build configuration.");
         var cliAssembly = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "../../../../../src/KuraStorage.AdminCli/bin/Debug/net10.0/KuraStorage.AdminCli.dll"));
+            AppContext.BaseDirectory,
+            $"../../../../../src/KuraStorage.AdminCli/bin/{configuration}/net10.0/KuraStorage.AdminCli.dll"));
         Assert.True(File.Exists(cliAssembly), $"Admin CLI assembly was not built: {cliAssembly}");
         var start = new ProcessStartInfo("dotnet")
         {

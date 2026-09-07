@@ -361,9 +361,10 @@
   - [x] Remote差分がlocalと一致することを確認する（push後に`HEAD`と`@{u}`が同一commitであることを確認）
 
 - [ ] Pull Requestを1回だけ作成する
-  - [ ] 英語title/bodyで目的、対象、変更、test、影響、Merge後運用を記載する
-  - [ ] `main`向けPull Requestを作成しMergeしない
+  - [x] 英語title/bodyで目的、対象、変更、test、影響、Merge後運用を記載する（PR #66）
+  - [x] `main`向けPull Requestを作成しMergeしない（#66）
   - [ ] CI成功を確認する
+  - [x] CIのRelease検証でAdmin CLI統合テストが正しい出力構成を参照するよう修正し、再実行する（テスト実行構成からCLI DLL pathを解決し、Releaseで対象3件が成功）
   - [ ] `steering`モード3で下記完了記録を更新する
   - [ ] 完了記録をCommit・Pushし同じPull Requestへ反映する
   - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する
