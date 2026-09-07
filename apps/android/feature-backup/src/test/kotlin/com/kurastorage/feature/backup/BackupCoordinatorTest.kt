@@ -42,6 +42,8 @@ class BackupCoordinatorTest {
             enqueuer.scans.map { it.third },
         )
         assertEquals(5, enqueuer.transfers.size)
+        assertEquals(1, enqueuer.immediateScans)
+        assertEquals(1, enqueuer.immediateTransfers)
         assertEquals(listOf(rule), enqueuer.periodic)
         assertFalse(coordinator.backgroundCapability.usesAlwaysOnForegroundService)
         assertTrue(coordinator.backgroundCapability.requiresAppRestartAfterForceStop)
@@ -56,6 +58,8 @@ private class RecordingEnqueuer : BackupWorkEnqueuer {
     val scans = mutableListOf<Triple<AccountScopeId, BackupRuleId, ScanTrigger>>()
     val periodic = mutableListOf<BackupRuleId>()
     val transfers = mutableListOf<AccountScopeId>()
+    var immediateScans = 0
+    var immediateTransfers = 0
 
     override fun enqueueScan(
         scope: AccountScopeId,
@@ -74,5 +78,18 @@ private class RecordingEnqueuer : BackupWorkEnqueuer {
 
     override fun enqueueTransfer(scope: AccountScopeId) {
         transfers += scope
+    }
+
+    override fun enqueueScanNow(
+        scope: AccountScopeId,
+        ruleId: BackupRuleId,
+    ) {
+        immediateScans++
+        enqueueScan(scope, ruleId, ScanTrigger.MANUAL)
+    }
+
+    override fun enqueueTransferNow(scope: AccountScopeId) {
+        immediateTransfers++
+        enqueueTransfer(scope)
     }
 }

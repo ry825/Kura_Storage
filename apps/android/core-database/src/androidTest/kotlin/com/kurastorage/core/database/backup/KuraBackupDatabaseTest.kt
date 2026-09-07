@@ -17,6 +17,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -139,7 +140,14 @@ class KuraBackupDatabaseTest {
             assertEquals("COMPARING", claimed.single().lifecycleState)
             assertTrue(db.localSyncItemDao().claim(rule.accountScopeId, "second", 10, 20, 1).isEmpty())
 
-            assertEquals(1, db.localSyncItemDao().recoverExpiredLeases(10))
+            assertEquals(1, db.localSyncItemDao().releaseLeases(rule.accountScopeId, "worker"))
+            val released = requireNotNull(db.localSyncItemDao().find(plain.id, rule.accountScopeId))
+            assertEquals("PENDING", released.lifecycleState)
+            assertEquals("NONE", released.waitReason)
+            assertNull(released.leaseOwner)
+            assertNull(released.leaseExpiresAt)
+
+            assertEquals(1, db.localSyncItemDao().recoverExpiredLeases(rule.accountScopeId, 10))
             val recovered = requireNotNull(db.localSyncItemDao().find(uploading.id, rule.accountScopeId))
             assertEquals("PENDING", recovered.lifecycleState)
             assertEquals("SERVER_RECONCILIATION", recovered.waitReason)
@@ -234,7 +242,13 @@ class KuraBackupDatabaseTest {
             assertEquals("session-1", resumed.uploadSessionId)
             assertEquals("operation-1", resumed.idempotencyKey)
             assertEquals(64L, resumed.confirmedOffset)
-            assertEquals(1, reopened.localSyncItemDao().recoverExpiredLeases(Duration.ofHours(1).toMillis() + 11))
+            assertEquals(
+                1,
+                reopened.localSyncItemDao().recoverExpiredLeases(
+                    rule.accountScopeId,
+                    Duration.ofHours(1).toMillis() + 11,
+                ),
+            )
             val recovered = requireNotNull(reopened.localSyncItemDao().find(claimed.id.value, rule.accountScopeId))
             assertEquals("PENDING", recovered.lifecycleState)
             assertEquals("SERVER_RECONCILIATION", recovered.waitReason)

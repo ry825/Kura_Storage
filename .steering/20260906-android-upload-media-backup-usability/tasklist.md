@@ -4,7 +4,7 @@
 
 - `requirements.md`で定義したTransfer status、複数File/Folder Upload、パンくず、一覧位置復元、写真、Search Navigation、Thumbnail状況/並列生成、動画、Trusted Wi-Fi、Settings、Backup、PDF、File browser Headerの改善を実装する。
 - `design.md`のSAF Upload計画、ID基準Navigation、Original動画、通信確認、Job集計、制御付き並列処理、段階的Test、manifest限定清掃に従う。
-- 本タスクリストの実装、検証、正式文書、清掃、記録は中間Pull Requestを作らず、最後に1本のPull Requestへまとめる。
+- 当初範囲の実装、検証、正式文書、清掃はPR 1へまとめる。PR 1のMerge後に引き継いだBackup Session復旧修正とPR完了記録は、フォローアップPR 2へまとめる。
 
 ## 🚨 タスク完全完了の原則
 
@@ -34,6 +34,13 @@
 - 変更目的は「Androidアプリで報告されたUpload、File browser、Media/PDF、Settings、Trusted Wi-Fi、Backupの不具合と操作性を修正し、進行状況と通信負荷を利用者が把握できるようにする」とする。
 - 実装、Test、Build/Lint、API契約、正式文書、実機・実Server検証、性能測定、今回作成したテストデータの清掃を完了してからPull Requestを作成する。
 - Pull Requestは英語のTitle/Bodyで作成し、Mergeせず停止する。
+
+### PR 2: Recover interrupted Android backup sessions
+
+- PR 1のMerge後に別プロセスから引き継いだ、Session作成応答不明時とWorker取消時の自動Backup復旧修正を含む。
+- Idempotency Key先行永続化、期限切れ／取消lease回収、手動即時実行のWork置換、回帰Test、設計更新、PR 1完了記録をまとめる。
+- Android標準検証／Release APK Buildと物理端末／実Server確認は、2026-09-07のUser指示によりPR 2の対象から除外する。
+- Pull Requestは英語のTitle／Bodyで作成し、Mergeせず停止する。
 
 ---
 
@@ -437,6 +444,16 @@
   - Thumbnail生成、一覧API、動画Range再生を同時実行し、継続CPU余力25%以上、swap増加/OOM/thermal throttlingなし、I/O waitの継続20%未満、一覧API p95悪化20%未満、動画rebuffer増加なしを確認する。
   - 安全域を超えた場合は並列数またはBufferを調整し、再測定して正式値を文書化する。
 
+### 10.4 Session作成応答不明後の自動復旧回帰修正
+
+- [x] Session作成後かつ初回Chunk前に通信またはProcessが中断しても、未Upload項目を欠落させず完了まで再開する。
+  - [x] Idempotency KeyをSession作成Network要求より先にRoomへ保存する。
+  - [x] Session作成応答が不明な再現Testを追加し、次回実行が同じKeyでServerの既存Sessionを取得してUploadを完了することを確認する。
+  - [x] 既存Session IDが永続化済みの場合は新規Sessionを作成せず、Server確定offsetから再開する回帰Testを維持する。
+  - [x] Transfer開始時に同一Account Scopeの期限切れleaseを回収し、保存済みSessionがある項目をServer照合付きでQueueへ戻す。
+  - [x] 「今すぐバックアップ」が古い指数backoff chainを置き換えて即時実行されるようにし、Coordinator回帰Testを追加する。
+  - [x] Worker取消時に自身がclaimした未完了leaseを取消不能な終了処理で即時解放し、全claim項目がPENDINGへ戻る回帰Testを追加する。
+
 ---
 
 ## フェーズ11: 正式文書・契約・対象自動検証
@@ -589,6 +606,21 @@
   - 実装完了日、計画と実績、主な設計変更、技術的な学び、プロセス改善、次回提案を記録する。
   - 振り返り更新を同じBranchへCommit・Pushし、Pull Requestへ反映されたことを確認する。
   - Pull Request URL、主な変更、検証、性能、清掃、完了記録・振り返りをUserへ報告し、Mergeせず停止する。
+
+### 13.5 フォローアップPull Request
+
+- [ ] PR 2をCommit・Pushして英語Pull Requestを作成する。
+  - 別プロセスから引き継いだ10.4の実装、回帰Test、Steering、正式設計をreviewする。
+  - 追加済みのBackup復旧Unit Test結果を確認する。
+  - Android標準検証／Release APK Buildと物理端末／実Server確認はUser指示に従い対象外とする。
+  - `main`との差分へPR 1後の完了記録を含め、英語Title／BodyでフォローアップPRを作成する。
+  - Pull RequestはMergeしない。
+
+### 13.6 PR 2完了記録・最終振り返り更新
+
+- [ ] `steering`スキルのモード3-AでPR 2の完了記録を追加し、モード3-Bで全体振り返りを最終状態へ更新する。
+  - PR番号／URL、対象変更、Test結果、User指示による対象外項目、文書更新要否の判断、引継ぎを事実どおり記録する。
+  - 記録を同じBranchへCommit・Pushし、Pull Requestへ反映されたことを確認する。
 
 ---
 

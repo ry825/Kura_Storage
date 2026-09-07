@@ -33,11 +33,13 @@ import com.kurastorage.core.network.NetworkCallResult
 import com.kurastorage.core.network.UploadSessionApi
 import com.kurastorage.core.network.UploadSessionDto
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.InputStream
@@ -137,6 +139,16 @@ interface BackupRemoteDataSource {
 interface BackupTransferStore {
     suspend fun enabledRules(scope: AccountScopeId): List<LocalBackupRule>
 
+    suspend fun recoverExpiredLeases(
+        scope: AccountScopeId,
+        now: Instant,
+    ): Int
+
+    suspend fun releaseLeases(
+        scope: AccountScopeId,
+        leaseOwner: String,
+    ): Int
+
     suspend fun claim(
         scope: AccountScopeId,
         leaseOwner: String,
@@ -205,9 +217,24 @@ class BackupTransferRepository(
 ) {
     @Suppress("LongMethod", "CyclomaticComplexMethod", "TooGenericExceptionCaught")
     suspend fun transfer(scope: AccountScopeId): BackupTransferBatchResult {
+        val leaseOwner = UUID.randomUUID().toString()
+        return try {
+            transfer(scope, leaseOwner)
+        } finally {
+            withContext(NonCancellable) {
+                store.releaseLeases(scope, leaseOwner)
+            }
+        }
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "TooGenericExceptionCaught")
+    private suspend fun transfer(
+        scope: AccountScopeId,
+        leaseOwner: String,
+    ): BackupTransferBatchResult {
         val startedAt = Instant.now(clock)
         val batchDeadline = startedAt.plus(MAX_BATCH_DURATION)
-        val leaseOwner = UUID.randomUUID().toString()
+        store.recoverExpiredLeases(scope, startedAt)
         val rules = store.enabledRules(scope).associateBy { it.id }
         val claimed = store.claim(scope, leaseOwner, startedAt, LEASE_DURATION, MAX_BATCH_FILES)
         var completed = 0
@@ -341,6 +368,10 @@ class BackupTransferRepository(
                 return UploadResult()
             }
             val idempotencyKey = item.idempotencyKey ?: UUID.randomUUID().toString()
+            if (item.idempotencyKey == null) {
+                item = item.copy(idempotencyKey = idempotencyKey)
+                store.save(item)
+            }
             var session =
                 if (item.uploadSessionId == null) {
                     remote.createSession(

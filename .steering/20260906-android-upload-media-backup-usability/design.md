@@ -211,6 +211,9 @@ flowchart LR
 - 手動Uploadと自動Backupを同じ端末内の優先度付き共通転送dispatcherへ接続し、合計同時数を型付き設定で制限する。手動Uploadを待機中Backupより先に割り当てるが、実行中のBackupを途中で破棄しない。
 - 既存値2から測定を始め、1・2・4、必要なら6・8を比較する。Android共通枠の既定値をServer Upload limiterより大きくせず、より高い値を採用する場合はServer limiterも同じ検証で調整する。
 - Queue claimはTransaction内で行い、同一itemを複数coroutineが処理しない。Fileごとのupload session、operation ID、expected versionを共有しない。
+- Upload Session作成に使うIdempotency Keyは、必ずNetwork要求より先にRoomへ永続化する。Session作成応答が不明な場合は新しいKeyを発行せず、同じKeyで作成要求を再送してServerに残る同一Sessionを再取得する。Session ID永続化後はSession GETとServer確定offsetを正として再開する。
+- 各Transfer Workerはclaim前に同じAccount Scopeの期限切れleaseを回収する。Session IDがある項目は`SERVER_RECONCILIATION`、ない項目は通常のPENDINGへ戻し、Room Queueから再処理する。
+- 手動の「今すぐバックアップ」は、古いWorkManagerの指数backoff chainを`REPLACE`して即時Scan／Transferを予約する。Transfer Workerは自身がclaimした未完了leaseを`NonCancellable`な終了処理で即時解放し、永続済みKey／Sessionを引き継いで次のWorkerが待ち時間なく再claimできるようにする。Process強制終了など終了処理を実行できない場合は、期限切れlease回収をフォールバックとする。
 - 1件のretryable failureはその項目へ記録し、他項目をcancelしない。認証失効、Storage不足などrun全体を止めるべきerrorだけを共有停止条件にする。
 - Network constraint喪失またはWorker cancellationでは新規claimを止め、実行中項目を既存の中断・再開契約で確定する。
 - 件数1、2、上限超過、部分失敗、同一File重複候補、process再開をdeterministic dispatcher Testで検証する。

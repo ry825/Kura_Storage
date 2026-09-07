@@ -11,6 +11,16 @@ class RoomBackupTransferStore(
 ) : BackupTransferStore {
     override suspend fun enabledRules(scope: AccountScopeId) = persistence.enabledRules(scope)
 
+    override suspend fun recoverExpiredLeases(
+        scope: AccountScopeId,
+        now: Instant,
+    ) = persistence.recoverExpiredLeases(scope, now)
+
+    override suspend fun releaseLeases(
+        scope: AccountScopeId,
+        leaseOwner: String,
+    ) = persistence.releaseLeases(scope, leaseOwner)
+
     override suspend fun claim(
         scope: AccountScopeId,
         leaseOwner: String,

@@ -109,7 +109,8 @@ class LocalBackupStateRepository(
             failureReason.name,
         )
 
-    suspend fun recoverExpiredLeases(): Int = dao.recoverExpiredLeases(Instant.now(clock).toEpochMilli())
+    suspend fun recoverExpiredLeases(accountScopeId: AccountScopeId): Int =
+        dao.recoverExpiredLeases(accountScopeId.value, Instant.now(clock).toEpochMilli())
 
     override suspend fun retryFailed(
         accountScopeId: AccountScopeId,
