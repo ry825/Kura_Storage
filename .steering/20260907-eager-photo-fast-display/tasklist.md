@@ -357,7 +357,7 @@
 
 - [ ] CommitとPushを完了する
   - [x] 本作業の全変更とtasklist進捗をCommitする（`164cb3e feat: make photo low derivatives persistent`）
-  - [ ] 作業BranchをRemoteへPushする
+  - [x] 作業BranchをRemoteへPushする（`origin/feat/eager-photo-fast-display`）
   - [ ] Remote差分がlocalと一致することを確認する
 
 - [ ] Pull Requestを1回だけ作成する
