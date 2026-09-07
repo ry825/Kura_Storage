@@ -355,7 +355,7 @@
   - [x] 認証・認可・File状態・Server/account/cache境界を迂回しない（容量APIは認証必須、派生statusはAdmin限定、Low EnsureはActive写真だけ、端末cache keyはServer/account/File/version/variant scopeを含むことを確認）
   - [x] Requirements、Design、Tasklist、正式文書、実装、testが一致する（OpenAPI、Server endpoint、Android resolver/UI、migration、運用文書を照合し、正式署名APK・高件数実データ確認のMerge後移管もrequirements/design/tasklistへ反映）
 
-- [ ] CommitとPushを完了する
+- [x] CommitとPushを完了する
   - [x] 本作業の全変更とtasklist進捗をCommitする（`164cb3e feat: make photo low derivatives persistent`）
   - [x] 作業BranchをRemoteへPushする（`origin/feat/eager-photo-fast-display`）
   - [x] Remote差分がlocalと一致することを確認する（push後に`HEAD`と`@{u}`が同一commitであることを確認）
