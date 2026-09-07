@@ -358,7 +358,7 @@
 - [ ] CommitとPushを完了する
   - [x] 本作業の全変更とtasklist進捗をCommitする（`164cb3e feat: make photo low derivatives persistent`）
   - [x] 作業BranchをRemoteへPushする（`origin/feat/eager-photo-fast-display`）
-  - [ ] Remote差分がlocalと一致することを確認する
+  - [x] Remote差分がlocalと一致することを確認する（push後に`HEAD`と`@{u}`が同一commitであることを確認）
 
 - [ ] Pull Requestを1回だけ作成する
   - [ ] 英語title/bodyで目的、対象、変更、test、影響、Merge後運用を記載する
