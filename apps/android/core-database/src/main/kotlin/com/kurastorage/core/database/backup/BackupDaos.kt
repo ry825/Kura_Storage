@@ -162,23 +162,46 @@ interface LocalSyncItemDao {
 
     @Query(
         "UPDATE local_sync_items SET lifecycle_state = 'PENDING', wait_reason = 'NONE', " +
-            "lease_owner = NULL, lease_expires_at = NULL WHERE lease_expires_at <= :now " +
+            "lease_owner = NULL, lease_expires_at = NULL WHERE account_scope_id = :scopeId " +
+            "AND lease_expires_at <= :now " +
             "AND lifecycle_state IN ('COMPARING', 'READY_TO_UPLOAD', 'UPLOADING') " +
             "AND upload_session_id IS NULL",
     )
-    suspend fun recoverExpiredWithoutSession(now: Long): Int
+    suspend fun recoverExpiredWithoutSession(
+        scopeId: String,
+        now: Long,
+    ): Int
 
     @Query(
         "UPDATE local_sync_items SET lifecycle_state = 'PENDING', wait_reason = 'SERVER_RECONCILIATION', " +
-            "lease_owner = NULL, lease_expires_at = NULL WHERE lease_expires_at <= :now " +
+            "lease_owner = NULL, lease_expires_at = NULL WHERE account_scope_id = :scopeId " +
+            "AND lease_expires_at <= :now " +
             "AND lifecycle_state IN ('COMPARING', 'READY_TO_UPLOAD', 'UPLOADING') " +
             "AND upload_session_id IS NOT NULL",
     )
-    suspend fun recoverExpiredWithSession(now: Long): Int
+    suspend fun recoverExpiredWithSession(
+        scopeId: String,
+        now: Long,
+    ): Int
 
     @Transaction
     @Suppress("MaxLineLength")
-    suspend fun recoverExpiredLeases(now: Long): Int = recoverExpiredWithoutSession(now) + recoverExpiredWithSession(now)
+    suspend fun recoverExpiredLeases(
+        scopeId: String,
+        now: Long,
+    ): Int = recoverExpiredWithoutSession(scopeId, now) + recoverExpiredWithSession(scopeId, now)
+
+    @Query(
+        "UPDATE local_sync_items SET lifecycle_state = 'PENDING', " +
+            "wait_reason = CASE WHEN upload_session_id IS NULL THEN 'NONE' ELSE 'SERVER_RECONCILIATION' END, " +
+            "lease_owner = NULL, lease_expires_at = NULL " +
+            "WHERE account_scope_id = :scopeId AND lease_owner = :leaseOwner " +
+            "AND lifecycle_state IN ('COMPARING', 'READY_TO_UPLOAD', 'UPLOADING')",
+    )
+    suspend fun releaseLeases(
+        scopeId: String,
+        leaseOwner: String,
+    ): Int
 
     @Query(
         "SELECT lifecycle_state, COUNT(*) AS count FROM local_sync_items " +

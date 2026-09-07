@@ -97,6 +97,13 @@ interface BackupWorkEnqueuer {
     )
 
     fun enqueueTransfer(scope: AccountScopeId)
+
+    fun enqueueScanNow(
+        scope: AccountScopeId,
+        ruleId: BackupRuleId,
+    ) = enqueueScan(scope, ruleId, ScanTrigger.MANUAL)
+
+    fun enqueueTransferNow(scope: AccountScopeId) = enqueueTransfer(scope)
 }
 
 class WorkManagerBackupEnqueuer(
@@ -116,6 +123,17 @@ class WorkManagerBackupEnqueuer(
         workManager.enqueueUniqueWork(BackupWorkNames.scan(scope, ruleId), ExistingWorkPolicy.KEEP, request)
     }
 
+    override fun enqueueScanNow(
+        scope: AccountScopeId,
+        ruleId: BackupRuleId,
+    ) {
+        val request =
+            OneTimeWorkRequestBuilder<BackupScanWorker>()
+                .setInputData(scanData(scope, ruleId, ScanTrigger.MANUAL))
+                .build()
+        workManager.enqueueUniqueWork(BackupWorkNames.scan(scope, ruleId), ExistingWorkPolicy.REPLACE, request)
+    }
+
     override fun enqueuePeriodicSafScan(
         scope: AccountScopeId,
         ruleId: BackupRuleId,
@@ -132,6 +150,17 @@ class WorkManagerBackupEnqueuer(
     }
 
     override fun enqueueTransfer(scope: AccountScopeId) {
+        enqueueTransfer(scope, ExistingWorkPolicy.APPEND_OR_REPLACE)
+    }
+
+    override fun enqueueTransferNow(scope: AccountScopeId) {
+        enqueueTransfer(scope, ExistingWorkPolicy.REPLACE)
+    }
+
+    private fun enqueueTransfer(
+        scope: AccountScopeId,
+        policy: ExistingWorkPolicy,
+    ) {
         val request =
             OneTimeWorkRequestBuilder<BackupTransferWorker>()
                 .setConstraints(connected)
@@ -140,7 +169,7 @@ class WorkManagerBackupEnqueuer(
                 .build()
         workManager.enqueueUniqueWork(
             BackupWorkNames.transfer(scope),
-            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            policy,
             request,
         )
     }
@@ -185,7 +214,10 @@ class BackupCoordinator(
     fun runNow(
         scope: AccountScopeId,
         rules: Collection<BackupRuleId>,
-    ) = enqueue(scope, rules, ScanTrigger.MANUAL)
+    ) {
+        rules.distinct().forEach { work.enqueueScanNow(scope, it) }
+        work.enqueueTransferNow(scope)
+    }
 
     fun scheduleSafPeriodic(
         scope: AccountScopeId,

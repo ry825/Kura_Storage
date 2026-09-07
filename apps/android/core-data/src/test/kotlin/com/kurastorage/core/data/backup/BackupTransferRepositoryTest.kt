@@ -14,6 +14,9 @@ import com.kurastorage.core.model.backup.LocalSyncItem
 import com.kurastorage.core.model.backup.LocalSyncItemId
 import com.kurastorage.core.model.backup.SyncLifecycleState
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -103,6 +106,76 @@ class BackupTransferRepositoryTest {
             assertEquals(0, remote.createdSessions)
             assertEquals(listOf(4L), remote.uploadedOffsets)
             assertEquals(SyncLifecycleState.COMPLETED, store.items.getValue(existing.id).lifecycleState)
+        }
+
+    @Test
+    fun expiredUploadLeaseIsRecoveredAndItsExistingSessionIsResumed() =
+        runBlocking {
+            val stale =
+                item("expired-upload", 2).copy(
+                    lifecycleState = SyncLifecycleState.UPLOADING,
+                    uploadSessionId = UUID.randomUUID().toString(),
+                    idempotencyKey = UUID.randomUUID().toString(),
+                    leaseOwner = "dead-worker",
+                    leaseExpiresAt = NOW.minusSeconds(1),
+                )
+            val store = FakeTransferStore(listOf(stale), rule())
+            val remote =
+                FakeBackupRemote().apply {
+                    decisions[stale.localDocumentKey] = result(stale, BackupCompareDecision.CHANGED)
+                }
+
+            val outcome = repository(store, remote).transfer(SCOPE)
+
+            assertEquals(1, outcome.completedCount)
+            assertEquals(0, remote.createdSessions)
+            assertEquals(SyncLifecycleState.COMPLETED, store.items.getValue(stale.id).lifecycleState)
+        }
+
+    @Test
+    fun workerCancellationImmediatelyReleasesEveryClaimedLease() =
+        runBlocking {
+            val first = item("cancelled-first", 2)
+            val second = item("cancelled-second", 2)
+            val store = FakeTransferStore(listOf(first, second), rule())
+            val remote = SuspendedCompareBackupRemote()
+            val job = launch { repository(store, remote).transfer(SCOPE) }
+            remote.compareStarted.await()
+
+            job.cancelAndJoin()
+
+            assertEquals(2, store.releasedLeases)
+            assertTrue(
+                store.items.values.all {
+                    it.lifecycleState == SyncLifecycleState.PENDING &&
+                        it.leaseOwner == null &&
+                        it.leaseExpiresAt == null
+                },
+            )
+        }
+
+    @Test
+    fun unknownCreateResponseReusesThePersistedIdempotencyKeyAndCompletes() =
+        runBlocking {
+            val candidate = item("unknown-create-response", 3)
+            val store = FakeTransferStore(listOf(candidate), rule())
+            val remote = ResponseLostOnceBackupRemote()
+            val repository = repository(store, remote)
+
+            val interrupted = repository.transfer(SCOPE)
+
+            val pending = store.items.getValue(candidate.id)
+            assertTrue(interrupted.retryRecommended)
+            assertEquals(SyncLifecycleState.PENDING, pending.lifecycleState)
+            assertNotNull(pending.idempotencyKey)
+            assertEquals(listOf(pending.idempotencyKey), remote.requestKeys)
+
+            val resumed = repository.transfer(SCOPE)
+
+            assertEquals(1, resumed.completedCount)
+            assertEquals(listOf(pending.idempotencyKey, pending.idempotencyKey), remote.requestKeys)
+            assertEquals(1, remote.serverCreatedSessions)
+            assertEquals(SyncLifecycleState.COMPLETED, store.items.getValue(candidate.id).lifecycleState)
         }
 
     @Test
@@ -359,6 +432,35 @@ class BackupTransferRepositoryTest {
     }
 }
 
+private class SuspendedCompareBackupRemote : BackupRemoteDataSource {
+    val compareStarted = CompletableDeferred<Unit>()
+
+    override suspend fun compare(
+        destinationFolderId: String,
+        candidates: List<BackupCompareCandidate>,
+    ): List<BackupCompareResult> {
+        compareStarted.complete(Unit)
+        awaitCancellation()
+    }
+
+    override suspend fun createSession(
+        item: LocalSyncItem,
+        destinationFolderId: String,
+        idempotencyKey: String,
+        decision: BackupUploadDecision,
+    ): BackupRemoteSession = error("Not reached")
+
+    override suspend fun session(sessionId: String): BackupRemoteSession = error("Not reached")
+
+    override suspend fun uploadChunk(
+        sessionId: String,
+        offset: Long,
+        bytes: ByteArray,
+    ): Long = error("Not reached")
+
+    override suspend fun complete(sessionId: String): BackupRemoteSession = error("Not reached")
+}
+
 private class ConcurrentBackupRemote(
     private val failLocalKey: String? = null,
 ) : BackupRemoteDataSource {
@@ -439,8 +541,60 @@ private class FakeTransferStore(
 ) : BackupTransferStore {
     val items = initial.associateBy { it.id }.toMutableMap()
     val content = ByteArray(minOf(initial.maxOfOrNull { it.size } ?: 0, 1_024).toInt()) { it.toByte() }
+    var releasedLeases = 0
 
     override suspend fun enabledRules(scope: AccountScopeId) = listOf(rule)
+
+    override suspend fun recoverExpiredLeases(
+        scope: AccountScopeId,
+        now: Instant,
+    ): Int {
+        val expired =
+            items.values.filter {
+                it.accountScopeId == scope &&
+                    it.leaseExpiresAt?.let { expiry -> !expiry.isAfter(now) } == true &&
+                    it.lifecycleState in
+                    setOf(SyncLifecycleState.COMPARING, SyncLifecycleState.READY_TO_UPLOAD, SyncLifecycleState.UPLOADING)
+            }
+        expired.forEach { stale ->
+            items[stale.id] =
+                stale.copy(
+                    lifecycleState = SyncLifecycleState.PENDING,
+                    waitReason =
+                        if (stale.uploadSessionId == null) {
+                            BackupWaitReason.NONE
+                        } else {
+                            BackupWaitReason.SERVER_RECONCILIATION
+                        },
+                    leaseOwner = null,
+                    leaseExpiresAt = null,
+                )
+        }
+        return expired.size
+    }
+
+    override suspend fun releaseLeases(
+        scope: AccountScopeId,
+        leaseOwner: String,
+    ): Int {
+        val leased = items.values.filter { it.accountScopeId == scope && it.leaseOwner == leaseOwner }
+        leased.forEach { item ->
+            items[item.id] =
+                item.copy(
+                    lifecycleState = SyncLifecycleState.PENDING,
+                    waitReason =
+                        if (item.uploadSessionId == null) {
+                            BackupWaitReason.NONE
+                        } else {
+                            BackupWaitReason.SERVER_RECONCILIATION
+                        },
+                    leaseOwner = null,
+                    leaseExpiresAt = null,
+                )
+        }
+        releasedLeases += leased.size
+        return leased.size
+    }
 
     override suspend fun claim(
         scope: AccountScopeId,
@@ -517,4 +671,54 @@ private class FakeBackupRemote : BackupRemoteDataSource {
     }
 
     private fun activeSession(offset: Long) = BackupRemoteSession(sessionId, "ACTIVE", offset, preferredChunkBytes, preferredChunkBytes)
+}
+
+private class ResponseLostOnceBackupRemote : BackupRemoteDataSource {
+    val requestKeys = mutableListOf<String?>()
+    var serverCreatedSessions = 0
+    private var persistedKey: String? = null
+    private val sessionId = UUID.randomUUID().toString()
+    private var offset = 0L
+
+    override suspend fun compare(
+        destinationFolderId: String,
+        candidates: List<BackupCompareCandidate>,
+    ) = candidates.map { BackupCompareResult(it.localDocumentKey, BackupCompareDecision.NEW, null, null, null) }
+
+    override suspend fun createSession(
+        item: LocalSyncItem,
+        destinationFolderId: String,
+        idempotencyKey: String,
+        decision: BackupUploadDecision,
+    ): BackupRemoteSession {
+        check(item.idempotencyKey == idempotencyKey)
+        requestKeys += idempotencyKey
+        if (persistedKey == null) {
+            persistedKey = idempotencyKey
+            serverCreatedSessions++
+            throw BackupRemoteException(BackupRemoteFailureKind.TRANSIENT)
+        }
+        check(idempotencyKey == persistedKey)
+        return activeSession()
+    }
+
+    override suspend fun session(sessionId: String) = activeSession()
+
+    override suspend fun uploadChunk(
+        sessionId: String,
+        offset: Long,
+        bytes: ByteArray,
+    ): Long {
+        this.offset = offset + bytes.size
+        return this.offset
+    }
+
+    override suspend fun complete(sessionId: String) =
+        activeSession().copy(
+            status = "COMPLETED",
+            remoteFileId = UUID.randomUUID().toString(),
+            remoteFileVersion = 1,
+        )
+
+    private fun activeSession() = BackupRemoteSession(sessionId, "ACTIVE", offset, 8, 8)
 }

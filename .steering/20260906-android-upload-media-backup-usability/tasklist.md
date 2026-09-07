@@ -4,7 +4,7 @@
 
 - `requirements.md`で定義したTransfer status、複数File/Folder Upload、パンくず、一覧位置復元、写真、Search Navigation、Thumbnail状況/並列生成、動画、Trusted Wi-Fi、Settings、Backup、PDF、File browser Headerの改善を実装する。
 - `design.md`のSAF Upload計画、ID基準Navigation、Original動画、通信確認、Job集計、制御付き並列処理、段階的Test、manifest限定清掃に従う。
-- 本タスクリストの実装、検証、正式文書、清掃、記録は中間Pull Requestを作らず、最後に1本のPull Requestへまとめる。
+- 当初範囲の実装、検証、正式文書、清掃はPR 1へまとめる。PR 1のMerge後に引き継いだBackup Session復旧修正とPR完了記録は、フォローアップPR 2へまとめる。
 
 ## 🚨 タスク完全完了の原則
 
@@ -34,6 +34,13 @@
 - 変更目的は「Androidアプリで報告されたUpload、File browser、Media/PDF、Settings、Trusted Wi-Fi、Backupの不具合と操作性を修正し、進行状況と通信負荷を利用者が把握できるようにする」とする。
 - 実装、Test、Build/Lint、API契約、正式文書、実機・実Server検証、性能測定、今回作成したテストデータの清掃を完了してからPull Requestを作成する。
 - Pull Requestは英語のTitle/Bodyで作成し、Mergeせず停止する。
+
+### PR 2: Recover interrupted Android backup sessions
+
+- PR 1のMerge後に別プロセスから引き継いだ、Session作成応答不明時とWorker取消時の自動Backup復旧修正を含む。
+- Idempotency Key先行永続化、期限切れ／取消lease回収、手動即時実行のWork置換、回帰Test、設計更新、PR 1完了記録をまとめる。
+- Android標準検証／Release APK Buildと物理端末／実Server確認は、2026-09-07のUser指示によりPR 2の対象から除外する。
+- Pull Requestは英語のTitle／Bodyで作成し、Mergeせず停止する。
 
 ---
 
@@ -437,6 +444,16 @@
   - Thumbnail生成、一覧API、動画Range再生を同時実行し、継続CPU余力25%以上、swap増加/OOM/thermal throttlingなし、I/O waitの継続20%未満、一覧API p95悪化20%未満、動画rebuffer増加なしを確認する。
   - 安全域を超えた場合は並列数またはBufferを調整し、再測定して正式値を文書化する。
 
+### 10.4 Session作成応答不明後の自動復旧回帰修正
+
+- [x] Session作成後かつ初回Chunk前に通信またはProcessが中断しても、未Upload項目を欠落させず完了まで再開する。
+  - [x] Idempotency KeyをSession作成Network要求より先にRoomへ保存する。
+  - [x] Session作成応答が不明な再現Testを追加し、次回実行が同じKeyでServerの既存Sessionを取得してUploadを完了することを確認する。
+  - [x] 既存Session IDが永続化済みの場合は新規Sessionを作成せず、Server確定offsetから再開する回帰Testを維持する。
+  - [x] Transfer開始時に同一Account Scopeの期限切れleaseを回収し、保存済みSessionがある項目をServer照合付きでQueueへ戻す。
+  - [x] 「今すぐバックアップ」が古い指数backoff chainを置き換えて即時実行されるようにし、Coordinator回帰Testを追加する。
+  - [x] Worker取消時に自身がclaimした未完了leaseを取消不能な終了処理で即時解放し、全claim項目がPENDINGへ戻る回帰Testを追加する。
+
 ---
 
 ## フェーズ11: 正式文書・契約・対象自動検証
@@ -564,7 +581,7 @@
 
 ### 13.2 Commit・Push・英語Pull Request
 
-- [ ] PR 1をCommit・Pushして英語Pull Requestを作成する。
+- [x] PR 1をCommit・Pushして英語Pull Requestを作成する。
   - 全実装、Test、正式文書、Steering進捗、秘密情報を含まないevidenceをCommitする。
   - Commit前に`git status`とstaged diffをreviewする。
   - PR 1 BranchをremoteへPushする。
@@ -575,7 +592,7 @@
 
 ### 13.3 Pull Request完了記録
 
-- [ ] `steering`スキルのモード3-Aで、本ファイルの「各Pull Request完了記録」へPR 1を記録する。
+- [x] `steering`スキルのモード3-Aで、本ファイルの「各Pull Request完了記録」へPR 1を記録する。
   - 完了日とPull Request番号/URLを記録する。
   - Test、Build、Lint、API/E2E、性能測定、実機確認、清掃結果を記録する。
   - 計画と実装の差分、追加タスクと理由、技術的取消と代替実装、引継ぎを記録する。
@@ -584,20 +601,120 @@
 
 ### 13.4 全体振り返り
 
-- [ ] `steering`スキルのモード3-Bで全体振り返りを記録する。
+- [x] `steering`スキルのモード3-Bで全体振り返りを記録する。
   - フェーズ0〜13.3に未完了タスク`[ ]`が残っていないことを確認してから本文を書く。
   - 実装完了日、計画と実績、主な設計変更、技術的な学び、プロセス改善、次回提案を記録する。
   - 振り返り更新を同じBranchへCommit・Pushし、Pull Requestへ反映されたことを確認する。
   - Pull Request URL、主な変更、検証、性能、清掃、完了記録・振り返りをUserへ報告し、Mergeせず停止する。
 
+### 13.5 フォローアップPull Request
+
+- [x] PR 2をCommit・Pushして英語Pull Requestを作成する。
+  - 別プロセスから引き継いだ10.4の実装、回帰Test、Steering、正式設計をreviewする。
+  - 追加済みのBackup復旧Unit Test結果を確認する。
+  - Android標準検証／Release APK Buildと物理端末／実Server確認はUser指示に従い対象外とする。
+  - `main`との差分へPR 1後の完了記録を含め、英語Title／BodyでフォローアップPRを作成する。
+  - Pull RequestはMergeしない。
+
+### 13.6 PR 2完了記録・最終振り返り更新
+
+- [x] `steering`スキルのモード3-AでPR 2の完了記録を追加し、モード3-Bで全体振り返りを最終状態へ更新する。
+  - PR番号／URL、対象変更、Test結果、User指示による対象外項目、文書更新要否の判断、引継ぎを事実どおり記録する。
+  - 記録を同じBranchへCommit・Pushし、Pull Requestへ反映されたことを確認する。
+
 ---
 
 ## 各Pull Request完了記録
 
-全タスク完了後、Pull Request作成時に`steering`スキルのモード3-Aで記録する。PR作成前には記録しない。
+### PR 1: Improve Android uploads, media playback, backup throughput, and navigation
+
+- 完了日: 2026-09-06
+- Pull Request: [#64](https://github.com/ry825/Kura_Storage/pull/64)
+- 対象: フェーズ0〜13.2。Android Upload／File browser／Media・PDF／Settings・Trusted Wi-Fi／Backupと、Server Thumbnail集計・並列生成を1本のPRへ統合した。
+- Test・Build・静的解析:
+  - Android標準検証は最終再実行1392 tasksが成功し、Unit Test、coverage gate、ktlint、detekt、Android Lint、SBOMを通過した。
+  - API 33 EmulatorとAndroid 13実機のInstrumented Testは全体103件が成功し、追加修正後のfeature-files 33件とfeature-backup 12件も成功した。
+  - Server標準検証はDomain 135件、Application 355件、Integration 236件の合計726件が成功し、build warning／errorは0件だった。
+  - Config、Security、Deployment標準検証が成功した。GitHub ActionsはAndroid、Server、Config、Securityの全4 Jobが成功した。
+- API／E2E・手動確認:
+  - OpenAPIと認可付きThumbnail Job集計をServer Testと実Serverで照合した。
+  - Android実機でUpload、折り返しBreadcrumb、Thumbnail失敗表示のDismiss、現在Wi-Fi登録、Original動画、Backup並列を確認した。
+  - 動画はhardware decoder生成まで1.771秒、目視rebuffer 0回、取得できた末尾128 frameの1 frame超gap 0件だった。
+- 性能:
+  - Thumbnail既定並列数2は、直列62.699秒から56.033秒へ10.6%改善し、安全条件を満たした。
+  - 4 MiB x 4件のBackupは最大同時2件、直列相当101.068秒に対して56.438秒で44.2%短縮し、重複Fileを作成しなかった。
+- 清掃:
+  - manifestへ記録したServer File／Folder 24件、Media job／Derivative各11件、保持された完了Upload session 21件、Android File 21件／空Folder 5件、作業用Backup Rule／Wi-Fi Policyをexact IDで清掃した。
+  - 最終再照会でmanifest Server ID、作業prefix File、失敗fixture Thumbnail Job、Android作業prefix、debug packageが0件で、既存root、既存Backup Rule、production appを維持した。
+- 計画と実装の差分: 利用者確認で判明した深いBreadcrumbの見切れに対して全階層を折り返す表示を追加した。`Thumbnail generation failed`はstale stateではなく破損／暗号化PDFの実Job失敗だったため、集計の正確性を維持しつつfailure-only bannerへDismissを追加した。初回最終検証でimport順序違反を検出し、修正後にAndroid標準検証を全再実行した。
+- 実装中に追加したタスクと理由: 4.1.1は全Breadcrumb表示の利用者指摘、5.3.1は実失敗通知が常設される操作性の指摘を受けて追加した。
+- 技術的取消と代替実装: なし。
+- 後続Pull Requestへの引継ぎ: なし。
+
+### PR 2: Recover interrupted Android backup sessions
+
+- 完了日: 2026-09-07
+- Pull Request: [#65](https://github.com/ry825/Kura_Storage/pull/65)
+- 対象: PR 1のMerge後に別プロセスから引き継いだ、自動BackupのSession作成応答不明、期限切れ／取消lease、手動即時実行の復旧修正と、PR 1の完了記録・全体振り返り。
+- Test・Build・静的解析:
+  - `:core-data:testDebugUnitTest`と`:feature-backup:testDebugUnitTest`が成功し、追加対象の`BackupTransferRepositoryTest` 14件と`BackupCoordinatorTest` 2件はfailure 0だった。
+  - 関連Android Moduleのcompileと`git diff --check`が成功した。
+  - Android標準検証／Release APK Buildと物理端末／実Server確認は、2026-09-07のUser指示によりPR 2の対象から削除した。
+- 実装:
+  - Upload Session作成前にIdempotency KeyをRoomへ保存し、応答不明時も同じKeyでServer Sessionへ収束させた。
+  - Account Scope内の期限切れleaseをclaim前に回収し、Session IDがある項目を`SERVER_RECONCILIATION`へ戻した。
+  - Worker終了時に自身の未完了leaseを取消不能処理で解放し、「今すぐバックアップ」は古いbackoff Workを`REPLACE`するようにした。
+- 文書更新: Steeringのdesign／tasklistと`docs/architecture-design.md`を更新した。Product requirements、functional design、development guidelinesは既存の安全な再開・同一Key・Server確定offset・lease回収規約で要求を満たすため追加変更なしと判断した。
+- 計画と実装の差分: 当初はPR 1の1本で完了する計画だったが、PR 1 Merge後の引き継ぎ修正と未反映だった完了記録をPR 2へ分離した。
+- 実装中に追加したタスクと理由: 10.4を、Session作成応答不明後にBackup項目が欠落する回帰不具合への対応として追加した。
+- 技術的取消と代替実装: なし。
+- 後続Pull Requestへの引継ぎ: なし。
 
 ---
 
 ## 全体振り返り
 
-全タスク、PR 1、Pull Request完了記録が完了した後にだけ、`steering`スキルのモード3-Bで記録する。
+### 実装完了
+
+- 最終完了日: 2026-09-07
+- Pull Request: [#64](https://github.com/ry825/Kura_Storage/pull/64)、[#65](https://github.com/ry825/Kura_Storage/pull/65)
+- フェーズ0〜13.6、10.4、PR 1／PR 2完了記録に未完了項目がないことを確認して、本振り返りを最終更新した。
+
+### 計画と実績
+
+- 計画どおり、Upload、File browser、Thumbnail、動画・写真・PDF、Settings・Trusted Wi-Fi、Backup、Server、契約、配備設定、検証・清掃を1本のPull Requestへまとめた。
+- 変更箇所に近いTest、Module／Repository標準検証、Emulator／物理端末、Raspberry Pi実Server E2E、性能測定の順で検証を拡張した。
+- 利用者の追加確認でBreadcrumb見切れとThumbnail failure bannerの常設性が判明したため、4.1.1と5.3.1を追加し、同じPR内で実装・回帰Test・実機確認まで完了した。
+- manifest exact IDによる清掃を最後まで実施し、既存データとproduction appを維持したまま今回のfixtureだけを除去した。
+- PR 1 Merge後に引き継いだBackup Session復旧修正はPR 2へ分離し、User指定の2検証項目を範囲から削除して、回帰Unit Testと関連Module確認を完了した。
+
+### 主な設計変更と理由
+
+- Breadcrumbは横一列の省略表示では深い階層と大文字設定を両立できないため、祖先Linkを維持した折り返し`FlowRow`へ変更した。
+- Thumbnail失敗件数はServerの実状態を隠さず、利用者がFile操作を継続できるようfailure-only bannerへDismissを追加し、失敗件数が0へ戻ったときdismiss状態を解除する設計にした。
+- 動画は低・中品質派生生成を廃止してOriginal Range再生へ統一し、CellularではContent取得前にSize基準の確認を行う責務分離とした。
+- Thumbnailと端末転送は無制限な並列化を避け、実測で安全性と改善量を確認した既定値2を採用した。
+- File一覧位置はindexだけでなくstable File ID、offset、Folder／Sort／Filter contextを保存し、一覧変動後も安全に近傍へ復元する設計にした。
+- BackupはIdempotency KeyをSession作成要求より先に永続化し、応答不明・Worker取消・期限切れleaseのいずれからもRoom QueueとServer Sessionへ収束する設計に補強した。
+
+### 技術的な学び
+
+- UIに残るエラー表示はstale stateとは限らず、集計API、Job DB、元fixtureを照合して実失敗か表示不整合かを分離する必要がある。
+- 狭い画面とfont scale 2.0ではHeaderの固定高より情報到達性を優先し、rootの省スペース性と深いFolderの全表示を画面状態別に設計するのが有効だった。
+- 並列数は処理単体の所要時間だけでなく、一覧p95、Range再生、CPU idle、I/O wait、swap、thermalを混合負荷で測ることで安全な既定値を決められる。
+- 実機のWi-Fi情報はAPI levelと権限だけでなくredaction挙動も考慮し、型付き結果と安全なfallbackを持つ必要がある。
+- Network応答不明に耐えるにはServer側の冪等契約だけでなく、Clientが要求前にKeyを永続化し、Worker lifecycleと独立したQueueを正にする必要がある。
+
+### プロセス改善
+
+- 最終検証後の小さなUI修正でもRepository標準検証を再実行したことで、import順序違反をPR前に検出して修正できた。
+- 作成直後にIDをmanifestへ記録し、清掃前にmembershipと状態を再検証する運用は、既存データを保護しながら実Server E2Eを完結させるうえで有効だった。
+- 実機確認とdeterministic testの担当範囲をevidenceへ分けて記録したことで、物理条件を必要とする確認と異常系の再現性を両立できた。
+- 別プロセスからの未コミット差分は、変更File、Test結果、Steering、正式文書を先に監査することで、既存作業を失わずにフォローアップPRへ移管できた。
+
+### 次回への提案
+
+- Breadcrumb、Thumbnail summary、Backup throughputの物理端末smokeをRelease候補チェックリストへ定着させる。
+- Thumbnail失敗のFile単位再試行導線が必要になった場合は、情報開示を増やさず対象File画面から操作できる契約を別途設計する。
+- 性能値はServer storage、fixture、Network条件に依存するため、依存更新やRaspberry Pi構成変更時に同じbenchmark scriptで再測定する。
+- 後続Pull Requestへの未完了実装・引継ぎ事項: なし。

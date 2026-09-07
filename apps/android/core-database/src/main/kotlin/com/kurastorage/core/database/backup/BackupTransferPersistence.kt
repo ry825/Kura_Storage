@@ -14,6 +14,7 @@ private const val MAX_HISTORY_ITEMS = 10_000
 private const val HISTORY_RETENTION_DAYS = 90L
 private val HISTORY_RETENTION = Duration.ofDays(HISTORY_RETENTION_DAYS)
 
+@Suppress("TooManyFunctions")
 class BackupTransferPersistence(
     private val database: BackupDatabaseAccess,
 ) {
@@ -22,6 +23,16 @@ class BackupTransferPersistence(
 
     suspend fun externalWifiPolicies(scope: AccountScopeId) =
         database.externalWifiPolicyDao().listByScope(scope.value).map(BackupEntityMapper::toModel)
+
+    suspend fun recoverExpiredLeases(
+        scope: AccountScopeId,
+        now: Instant,
+    ): Int = database.localSyncItemDao().recoverExpiredLeases(scope.value, now.toEpochMilli())
+
+    suspend fun releaseLeases(
+        scope: AccountScopeId,
+        leaseOwner: String,
+    ): Int = database.localSyncItemDao().releaseLeases(scope.value, leaseOwner)
 
     suspend fun claim(
         scope: AccountScopeId,
