@@ -609,7 +609,7 @@
 
 ### 13.5 フォローアップPull Request
 
-- [ ] PR 2をCommit・Pushして英語Pull Requestを作成する。
+- [x] PR 2をCommit・Pushして英語Pull Requestを作成する。
   - 別プロセスから引き継いだ10.4の実装、回帰Test、Steering、正式設計をreviewする。
   - 追加済みのBackup復旧Unit Test結果を確認する。
   - Android標準検証／Release APK Buildと物理端末／実Server確認はUser指示に従い対象外とする。
@@ -618,7 +618,7 @@
 
 ### 13.6 PR 2完了記録・最終振り返り更新
 
-- [ ] `steering`スキルのモード3-AでPR 2の完了記録を追加し、モード3-Bで全体振り返りを最終状態へ更新する。
+- [x] `steering`スキルのモード3-AでPR 2の完了記録を追加し、モード3-Bで全体振り返りを最終状態へ更新する。
   - PR番号／URL、対象変更、Test結果、User指示による対象外項目、文書更新要否の判断、引継ぎを事実どおり記録する。
   - 記録を同じBranchへCommit・Pushし、Pull Requestへ反映されたことを確認する。
 
@@ -651,15 +651,34 @@
 - 技術的取消と代替実装: なし。
 - 後続Pull Requestへの引継ぎ: なし。
 
+### PR 2: Recover interrupted Android backup sessions
+
+- 完了日: 2026-09-07
+- Pull Request: [#65](https://github.com/ry825/Kura_Storage/pull/65)
+- 対象: PR 1のMerge後に別プロセスから引き継いだ、自動BackupのSession作成応答不明、期限切れ／取消lease、手動即時実行の復旧修正と、PR 1の完了記録・全体振り返り。
+- Test・Build・静的解析:
+  - `:core-data:testDebugUnitTest`と`:feature-backup:testDebugUnitTest`が成功し、追加対象の`BackupTransferRepositoryTest` 14件と`BackupCoordinatorTest` 2件はfailure 0だった。
+  - 関連Android Moduleのcompileと`git diff --check`が成功した。
+  - Android標準検証／Release APK Buildと物理端末／実Server確認は、2026-09-07のUser指示によりPR 2の対象から削除した。
+- 実装:
+  - Upload Session作成前にIdempotency KeyをRoomへ保存し、応答不明時も同じKeyでServer Sessionへ収束させた。
+  - Account Scope内の期限切れleaseをclaim前に回収し、Session IDがある項目を`SERVER_RECONCILIATION`へ戻した。
+  - Worker終了時に自身の未完了leaseを取消不能処理で解放し、「今すぐバックアップ」は古いbackoff Workを`REPLACE`するようにした。
+- 文書更新: Steeringのdesign／tasklistと`docs/architecture-design.md`を更新した。Product requirements、functional design、development guidelinesは既存の安全な再開・同一Key・Server確定offset・lease回収規約で要求を満たすため追加変更なしと判断した。
+- 計画と実装の差分: 当初はPR 1の1本で完了する計画だったが、PR 1 Merge後の引き継ぎ修正と未反映だった完了記録をPR 2へ分離した。
+- 実装中に追加したタスクと理由: 10.4を、Session作成応答不明後にBackup項目が欠落する回帰不具合への対応として追加した。
+- 技術的取消と代替実装: なし。
+- 後続Pull Requestへの引継ぎ: なし。
+
 ---
 
 ## 全体振り返り
 
 ### 実装完了
 
-- 完了日: 2026-09-06
-- Pull Request: [#64](https://github.com/ry825/Kura_Storage/pull/64)
-- フェーズ0〜13.3とPR 1完了記録に未完了項目がないことを確認してから、本振り返りを記録した。
+- 最終完了日: 2026-09-07
+- Pull Request: [#64](https://github.com/ry825/Kura_Storage/pull/64)、[#65](https://github.com/ry825/Kura_Storage/pull/65)
+- フェーズ0〜13.6、10.4、PR 1／PR 2完了記録に未完了項目がないことを確認して、本振り返りを最終更新した。
 
 ### 計画と実績
 
@@ -667,6 +686,7 @@
 - 変更箇所に近いTest、Module／Repository標準検証、Emulator／物理端末、Raspberry Pi実Server E2E、性能測定の順で検証を拡張した。
 - 利用者の追加確認でBreadcrumb見切れとThumbnail failure bannerの常設性が判明したため、4.1.1と5.3.1を追加し、同じPR内で実装・回帰Test・実機確認まで完了した。
 - manifest exact IDによる清掃を最後まで実施し、既存データとproduction appを維持したまま今回のfixtureだけを除去した。
+- PR 1 Merge後に引き継いだBackup Session復旧修正はPR 2へ分離し、User指定の2検証項目を範囲から削除して、回帰Unit Testと関連Module確認を完了した。
 
 ### 主な設計変更と理由
 
@@ -675,6 +695,7 @@
 - 動画は低・中品質派生生成を廃止してOriginal Range再生へ統一し、CellularではContent取得前にSize基準の確認を行う責務分離とした。
 - Thumbnailと端末転送は無制限な並列化を避け、実測で安全性と改善量を確認した既定値2を採用した。
 - File一覧位置はindexだけでなくstable File ID、offset、Folder／Sort／Filter contextを保存し、一覧変動後も安全に近傍へ復元する設計にした。
+- BackupはIdempotency KeyをSession作成要求より先に永続化し、応答不明・Worker取消・期限切れleaseのいずれからもRoom QueueとServer Sessionへ収束する設計に補強した。
 
 ### 技術的な学び
 
@@ -682,12 +703,14 @@
 - 狭い画面とfont scale 2.0ではHeaderの固定高より情報到達性を優先し、rootの省スペース性と深いFolderの全表示を画面状態別に設計するのが有効だった。
 - 並列数は処理単体の所要時間だけでなく、一覧p95、Range再生、CPU idle、I/O wait、swap、thermalを混合負荷で測ることで安全な既定値を決められる。
 - 実機のWi-Fi情報はAPI levelと権限だけでなくredaction挙動も考慮し、型付き結果と安全なfallbackを持つ必要がある。
+- Network応答不明に耐えるにはServer側の冪等契約だけでなく、Clientが要求前にKeyを永続化し、Worker lifecycleと独立したQueueを正にする必要がある。
 
 ### プロセス改善
 
 - 最終検証後の小さなUI修正でもRepository標準検証を再実行したことで、import順序違反をPR前に検出して修正できた。
 - 作成直後にIDをmanifestへ記録し、清掃前にmembershipと状態を再検証する運用は、既存データを保護しながら実Server E2Eを完結させるうえで有効だった。
 - 実機確認とdeterministic testの担当範囲をevidenceへ分けて記録したことで、物理条件を必要とする確認と異常系の再現性を両立できた。
+- 別プロセスからの未コミット差分は、変更File、Test結果、Steering、正式文書を先に監査することで、既存作業を失わずにフォローアップPRへ移管できた。
 
 ### 次回への提案
 
