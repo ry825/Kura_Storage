@@ -356,7 +356,7 @@
   - [x] Requirements、Design、Tasklist、正式文書、実装、testが一致する（OpenAPI、Server endpoint、Android resolver/UI、migration、運用文書を照合し、正式署名APK・高件数実データ確認のMerge後移管もrequirements/design/tasklistへ反映）
 
 - [ ] CommitとPushを完了する
-  - [ ] 本作業の全変更とtasklist進捗をCommitする
+  - [x] 本作業の全変更とtasklist進捗をCommitする（`164cb3e feat: make photo low derivatives persistent`）
   - [ ] 作業BranchをRemoteへPushする
   - [ ] Remote差分がlocalと一致することを確認する
 
