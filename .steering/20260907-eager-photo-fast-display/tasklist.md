@@ -439,6 +439,14 @@
 - 技術的に不要になったタスク・理由・代替実装: なし。
 - 後続Pull Requestへの引継ぎ事項: Low完走、Medium purge、最終server検証を記録する。正式署名APKと端末実機確認は引き続き端末接続・署名資材が必要。
 
+- 完了日: 2026-09-08
+- Pull Request: [#69](https://github.com/ry825/Kura_Storage/pull/69) `docs: record Phase 9 server rollout completion`
+- 実施したテスト・ビルド・静的解析・手動確認: Pi deployment verify成功、API/Worker/Nginx/PostgreSQL active、Worker再起動後のLow status安定、Medium final dry-run 0件/0 bytes、PostgreSQLのMedium Derivative/Job/Lease各0件を確認した。
+- 計画と実装の差分: Backfill完走中に6件のJPEG登録データが4,096 bytesの非画像であることを検出した。無限再試行を行わず、6件だけを既知の終端失敗として明記して、正常な9,227件のLow生成とMedium purgeを安全に完了した。
+- 実装中に追加したタスクと理由: 既知の終端失敗を監視条件へ明示する運用調整を追加。壊れた入力だけで安全なMedium cleanupが無期限停止しないようにするため。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: Android APKの正式署名と端末接続を伴うPhase 9確認のみが残る。端末接続が必要になった時点でユーザーへ通知する。
+
 ---
 
 ## 全体振り返り
