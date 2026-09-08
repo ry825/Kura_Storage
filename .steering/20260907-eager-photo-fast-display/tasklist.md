@@ -360,14 +360,14 @@
   - [x] 作業BranchをRemoteへPushする（`origin/feat/eager-photo-fast-display`）
   - [x] Remote差分がlocalと一致することを確認する（push後に`HEAD`と`@{u}`が同一commitであることを確認）
 
-- [ ] Pull Requestを1回だけ作成する
+- [x] Pull Requestを1回だけ作成する
   - [x] 英語title/bodyで目的、対象、変更、test、影響、Merge後運用を記載する（PR #66）
   - [x] `main`向けPull Requestを作成しMergeしない（#66）
   - [x] CI成功を確認する（run 34179627509: Config 19秒、Security 15秒、Server 3分50秒、Android 9分23秒がすべて成功）
   - [x] CIのRelease検証でAdmin CLI統合テストが正しい出力構成を参照するよう修正し、再実行する（DLL構成を実行構成から解決し、CIの専用StorageGuard条件を満たす`/dev/shm` test rootを使用。Releaseで対象3件が成功）
   - [x] `steering`モード3で下記完了記録を更新する
-  - [ ] 完了記録をCommit・Pushし同じPull Requestへ反映する
-  - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する
+  - [x] 完了記録をCommit・Pushし同じPull Requestへ反映する（`f3868f8`、push後に`HEAD`と`@{u}`が一致）
+  - [x] Pull Request URLと検証結果をユーザーへ報告して停止する
 
 ---
 
