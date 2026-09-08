@@ -382,8 +382,8 @@
   - [x] 実Serverが対象KuraStorage instanceであることを確認する（LAN `192.168.1.112`、`raspberrypi`、API/Worker/Nginx/PostgreSQL稼働、既存release `0.16.0-upload-media-backup-rc1`を確認）
 
 - [ ] Server展開とBackfillを完了する
-  - [ ] Backfill競合修正PRを作成・Merge・再展開する（実運用の小batchで`ux_file_derivatives_logical_key`競合を検出したため追加）
-  - [ ] migration適用後にhealthと通常機能を確認する
+  - [x] Backfill競合修正PRを作成・Merge・再展開する（PR #67、CI全4件成功後に2026-09-08 merge。`0.17.1-low-backfill-concurrency-rc1`をPiへ再配備）
+  - [x] migration適用後にhealthと通常機能を確認する（API/Worker/Nginx/PostgreSQLがactive、deployment verify成功）
   - [ ] dry-runで対象、再利用、容量予測を記録する
   - [ ] 小batchで開始しAPI/Upload/Backup/CPU/HDD IO/DB負荷を確認する
   - [ ] 中断・Worker/Pi再起動後に重複なしで再開する
@@ -422,6 +422,14 @@
 - 実装中に追加したタスクと理由: Release CIのAdmin CLI統合テスト修正・再実行を追加。PR CIで初めて露出した構成依存を再現・検証するため。
 - 技術的に不要になったタスク・理由・代替実装: なし。release keystore/password/fingerprint/version codeに依存する正式署名APK生成・配置・upgrade確認と、高件数認証済み実データでの体感確認は削除せず、依存資材・実データが利用できるフェーズ9へ移管した。
 - Merge後運用への引継ぎ事項: 展開gate、migration、Low backfill、Medium purgeを手順どおり実施する。release signing資材でroot APKを生成して署名・SHA-256・upgrade installを確認し、高件数実データでfling/page append/Viewer復帰を確認する。
+
+- 完了日: 2026-09-08
+- Pull Request: [#67](https://github.com/ry825/Kura_Storage/pull/67) `fix: serialize indexed photo derivative provisioning`
+- 実施したテスト・ビルド・静的解析・手動確認: `IndexEventServiceTests` 11件、`IndexScanPostgreSqlTests` 3件、GitHub ActionsのConfig、Security、Server、Android全4 check成功。Piへ`0.17.1-low-backfill-concurrency-rc1`を再配備し、deployment verifyとサービスactiveを確認した。
+- 計画と実装の差分: 実運用backfill中にIndexの既存写真確定経路が暗黙transactionでLow Ensureを呼ぶことを検出。既存のFile transactionをSaveChangesまで保持するよう変更した。
+- 実装中に追加したタスクと理由: Backfill競合修正PR・再配備を追加。一意key競合を例外ログと不必要なretryなく収束させるため。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- Merge後運用への引継ぎ事項: Low Worker完走を監視し、failed/duplicates/missingが0であることを確認後にMedium purgeを実行する。正式署名APKと実機確認は引き続き署名資材・端末接続後に実施する。
 
 ---
 
