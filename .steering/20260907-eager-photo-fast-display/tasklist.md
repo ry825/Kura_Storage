@@ -389,13 +389,22 @@
   - [x] 中断・Worker/Pi再起動後に重複なしで再開する（展開時のWorker再起動と完走後の明示Worker再起動の双方でstatusを再確認し、pending/running 0、duplicates 0を確認）
   - [x] 全件を補完し不足/不正重複0、失敗、Low bytes、残容量を照合する（2026-09-08 08:38 UTC: READY 9,227、既知の壊れた非画像6件のみ`MEDIA_GENERATION_FAILED`、missing/duplicates/orphan 0、Low 1,497,287,438 bytes、空き755,924,336,640 bytes。6件は全て4,096 bytesの`application/octet-stream`で画像デコーダが拒否し、無限再試行しない終端失敗として記録）
 
-- [ ] Android APKを配布して実機確認する
-  - [ ] フェーズ7から移管: release signing資材で現行versionのroot APKを固定名で生成・配置し、package、version、SDK、署名、size、SHA-256を記録してupgrade installする
-  - [ ] Local direct、外部Wi-Fi、Mobileの高速表示modeを確認する
-  - [ ] フェーズ7から移管: paginationを発生させる十分な認証済み実データで、大きなFolderの連続fling、page append、Viewer復帰の体感を確認する
-  - [ ] Viewerで約20枚移動後、現在写真位置への復帰を確認する
-  - [ ] Admin/MemberのHome容量表示と未認証非公開を確認する
-  - [ ] Low/Originalのcold/warm表示時間と転送bytesを記録する
+- [x] Android APKを配布して実機確認する
+  - [x] フェーズ7から移管: release signing資材で現行versionのroot APKを固定名で生成・配置し、package、version、SDK、署名、size、SHA-256を記録して新規installを確認する（旧署名でのupgrade installは、2026-09-08のユーザー指示により新規installへ置換）
+    - [x] production署名APKを`KuraStorage-0.17.1-low-backfill-concurrency-rc1.apk`としてrootへ配置した（36 MB、SHA-256 `9520259b2f4f0104504f484514a94ba735fbb4117346f68720cbcc7d31ec78b5`、`com.kurastorage.app`、version `0.17.1-low-backfill-concurrency-rc1`／code `30`、minSdk `29`、targetSdk `36`、debuggable `false`、署名SHA-256 `3547e10ec1960c029b455a3ed62f4893bec8d68c84fd3c521b886f206580af45`）
+    - [x] ~~既存production版からupgrade installする~~（端末のversionCode `29`／version `0.16.1-backup-resume-rc3`は署名SHA-256 `8614478a33b66afe674c8bf3bc1d384e53d9932469e4d17e0e0a4e6ff4a75b42`であり、新APKのproduction keystore署名と異なるため、Androidが`INSTALL_FAILED_UPDATE_INCOMPATIBLE`として安全に拒否。backup artifactには同旧証明書のversionCode `24` APKを確認したが、端末versionCode `29`へのdowngradeは不可。rootの旧配布APKは新APKと同じ現行証明書による単一v3署名で署名継承はない。ユーザー領域に加え、Piの`/etc/kurastorage`、`/opt/kurastorage`、運用ユーザー領域をファイル名だけで探索しても旧署名鍵は見つからない。2026-09-08のユーザー指示により新規installへ置換）
+    - [x] 現行production APKを新規installして起動・認証済みHomeを確認した（旧production APKを退避後にuninstallし、`KuraStorage-0.17.1-low-backfill-concurrency-rc1.apk`をinstall。`com.kurastorage.app`、version `0.17.1-low-backfill-concurrency-rc1`／code `30`を確認し、Local directで一時Memberを登録してHomeの容量227.1 GB / 931.1 GB、空き704 GBを表示。検証後にMemberを`DISABLED`へ戻しlogout。端末は外部Wi-Fi＋ZeroTier ONLINEへ復帰）
+  - [x] Local direct、外部Wi-Fi、Mobileの高速表示modeを確認する
+    - [x] Local directを実機debug APKで再起動後にも確認し、`058.jpg`をOriginal 7.6 MBからFast display（Low 82.8 KB）へ切替、fatal/ANRなしを確認した
+    - [x] Mobileの新規Fast display読み込みを確認した（既存`kura` ZeroTierネットワークをONにして端末へ`10.244.71.217`を付与。Wi-Fi停止・debug APK再起動後、未表示の`057.jpg`をFast display（Low 76.5 KB）、`Connection: Mobile network`で表示し、fatal/ANRなし。Wi-Fiは`VX220-D38B`へ復帰済み）
+    - [x] 外部Wi-FiのFast display読み込みを確認した（実機debug APKを`102@Botanic-2G`＋ZeroTierへ接続し、`057.jpg`をFast display（Low 76.5 KB）、`Connection: Other Wi-Fi`で表示。fatal/ANRなし）
+  - [x] フェーズ7から移管: paginationを発生させる十分な認証済み実データで、大きなFolderの連続fling、page append、Viewer復帰の体感を確認する（認証済みdebug APKで1,039件の写真フォルダを連続flingし、page size 100を跨ぐ追加読込後もfatal/ANRなく表示を継続。Viewerから戻ると移動後の現在写真を一覧の先頭付近へone-shot復帰した）
+  - [x] Viewerで約20枚移動後、現在写真位置への復帰を確認する（Viewerの `83 / 174` からNextを20回実行して `103 / 174` を確認し、Backで当該写真が見える一覧位置へ復帰した）
+  - [x] Admin/MemberのHome容量表示と未認証非公開を確認する
+    - [x] Admin debug sessionのHomeでLocal direct、容量227.1 GB / 931.1 GB、空き704 GBを表示することを確認した
+    - [x] Member sessionでHome容量を表示して確認した（正式要件どおり認証済み全roleへ最小限の容量値を返し、Admin専用情報を含めない。Local directで一時Memberを新規device登録し、Homeに容量227.1 GB / 931.1 GB、空き704 GBを表示。検証後はMemberを`DISABLED`へ戻し、debug sessionをlogout、一時認証情報を削除し、端末を外部Wi-Fi＋ZeroTier ONLINEへ復帰した）
+    - [x] 未認証sessionで容量APIが非公開であることを確認する（実Serverの`/api/v1/storage/capacity`と`/api/v1/admin/storage`はいずれもBearer tokenなしでHTTP `401`）
+  - [x] Low/Originalの代表的なcold/warm表示時間と転送bytesを記録する（実機debug APK・同一認証状態で、未表示Lowはcold 2.77秒／22.8 KB、同一Lowの再表示はwarm 3.08秒／23.4 KB、Originalのcoldは5.68秒／595.6 KB。いずれもfatal/ANRなし。ユーザー指示により同一写真のOriginal warm再計測は省略）
 
 - [x] Legacy Mediumを安全に削除する
   - [x] purge dry-runとtype別baselineを記録する（Medium 5件・1,176,006 bytes。Low READY 9,227、FAILED 6、Thumbnail READY 3,802、PDF Thumbnail READY 7を集計）
@@ -403,11 +412,11 @@
   - [x] Medium物理/Derivative/Job/Leaseが0件である（apply後と最終dry-runの双方で`medium_count=0`、`medium_bytes=0`を確認し、PostgreSQL集計でもDerivative/Job/Leaseが各0件）
   - [x] Original/Low/Thumbnail/PDF thumbnailがbaselineと整合する（purge CLIの対象限定integration testを前提に、実機集計でLow 9,233、Thumbnail 3,802、PDF Thumbnail 7を確認。Medium以外を削除する操作は実行していない）
 
-- [ ] 全体完了を確認して振り返る
-  - [ ] 本ファイルに未完了`[ ]`がない
-  - [ ] 技術的に不要になったタスクには理由と代替実装がある
-  - [ ] Pull Request完了記録と実Server運用記録が存在する
-  - [ ] `steering`モード3で全体振り返りを記録する
+- [x] 全体完了を確認して振り返る
+  - [x] 本ファイルに未完了`[ ]`がない
+  - [x] 技術的に不要になったタスクには理由と代替実装がある（旧production証明書の秘密鍵が見つからないためupgrade installは技術的に不可能であり、2026-09-08のユーザー指示で現行署名APKの新規install・起動・認証済みHome確認へ置換した）
+  - [x] Pull Request完了記録と実Server運用記録が存在する（PR #66〜#70の記録、Phase 9のdeployment/backfill/Medium purge、および本実機APK検証を記録済み）
+  - [x] `steering`モード3で全体振り返りを記録する
 
 ---
 
@@ -447,6 +456,14 @@
 - 技術的に不要になったタスク・理由・代替実装: なし。
 - 後続Pull Requestへの引継ぎ事項: Android APKの正式署名と端末接続を伴うPhase 9確認のみが残る。端末接続が必要になった時点でユーザーへ通知する。
 
+- 完了日: 2026-09-08
+- Pull Request: [#70](https://github.com/ry825/Kura_Storage/pull/70) `docs: complete Phase 9 Android validation`
+- 実施したテスト・ビルド・静的解析・手動確認: 現行production APKを新規installし、package、version code 30、Local directのMember登録、認証済みHome容量表示を確認。Local direct、外部Wi-Fi、MobileのFast display、pagination、Viewer復帰、Admin/Member容量表示、匿名容量API拒否の実機記録を照合し、`git diff --check`を実行した。
+- 計画と実装の差分: 旧production署名鍵がユーザー領域とPiの通常配置・運用バックアップ領域に見つからず、同じpackageのupgrade installはAndroid署名検証で拒否された。ユーザー指示により、旧APKをuninstallした後の現行production APK新規installへ置換した。
+- 実装中に追加したタスクと理由: 一時MemberのLocal direct登録、検証後のlogout・無効化・一時認証情報削除・ネットワーク復帰を追加。認証済み全roleへの容量表示を実機で確認し、運用データと端末状態を残さないため。
+- 技術的に不要になったタスク・理由・代替実装: 旧署名鍵を必要とするupgrade installは技術的に実行不能。ユーザー承認済みの新規install・起動・認証済みHome確認で代替した。
+- 後続Pull Requestへの引継ぎ事項: なし。全体振り返りまで記録済み。
+
 ---
 
 ## 全体振り返り
@@ -455,24 +472,24 @@
 
 ### 実装完了日
 
-未完了
+2026-09-08
 
 ### 計画と実績の差分
 
-未記録
+Source変更はPR #66に集約し、実運用で検出したIndex由来Low Ensure競合だけをPR #67で修正した。Phase 9ではServer backup、migration、Low backfill、Medium purge、実機確認を順に完了した。旧署名証明書の秘密鍵が存在しないためupgrade installは実現不能だったが、ユーザー承認により、新production APKのuninstall後install、Local direct登録、認証済みHome表示へ置換した。
 
 ### 主な設計変更と理由
 
-未記録
+写真Lowを短期CacheからOriginalのlifecycleに従う永続派生へ移行し、Medium生成・TTL/LRU/watermark cleanupを廃止した。AndroidはFAST/ORIGINAL、端末cache scope、一覧pagination/one-shot anchor、Viewer return target、認証済み全role向け容量APIへ更新した。旧APKのcertificate lineageが失われていたため、APK署名更新では旧秘密鍵または明示的な新規install移行を事前に確認すべきであることが明確になった。
 
 ### 技術的な学び
 
-未記録
+一意制約だけでは確定経路のtransaction境界にある競合を解消できず、Index確定処理と派生EnsureのSaveChanges範囲を揃える必要があった。実Server backfillでは、壊れた入力を型付き終端失敗として隔離し、正常写真の収束を妨げないことが有効だった。Android初回Device登録はLocal directを要求するため、実機検証はVPN・Wi-Fi経路を明示的に切り替え、終了時に元の接続状態へ復元する必要がある。
 
 ### プロセス上の改善点
 
-未記録
+署名資材の所在・証明書fingerprint・installed versionCodeを配布前に台帳化し、旧証明書を使う端末が残る期間はkey rotationまたは新規install移行の方針を先に合意する。実機用の短命Memberは作成、検証、logout、無効化、一時認証情報削除を一連の手順として固定する。
 
 ### 次回への改善提案
 
-未記録
+release keystoreとpassword fileをprotected storageへ保管するだけでなく、以前の署名鍵との継承状態、復旧手順、配布中APKのcertificate fingerprintを秘密情報なしで追跡する。実機検証では初期のnetwork stateを記録し、Local directと外部VPN経路の双方を戻せる手順を準備する。
