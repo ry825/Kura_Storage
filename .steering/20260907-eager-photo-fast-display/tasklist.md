@@ -363,9 +363,9 @@
 - [ ] Pull Requestを1回だけ作成する
   - [x] 英語title/bodyで目的、対象、変更、test、影響、Merge後運用を記載する（PR #66）
   - [x] `main`向けPull Requestを作成しMergeしない（#66）
-  - [ ] CI成功を確認する
+  - [x] CI成功を確認する（run 34179627509: Config 19秒、Security 15秒、Server 3分50秒、Android 9分23秒がすべて成功）
   - [x] CIのRelease検証でAdmin CLI統合テストが正しい出力構成を参照するよう修正し、再実行する（DLL構成を実行構成から解決し、CIの専用StorageGuard条件を満たす`/dev/shm` test rootを使用。Releaseで対象3件が成功）
-  - [ ] `steering`モード3で下記完了記録を更新する
+  - [x] `steering`モード3で下記完了記録を更新する
   - [ ] 完了記録をCommit・Pushし同じPull Requestへ反映する
   - [ ] Pull Request URLと検証結果をユーザーへ報告して停止する
 
@@ -414,13 +414,13 @@
 
 > フェーズ8でPull Requestを作成した後に`steering`スキルのモード3で更新する。
 
-- 完了日: 未完了
-- Pull Request: 未作成
-- 実施したテスト・ビルド・静的解析・手動確認: 未実施
-- 計画と実装の差分: 未記録
-- 実装中に追加したタスクと理由: 未記録
-- 技術的に不要になったタスク・理由・代替実装: 未記録
-- Merge後運用への引継ぎ事項: 未記録
+- 完了日: 2026-09-08
+- Pull Request: [#66](https://github.com/ry825/Kura_Storage/pull/66) `feat: persist photo low derivatives and improve Android media UX`
+- 実施したテスト・ビルド・静的解析・手動確認: Server format/static analysis/unit/integration/build/OpenAPI/configuration/security/deployment/migration検証、Android format/static analysis/unit/connected Compose UI/debug/release build/`verify-android.sh`、Release構成のAdmin CLI統合テスト3件、物理端末への最新debug APK install・Local direct認証・Viewer復帰を実施。GitHub Actions run 34179627509のConfig、Security、Server、Androidもすべて成功。
+- 計画と実装の差分: CIでAdmin CLI統合テストがDebug DLLを固定参照し、テスト用`/tmp` rootがStorageGuardの専用mount条件を満たさないことを検出。実行構成からCLI DLLを解決し、Linux CIでは`/dev/shm`の専用tmpfs mountをtest rootとして用いる修正を追加した。
+- 実装中に追加したタスクと理由: Release CIのAdmin CLI統合テスト修正・再実行を追加。PR CIで初めて露出した構成依存を再現・検証するため。
+- 技術的に不要になったタスク・理由・代替実装: なし。release keystore/password/fingerprint/version codeに依存する正式署名APK生成・配置・upgrade確認と、高件数認証済み実データでの体感確認は削除せず、依存資材・実データが利用できるフェーズ9へ移管した。
+- Merge後運用への引継ぎ事項: 展開gate、migration、Low backfill、Medium purgeを手順どおり実施する。release signing資材でroot APKを生成して署名・SHA-256・upgrade installを確認し、高件数実データでfling/page append/Viewer復帰を確認する。
 
 ---
 
