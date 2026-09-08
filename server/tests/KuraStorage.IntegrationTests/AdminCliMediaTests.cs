@@ -189,7 +189,13 @@ public sealed class AdminCliMediaTests
 
     private static string CreateStorageRoot()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"kurastorage-admin-cli-{Guid.NewGuid():N}");
+        // The CLI must exercise the production StorageGuard.  GitHub-hosted
+        // Linux runners mount /tmp on the root filesystem, which the guard
+        // intentionally rejects; /dev/shm is a separate writable tmpfs mount.
+        var parent = OperatingSystem.IsLinux() && Directory.Exists("/dev/shm")
+            ? "/dev/shm"
+            : Path.GetTempPath();
+        var root = Path.Combine(parent, $"kurastorage-admin-cli-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         File.WriteAllText(
             Path.Combine(root, ".storage-identity"),
