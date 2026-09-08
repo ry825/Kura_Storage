@@ -366,6 +366,30 @@ data class AdminStorageStatusDto(
 )
 
 @Serializable
+data class StorageCapacityStatusDto(
+    val storage: String,
+    val totalBytes: Long? = null,
+    val usedBytes: Long? = null,
+    val availableBytes: Long? = null,
+)
+
+@Serializable
+data class MediaDerivativeStatusDto(
+    val profileVersion: Int,
+    val photoCount: Long,
+    val readyCount: Long,
+    val pendingCount: Long,
+    val runningCount: Long,
+    val failedCount: Long,
+    val blockedCount: Long,
+    val missingCount: Long,
+    val readyBytes: Long,
+    val duplicateCount: Long,
+    val orphanCount: Long,
+    val observedAt: String,
+)
+
+@Serializable
 data class CreateUploadSessionRequestDto(
     val destinationFolderId: String,
     val fileName: String,

@@ -75,6 +75,16 @@ public sealed class MediaJobRunnerTests
     }
 
     [Fact]
+    public async Task RunNext_ImageLowCompletesWithoutAnExpiry()
+    {
+        var fixture = new RunnerFixture();
+
+        Assert.True(await fixture.Runner.RunNextAsync(CancellationToken.None));
+
+        Assert.Null(fixture.CompletionExpiresAt);
+    }
+
+    [Fact]
     public async Task RunNext_EmitsLowCardinalityOperationalMetrics()
     {
         var measurements = new List<(string Name, KeyValuePair<string, object?>[] Tags)>();
@@ -242,6 +252,8 @@ public sealed class MediaJobRunnerTests
 
         public int DeleteCount { get; private set; }
 
+        public DateTimeOffset? CompletionExpiresAt { get; private set; }
+
         public (string Code, bool Retryable)? Failure { get; private set; }
 
         public DateTimeOffset UtcNow => Now;
@@ -354,10 +366,13 @@ public sealed class MediaJobRunnerTests
             PublishedDerivative published,
             DateTimeOffset now,
             DateTimeOffset? expiresAt,
-            CancellationToken cancellationToken) =>
-            InjectedFailure == FailurePoint.Completion
+            CancellationToken cancellationToken)
+        {
+            CompletionExpiresAt = expiresAt;
+            return InjectedFailure == FailurePoint.Completion
                 ? Task.FromException<bool>(new InvalidOperationException("Injected completion failure."))
                 : Task.FromResult(CompleteResult);
+        }
 
         public Task<bool> PulseAsync(
             Guid requestedJobId,

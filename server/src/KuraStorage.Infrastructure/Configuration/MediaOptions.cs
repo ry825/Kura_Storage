@@ -34,17 +34,9 @@ public sealed class MediaOptions
 
     public int DeliveryLeaseRenewalSeconds { get; init; } = 30;
 
-    public int CacheTtlHours { get; init; } = 24;
-
-    public long CacheHighWatermarkBytes { get; init; } = 10_737_418_240;
-
-    public long CacheLowWatermarkBytes { get; init; } = 6_442_450_944;
+    public int VideoCacheTtlHours { get; init; } = 24;
 
     public int CleanupIntervalMinutes { get; init; } = 30;
-
-    public int CleanupManualPollSeconds { get; init; } = 5;
-
-    public int CleanupRunLeaseMinutes { get; init; } = 15;
 
     public int CleanupBatchSize { get; init; } = 100;
 

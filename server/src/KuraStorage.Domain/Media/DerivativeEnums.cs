@@ -29,6 +29,13 @@ public enum MediaJobStatus
     Cancelled,
 }
 
+public enum MediaJobOrigin
+{
+    InteractiveRepair,
+    Ingest,
+    Backfill,
+}
+
 public enum DerivativeLeaseType
 {
     Generation,

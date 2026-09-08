@@ -46,7 +46,7 @@ public sealed class MediaDerivativeTests
     [Fact]
     public void FileDerivative_Ready_RequiresRunningStateVerifiedSizeAndFormalPath()
     {
-        var derivative = CreateDerivative(DerivativeType.ImageLow);
+        var derivative = CreateDerivative(DerivativeType.ImageMedium);
 
         Assert.Throws<InvalidOperationException>(() =>
             derivative.MarkReady("derivatives/a.webp", 1, Now.AddSeconds(1), Now.AddDays(1)));
@@ -78,6 +78,38 @@ public sealed class MediaDerivativeTests
         derivative.MarkReady("derivatives/t.webp", 10, Now.AddSeconds(2), null);
         Assert.Null(derivative.ExpiresAt);
         Assert.Null(derivative.LastAccessedAt);
+    }
+
+    [Fact]
+    public void FileDerivative_ImageLowIsPersistentAndDoesNotTrackDeliveryAccess()
+    {
+        var derivative = CreateDerivative(DerivativeType.ImageLow);
+        derivative.Start(Now);
+
+        Assert.True(derivative.IsPersistent);
+        Assert.Throws<InvalidOperationException>(() =>
+            derivative.MarkReady("derivatives/low.webp", 10, Now.AddSeconds(1), Now.AddDays(1)));
+
+        derivative.MarkReady("derivatives/low.webp", 10, Now.AddSeconds(1), null);
+
+        Assert.Null(derivative.ExpiresAt);
+        Assert.Null(derivative.LastAccessedAt);
+        Assert.Throws<InvalidOperationException>(() =>
+            derivative.RecordAccess(Now.AddSeconds(2), Now.AddDays(1)));
+    }
+
+    [Fact]
+    public void FileDerivative_PublishedLowReturnsReadyAfterSourceReappears()
+    {
+        var derivative = CreateDerivative(DerivativeType.ImageLow);
+        derivative.Start(Now);
+        derivative.MarkReady("derivatives/low.webp", 10, Now.AddSeconds(1), null);
+        derivative.BlockSourceMissing(Now.AddSeconds(2));
+
+        Assert.True(derivative.RestoreAfterSourceAvailable(Now.AddSeconds(3)));
+        Assert.Equal(DerivativeStatus.Ready, derivative.Status);
+        Assert.Equal("derivatives/low.webp", derivative.RelativePath);
+        Assert.Null(derivative.ExpiresAt);
     }
 
     [Fact]
@@ -115,7 +147,7 @@ public sealed class MediaDerivativeTests
     [Fact]
     public void FileDerivative_ReadyAccessAndLifecycleRejectInvalidBoundaries()
     {
-        var derivative = CreateDerivative(DerivativeType.ImageLow);
+        var derivative = CreateDerivative(DerivativeType.ImageMedium);
         derivative.Start(Now);
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
@@ -207,6 +239,24 @@ public sealed class MediaDerivativeTests
         Assert.Equal(MediaJobStatus.Failed, job.Status);
         Assert.Equal(3, job.AttemptCount);
         Assert.NotNull(job.CompletedAt);
+    }
+
+    [Theory]
+    [InlineData(MediaJobOrigin.InteractiveRepair, 0)]
+    [InlineData(MediaJobOrigin.Ingest, 10)]
+    [InlineData(MediaJobOrigin.Backfill, 20)]
+    public void MediaJob_OriginSelectsBoundedPriority(MediaJobOrigin origin, int expectedPriority)
+    {
+        var job = new MediaJob(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            DerivativeType.ImageLow,
+            Guid.NewGuid(),
+            Now,
+            origin);
+
+        Assert.Equal(origin, job.Origin);
+        Assert.Equal(expectedPriority, job.Priority);
     }
 
     [Fact]

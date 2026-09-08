@@ -109,6 +109,282 @@ public sealed class MediaPersistenceTests
     }
 
     [Fact]
+    public async Task RequiredLowStaging_ReusesActiveStatesAndDoesNotRequeueTerminalFailures()
+    {
+        await using var postgres = CreatePostgres("required_low_reuse");
+        await postgres.StartAsync();
+        var options = Options(postgres.GetConnectionString());
+        await using var database = new KuraStorageDbContext(options);
+        await database.Database.MigrateAsync();
+        var (_, photo) = await SeedCatalogAsync(database);
+        var repository = new PostgreSqlMediaRepository(database);
+
+        Assert.True(await repository.StageRequiredLowAsync(
+            photo, 1, MediaJobOrigin.Ingest, Now, CancellationToken.None));
+        await database.SaveChangesAsync();
+        Assert.False(await repository.StageRequiredLowAsync(
+            photo, 1, MediaJobOrigin.Ingest, Now.AddMinutes(1), CancellationToken.None));
+
+        var derivative = await database.FileDerivatives.SingleAsync();
+        derivative.Start(Now.AddMinutes(1));
+        await database.SaveChangesAsync();
+        Assert.False(await repository.StageRequiredLowAsync(
+            photo, 1, MediaJobOrigin.Ingest, Now.AddMinutes(2), CancellationToken.None));
+
+        derivative.Fail(MediaErrorCodes.GenerationFailed, Now.AddMinutes(2));
+        await database.SaveChangesAsync();
+        Assert.False(await repository.StageRequiredLowAsync(
+            photo, 1, MediaJobOrigin.Ingest, Now.AddMinutes(3), CancellationToken.None));
+        Assert.Equal(1, await database.MediaJobs.CountAsync());
+        Assert.Equal(DerivativeStatus.Failed, derivative.Status);
+    }
+
+    [Fact]
+    public async Task RequiredLowStaging_SupersedesAnUnleasedOldProfileBeforeStagingTheCurrentProfile()
+    {
+        await using var postgres = CreatePostgres("required_low_profile_superseded");
+        await postgres.StartAsync();
+        var options = Options(postgres.GetConnectionString());
+        await using var database = new KuraStorageDbContext(options);
+        await database.Database.MigrateAsync();
+        var (_, photo) = await SeedCatalogAsync(database);
+        var repository = new PostgreSqlMediaRepository(database);
+
+        Assert.True(await repository.StageRequiredLowAsync(
+            photo, 1, MediaJobOrigin.Ingest, Now, CancellationToken.None));
+        await database.SaveChangesAsync();
+
+        Assert.True(await repository.StageRequiredLowAsync(
+            photo, 2, MediaJobOrigin.Backfill, Now.AddMinutes(1), CancellationToken.None));
+        await database.SaveChangesAsync();
+        database.ChangeTracker.Clear();
+
+        var derivatives = await database.FileDerivatives
+            .OrderBy(item => item.ProfileVersion)
+            .ToListAsync();
+        Assert.Collection(
+            derivatives,
+            old =>
+            {
+                Assert.Equal(1, old.ProfileVersion);
+                Assert.Equal(DerivativeStatus.Deleting, old.Status);
+                Assert.Equal("MEDIA_PROFILE_SUPERSEDED", old.ErrorCode);
+            },
+            current =>
+            {
+                Assert.Equal(2, current.ProfileVersion);
+                Assert.Equal(DerivativeStatus.Pending, current.Status);
+            });
+        Assert.Contains(await database.MediaJobs.ToListAsync(), job =>
+            job.DerivativeId == derivatives[0].Id && job.Status == MediaJobStatus.Cancelled);
+    }
+
+    [Fact]
+    public async Task RequiredLowStaging_KeepsAnOldProfileUntilItsLeaseHasExpired()
+    {
+        await using var postgres = CreatePostgres("required_low_profile_lease");
+        await postgres.StartAsync();
+        var options = Options(postgres.GetConnectionString());
+        await using var database = new KuraStorageDbContext(options);
+        await database.Database.MigrateAsync();
+        var (_, photo) = await SeedCatalogAsync(database);
+        var repository = new PostgreSqlMediaRepository(database);
+
+        Assert.True(await repository.StageRequiredLowAsync(
+            photo, 1, MediaJobOrigin.Ingest, Now, CancellationToken.None));
+        await database.SaveChangesAsync();
+        var old = await database.FileDerivatives.SingleAsync();
+        var lease = new DerivativeLease(
+            Guid.NewGuid(), old.Id, DerivativeLeaseType.Delivery, Guid.NewGuid(), Now.AddMinutes(5), Now);
+        database.DerivativeLeases.Add(lease);
+        await database.SaveChangesAsync();
+
+        Assert.True(await repository.StageRequiredLowAsync(
+            photo, 2, MediaJobOrigin.Backfill, Now.AddMinutes(1), CancellationToken.None));
+        await database.SaveChangesAsync();
+        database.ChangeTracker.Clear();
+        Assert.Equal(DerivativeStatus.Pending, await database.FileDerivatives
+            .Where(item => item.ProfileVersion == 1)
+            .Select(item => item.Status)
+            .SingleAsync());
+
+        var persistedLease = await database.DerivativeLeases.SingleAsync(item => item.Id == lease.Id);
+        database.DerivativeLeases.Remove(persistedLease);
+        await database.SaveChangesAsync();
+        Assert.False(await repository.StageRequiredLowAsync(
+            photo, 2, MediaJobOrigin.Backfill, Now.AddMinutes(6), CancellationToken.None));
+        await database.SaveChangesAsync();
+        database.ChangeTracker.Clear();
+        Assert.Equal(DerivativeStatus.Deleting, await database.FileDerivatives
+            .Where(item => item.ProfileVersion == 1)
+            .Select(item => item.Status)
+            .SingleAsync());
+    }
+
+    [Fact]
+    public async Task RequiredLowStaging_RollsBackDerivativeAndJobTogether()
+    {
+        await using var postgres = CreatePostgres("required_low_rollback");
+        await postgres.StartAsync();
+        var options = Options(postgres.GetConnectionString());
+        await using (var database = new KuraStorageDbContext(options))
+        {
+            await database.Database.MigrateAsync();
+            var (_, photo) = await SeedCatalogAsync(database);
+            var repository = new PostgreSqlMediaRepository(database);
+            await using var transaction = await database.Database.BeginTransactionAsync();
+            Assert.True(await repository.StageRequiredLowAsync(
+                photo, 1, MediaJobOrigin.Ingest, Now, CancellationToken.None));
+            await database.SaveChangesAsync();
+            await transaction.RollbackAsync();
+        }
+
+        await using var verify = new KuraStorageDbContext(options);
+        Assert.Empty(await verify.FileDerivatives.ToListAsync());
+        Assert.Empty(await verify.MediaJobs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task RequiredLowStaging_RollsBackNewFileDerivativeAndJobTogether()
+    {
+        await using var postgres = CreatePostgres("required_low_new_file_rollback");
+        await postgres.StartAsync();
+        var options = Options(postgres.GetConnectionString());
+        var photoId = Guid.NewGuid();
+        await using (var database = new KuraStorageDbContext(options))
+        {
+            await database.Database.MigrateAsync();
+            var (user, _) = await SeedCatalogAsync(database);
+            var root = await database.FileEntries.SingleAsync(item =>
+                item.OwnerUserId == user.Id && item.ParentId == null);
+            var photo = FileEntry.CreateFile(
+                photoId, user.Id, root.Id, FileName.Create("new-photo.jpg"),
+                RelativeStoragePath.Create($"users/{user.Id:N}/files/new-photo.jpg"),
+                "image/jpeg", 42, Now);
+            var repository = new PostgreSqlMediaRepository(database);
+            await using var transaction = await database.Database.BeginTransactionAsync();
+            database.FileEntries.Add(photo);
+            Assert.True(await repository.StageRequiredLowAsync(
+                photo, 1, MediaJobOrigin.Ingest, Now, CancellationToken.None));
+            await database.SaveChangesAsync();
+            await transaction.RollbackAsync();
+        }
+
+        await using var verify = new KuraStorageDbContext(options);
+        Assert.False(await verify.FileEntries.AnyAsync(item => item.Id == photoId));
+        Assert.Empty(await verify.FileDerivatives.ToListAsync());
+        Assert.Empty(await verify.MediaJobs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task RequiredLowStaging_ConcurrentEnsuresReuseTheSingleCommittedDerivative()
+    {
+        await using var postgres = CreatePostgres("required_low_concurrent");
+        await postgres.StartAsync();
+        var options = Options(postgres.GetConnectionString());
+        Guid photoId;
+        await using (var seed = new KuraStorageDbContext(options))
+        {
+            await seed.Database.MigrateAsync();
+            (_, var photo) = await SeedCatalogAsync(seed);
+            photoId = photo.Id;
+        }
+
+        await using var firstDatabase = new KuraStorageDbContext(options);
+        await using var secondDatabase = new KuraStorageDbContext(options);
+        var firstPhoto = await firstDatabase.FileEntries.SingleAsync(item => item.Id == photoId);
+        var secondPhoto = await secondDatabase.FileEntries.SingleAsync(item => item.Id == photoId);
+        var firstRepository = new PostgreSqlMediaRepository(firstDatabase);
+        var secondRepository = new PostgreSqlMediaRepository(secondDatabase);
+        await using var firstTransaction = await firstDatabase.Database.BeginTransactionAsync();
+        await using var secondTransaction = await secondDatabase.Database.BeginTransactionAsync();
+
+        Assert.True(await firstRepository.StageRequiredLowAsync(
+            firstPhoto, 1, MediaJobOrigin.Ingest, Now, CancellationToken.None));
+        await firstDatabase.SaveChangesAsync();
+
+        var secondEnsure = secondRepository.StageRequiredLowAsync(
+            secondPhoto, 1, MediaJobOrigin.Ingest, Now, CancellationToken.None);
+        await Task.Delay(100);
+        Assert.False(secondEnsure.IsCompleted);
+
+        await firstTransaction.CommitAsync();
+        Assert.False(await secondEnsure);
+        await secondDatabase.SaveChangesAsync();
+        await secondTransaction.CommitAsync();
+
+        await using var verify = new KuraStorageDbContext(options);
+        Assert.Single(await verify.FileDerivatives.ToListAsync());
+        Assert.Single(await verify.MediaJobs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Queue_PrioritizesForegroundAndDeterministicallyAgesBackfill()
+    {
+        await using var postgres = CreatePostgres("media_priority_aging");
+        await postgres.StartAsync();
+        var options = Options(postgres.GetConnectionString());
+        Guid interactiveId;
+        Guid ingestId;
+        Guid backfillId;
+        Guid agedBackfillId;
+        Guid laterInteractiveId;
+        await using (var seed = new KuraStorageDbContext(options))
+        {
+            await seed.Database.MigrateAsync();
+            var (user, file) = await SeedCatalogAsync(seed);
+            var profileVersion = 100;
+
+            MediaJob AddJob(MediaJobOrigin origin, DateTimeOffset createdAt)
+            {
+                var derivative = new FileDerivative(
+                    Guid.NewGuid(),
+                    file.Id,
+                    file.FileVersion,
+                    DerivativeType.ImageLow,
+                    profileVersion++,
+                    createdAt);
+                var job = new MediaJob(
+                    Guid.NewGuid(),
+                    derivative.Id,
+                    DerivativeType.ImageLow,
+                    user.Id,
+                    createdAt,
+                    origin);
+                seed.AddRange(derivative, job);
+                return job;
+            }
+
+            interactiveId = AddJob(MediaJobOrigin.InteractiveRepair, Now).Id;
+            ingestId = AddJob(MediaJobOrigin.Ingest, Now).Id;
+            backfillId = AddJob(MediaJobOrigin.Backfill, Now).Id;
+            agedBackfillId = AddJob(MediaJobOrigin.Backfill, Now.AddDays(1)).Id;
+            laterInteractiveId = AddJob(MediaJobOrigin.InteractiveRepair, Now.AddDays(1).AddHours(21)).Id;
+            await seed.SaveChangesAsync();
+        }
+
+        await using var database = new KuraStorageDbContext(options);
+        var queue = new PostgreSqlMediaJobQueue(database);
+
+        async Task<Guid> ClaimAndCompleteAsync(DateTimeOffset at)
+        {
+            var worker = Guid.NewGuid();
+            var claimed = Assert.IsType<MediaJob>(
+                await queue.TryAcquireNextAsync(worker, at, CancellationToken.None));
+            Assert.True(await queue.TryCompleteAsync(claimed.Id, worker, at, CancellationToken.None));
+            return claimed.Id;
+        }
+
+        Assert.Equal(interactiveId, await ClaimAndCompleteAsync(Now));
+        Assert.Equal(ingestId, await ClaimAndCompleteAsync(Now));
+        Assert.Equal(backfillId, await ClaimAndCompleteAsync(Now));
+
+        var agedClaimTime = Now.AddDays(1).AddHours(21);
+        Assert.Equal(agedBackfillId, await ClaimAndCompleteAsync(agedClaimTime));
+        Assert.Equal(laterInteractiveId, await ClaimAndCompleteAsync(agedClaimTime));
+    }
+
+    [Fact]
     public async Task Queue_FailureRetryAndCompletionRemainConditionalAndIdempotent()
     {
         await using var postgres = CreatePostgres("media_retry");
@@ -389,8 +665,8 @@ public sealed class MediaPersistenceTests
         await using var final = new KuraStorageDbContext(options);
         var derivative = await final.FileDerivatives.SingleAsync();
         Assert.Null(derivative.LeaseUntil);
-        Assert.Equal(Now.AddMinutes(1), derivative.LastAccessedAt);
-        Assert.Equal(Now.AddHours(24).AddMinutes(1), derivative.ExpiresAt);
+        Assert.Null(derivative.LastAccessedAt);
+        Assert.Null(derivative.ExpiresAt);
     }
 
     [Fact]
@@ -558,7 +834,7 @@ public sealed class MediaPersistenceTests
         await database.SaveChangesAsync();
         database.ChangeTracker.Clear();
         Assert.Equal(DerivativeStatus.Ready, (await database.FileDerivatives.SingleAsync(x => x.Id == trashThumbnail.Id)).Status);
-        Assert.Equal(DerivativeStatus.Deleting, (await database.FileDerivatives.SingleAsync(x => x.Id == trashImage.Id)).Status);
+        Assert.Equal(DerivativeStatus.Ready, (await database.FileDerivatives.SingleAsync(x => x.Id == trashImage.Id)).Status);
         Assert.Equal(DerivativeStatus.Deleting, (await database.FileDerivatives.SingleAsync(x => x.Id == trashVideo.Id)).Status);
         Assert.Equal(MediaJobStatus.Cancelled, (await database.MediaJobs.SingleAsync(x => x.Id == trashJob.Id)).Status);
 
@@ -570,7 +846,7 @@ public sealed class MediaPersistenceTests
         await database.SaveChangesAsync();
         database.ChangeTracker.Clear();
         Assert.Equal(DerivativeStatus.Ready, (await database.FileDerivatives.SingleAsync(x => x.Id == trashThumbnail.Id)).Status);
-        Assert.Equal(DerivativeStatus.Deleting, (await database.FileDerivatives.SingleAsync(x => x.Id == trashImage.Id)).Status);
+        Assert.Equal(DerivativeStatus.Ready, (await database.FileDerivatives.SingleAsync(x => x.Id == trashImage.Id)).Status);
 
         missingFile = await database.FileEntries.SingleAsync(entry => entry.Id == missingFile.Id);
         var firstObservation = Guid.NewGuid();
@@ -703,6 +979,31 @@ public sealed class MediaPersistenceTests
         Assert.Equal(4L, await cascades.ExecuteScalarAsync());
     }
 
+    [Fact]
+    public async Task Maintenance_OnlyClaimsLifecycleDeletingDerivatives_NotReadyPersistentLow()
+    {
+        await using var postgres = CreatePostgres("media_maintenance");
+        await postgres.StartAsync();
+        var options = Options(postgres.GetConnectionString());
+        await using var database = new KuraStorageDbContext(options);
+        await database.Database.MigrateAsync();
+        var (user, file) = await SeedCatalogAsync(database);
+        var low = ReadyDerivative(user.Id, file, DerivativeType.ImageLow, null);
+        var obsolete = ReadyDerivative(user.Id, file, DerivativeType.ImageMedium, Now.AddDays(1));
+        obsolete.BeginDeleting(Now.AddMinutes(1));
+        database.AddRange(low, obsolete);
+        await database.SaveChangesAsync();
+
+        var repository = new PostgreSqlMediaMaintenanceRepository(database);
+        var candidates = await repository.ClaimDeletingAsync(Now.AddMinutes(2), 10, CancellationToken.None);
+
+        var candidate = Assert.Single(candidates);
+        Assert.Equal(obsolete.Id, candidate.DerivativeId);
+        Assert.DoesNotContain(candidates, item => item.DerivativeId == low.Id);
+        Assert.Equal(DerivativeStatus.Ready,
+            (await database.FileDerivatives.SingleAsync(item => item.Id == low.Id)).Status);
+    }
+
     private static FileDerivative ReadyDerivative(
         Guid ownerUserId,
         FileEntry file,
@@ -716,7 +1017,7 @@ public sealed class MediaPersistenceTests
             $"derivatives/{ownerUserId:N}/{file.Id:N}/1/1/{segment}.webp",
             1,
             Now,
-            expiresAt);
+            derivative.IsPersistent ? null : expiresAt);
         return derivative;
     }
 

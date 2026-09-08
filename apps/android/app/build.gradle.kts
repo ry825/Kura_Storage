@@ -10,9 +10,11 @@ val apiHostname = providers.gradleProperty("kurastorage.apiHostname").orElse("ap
 val lanApiAddress = providers.gradleProperty("kurastorage.lanApiAddress").orElse("192.0.2.10")
 val zerotierApiAddress = providers.gradleProperty("kurastorage.zerotierApiAddress").orElse("198.51.100.10")
 val rootCaCertificate = providers.gradleProperty("kurastorage.rootCaCertificate")
+val debugRootCaCertificate = providers.gradleProperty("kurastorage.debugRootCaCertificate")
 val versionNameInput = providers.gradleProperty("kurastorage.versionName").orElse("0.1.0")
 val versionCodeInput = providers.gradleProperty("kurastorage.versionCode").orElse("1")
 val generatedReleaseResources = layout.buildDirectory.dir("generated/releaseRootCa/res")
+val generatedDebugResources = layout.buildDirectory.dir("generated/debugRootCa/res")
 val releaseBuildRequested =
     gradle.startParameter.taskNames.any {
         it.substringAfterLast(':').matches(Regex("(?i)(assemble|bundle).*release"))
@@ -21,6 +23,18 @@ val releaseBuildRequested =
 if (releaseBuildRequested && !rootCaCertificate.isPresent) {
     throw GradleException(
         "Release builds require -Pkurastorage.rootCaCertificate=/path/to/public-root-ca.pem",
+    )
+}
+if (
+    debugRootCaCertificate.isPresent &&
+    (
+        !providers.gradleProperty("kurastorage.apiHostname").isPresent ||
+            !providers.gradleProperty("kurastorage.lanApiAddress").isPresent ||
+            !providers.gradleProperty("kurastorage.zerotierApiAddress").isPresent
+    )
+) {
+    throw GradleException(
+        "Debug builds with a custom Root CA require explicit apiHostname, lanApiAddress, and zerotierApiAddress properties.",
     )
 }
 
@@ -36,6 +50,19 @@ val generateReleaseRootCa by tasks.registering(Sync::class) {
         filter<ReplaceTokens>(
             "tokens" to mapOf("API_HOSTNAME" to apiHostname.get()),
         )
+    }
+}
+
+val generateDebugRootCa by tasks.registering(Sync::class) {
+    into(generatedDebugResources)
+    from(debugRootCaCertificate) {
+        into("raw")
+        rename { "kurastorage_root_ca.pem" }
+    }
+    from("src/release/templates/network_security_config.xml.template") {
+        into("xml")
+        rename { "network_security_config.xml" }
+        filter<ReplaceTokens>("tokens" to mapOf("API_HOSTNAME" to apiHostname.get()))
     }
 }
 
@@ -73,10 +100,18 @@ android {
         buildTypes.getByName("release").signingConfig = signingConfigs.getByName("release")
     }
     sourceSets["release"].res.srcDir(generatedReleaseResources)
+    if (debugRootCaCertificate.isPresent) {
+        sourceSets["debug"].res.setSrcDirs(listOf(generatedDebugResources))
+    }
 }
 
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     dependsOn(generateReleaseRootCa)
+}
+if (debugRootCaCertificate.isPresent) {
+    tasks.matching { it.name == "preDebugBuild" }.configureEach {
+        dependsOn(generateDebugRootCa)
+    }
 }
 
 dependencies {
@@ -106,6 +141,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
     implementation(libs.coil.core)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.ext.junit)

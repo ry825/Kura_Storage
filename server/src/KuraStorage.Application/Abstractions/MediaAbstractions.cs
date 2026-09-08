@@ -20,69 +20,14 @@ public enum MediaJobClaimScope
     NonThumbnail,
 }
 
-public interface IMediaCleanupRepository
+public interface IMediaMaintenanceRepository
 {
-    Task<Media.MediaCacheSnapshot> GetCacheSnapshotAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(new Media.MediaCacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0));
+    Task<IAsyncDisposable?> TryAcquireMaintenanceLockAsync(CancellationToken cancellationToken);
 
-    Task<MediaCleanupRun?> FindLatestRunAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<MediaCleanupRun?>(null);
-
-    Task<Media.MediaCleanupRequestPersistenceResult> CreateOrGetManualRunAsync(
-        Guid requestingAdminUserId,
-        string idempotencyKeyHash,
-        string requestFingerprintHash,
-        DateTimeOffset requestedAt,
-        CancellationToken cancellationToken) => throw new NotSupportedException();
-
-    Task<MediaCleanupRun?> EnsureScheduledRunAsync(
-        DateTimeOffset now,
-        TimeSpan interval,
-        CancellationToken cancellationToken) => throw new NotSupportedException();
-
-    Task<MediaCleanupRun?> ClaimNextRunAsync(
-        Guid workerToken,
-        DateTimeOffset now,
-        DateTimeOffset leaseExpiresAt,
-        CancellationToken cancellationToken) => throw new NotSupportedException();
-
-    Task<bool> ReleaseRunAsync(
-        Guid runId,
-        Guid workerToken,
-        CancellationToken cancellationToken) => throw new NotSupportedException();
-
-    Task<bool> CompleteRunAsync(
-        Guid runId,
-        Guid workerToken,
-        DateTimeOffset completedAt,
-        Media.MediaCleanupResult result,
-        CancellationToken cancellationToken) => throw new NotSupportedException();
-
-    Task<bool> FailRunAsync(
-        Guid runId,
-        Guid workerToken,
-        DateTimeOffset completedAt,
-        MediaCleanupFailureCode failureCode,
-        CancellationToken cancellationToken) => throw new NotSupportedException();
-
-    Task<IAsyncDisposable?> TryAcquireCleanupLockAsync(CancellationToken cancellationToken);
-
-    Task<IReadOnlyList<MediaCleanupCandidate>> ClaimExpiredAsync(
+    Task<IReadOnlyList<MediaMaintenanceCandidate>> ClaimDeletingAsync(
         DateTimeOffset now,
         int batchSize,
         CancellationToken cancellationToken);
-
-    Task<IReadOnlyList<MediaCleanupCandidate>> ClaimDeletingAsync(
-        DateTimeOffset now,
-        int batchSize,
-        CancellationToken cancellationToken);
-
-    Task<IReadOnlyList<MediaCleanupCandidate>> ClaimLruAsync(
-        DateTimeOffset now,
-        int batchSize,
-        CancellationToken cancellationToken);
-
-    Task<long> GetReadyCacheSizeAsync(CancellationToken cancellationToken);
 
     Task CompleteDeleteAsync(Guid derivativeId, CancellationToken cancellationToken);
 
@@ -94,17 +39,15 @@ public interface IMediaCleanupRepository
         CancellationToken cancellationToken);
 }
 
-public sealed record MediaCleanupCandidate(
+public sealed record MediaMaintenanceCandidate(
     Guid DerivativeId,
     RelativeStoragePath Path,
     long Size,
     bool RestoreReadyOnFailure = true);
 
-public interface IMediaCleanupService
+public interface IMediaMaintenanceService
 {
-    Task<Media.MediaCleanupResult> RunAsync(
-        bool includeTerminalJobCleanup,
-        CancellationToken cancellationToken);
+    Task<Media.MediaMaintenanceResult> RunAsync(CancellationToken cancellationToken);
 }
 
 public interface IMediaJobQueue
@@ -164,6 +107,27 @@ public interface IThumbnailJobSummaryRepository
 {
     Task<ThumbnailJobSummarySnapshot> GetAsync(Guid actorUserId, CancellationToken cancellationToken);
 }
+
+public interface IMediaDerivativeStatusRepository
+{
+    Task<MediaDerivativeStatusSnapshot> GetLowStatusAsync(
+        int profileVersion,
+        CancellationToken cancellationToken);
+}
+
+public sealed record MediaDerivativeStatusSnapshot(
+    int ProfileVersion,
+    long PhotoCount,
+    long ReadyCount,
+    long PendingCount,
+    long RunningCount,
+    long FailedCount,
+    long BlockedCount,
+    long MissingCount,
+    long ReadyBytes,
+    long DuplicateCount,
+    long OrphanCount,
+    DateTimeOffset ObservedAt);
 
 public interface IDerivativeStore
 {
@@ -232,6 +196,13 @@ public sealed class MediaProcessOutputLimitException()
 
 public interface IMediaRepository
 {
+    Task<bool> StageRequiredLowAsync(
+        FileEntry source,
+        int profileVersion,
+        MediaJobOrigin origin,
+        DateTimeOffset now,
+        CancellationToken cancellationToken) => Task.FromResult(false);
+
     Task<MediaRequestSnapshot> GetOrCreateRequestAsync(
         FileEntry source,
         DerivativeType derivativeType,

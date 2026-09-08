@@ -36,6 +36,14 @@ allprojects {
 
 project(":app").tasks.named<CyclonedxDirectTask>("cyclonedxDirectBom") {
     projectType = Component.Type.APPLICATION
+    // Media3 1.11.0 imports the Compose BOM in its Maven POM. Gradle resolves
+    // that graph correctly, but Maven metadata enrichment cannot build its
+    // effective POM because the managed foundation version is omitted.
+    includeMetadataResolution = false
+}
+
+project(":feature-media").tasks.named<CyclonedxDirectTask>("cyclonedxDirectBom") {
+    includeMetadataResolution = false
 }
 
 subprojects {

@@ -66,6 +66,7 @@ data class FileBrowserState(
     val retention: RetentionDisplayState? = null,
     val placementResult: String? = null,
     val error: BrowserError? = null,
+    val paginationError: BrowserError? = null,
     val personalRoot: Boolean = true,
     val historySyncError: String? = null,
     val locations: List<FolderLocation> = listOf(FolderLocation(null, "My files")),
@@ -174,6 +175,7 @@ class FileBrowserViewModel(
     private val media: MediaRepository? = null,
     private val thumbnailPollDelay: suspend (Long) -> Unit = { delay(it) },
 ) : ViewModel() {
+    private var nextPageInFlight = false
     private val scrollAnchorStore = BrowserScrollAnchorStore(savedStateHandle)
     private val initialLocation =
         FolderLocation(initialParentId, if (initialParentId == null) "My files" else "Shared")
@@ -230,7 +232,40 @@ class FileBrowserViewModel(
             reconcileUnknownMissingIndexDelete(page)
         }
 
-    fun loadMore() = load(action = { pager.loadNext() })
+    fun loadMore() {
+        if (nextPageInFlight || mutableState.value.loading || !mutableState.value.canLoadMore) return
+        nextPageInFlight = true
+        val generation = navigationGeneration
+        val locationId =
+            mutableState.value.locations
+                .lastOrNull()
+                ?.id
+        viewModelScope.launch {
+            mutableState.update { it.copy(loading = true, paginationError = null) }
+            val result = runCatching { pager.loadNext() }
+            result.onSuccess { page ->
+                val currentLocationId =
+                    mutableState.value.locations
+                        .lastOrNull()
+                        ?.id
+                if (generation == navigationGeneration && currentLocationId == locationId) {
+                    showPage(page)
+                }
+            }
+            result.onFailure { failure ->
+                val currentLocationId =
+                    mutableState.value.locations
+                        .lastOrNull()
+                        ?.id
+                if (generation == navigationGeneration && currentLocationId == locationId) {
+                    mutableState.update {
+                        it.copy(loading = false, paginationError = failure.toBrowserError())
+                    }
+                }
+            }
+            nextPageInFlight = false
+        }
+    }
 
     fun startThumbnailSummaryPolling() {
         val repository = media ?: return
@@ -1130,6 +1165,7 @@ class FileBrowserViewModel(
                 entries = page.items,
                 parentId = page.parentId,
                 canLoadMore = page.hasNextPage,
+                paginationError = null,
                 personalRoot = initialParentId == null && it.locations.size == 1,
             )
         }

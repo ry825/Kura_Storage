@@ -1299,9 +1299,11 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
 
                     b.ToTable("file_derivatives", null, t =>
                         {
-                            t.HasCheckConstraint("ck_file_derivatives_cache_expiry", "derivative_type IN ('THUMBNAIL', 'PDF_THUMBNAIL') OR status <> 'READY' OR (last_accessed_at IS NOT NULL AND expires_at > last_accessed_at)");
+                            t.HasCheckConstraint("ck_file_derivatives_cache_expiry", "derivative_type IN ('THUMBNAIL', 'PDF_THUMBNAIL', 'IMAGE_LOW') OR status <> 'READY' OR (last_accessed_at IS NOT NULL AND expires_at > last_accessed_at)");
 
                             t.HasCheckConstraint("ck_file_derivatives_failed_error", "status <> 'FAILED' OR error_code IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_file_derivatives_persistent_expiry", "derivative_type NOT IN ('THUMBNAIL', 'PDF_THUMBNAIL', 'IMAGE_LOW') OR (expires_at IS NULL AND last_accessed_at IS NULL)");
 
                             t.HasCheckConstraint("ck_file_derivatives_profile_version", "profile_version >= 1");
 
@@ -1314,115 +1316,6 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_file_derivatives_source_version", "source_version >= 1");
 
                             t.HasCheckConstraint("ck_file_derivatives_status", "status IN ('PENDING', 'RUNNING', 'READY', 'FAILED', 'BLOCKED_SOURCE_MISSING', 'DELETING')");
-
-                            t.HasCheckConstraint("ck_file_derivatives_thumbnail_expiry", "derivative_type NOT IN ('THUMBNAIL', 'PDF_THUMBNAIL') OR (expires_at IS NULL AND last_accessed_at IS NULL)");
-                        });
-                });
-
-            modelBuilder.Entity("KuraStorage.Domain.Media.MediaCleanupRun", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("completed_at");
-
-                    b.Property<int>("DeletedCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("deleted_count");
-
-                    b.Property<int>("ExaminedCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("examined_count");
-
-                    b.Property<string>("FailureCode")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("failure_code");
-
-                    b.Property<int>("FailureCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("failure_count");
-
-                    b.Property<string>("IdempotencyKeyHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("idempotency_key_hash");
-
-                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("lease_expires_at");
-
-                    b.Property<long>("ReleasedBytes")
-                        .HasColumnType("bigint")
-                        .HasColumnName("released_bytes");
-
-                    b.Property<long?>("RemainingCacheBytes")
-                        .HasColumnType("bigint")
-                        .HasColumnName("remaining_cache_bytes");
-
-                    b.Property<string>("RequestFingerprintHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("request_fingerprint_hash");
-
-                    b.Property<DateTimeOffset>("RequestedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("requested_at");
-
-                    b.Property<Guid?>("RequestedByAdminUserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("requested_by_admin_user_id");
-
-                    b.Property<DateTimeOffset?>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("started_at");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
-                        .HasColumnName("status");
-
-                    b.Property<string>("Trigger")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
-                        .HasColumnName("trigger");
-
-                    b.Property<Guid?>("WorkerToken")
-                        .HasColumnType("uuid")
-                        .HasColumnName("worker_token");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Trigger")
-                        .IsUnique()
-                        .HasDatabaseName("ux_media_cleanup_runs_active_scheduled")
-                        .HasFilter("trigger = 'SCHEDULED' AND status IN ('PENDING', 'RUNNING')");
-
-                    b.HasIndex("RequestedAt", "Id")
-                        .IsDescending()
-                        .HasDatabaseName("ix_media_cleanup_runs_latest");
-
-                    b.HasIndex("RequestedByAdminUserId", "IdempotencyKeyHash")
-                        .IsUnique()
-                        .HasDatabaseName("ux_media_cleanup_runs_manual_idempotency")
-                        .HasFilter("trigger = 'MANUAL'");
-
-                    b.HasIndex("Status", "LeaseExpiresAt", "RequestedAt", "Id")
-                        .HasDatabaseName("ix_media_cleanup_runs_claim");
-
-                    b.ToTable("media_cleanup_runs", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_media_cleanup_runs_counts", "examined_count >= 0 AND deleted_count >= 0 AND deleted_count <= examined_count AND failure_count >= 0 AND released_bytes >= 0 AND (remaining_cache_bytes IS NULL OR remaining_cache_bytes >= 0)");
-
-                            t.HasCheckConstraint("ck_media_cleanup_runs_lifecycle", "(status = 'PENDING' AND worker_token IS NULL AND lease_expires_at IS NULL AND completed_at IS NULL) OR (status = 'RUNNING' AND worker_token IS NOT NULL AND lease_expires_at IS NOT NULL AND completed_at IS NULL) OR (status IN ('COMPLETED', 'FAILED') AND worker_token IS NULL AND lease_expires_at IS NULL AND completed_at IS NOT NULL)");
-
-                            t.HasCheckConstraint("ck_media_cleanup_runs_manual_identity", "(trigger = 'MANUAL' AND requested_by_admin_user_id IS NOT NULL AND idempotency_key_hash IS NOT NULL AND request_fingerprint_hash IS NOT NULL) OR (trigger = 'SCHEDULED' AND requested_by_admin_user_id IS NULL AND idempotency_key_hash IS NULL AND request_fingerprint_hash IS NULL)");
                         });
                 });
 
@@ -1467,6 +1360,16 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("job_type");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("origin");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer")
+                        .HasColumnName("priority");
 
                     b.Property<long?>("ProcessedDurationMs")
                         .HasColumnType("bigint")
@@ -1520,7 +1423,7 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
                     b.HasIndex("Status", "HeartbeatAt", "Id")
                         .HasDatabaseName("ix_media_jobs_stale");
 
-                    b.HasIndex("Status", "AvailableAt", "CreatedAt", "Id")
+                    b.HasIndex("Status", "Priority", "AvailableAt", "CreatedAt", "Id")
                         .HasDatabaseName("ix_media_jobs_queue");
 
                     b.ToTable("media_jobs", null, t =>
@@ -1533,7 +1436,11 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_media_jobs_error", "status NOT IN ('FAILED', 'CANCELLED') OR error_code IS NOT NULL");
 
+                            t.HasCheckConstraint("ck_media_jobs_origin", "origin IN ('INTERACTIVE_REPAIR', 'INGEST', 'BACKFILL')");
+
                             t.HasCheckConstraint("ck_media_jobs_owner", "(status = 'RUNNING' AND worker_token IS NOT NULL AND heartbeat_at IS NOT NULL) OR (status <> 'RUNNING' AND worker_token IS NULL AND heartbeat_at IS NULL)");
+
+                            t.HasCheckConstraint("ck_media_jobs_priority", "priority >= 0 AND priority <= 100");
 
                             t.HasCheckConstraint("ck_media_jobs_progress", "progress_percent IS NULL OR (progress_percent >= 0 AND progress_percent <= 100)");
 
@@ -2076,14 +1983,6 @@ namespace KuraStorage.Infrastructure.Persistence.Migrations
                         .HasForeignKey("SourceFileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("KuraStorage.Domain.Media.MediaCleanupRun", b =>
-                {
-                    b.HasOne("KuraStorage.Domain.Identity.User", null)
-                        .WithMany()
-                        .HasForeignKey("RequestedByAdminUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("KuraStorage.Domain.Media.MediaJob", b =>

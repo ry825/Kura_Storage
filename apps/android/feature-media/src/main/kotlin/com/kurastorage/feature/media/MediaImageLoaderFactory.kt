@@ -44,10 +44,6 @@ object MediaImageLoaderFactory {
             }.build()
     }
 
-    fun cleanupPreviousSessions(context: Context) {
-        File(context.applicationContext.cacheDir, "media-images").deleteRecursively()
-    }
-
     fun cleanupSession(
         context: Context,
         scopeId: String,

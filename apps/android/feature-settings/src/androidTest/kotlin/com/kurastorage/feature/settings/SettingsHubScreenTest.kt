@@ -59,9 +59,9 @@ class SettingsHubScreenTest {
 
         compose.onNodeWithText("Connection status").assertIsDisplayed()
         compose.onNodeWithText("Automatic backup").assertIsDisplayed()
-        compose.onNodeWithText("Media quality and data use").assertIsDisplayed()
+        compose.onNodeWithText("Fast display (data saving)").assertIsDisplayed()
         compose.scrollSettingsTo("Trash and storage").assertIsDisplayed()
-        compose.scrollSettingsTo("Cache management").assertIsDisplayed()
+        compose.scrollSettingsTo("Fast display status").assertIsDisplayed()
         compose.scrollSettingsTo("Log out").performClick()
         compose.runOnIdle { assertTrue(loggedOut) }
     }
@@ -87,7 +87,7 @@ class SettingsHubScreenTest {
         }
 
         compose.onAllNodesWithText("Trash and storage").assertCountEquals(0)
-        compose.onAllNodesWithText("Cache management").assertCountEquals(0)
+        compose.onAllNodesWithText("Fast display status").assertCountEquals(0)
     }
 
     @Test

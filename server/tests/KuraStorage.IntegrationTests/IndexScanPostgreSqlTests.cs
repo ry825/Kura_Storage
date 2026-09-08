@@ -1,9 +1,11 @@
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
 using KuraStorage.Application.Indexing;
+using KuraStorage.Application.Media;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
 using KuraStorage.Domain.Indexing;
+using KuraStorage.Domain.Media;
 using KuraStorage.Infrastructure.Configuration;
 using KuraStorage.Infrastructure.Persistence;
 using KuraStorage.Infrastructure.Storage;
@@ -16,6 +18,85 @@ namespace KuraStorage.IntegrationTests;
 
 public sealed class IndexScanPostgreSqlTests
 {
+    [Fact]
+    public async Task EventReconciliation_PublishesRequiredLowForDiscoveryAndContentChange()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine")
+            .WithDatabase("index_event_low")
+            .WithUsername("kurastorage")
+            .WithPassword("integration-only-password")
+            .Build();
+        await postgres.StartAsync();
+        var dbOptions = new DbContextOptionsBuilder<KuraStorageDbContext>()
+            .UseNpgsql(postgres.GetConnectionString())
+            .Options;
+        await using var database = new KuraStorageDbContext(dbOptions);
+        await database.Database.MigrateAsync();
+        var now = DateTimeOffset.Parse("2026-08-22T00:00:00Z");
+        var ownerId = Guid.NewGuid();
+        var root = FileEntry.CreateRoot(ownerId, now);
+        database.Users.Add(new User(ownerId, "EVENTLOW", "Index", "hash", UserRole.Member, now));
+        database.FileEntries.Add(root);
+        await database.SaveChangesAsync();
+        var storageRoot = Directory.CreateTempSubdirectory("kurastorage-index-event-");
+        try
+        {
+            var files = Directory.CreateDirectory(Path.Combine(storageRoot.FullName, "users", ownerId.ToString("N"), "files"));
+            var physical = Path.Combine(files.FullName, "event.jpg");
+            await File.WriteAllBytesAsync(physical, [1, 2, 3, 4]);
+            var storageOptions = Options.Create(new StorageOptions
+            {
+                RootPath = storageRoot.FullName,
+                StorageId = "test",
+                MinimumFreeBytes = 1,
+                CapacityWarningFreeBytes = 1,
+            });
+            var clock = new MutableClock(now);
+            var guard = new AvailableGuard();
+            var catalog = new IndexCatalogRepository(database);
+            var versions = new FileVersionService(
+                new FileVersionRepository(database),
+                new FileVersionStore(storageOptions),
+                new FileStore(storageOptions),
+                guard,
+                clock);
+            var service = new IndexEventService(
+                catalog,
+                new ManagedFileSystemSnapshotReader(storageOptions),
+                guard,
+                clock,
+                new FileRepository(database),
+                versions,
+                new RequiredPhotoDerivativeProvisioner(
+                    new PostgreSqlMediaRepository(database),
+                    new MediaRuntimeOptions { ImageProfileVersion = 1 }));
+            var relative = $"users/{ownerId:N}/files/event.jpg";
+
+            Assert.Equal(IndexEventResult.Applied, await service.ReconcileAsync(
+                new IndexChangeEvent(IndexChangeKind.Reconcile, relative, ContentMayHaveChanged: true),
+                CancellationToken.None));
+            var entry = await database.FileEntries.SingleAsync(item => item.RelativePath == relative);
+            var first = await database.FileDerivatives.SingleAsync(item =>
+                item.SourceFileId == entry.Id && item.SourceVersion == 1 &&
+                item.DerivativeType == DerivativeType.ImageLow);
+            Assert.Equal(MediaJobOrigin.Ingest, (await database.MediaJobs.SingleAsync(job => job.DerivativeId == first.Id)).Origin);
+
+            await File.WriteAllBytesAsync(physical, [9, 8, 7, 6, 5]);
+            File.SetLastWriteTimeUtc(physical, DateTime.UtcNow.AddSeconds(2));
+            Assert.Equal(IndexEventResult.Applied, await service.ReconcileAsync(
+                new IndexChangeEvent(IndexChangeKind.Reconcile, relative, ContentMayHaveChanged: true),
+                CancellationToken.None));
+            Assert.Equal(2, (await database.FileEntries.SingleAsync(item => item.Id == entry.Id)).FileVersion);
+            Assert.Equal(DerivativeStatus.Pending, (await database.FileDerivatives.SingleAsync(item =>
+                item.SourceFileId == entry.Id && item.SourceVersion == 2 &&
+                item.DerivativeType == DerivativeType.ImageLow)).Status);
+        }
+        finally
+        {
+            storageRoot.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public async Task DryRunLeavesNoPersistentChangesAndApplyPublishesObservedFile()
     {
@@ -41,7 +122,7 @@ public sealed class IndexScanPostgreSqlTests
             var files = Directory.CreateDirectory(
                 Path.Combine(storageRoot.FullName, "users", ownerId.ToString("N"), "files"));
             var nested = Directory.CreateDirectory(Path.Combine(files.FullName, "nested"));
-            var observedPath = Path.Combine(nested.FullName, "observed.txt");
+            var observedPath = Path.Combine(nested.FullName, "observed.jpg");
             await File.WriteAllTextAsync(observedPath, "observed");
             var catalog = new IndexCatalogRepository(database);
             var storageOptions = Options.Create(new StorageOptions
@@ -73,7 +154,10 @@ public sealed class IndexScanPostgreSqlTests
                     StagingRetentionHours = 24,
                 },
                 mutationRepository: new FileRepository(database),
-                fileVersions: versionService);
+                fileVersions: versionService,
+                requiredPhotoDerivatives: new RequiredPhotoDerivativeProvisioner(
+                    new PostgreSqlMediaRepository(database),
+                    new MediaRuntimeOptions { ImageProfileVersion = 1 }));
 
             var dryRun = await service.RunAsync(
                 new IndexScanRequest(IndexScanTrigger.Admin, IndexScanMode.DryRun),
@@ -93,10 +177,22 @@ public sealed class IndexScanPostgreSqlTests
             Assert.Equal(3, await database.FileEntries.CountAsync());
             Assert.Equal(1, await database.IndexScanRuns.CountAsync());
             Assert.Equal(0, await database.IndexScanItems.CountAsync());
-            var indexedFile = await database.FileEntries.SingleAsync(entry => entry.Name == "observed.txt");
+            var indexedFile = await database.FileEntries.SingleAsync(entry => entry.Name == "observed.jpg");
             var firstVersion = await database.FileVersionRecords.SingleAsync(record => record.FileEntryId == indexedFile.Id);
             Assert.Equal(1, firstVersion.Version);
             Assert.Equal(FileVersionChangeKind.ExternalChange, firstVersion.ChangeKind);
+            var firstLow = await database.FileDerivatives.SingleAsync(item =>
+                item.SourceFileId == indexedFile.Id && item.SourceVersion == 1 &&
+                item.DerivativeType == DerivativeType.ImageLow);
+            Assert.Equal(MediaJobOrigin.Ingest, (await database.MediaJobs.SingleAsync(job =>
+                job.DerivativeId == firstLow.Id)).Origin);
+
+            var duplicateScan = await service.RunAsync(
+                new IndexScanRequest(IndexScanTrigger.Admin, IndexScanMode.Apply),
+                CancellationToken.None);
+            Assert.Equal(0, duplicateScan.UpdatedCount);
+            Assert.Single(await database.FileDerivatives.Where(item =>
+                item.SourceFileId == indexedFile.Id && item.DerivativeType == DerivativeType.ImageLow).ToListAsync());
 
             await File.WriteAllTextAsync(observedPath, "observed changed");
             File.SetLastWriteTimeUtc(observedPath, DateTime.UtcNow.AddSeconds(2));
@@ -112,6 +208,9 @@ public sealed class IndexScanPostgreSqlTests
                 .Select(record => record.Version)
                 .ToArrayAsync();
             Assert.Equal(new long[] { 1, 2 }, versions);
+            Assert.Equal(DerivativeStatus.Pending, (await database.FileDerivatives.SingleAsync(item =>
+                item.SourceFileId == indexedFile.Id && item.SourceVersion == 2 &&
+                item.DerivativeType == DerivativeType.ImageLow)).Status);
 
             File.Delete(observedPath);
             var candidateScan = await service.RunAsync(
@@ -130,8 +229,8 @@ public sealed class IndexScanPostgreSqlTests
             await using (var firstContext = new KuraStorageDbContext(dbOptions))
             await using (var secondContext = new KuraStorageDbContext(dbOptions))
             {
-                var firstEntry = await firstContext.FileEntries.SingleAsync(entry => entry.Name == "observed.txt");
-                var secondEntry = await secondContext.FileEntries.SingleAsync(entry => entry.Name == "observed.txt");
+                var firstEntry = await firstContext.FileEntries.SingleAsync(entry => entry.Name == "observed.jpg");
+                var secondEntry = await secondContext.FileEntries.SingleAsync(entry => entry.Name == "observed.jpg");
                 firstEntry.ApplySourceObservation(
                     9, "text/plain", now.AddMinutes(1), firstEntry.SourceFileKey, now.AddMinutes(1), true);
                 secondEntry.ApplySourceObservation(
@@ -208,7 +307,13 @@ public sealed class IndexScanPostgreSqlTests
             .ToArray();
         var clock = new MutableClock(now);
         var catalog = new IndexCatalogRepository(database);
-        var failedService = CreateService(catalog, new FailingSnapshot(observed), clock);
+        var failedService = CreateService(
+            catalog,
+            new FailingSnapshot(observed),
+            clock,
+            new RequiredPhotoDerivativeProvisioner(
+                new PostgreSqlMediaRepository(database),
+                new MediaRuntimeOptions { ImageProfileVersion = 1 }));
 
         await Assert.ThrowsAsync<IndexSnapshotIncompleteException>(() => failedService.RunAsync(
             new IndexScanRequest(IndexScanTrigger.Admin, IndexScanMode.Apply),
@@ -216,6 +321,8 @@ public sealed class IndexScanPostgreSqlTests
 
         Assert.Equal(10, await database.IndexScanItems.CountAsync());
         Assert.Equal(IndexScanStatus.Failed, (await database.IndexScanRuns.SingleAsync()).Status);
+        Assert.Empty(await database.FileDerivatives.ToListAsync());
+        Assert.Empty(await database.MediaJobs.ToListAsync());
 
         var interrupted = new IndexScanRun(Guid.NewGuid(), IndexScanTrigger.Overflow, IndexScanMode.Apply, now);
         database.IndexScanRuns.Add(interrupted);
@@ -239,7 +346,8 @@ public sealed class IndexScanPostgreSqlTests
     private static IndexScanService CreateService(
         IndexCatalogRepository catalog,
         IManagedFileSystemSnapshotReader snapshot,
-        ISystemClock clock) =>
+        ISystemClock clock,
+        IRequiredPhotoDerivativeProvisioner? requiredPhotoDerivatives = null) =>
         new(
             catalog,
             snapshot,
@@ -250,7 +358,8 @@ public sealed class IndexScanPostgreSqlTests
                 BatchSize = 10,
                 MissingConfirmationDelayMinutes = 5,
                 StagingRetentionHours = 24,
-            });
+            },
+            requiredPhotoDerivatives: requiredPhotoDerivatives);
 
     private sealed class AvailableGuard : IStorageGuard
     {

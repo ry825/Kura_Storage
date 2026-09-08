@@ -15,6 +15,7 @@ import com.kurastorage.core.network.FileEntryDto
 import com.kurastorage.core.network.FileEntryPageDto
 import com.kurastorage.core.network.NetworkCallResult
 import com.kurastorage.core.network.OwnerSummaryDto
+import com.kurastorage.core.network.StorageCapacityStatusDto
 import com.kurastorage.core.network.UpdateFileRequestDto
 import kotlinx.coroutines.test.runTest
 import okhttp3.MultipartBody
@@ -27,6 +28,22 @@ import org.junit.Test
 import java.time.Instant
 
 class FileRepositoryTest {
+    @Test
+    fun `capacity mapping accepts consistent typed states and rejects invalid ranges`() {
+        assertEquals(
+            60L,
+            StorageCapacityStatusDto("AVAILABLE", 100, 60, 40).toModel().usedBytes,
+        )
+        assertEquals(
+            "UNAVAILABLE",
+            StorageCapacityStatusDto("UNAVAILABLE").toModel().storage,
+        )
+        assertTrue(
+            runCatching { StorageCapacityStatusDto("AVAILABLE", 100, 70, 40).toModel() }
+                .exceptionOrNull() is KuraStorageException.InvalidServerResponse,
+        )
+    }
+
     @Test
     fun `repository maps DTO and pager appends subsequent pages`() =
         runTest {

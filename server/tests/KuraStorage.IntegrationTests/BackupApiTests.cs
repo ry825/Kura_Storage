@@ -6,6 +6,7 @@ using System.Text.Json;
 using KuraStorage.Domain.Transfers;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Indexing;
+using KuraStorage.Domain.Media;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Transfers;
@@ -118,6 +119,16 @@ public sealed class BackupApiTests(PostgreSqlAuthFlowFixture fixture)
         Assert.Equal(fileId, receipt.RemoteFileId);
         Assert.Equal(2, receipt.RemoteFileVersion);
         Assert.Equal(2, (await database.FileEntries.SingleAsync(entry => entry.Id == fileId)).FileVersion);
+        var lowDerivatives = await database.FileDerivatives
+            .Where(item => item.SourceFileId == fileId && item.DerivativeType == DerivativeType.ImageLow)
+            .OrderBy(item => item.SourceVersion)
+            .ToListAsync();
+        Assert.Equal(new long[] { 1, 2 }, lowDerivatives.Select(item => item.SourceVersion));
+        var currentLow = Assert.Single(lowDerivatives, item => item.SourceVersion == 2);
+        Assert.Equal(DerivativeStatus.Pending, currentLow.Status);
+        Assert.Equal(1, await database.MediaJobs.CountAsync(job =>
+            job.DerivativeId == currentLow.Id &&
+            job.Origin == MediaJobOrigin.Ingest));
         Assert.Equal("Photos/renamed-locally.jpg", receipt.RelativePath);
         Assert.Single(await database.FileEntries.Where(entry => entry.Id == fileId).ToListAsync());
         Assert.True(await database.FavoriteEntries.AnyAsync(item => item.EntryId == fileId));

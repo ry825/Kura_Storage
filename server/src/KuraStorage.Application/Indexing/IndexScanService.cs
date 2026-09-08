@@ -1,7 +1,9 @@
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
+using KuraStorage.Application.Media;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Indexing;
+using KuraStorage.Domain.Media;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
@@ -15,7 +17,8 @@ public sealed class IndexScanService(
     IndexingOptions options,
     IIndexScanObserver? observer = null,
     IFileRepository? mutationRepository = null,
-    FileVersionService? fileVersions = null) : IIndexScanService
+    FileVersionService? fileVersions = null,
+    IRequiredPhotoDerivativeProvisioner? requiredPhotoDerivatives = null) : IIndexScanService
 {
     private static readonly Meter Meter = new("KuraStorage.Indexing");
     private static readonly Histogram<double> ScanDuration = Meter.CreateHistogram<double>(
@@ -254,6 +257,11 @@ public sealed class IndexScanService(
                         _ = await mutationRepository.ReloadAsync(locked, CancellationToken.None);
                         throw;
                     }
+                    if (requiredPhotoDerivatives is not null)
+                    {
+                        _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                            locked, MediaJobOrigin.Ingest, clock.UtcNow, cancellationToken);
+                    }
                     await SaveBatchAsync(run, cancellationToken);
                 }
                 else
@@ -266,6 +274,11 @@ public sealed class IndexScanService(
                         observed.SourceFileKey,
                         clock.UtcNow,
                         contentMayHaveChanged: contentChanged);
+                    if (requiredPhotoDerivatives is not null)
+                    {
+                        _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                            existing, MediaJobOrigin.Ingest, clock.UtcNow, cancellationToken);
+                    }
                 }
             }
 
@@ -381,11 +394,21 @@ public sealed class IndexScanService(
                     null,
                     cancellationToken);
                 catalog.Add(entry);
+                if (requiredPhotoDerivatives is not null)
+                {
+                    _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                        entry, MediaJobOrigin.Ingest, clock.UtcNow, cancellationToken);
+                }
                 await SaveBatchAsync(run, cancellationToken);
             }
             else
             {
                 catalog.Add(entry);
+                if (requiredPhotoDerivatives is not null)
+                {
+                    _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                        entry, MediaJobOrigin.Ingest, clock.UtcNow, cancellationToken);
+                }
             }
             entriesByPath[new IndexPathKey(entry.OwnerUserId, entry.RelativePath)] = entry;
         }

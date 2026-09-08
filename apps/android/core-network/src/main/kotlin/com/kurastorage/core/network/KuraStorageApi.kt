@@ -3,8 +3,6 @@ package com.kurastorage.core.network
 import com.kurastorage.core.model.ApiError
 import com.kurastorage.core.model.ErrorCode
 import com.kurastorage.core.model.KuraStorageException
-import com.kurastorage.core.network.media.AdminMediaCacheStatusDto
-import com.kurastorage.core.network.media.MediaCleanupRunDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -132,13 +130,12 @@ interface AdminStorageApi {
     suspend fun getAdminStorage(accessToken: String): NetworkCallResult<AdminStorageStatusDto>
 }
 
-interface AdminMediaCacheApi {
-    suspend fun getMediaCache(accessToken: String): NetworkCallResult<AdminMediaCacheStatusDto>
+interface StorageCapacityApi {
+    suspend fun getStorageCapacity(accessToken: String): NetworkCallResult<StorageCapacityStatusDto>
+}
 
-    suspend fun requestMediaCacheCleanup(
-        accessToken: String,
-        idempotencyKey: String,
-    ): NetworkCallResult<MediaCleanupRunDto>
+interface AdminMediaDerivativeApi {
+    suspend fun getMediaDerivatives(accessToken: String): NetworkCallResult<MediaDerivativeStatusDto>
 }
 
 interface TextFileApi {
@@ -614,16 +611,15 @@ private interface KuraStorageService {
         @Header("Authorization") authorization: String,
     ): Response<AdminStorageStatusDto>
 
-    @GET("admin/media-cache")
-    suspend fun getMediaCache(
+    @GET("storage/capacity")
+    suspend fun getStorageCapacity(
         @Header("Authorization") authorization: String,
-    ): Response<AdminMediaCacheStatusDto>
+    ): Response<StorageCapacityStatusDto>
 
-    @POST("admin/media-cache/cleanup-requests")
-    suspend fun requestMediaCacheCleanup(
+    @GET("admin/media-derivatives")
+    suspend fun getMediaDerivatives(
         @Header("Authorization") authorization: String,
-        @Header("Idempotency-Key") idempotencyKey: String,
-    ): Response<MediaCleanupRunDto>
+    ): Response<MediaDerivativeStatusDto>
 
     @POST("upload-sessions")
     suspend fun createUploadSession(
@@ -696,7 +692,8 @@ class KuraStorageApi(
     FileApi,
     TextFileApi,
     AdminStorageApi,
-    AdminMediaCacheApi,
+    AdminMediaDerivativeApi,
+    StorageCapacityApi,
     UploadSessionApi,
     BackupApi,
     SharingApi,
@@ -950,14 +947,11 @@ class KuraStorageApi(
             service.getAdminStorage(bearer(accessToken))
         }
 
-    override suspend fun getMediaCache(accessToken: String): NetworkCallResult<AdminMediaCacheStatusDto> =
-        executeAuthenticated { service.getMediaCache(bearer(accessToken)) }
+    override suspend fun getStorageCapacity(accessToken: String): NetworkCallResult<StorageCapacityStatusDto> =
+        executeAuthenticated { service.getStorageCapacity(bearer(accessToken)) }
 
-    override suspend fun requestMediaCacheCleanup(
-        accessToken: String,
-        idempotencyKey: String,
-    ): NetworkCallResult<MediaCleanupRunDto> =
-        executeAuthenticated { service.requestMediaCacheCleanup(bearer(accessToken), idempotencyKey) }
+    override suspend fun getMediaDerivatives(accessToken: String): NetworkCallResult<MediaDerivativeStatusDto> =
+        executeAuthenticated { service.getMediaDerivatives(bearer(accessToken)) }
 
     override suspend fun createUploadSession(
         accessToken: String,

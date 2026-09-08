@@ -45,12 +45,15 @@ import com.kurastorage.core.model.PermissionSource
 import com.kurastorage.core.model.SharePermission
 import com.kurastorage.core.model.TagItem
 import com.kurastorage.core.model.media.ByteCount
+import com.kurastorage.core.model.media.MediaJobSnapshot
+import com.kurastorage.core.model.media.MediaJobStatus
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
-import com.kurastorage.core.model.media.MediaQuality
+import com.kurastorage.core.model.media.MediaUiError
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.NetworkQualityContext
 import com.kurastorage.core.model.media.OriginalMetadata
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.model.media.ReadyMediaSource
 import com.kurastorage.feature.media.pdf.PdfFailure
 import com.kurastorage.feature.media.pdf.PdfLoadState
@@ -136,7 +139,7 @@ class MediaViewerScreenTest {
                             photo.id,
                             photo.fileVersion,
                             MediaKind.IMAGE,
-                            MediaQuality.ORIGINAL,
+                            PhotoDisplayMode.ORIGINAL,
                             NetworkQualityContext.REMOTE_MOBILE,
                             MediaLoadState.Loading,
                             originalSizeLabel = "1 KB",
@@ -170,6 +173,75 @@ class MediaViewerScreenTest {
         compose.onNodeWithText("Loading: Original").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("Zoom in").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1.5f, state.zoom) }
+    }
+
+    @Test
+    fun photoShowsGenerationProgressAndOnlyOffersExplicitRetryForRetryableFailure() {
+        val photo = file("photo", "image/jpeg")
+        var retries = 0
+        val generating =
+            PhotoViewerUiState(
+                file = photo,
+                media =
+                    MediaViewerState(
+                        photo.id,
+                        photo.fileVersion,
+                        MediaKind.IMAGE,
+                        PhotoDisplayMode.FAST,
+                        NetworkQualityContext.REMOTE_MOBILE,
+                        MediaLoadState.Generating(
+                            MediaJobSnapshot(
+                                jobId = "low-job",
+                                status = MediaJobStatus.GENERATING,
+                                progressPercent = 12,
+                                processedDurationMs = null,
+                                totalDurationMs = null,
+                                queuePosition = null,
+                                retryAfterSeconds = 1,
+                                retryable = false,
+                            ),
+                        ),
+                    ),
+            )
+        var state by mutableStateOf(generating)
+        loader = ImageLoader.Builder(InstrumentationRegistry.getInstrumentation().targetContext).build()
+        compose.setContent {
+            PhotoViewerScreen(
+                state,
+                checkNotNull(loader),
+                "scope",
+                requestTicket = { null },
+                onImageReady = {},
+                onGenerating = { _, _ -> },
+                onImageFailed = {},
+                onQuality = {},
+                onPrevious = {},
+                onNext = {},
+                onZoom = { state = state.copy(zoom = it) },
+                onDetails = {},
+                onDownloadOriginal = {},
+                onRetryGeneration = { retries++ },
+                onBack = {},
+            )
+        }
+
+        compose.onNodeWithText("Preparing selected quality").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Generated 12%").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Retry photo generation").assertDoesNotExist()
+
+        compose.runOnIdle {
+            state =
+                state.copy(
+                    media =
+                        checkNotNull(state.media).copy(
+                            loadState = MediaLoadState.Failed(MediaUiError.GENERATION_FAILED),
+                            canRetryGeneration = true,
+                        ),
+                )
+        }
+        compose.onNodeWithText("Photo unavailable").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Retry photo generation").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, retries) }
     }
 
     @Test
@@ -271,7 +343,7 @@ class MediaViewerScreenTest {
                 fileId = photo.id,
                 fileVersion = photo.fileVersion,
                 kind = MediaKind.IMAGE,
-                quality = MediaQuality.LOW,
+                quality = PhotoDisplayMode.FAST,
                 networkContext = NetworkQualityContext.REMOTE_MOBILE,
                 loadState =
                     MediaLoadState.Ready(
@@ -412,7 +484,7 @@ class MediaViewerScreenTest {
     @Test
     fun photoToolbarDisablesPendingFavoriteAndReportsIncompleteDownload() {
         val photo = file("pending-actions", "image/jpeg")
-        var quality: MediaQuality? = null
+        var quality: PhotoDisplayMode? = null
         loader = imageLoader()
         compose.setContent {
             PhotoViewerScreen(
@@ -446,8 +518,8 @@ class MediaViewerScreenTest {
             .onNodeWithText("The incomplete destination could not be removed. Delete it before retrying.")
             .performScrollTo()
             .assertIsDisplayed()
-        compose.onNodeWithText("Medium").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals(MediaQuality.MEDIUM, quality) }
+        compose.onNodeWithText("Fast display").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(PhotoDisplayMode.FAST, quality) }
     }
 
     @Test
@@ -488,7 +560,7 @@ class MediaViewerScreenTest {
                     fileId = photo.id,
                     fileVersion = photo.fileVersion,
                     kind = MediaKind.IMAGE,
-                    quality = MediaQuality.LOW,
+                    quality = PhotoDisplayMode.FAST,
                     networkContext = NetworkQualityContext.REMOTE_MOBILE,
                     loadState = MediaLoadState.Ready(ReadyMediaSource(photo.id, photo.fileVersion, MediaVariant.IMAGE_LOW)),
                     originalSizeLabel = "1 KB",

@@ -19,9 +19,9 @@ import com.kurastorage.core.model.media.ByteCount
 import com.kurastorage.core.model.media.MediaJobSnapshot
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.OriginalMetadata
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.model.media.PlaybackRate
 import com.kurastorage.core.model.media.QualityPreferences
 import com.kurastorage.core.model.media.ReadyMediaSource
@@ -72,7 +72,7 @@ class MediaPlayerViewModelTest {
             viewModel.attachEngine(engine)
             assertNull(engine.preparedSource)
             assertEquals(
-                MediaQuality.ORIGINAL,
+                PhotoDisplayMode.ORIGINAL,
                 viewModel.state.value.media
                     ?.quality,
             )
@@ -129,14 +129,14 @@ class MediaPlayerViewModelTest {
             viewModel.attachEngine(engine)
 
             assertEquals(
-                MediaQuality.ORIGINAL,
+                PhotoDisplayMode.ORIGINAL,
                 viewModel.state.value.media
                     ?.quality,
             )
             viewModel.cancelOriginal()
 
             assertEquals(
-                MediaQuality.ORIGINAL,
+                PhotoDisplayMode.ORIGINAL,
                 viewModel.state.value.media
                     ?.quality,
             )
@@ -485,7 +485,7 @@ class MediaPlayerViewModelTest {
 
         override suspend fun update(
             context: com.kurastorage.core.model.media.NetworkQualityContext,
-            quality: MediaQuality,
+            quality: PhotoDisplayMode,
         ) = Unit
     }
 

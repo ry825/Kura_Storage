@@ -38,6 +38,10 @@ public sealed class MediaJobConfiguration : IEntityTypeConfiguration<MediaJob>
                 table.HasCheckConstraint(
                     "ck_media_jobs_error",
                     "status NOT IN ('FAILED', 'CANCELLED') OR error_code IS NOT NULL");
+                table.HasCheckConstraint(
+                    "ck_media_jobs_origin",
+                    "origin IN ('INTERACTIVE_REPAIR', 'INGEST', 'BACKFILL')");
+                table.HasCheckConstraint("ck_media_jobs_priority", "priority >= 0 AND priority <= 100");
             });
         builder.HasKey(job => job.Id);
         builder.Property(job => job.Id).HasColumnName("id");
@@ -53,6 +57,11 @@ public sealed class MediaJobConfiguration : IEntityTypeConfiguration<MediaJob>
             .HasConversion(value => value.ToString().ToUpperInvariant(), value => Enum.Parse<MediaJobStatus>(value, true))
             .HasMaxLength(16);
         builder.Property(job => job.RequestedByUserId).HasColumnName("requested_by_user_id");
+        builder.Property(job => job.Origin)
+            .HasColumnName("origin")
+            .HasConversion(value => ToDatabase(value), value => FromDatabase(value))
+            .HasMaxLength(32);
+        builder.Property(job => job.Priority).HasColumnName("priority");
         builder.Property(job => job.AttemptCount).HasColumnName("attempt_count");
         builder.Property(job => job.AvailableAt).HasColumnName("available_at");
         builder.Property(job => job.WorkerToken).HasColumnName("worker_token");
@@ -73,7 +82,7 @@ public sealed class MediaJobConfiguration : IEntityTypeConfiguration<MediaJob>
             .WithMany()
             .HasForeignKey(job => job.RequestedByUserId)
             .OnDelete(DeleteBehavior.Cascade);
-        builder.HasIndex(job => new { job.Status, job.AvailableAt, job.CreatedAt, job.Id })
+        builder.HasIndex(job => new { job.Status, job.Priority, job.AvailableAt, job.CreatedAt, job.Id })
             .HasDatabaseName("ix_media_jobs_queue");
         builder.HasIndex(job => job.DerivativeId)
             .HasDatabaseName("ix_media_jobs_derivative");
@@ -86,4 +95,20 @@ public sealed class MediaJobConfiguration : IEntityTypeConfiguration<MediaJob>
         builder.HasIndex(job => new { job.Status, job.CompletedAt, job.Id })
             .HasDatabaseName("ix_media_jobs_history_cleanup");
     }
+
+    private static string ToDatabase(MediaJobOrigin value) => value switch
+    {
+        MediaJobOrigin.InteractiveRepair => "INTERACTIVE_REPAIR",
+        MediaJobOrigin.Ingest => "INGEST",
+        MediaJobOrigin.Backfill => "BACKFILL",
+        _ => throw new ArgumentOutOfRangeException(nameof(value)),
+    };
+
+    private static MediaJobOrigin FromDatabase(string value) => value switch
+    {
+        "INTERACTIVE_REPAIR" => MediaJobOrigin.InteractiveRepair,
+        "INGEST" => MediaJobOrigin.Ingest,
+        "BACKFILL" => MediaJobOrigin.Backfill,
+        _ => throw new InvalidOperationException($"Unknown media job origin '{value}'."),
+    };
 }

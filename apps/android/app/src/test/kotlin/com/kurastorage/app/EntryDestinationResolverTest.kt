@@ -116,6 +116,30 @@ class EntryDestinationResolverTest {
         assertTrue(contexts.fileIds(contextId).isEmpty())
     }
 
+    @Test
+    fun `viewer return target follows the photo currently displayed`() {
+        val contexts = MediaNavigationContextStore()
+        val ids = (0..25).map { "photo-$it" }
+        val contextId = contexts.registerIds(ids, initialFileId = "photo-2")
+
+        contexts.updateCurrent(contextId, "photo-22")
+        contexts.requestReturn(contextId)
+
+        assertEquals(
+            MediaNavigationContextStore.ReturnTarget(
+                "test-source",
+                "test-scope",
+                "photo-22",
+                openDetails = false,
+            ),
+            contexts.returnTarget("test-source", "test-scope"),
+        )
+        assertEquals(null, contexts.returnTarget("other-source", "test-scope"))
+        assertEquals(null, contexts.returnTarget("test-source", "other-scope"))
+        contexts.consumeReturn("test-source", "test-scope")
+        assertEquals(null, contexts.returnTarget("test-source", "test-scope"))
+    }
+
     private fun file(
         id: String,
         type: FileEntryType = FileEntryType.FILE,

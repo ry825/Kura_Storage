@@ -4,10 +4,10 @@ import com.kurastorage.core.model.ConnectionRoute
 import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.media.ByteCount
 import com.kurastorage.core.model.media.MediaKind
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.NetworkQualityContext
 import com.kurastorage.core.model.media.OriginalMetadata
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -55,14 +55,25 @@ class MediaQualityPolicyTest {
         val decoded =
             QualityPreferencesCodec.decode(
                 mapOf(
-                    NetworkQualityContext.LOCAL_DIRECT to "FUTURE",
-                    NetworkQualityContext.REGISTERED_REMOTE_WIFI to "LOW",
+                    NetworkQualityContext.LOCAL_DIRECT to false,
+                    NetworkQualityContext.REGISTERED_REMOTE_WIFI to true,
+                    NetworkQualityContext.UNREGISTERED_REMOTE_WIFI to true,
                 ),
             )
-        assertEquals(MediaQuality.ORIGINAL, decoded.localDirect)
-        assertEquals(MediaQuality.LOW, decoded.registeredRemoteWifi)
-        assertEquals(MediaQuality.LOW, decoded.remoteMobile)
-        assertEquals(MediaQuality.entries, QualityPreferencesCodec.manualChoices)
+        assertEquals(PhotoDisplayMode.ORIGINAL, decoded.localDirect)
+        assertEquals(PhotoDisplayMode.FAST, decoded.registeredRemoteWifi)
+        assertEquals(PhotoDisplayMode.FAST, decoded.unregisteredRemoteWifi)
+        assertEquals(PhotoDisplayMode.FAST, decoded.remoteMobile)
+        assertEquals(listOf(PhotoDisplayMode.FAST, PhotoDisplayMode.ORIGINAL), QualityPreferencesCodec.manualChoices)
+    }
+
+    @Test
+    fun `legacy quality migration maps low and medium to fast and fails unknown remote values closed`() {
+        assertTrue(QualityPreferencesCodec.migrateLegacy("LOW", NetworkQualityContext.LOCAL_DIRECT))
+        assertTrue(QualityPreferencesCodec.migrateLegacy("MEDIUM", NetworkQualityContext.REMOTE_MOBILE))
+        assertFalse(QualityPreferencesCodec.migrateLegacy("ORIGINAL", NetworkQualityContext.REMOTE_MOBILE))
+        assertTrue(QualityPreferencesCodec.migrateLegacy("FUTURE", NetworkQualityContext.REGISTERED_REMOTE_WIFI))
+        assertFalse(QualityPreferencesCodec.migrateLegacy(null, NetworkQualityContext.LOCAL_DIRECT))
     }
 
     @Test

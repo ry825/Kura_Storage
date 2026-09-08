@@ -1,7 +1,9 @@
 using System.Diagnostics.Metrics;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Files;
+using KuraStorage.Application.Media;
 using KuraStorage.Domain.Files;
+using KuraStorage.Domain.Media;
 
 namespace KuraStorage.Application.Indexing;
 
@@ -11,7 +13,8 @@ public sealed class IndexEventService(
     IStorageGuard storageGuard,
     ISystemClock clock,
     IFileRepository? mutationRepository = null,
-    FileVersionService? fileVersions = null) : IIndexEventService
+    FileVersionService? fileVersions = null,
+    IRequiredPhotoDerivativeProvisioner? requiredPhotoDerivatives = null) : IIndexEventService
 {
     private static readonly Meter Meter = new("KuraStorage.Indexing");
     private static readonly Counter<long> EventResults = Meter.CreateCounter<long>("kurastorage.index.event.results");
@@ -119,11 +122,21 @@ public sealed class IndexEventService(
                     }
                 }
 
+                if (requiredPhotoDerivatives is not null)
+                {
+                    _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                        existing, MediaJobOrigin.Ingest, clock.UtcNow, cancellationToken);
+                }
                 await catalog.SaveChangesAsync(cancellationToken);
             }
             else
             {
                 ApplyObservation(existing, observed, change.ContentMayHaveChanged);
+                if (requiredPhotoDerivatives is not null)
+                {
+                    _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                        existing, MediaJobOrigin.Ingest, clock.UtcNow, cancellationToken);
+                }
                 await catalog.SaveChangesAsync(cancellationToken);
             }
             return IndexEventResult.Applied;
@@ -179,6 +192,11 @@ public sealed class IndexEventService(
         }
 
         catalog.Add(entry);
+        if (requiredPhotoDerivatives is not null)
+        {
+            _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                entry, MediaJobOrigin.Ingest, clock.UtcNow, cancellationToken);
+        }
         await catalog.SaveChangesAsync(cancellationToken);
         return IndexEventResult.Applied;
     }

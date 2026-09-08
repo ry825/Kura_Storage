@@ -5,8 +5,10 @@ using KuraStorage.Domain.Files;
 using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Sharing;
 using KuraStorage.Application.Activity;
+using KuraStorage.Application.Media;
 using KuraStorage.Domain.Activity;
 using KuraStorage.Domain.Sharing;
+using KuraStorage.Domain.Media;
 
 namespace KuraStorage.Application.Files;
 
@@ -20,7 +22,8 @@ public sealed class FileService(
     TrashPurgeOptions? purgeOptions = null,
     IAuthorizationService? authorizationService = null,
     FileVersionService? fileVersions = null,
-    UserActivityFactory? activities = null)
+    UserActivityFactory? activities = null,
+    IRequiredPhotoDerivativeProvisioner? requiredPhotoDerivatives = null)
 {
     private readonly int retentionDays = purgeOptions?.RetentionDays ?? 30;
     public async Task<FileResult<FilePage>> ListAsync(
@@ -686,6 +689,14 @@ public sealed class FileService(
         var completedAt = clock.UtcNow;
         await using var transaction = await repository.BeginTransactionAsync(cancellationToken);
         repository.Add(entry);
+        if (requiredPhotoDerivatives is not null)
+        {
+            _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                entry,
+                MediaJobOrigin.Ingest,
+                completedAt,
+                cancellationToken);
+        }
         if (activities is not null)
         {
             await activities.AddUploadAsync(
@@ -997,6 +1008,16 @@ public sealed class FileService(
             : [];
         entry.Restore(parentId, target, clock.UtcNow);
         ApplyDescendantPaths(descendants, source.Value, target.Value, false, clock.UtcNow);
+        if (requiredPhotoDerivatives is not null)
+        {
+            _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                entry, MediaJobOrigin.Ingest, clock.UtcNow, cancellationToken);
+            foreach (var descendant in descendants)
+            {
+                _ = await requiredPhotoDerivatives.EnsureLowAsync(
+                    descendant, MediaJobOrigin.Ingest, clock.UtcNow, cancellationToken);
+            }
+        }
         operation.Complete(clock.UtcNow);
         try
         {

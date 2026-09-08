@@ -7,8 +7,8 @@ import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.media.MediaKind
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaUiError
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.feature.media.MediaRequestTicket
 import com.kurastorage.feature.media.MediaViewerController
@@ -70,9 +70,13 @@ class PhotoViewerViewModel(
         load(initialFileId)
     }
 
-    fun selectQuality(quality: MediaQuality) {
+    fun selectQuality(quality: PhotoDisplayMode) {
         viewModelScope.launch { controller.selectQuality(quality) }
     }
+
+    fun confirmOriginal() = controller.confirmOriginal()
+
+    fun cancelOriginalConfirmation() = controller.cancelOriginalConfirmation()
 
     fun requestTicket(): MediaRequestTicket? = controller.requestTicket()
 

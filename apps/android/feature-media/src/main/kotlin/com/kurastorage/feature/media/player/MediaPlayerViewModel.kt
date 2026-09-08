@@ -10,9 +10,9 @@ import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaUiError
 import com.kurastorage.core.model.media.MediaVariant
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.model.media.PlaybackRate
 import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.feature.media.MediaRequestTicket
@@ -115,7 +115,7 @@ class MediaPlayerViewModel(
     fun retryPlayback() {
         activeTicket = null
         mutableState.update { it.copy(reconnecting = true) }
-        viewModelScope.launch { mediaController.selectQuality(MediaQuality.ORIGINAL) }
+        viewModelScope.launch { mediaController.selectQuality(PhotoDisplayMode.ORIGINAL) }
     }
 
     fun play() = engine?.play()

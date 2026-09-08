@@ -59,48 +59,39 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /admin/media-cache:
+  /storage/capacity:
     get:
-      tags: [Administration]
-      operationId: getAdminMediaCacheStatus
-      summary: Get media cache aggregates and the latest cleanup run
-      description: Admin-only read model. It never returns file names, paths, users, job inputs, leases, or plaintext idempotency keys.
+      tags: [Files]
+      operationId: getStorageCapacity
+      summary: Get physical storage-volume capacity for the signed-in user
       responses:
         "200":
-          description: Current READY low/medium cache aggregates, media job counts, and cleanup run state.
+          description: Capacity values, or typed unavailable state with null byte values.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdminMediaCacheStatus"
+                $ref: "#/components/schemas/StorageCapacityStatus"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /admin/media-cache/cleanup-requests:
-    post:
+  /admin/media-derivatives:
+    get:
       tags: [Administration]
-      operationId: requestAdminMediaCacheCleanup
-      summary: Persist an asynchronous manual media cache cleanup request
-      description: The request only creates or returns a persistent run. A Worker performs cleanup later. Replaying the same administrator, key, and payload returns the same run.
-      parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
+      operationId: getAdminMediaDerivativeStatus
+      summary: Get persistent fast-display photo derivative coverage
+      description: Admin-only aggregate status. It never returns file names, paths, or user identifiers.
       responses:
-        "202":
-          description: The persistent cleanup run was accepted or returned idempotently.
+        "200":
+          description: Current Low coverage, state counts, bytes, duplicate count, and orphan count.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MediaCleanupRunSummary"
-        "400":
-          $ref: "#/components/responses/BadRequest"
+                $ref: "#/components/schemas/MediaDerivativeStatus"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
-        "409":
-          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
   /auth/register-device:
@@ -1898,101 +1889,32 @@ components:
         errorCount:
           type: integer
           minimum: 0
-    AdminMediaCacheStatus:
+    StorageCapacityStatus:
       type: object
       additionalProperties: false
-      required: [cacheBytes, imageLowBytes, imageMediumBytes, videoLowBytes, videoMediumBytes, highWatermarkBytes, lowWatermarkBytes, queuedJobCount, runningJobCount, failedJobCount, pendingRunCount, runningRunCount, lastCleanupRun]
+      required: [storage, totalBytes, usedBytes, availableBytes]
       properties:
-        cacheBytes:
-          type: integer
-          format: int64
-          minimum: 0
-        imageLowBytes:
-          type: integer
-          format: int64
-          minimum: 0
-        imageMediumBytes:
-          type: integer
-          format: int64
-          minimum: 0
-        videoLowBytes:
-          type: integer
-          format: int64
-          minimum: 0
-        videoMediumBytes:
-          type: integer
-          format: int64
-          minimum: 0
-        highWatermarkBytes:
-          type: integer
-          format: int64
-          minimum: 1
-        lowWatermarkBytes:
-          type: integer
-          format: int64
-          minimum: 0
-        queuedJobCount:
-          type: integer
-          minimum: 0
-        runningJobCount:
-          type: integer
-          minimum: 0
-        failedJobCount:
-          type: integer
-          minimum: 0
-        pendingRunCount:
-          type: integer
-          minimum: 0
-        runningRunCount:
-          type: integer
-          minimum: 0
-        lastCleanupRun:
-          oneOf:
-            - $ref: "#/components/schemas/MediaCleanupRunSummary"
-            - type: "null"
-    MediaCleanupRunSummary:
+        storage: { type: string, enum: [AVAILABLE, UNAVAILABLE] }
+        totalBytes: { type: [integer, "null"], format: int64, minimum: 0 }
+        usedBytes: { type: [integer, "null"], format: int64, minimum: 0 }
+        availableBytes: { type: [integer, "null"], format: int64, minimum: 0 }
+    MediaDerivativeStatus:
       type: object
       additionalProperties: false
-      required: [id, trigger, status, requestedAt, startedAt, completedAt, examinedCount, deletedCount, releasedBytes, failureCount, remainingCacheBytes, failureCode]
+      required: [profileVersion, photoCount, readyCount, pendingCount, runningCount, failedCount, blockedCount, missingCount, readyBytes, duplicateCount, orphanCount, observedAt]
       properties:
-        id:
-          type: string
-          format: uuid
-        trigger:
-          type: string
-          enum: [SCHEDULED, MANUAL]
-        status:
-          type: string
-          enum: [PENDING, RUNNING, COMPLETED, FAILED]
-        requestedAt:
-          type: string
-          format: date-time
-        startedAt:
-          type: [string, "null"]
-          format: date-time
-        completedAt:
-          type: [string, "null"]
-          format: date-time
-        examinedCount:
-          type: integer
-          minimum: 0
-        deletedCount:
-          type: integer
-          minimum: 0
-        releasedBytes:
-          type: integer
-          format: int64
-          minimum: 0
-        failureCount:
-          type: integer
-          minimum: 0
-        remainingCacheBytes:
-          type: [integer, "null"]
-          format: int64
-          minimum: 0
-        failureCode:
-          type: [string, "null"]
-          enum: [STORAGE_UNAVAILABLE, PARTIAL_DELETE_FAILURE, CLEANUP_FAILED, null]
+        profileVersion: { type: integer, minimum: 1 }
+        photoCount: { type: integer, format: int64, minimum: 0 }
+        readyCount: { type: integer, format: int64, minimum: 0 }
+        pendingCount: { type: integer, format: int64, minimum: 0 }
+        runningCount: { type: integer, format: int64, minimum: 0 }
+        failedCount: { type: integer, format: int64, minimum: 0 }
+        blockedCount: { type: integer, format: int64, minimum: 0 }
+        missingCount: { type: integer, format: int64, minimum: 0 }
+        readyBytes: { type: integer, format: int64, minimum: 0 }
+        duplicateCount: { type: integer, format: int64, minimum: 0 }
+        orphanCount: { type: integer, format: int64, minimum: 0 }
+        observedAt: { type: string, format: date-time }
     RegisterDeviceRequest:
       type: object
       additionalProperties: false
@@ -2878,7 +2800,7 @@ components:
     MediaVariant:
       type: string
       default: original
-      enum: [original, thumbnail, image-low, image-medium]
+      enum: [original, thumbnail, image-low]
     MediaDisposition:
       type: string
       default: inline

@@ -52,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -136,6 +137,8 @@ fun FileBrowserScreen(
     onUploadCompletionConsumed: () -> Unit = {},
     onRetryFolderUpload: () -> Unit = {},
     onScrollAnchor: (BrowserDisplayMode, Int, Int, String?) -> Unit = { _, _, _, _ -> },
+    returnTargetId: String? = null,
+    onReturnTargetConsumed: () -> Unit = {},
     adminStorageState: AdminStorageState = AdminStorageState(loading = false),
     onRefreshAdminStorage: () -> Unit = {},
     onOpenTrashFromWarning: () -> Unit = {},
@@ -195,6 +198,7 @@ fun FileBrowserScreen(
         browserScrollContextKey(state.locations.lastOrNull()?.id, trashMode, displayMode)
     val savedAnchor = state.scrollAnchors[scrollContextKey]
     val layoutEntryIds = browserLayoutEntryIds(visibleEntries, trashMode, displayMode)
+    val currentLayoutEntryIds by rememberUpdatedState(layoutEntryIds)
     val initialIndex = savedAnchor?.resolveIndex(layoutEntryIds) ?: 0
     val initialOffset = savedAnchor?.offset ?: 0
     val listState =
@@ -205,7 +209,7 @@ fun FileBrowserScreen(
         rememberSaveable(scrollContextKey, saver = LazyGridState.Saver) {
             LazyGridState(initialIndex, initialOffset)
         }
-    LaunchedEffect(scrollContextKey, layoutEntryIds, savedAnchor) {
+    LaunchedEffect(scrollContextKey) {
         val anchor = savedAnchor ?: return@LaunchedEffect
         if (layoutEntryIds.isEmpty()) return@LaunchedEffect
         val targetIndex = anchor.resolveIndex(layoutEntryIds)
@@ -215,16 +219,54 @@ fun FileBrowserScreen(
             listState.scrollToItem(targetIndex, anchor.offset)
         }
     }
+    LaunchedEffect(returnTargetId, scrollContextKey, layoutEntryIds) {
+        val targetId = returnTargetId ?: return@LaunchedEffect
+        val targetIndex = layoutEntryIds.indexOf(targetId)
+        if (targetIndex < 0) return@LaunchedEffect
+        if (displayMode == BrowserDisplayMode.GRID && !trashMode) {
+            gridState.scrollToItem(targetIndex)
+        } else {
+            listState.scrollToItem(targetIndex)
+        }
+        onScrollAnchor(displayMode, targetIndex, 0, targetId)
+        onReturnTargetConsumed()
+    }
     LaunchedEffect(scrollContextKey, displayMode) {
         if (displayMode == BrowserDisplayMode.GRID && !trashMode) {
             snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
                 .distinctUntilChanged()
-                .collect { (index, offset) -> onScrollAnchor(displayMode, index, offset, layoutEntryIds.getOrNull(index)) }
+                .collect { (index, offset) ->
+                    onScrollAnchor(displayMode, index, offset, currentLayoutEntryIds.getOrNull(index))
+                }
         } else {
             snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
                 .distinctUntilChanged()
-                .collect { (index, offset) -> onScrollAnchor(displayMode, index, offset, layoutEntryIds.getOrNull(index)) }
+                .collect { (index, offset) ->
+                    onScrollAnchor(displayMode, index, offset, currentLayoutEntryIds.getOrNull(index))
+                }
         }
+    }
+    LaunchedEffect(scrollContextKey, displayMode, state.canLoadMore, state.loading) {
+        if (!state.canLoadMore || state.loading) return@LaunchedEffect
+        val lastVisibleIndex =
+            if (displayMode == BrowserDisplayMode.GRID && !trashMode) {
+                snapshotFlow {
+                    gridState.layoutInfo.visibleItemsInfo
+                        .lastOrNull()
+                        ?.index ?: -1
+                }
+            } else {
+                snapshotFlow {
+                    listState.layoutInfo.visibleItemsInfo
+                        .lastOrNull()
+                        ?.index ?: -1
+                }
+            }
+        lastVisibleIndex
+            .distinctUntilChanged()
+            .collect { index ->
+                if (index >= currentLayoutEntryIds.lastIndex - PAGE_PREFETCH_DISTANCE) onLoadMore()
+            }
     }
     KuraAppScaffold(
         topBar = {
@@ -292,6 +334,14 @@ fun FileBrowserScreen(
                     message = it.message,
                     status = KuraStatus.ERROR,
                     action = { TextButton(onClick = onRefresh) { Text("Try again") } },
+                )
+            }
+            state.paginationError?.let {
+                KuraStatusPanel(
+                    title = "More files could not be loaded",
+                    message = "Your current position and loaded files were kept.",
+                    status = KuraStatus.WARNING,
+                    action = { TextButton(onClick = onLoadMore) { Text("Retry") } },
                 )
             }
             state.folderUploadError?.let {
@@ -505,6 +555,8 @@ fun FileBrowserScreen(
         )
     }
 }
+
+private const val PAGE_PREFETCH_DISTANCE = 4
 
 @Composable
 private fun ThumbnailSummaryPanel(

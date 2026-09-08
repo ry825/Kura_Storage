@@ -24,15 +24,9 @@ class MediaModelsTest {
     }
 
     @Test
-    fun `variant resolver applies quality only to images and fixes video to original`() {
-        assertEquals(MediaVariant.IMAGE_LOW, MediaVariantResolver.resolve(MediaKind.IMAGE, MediaQuality.LOW))
-        MediaQuality.entries.forEach { quality ->
-            assertEquals(MediaVariant.ORIGINAL, MediaVariantResolver.resolve(MediaKind.VIDEO, quality))
-        }
-        assertEquals(MediaVariant.ORIGINAL, MediaVariantResolver.resolve(MediaKind.AUDIO, MediaQuality.ORIGINAL))
-        assertThrows(IllegalArgumentException::class.java) {
-            MediaVariantResolver.resolve(MediaKind.PDF, MediaQuality.LOW)
-        }
+    fun `photo display mode resolves independently from video and PDF variants`() {
+        assertEquals(MediaVariant.IMAGE_LOW, MediaVariantResolver.resolvePhoto(PhotoDisplayMode.FAST))
+        assertEquals(MediaVariant.ORIGINAL, MediaVariantResolver.resolvePhoto(PhotoDisplayMode.ORIGINAL))
     }
 
     @Test
@@ -48,7 +42,7 @@ class MediaModelsTest {
 
     @Test
     fun `wire values and unknown job states map without guessing`() {
-        assertEquals(MediaVariant.IMAGE_MEDIUM, MediaVariant.fromWireValue("image-medium"))
+        assertEquals(null, MediaVariant.fromWireValue("image-medium"))
         assertEquals(null, MediaVariant.fromWireValue("future"))
         assertEquals(MediaJobStatus.UNKNOWN, MediaJobStatus.fromWireValue("FUTURE"))
         assertEquals(

@@ -15,7 +15,8 @@ public sealed class MediaJob
         Guid derivativeId,
         DerivativeType jobType,
         Guid requestedByUserId,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        MediaJobOrigin origin = MediaJobOrigin.InteractiveRepair)
     {
         if (id == Guid.Empty || derivativeId == Guid.Empty || requestedByUserId == Guid.Empty)
         {
@@ -27,10 +28,17 @@ public sealed class MediaJob
             throw new ArgumentOutOfRangeException(nameof(jobType));
         }
 
+        if (!Enum.IsDefined(origin))
+        {
+            throw new ArgumentOutOfRangeException(nameof(origin));
+        }
+
         Id = id;
         DerivativeId = derivativeId;
         JobType = jobType;
         RequestedByUserId = requestedByUserId;
+        Origin = origin;
+        Priority = PriorityFor(origin);
         Status = MediaJobStatus.Queued;
         AvailableAt = now;
         CreatedAt = now;
@@ -46,6 +54,10 @@ public sealed class MediaJob
     public MediaJobStatus Status { get; private set; }
 
     public Guid RequestedByUserId { get; private set; }
+
+    public MediaJobOrigin Origin { get; private set; }
+
+    public int Priority { get; private set; }
 
     public int AttemptCount { get; private set; }
 
@@ -171,6 +183,14 @@ public sealed class MediaJob
             2 => TimeSpan.FromMinutes(2),
             _ => throw new ArgumentOutOfRangeException(nameof(attemptCount)),
         };
+
+    public static int PriorityFor(MediaJobOrigin origin) => origin switch
+    {
+        MediaJobOrigin.InteractiveRepair => 0,
+        MediaJobOrigin.Ingest => 10,
+        MediaJobOrigin.Backfill => 20,
+        _ => throw new ArgumentOutOfRangeException(nameof(origin)),
+    };
 
     private void EnsureWorker(Guid workerToken)
     {

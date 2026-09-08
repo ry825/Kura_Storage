@@ -35,6 +35,15 @@ public sealed class MediaJobRunner(
             return false;
         }
 
+        // Medium is a retired compatibility format. Old rows are removed by the
+        // dedicated purge command and must never publish a new physical output.
+        if (job.JobType == DerivativeType.ImageMedium)
+        {
+            await queue.TryFailAsync(
+                job.Id, workerToken, MediaErrorCodes.VariantUnsupported, retryable: false, clock.UtcNow, cancellationToken);
+            return true;
+        }
+
         var leaseOwnerToken = Guid.NewGuid();
         var context = await media.TryAcquireGenerationAsync(
             job.Id,
@@ -135,9 +144,10 @@ public sealed class MediaJobRunner(
                     operationStop.Token);
             }
 
-            DateTimeOffset? expiresAt = context.DerivativeType is DerivativeType.Thumbnail or DerivativeType.PdfThumbnail
+            DateTimeOffset? expiresAt = context.DerivativeType is
+                DerivativeType.Thumbnail or DerivativeType.PdfThumbnail or DerivativeType.ImageLow
                 ? null
-                : clock.UtcNow.AddHours(options.CacheTtlHours);
+                : clock.UtcNow.AddHours(options.VideoCacheTtlHours);
             try
             {
                 completed = await media.CompleteGenerationAsync(

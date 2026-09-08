@@ -113,13 +113,9 @@ public static class DependencyInjection
                     options.DeliveryLeaseRenewalSeconds > 0,
                 "Media lease settings are invalid.")
             .Validate(
-                options => options.CacheTtlHours > 0 && options.CacheHighWatermarkBytes > 0 &&
-                    options.CacheLowWatermarkBytes > 0 && options.CacheLowWatermarkBytes < options.CacheHighWatermarkBytes &&
-                    options.CleanupIntervalMinutes > 0 && options.CleanupManualPollSeconds is >= 1 and <= 60 &&
-                    options.CleanupRunLeaseMinutes is >= 1 and <= 1440 &&
-                    options.CleanupBatchSize is >= 1 and <= 500 &&
-                    options.TerminalJobRetentionDays > 0,
-                "Media cleanup settings are invalid.")
+                options => options.VideoCacheTtlHours > 0 && options.CleanupIntervalMinutes > 0 &&
+                    options.CleanupBatchSize is >= 1 and <= 500 && options.TerminalJobRetentionDays > 0,
+                "Media maintenance settings are invalid.")
             .Validate(
                 options => options.MaximumConcurrentMediaJobs == 1 &&
                     options.MaximumConcurrentVideoJobs == 1 &&
@@ -155,7 +151,8 @@ public static class DependencyInjection
         services.AddScoped<IMediaJobQueue, PostgreSqlMediaJobQueue>();
         services.AddScoped<IThumbnailJobSummaryRepository, PostgreSqlThumbnailJobSummaryRepository>();
         services.AddScoped<IMediaRepository, PostgreSqlMediaRepository>();
-        services.AddScoped<IMediaCleanupRepository, PostgreSqlMediaCleanupRepository>();
+        services.AddScoped<IMediaDerivativeStatusRepository, PostgreSqlMediaRepository>();
+        services.AddScoped<IMediaMaintenanceRepository, PostgreSqlMediaMaintenanceRepository>();
         services.AddSingleton<IMediaHeartbeat, PostgreSqlMediaHeartbeat>();
         services.AddSingleton<IMediaProcessRunner, MediaProcessRunner>();
         services.AddSingleton<IMediaWaiter, SystemMediaWaiter>();
@@ -188,11 +185,12 @@ public static class DependencyInjection
         services.AddScoped<TrashPurgeService>();
         services.AddScoped<TrashPurgeRunner>();
         services.AddScoped<ITrashPurgeRunner>(serviceProvider => serviceProvider.GetRequiredService<TrashPurgeRunner>());
+        services.AddScoped<StorageCapacityService>();
+        services.AddScoped<MediaDerivativeStatusService>();
         services.AddScoped(
             serviceProvider => new AdminStorageService(
                 serviceProvider.GetRequiredService<IFileRepository>(),
-                serviceProvider.GetRequiredService<IFileStore>(),
-                serviceProvider.GetRequiredService<IStorageGuard>(),
+                serviceProvider.GetRequiredService<StorageCapacityService>(),
                 serviceProvider.GetRequiredService<ISystemClock>(),
                 serviceProvider.GetRequiredService<TrashPurgeOptions>(),
                 serviceProvider.GetRequiredService<IOptions<StorageOptions>>().Value.CapacityWarningFreeBytes));
@@ -213,7 +211,7 @@ public static class DependencyInjection
                     DeliveryLeaseRenewalSeconds = configured.DeliveryLeaseRenewalSeconds,
                     GenerationLeaseSeconds = configured.GenerationLeaseSeconds,
                     JobHeartbeatSeconds = configured.JobHeartbeatSeconds,
-                    CacheTtlHours = configured.CacheTtlHours,
+                    VideoCacheTtlHours = configured.VideoCacheTtlHours,
                     MaximumConcurrentThumbnailJobs = configured.MaximumConcurrentThumbnailJobs,
                 };
             });
@@ -221,15 +219,10 @@ public static class DependencyInjection
             serviceProvider =>
             {
                 var configured = serviceProvider.GetRequiredService<IOptions<MediaOptions>>().Value;
-                return new MediaCleanupOptions
+                return new MediaMaintenanceOptions
                 {
                     IntervalMinutes = configured.CleanupIntervalMinutes,
-                    FailureBackoffMinutes = Math.Min(5, configured.CleanupIntervalMinutes),
-                    ManualRunPollSeconds = configured.CleanupManualPollSeconds,
-                    RunLeaseMinutes = configured.CleanupRunLeaseMinutes,
                     BatchSize = configured.CleanupBatchSize,
-                    CacheHighWatermarkBytes = configured.CacheHighWatermarkBytes,
-                    CacheLowWatermarkBytes = configured.CacheLowWatermarkBytes,
                     TerminalJobRetentionDays = configured.TerminalJobRetentionDays,
                 };
             });
@@ -246,12 +239,14 @@ public static class DependencyInjection
         services.AddScoped<RecentFileService>();
         services.AddScoped<OrganizationService>();
         services.AddScoped<PreviewService>();
+        services.AddScoped<RequiredPhotoDerivativeProvisioner>();
+        services.AddScoped<IRequiredPhotoDerivativeProvisioner>(serviceProvider =>
+            serviceProvider.GetRequiredService<RequiredPhotoDerivativeProvisioner>());
         services.AddScoped<ThumbnailJobSummaryService>();
         services.AddScoped<MediaJobRunner>();
         services.AddScoped<IMediaJobRunner>(serviceProvider => serviceProvider.GetRequiredService<MediaJobRunner>());
-        services.AddScoped<MediaCleanupService>();
-        services.AddScoped<IMediaCleanupService>(serviceProvider => serviceProvider.GetRequiredService<MediaCleanupService>());
-        services.AddScoped<AdminMediaCacheService>();
+        services.AddScoped<MediaMaintenanceService>();
+        services.AddScoped<IMediaMaintenanceService>(serviceProvider => serviceProvider.GetRequiredService<MediaMaintenanceService>());
         services.AddScoped<IUserStorageProvisioner, UserStorageProvisioner>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IRefreshTokenService, RefreshTokenService>();

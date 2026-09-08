@@ -27,11 +27,12 @@ public sealed class FileDerivativeConfiguration : IEntityTypeConfiguration<FileD
                     "(status IN ('BLOCKED_SOURCE_MISSING', 'DELETING') AND " +
                     "((size = 0 AND relative_path IS NULL) OR (size > 0 AND relative_path IS NOT NULL)))");
                 table.HasCheckConstraint(
-                    "ck_file_derivatives_thumbnail_expiry",
-                    "derivative_type NOT IN ('THUMBNAIL', 'PDF_THUMBNAIL') OR (expires_at IS NULL AND last_accessed_at IS NULL)");
+                    "ck_file_derivatives_persistent_expiry",
+                    "derivative_type NOT IN ('THUMBNAIL', 'PDF_THUMBNAIL', 'IMAGE_LOW') OR " +
+                    "(expires_at IS NULL AND last_accessed_at IS NULL)");
                 table.HasCheckConstraint(
                     "ck_file_derivatives_cache_expiry",
-                    "derivative_type IN ('THUMBNAIL', 'PDF_THUMBNAIL') OR status <> 'READY' OR " +
+                    "derivative_type IN ('THUMBNAIL', 'PDF_THUMBNAIL', 'IMAGE_LOW') OR status <> 'READY' OR " +
                     "(last_accessed_at IS NOT NULL AND expires_at > last_accessed_at)");
                 table.HasCheckConstraint(
                     "ck_file_derivatives_failed_error",
@@ -61,6 +62,7 @@ public sealed class FileDerivativeConfiguration : IEntityTypeConfiguration<FileD
         builder.Property(item => item.UpdatedAt).HasColumnName("updated_at");
         builder.Ignore(item => item.LogicalKey);
         builder.Ignore(item => item.IsThumbnail);
+        builder.Ignore(item => item.IsPersistent);
         builder.HasOne<FileEntry>()
             .WithMany()
             .HasForeignKey(item => item.SourceFileId)

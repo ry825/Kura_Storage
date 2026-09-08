@@ -420,7 +420,7 @@ Application Command / Query
 
 - `MediaGenerationWorker`
 - `ImageDerivativeWorker`
-- `MediaCleanupWorker`
+- `MediaMaintenanceWorker`
 - `IndexEventWorker`
 - `FullRescanWorker`
 - `OperationRecoveryWorker`
@@ -1240,20 +1240,18 @@ Worker本体、最大割当、画像処理、Library差分を含む余裕を維�
 
 ## 15. キャッシュ・保持期間
 
-### 15.1 MVP後: 低・中画質キャッシュ
+### 15.0 現行の写真Low保持方式（2026-09-07）
 
-- 最終アクセスから24時間保持する。
-- 合計10GBを超えた場合、LRU順に6GB以下まで削除する。
-- 清掃はWorker起動時と30分ごとに実行し、その各Runで期限と容量上限を確認する。
-- `PENDING`、`RUNNING`、有効Lease付きCacheは通常候補にしない。`DELETING`は専用復旧経路だけで再開する。
-- 配信中はLeaseを取得する。
-- 削除失敗は記録し、次回再試行する。
-- 固定PostgreSQL advisory lockで同時清掃を1実行にし、期限切れは最大100件、LRUは削除後に容量を再集計できるよう1件ずつ処理する。
-- Cache容量はDBのREADY行を集計し、HDD全走査を行わない。Workerは起動時と30分周期に実行し、terminal Media Jobは7日保持後に日次清掃する。
-- Admin Cache APIは`KuraStorage.Api`の`AdminOnly`境界で`AdminMediaCacheService`を呼び、`PostgreSqlMediaCleanupRepository`によるDB集計と永続Run登録だけを行う。HTTP Processは`IDerivativeStore`と`IMediaCleanupService`を介した物理削除を行わない。
-- `media_cleanup_runs`はmanual/scheduled、pending/running/completed/failed、requesting Admin ID、Idempotency key hash、payload fingerprint hash、worker token、lease、UTC日時、件数、解放Byte、残存Cache量、許可済みfailure codeを保持する。平文key、File名、物理Path、User表示名、自由形式Errorは保持しない。
-- Workerは`FOR UPDATE SKIP LOCKED`でmanual pendingとlease期限切れrunningをclaimし、worker token付き更新で最終状態を確定する。新規manual runの最大受理遅延を5秒以下とし、scheduled runは30分周期のDB状態として登録する。実際の清掃は共通`IMediaCleanupService`と固定PostgreSQL advisory lockが直列化する。
-- API/Worker/DBの境界は`AdminMediaCacheService -> IMediaCleanupRepository`と`MediaCleanupWorker -> IMediaCleanupService + IMediaCleanupRepository`に分ける。API統合Testで認証/認可/冪等性、PostgreSQL統合TestでMigration・集計・claim・lease回収・一意制約、Worker Testで復旧・ロック競合・失敗分類を検証する。
+写真`IMAGE_LOW`はCacheではなく、OriginalのFile ID/Versionに紐づく必須永続派生である。Upload、recovery、index event/scanはFile確定transaction内でLow Jobをstageし、Workerは長辺1,280 px・WebP品質70・拡大なしの既存profileでatomic publishする。`expires_at`/`last_accessed_at`はNULLとし、TTL/LRU/watermarkで削除しない。以下の15.1の写真Low/Mediumに関する旧記述と競合する場合は本節を優先する。旧動画派生と中間出力の保守基盤は移行完了まで維持する。
+
+Androidの表示選択は`FAST -> image-low`と`ORIGINAL -> original`の2状態とする。端末Coil cacheはServer/account/File ID/Version/variantでscopeし、起動時に全削除しない。
+
+### 15.1 派生データ保守とlegacy Medium移行
+
+- 写真`IMAGE_LOW`は期限・access時刻・watermarkの候補に含めない。配信中はLeaseを取得し、削除はSourceのPurge、または安全に確認された旧Version/Profile・orphanに限る。
+- Workerはstale generation、terminal Job、temporary/途中出力、`DELETING`、orphanを有界処理で回復する。物理削除前後にLeaseとDB状態を再確認し、失敗時にOriginalを変更しない。
+- 旧`IMAGE_MEDIUM`は通常の生成・配信対象から除外する。削除は`media medium purge --dry-run|--apply`だけが行い、type条件、generation/delivery lease、有界batch、再実行可能な状態遷移でMediumだけを対象にする。
+- Admin APIはread-onlyの`GET /api/v1/admin/media-derivatives`だけを公開する。旧Media Cache API、manual cleanup run、容量watermarkを新規運用の境界に含めない。
 
 ### 15.2 MVP後: サムネイル
 

@@ -18,7 +18,9 @@ export KURASTORAGE_RELEASE_KEY_ALIAS=kurastorage
 export KURASTORAGE_ANDROID_SIGNING_CERT_SHA256=SET_FROM_KEYTOOL_OUTPUT
 export KURASTORAGE_RELEASE_STORE_PASSWORD_FILE=/protected/store-password
 export KURASTORAGE_RELEASE_KEY_PASSWORD_FILE=/protected/key-password
-export KURASTORAGE_ANDROID_VERSION_CODE=1
+# Use a positive integer greater than every installed production APK's versionCode.
+# For example, devices with versionCode 29 require at least 30 for an upgrade install.
+export KURASTORAGE_ANDROID_VERSION_CODE=30
 ```
 
 Use real environment values locally; the documentation addresses above are
@@ -27,6 +29,29 @@ IANA examples. Generate artifacts into a Git-ignored absolute directory:
 ```bash
 ./scripts/ci/build-release.sh 0.1.0 /absolute/path/to/artifacts
 ```
+
+`KURASTORAGE_ANDROID_VERSION_CODE` is required. Choose a value greater than the
+currently distributed APK's `versionCode`; Android rejects downgrade installs.
+
+## Physical-device debug verification
+
+The debug variant normally embeds the repository's test endpoint and test Root
+CA. To verify a current source build against a real Local direct server without
+using the production signing key, explicitly supply the production **public**
+Root CA and all three network values. This produces `com.kurastorage.app.debug`;
+it does not replace or upgrade the production application.
+
+```bash
+./apps/android/gradlew -p apps/android \
+  -Pkurastorage.apiHostname=api.kurastorage.home.arpa \
+  -Pkurastorage.lanApiAddress=192.0.2.10 \
+  -Pkurastorage.zerotierApiAddress=198.51.100.10 \
+  -Pkurastorage.debugRootCaCertificate=/protected/root-ca.crt \
+  :app:assembleDebug
+```
+
+Do not commit the certificate or any production environment values. A debug APK
+is only for local verification and cannot substitute for the signed release APK.
 
 The command produces:
 

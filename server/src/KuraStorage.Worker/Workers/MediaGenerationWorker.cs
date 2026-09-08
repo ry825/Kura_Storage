@@ -92,23 +92,17 @@ public sealed class MediaGenerationWorker(
             {
                 try
                 {
-                    await derivativeStore.DeleteTemporaryAsync(
-                        candidate.JobId, candidate.Attempt, cancellationToken);
+                    await derivativeStore.DeleteTemporaryAsync(candidate.JobId, candidate.Attempt, cancellationToken);
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
-                    logger.LogWarning(
-                        exception,
-                        "Stale media temporary output cleanup failed for job {JobId} attempt {Attempt}.",
-                        candidate.JobId,
-                        candidate.Attempt);
+                    logger.LogWarning(exception, "Stale media temporary output cleanup failed for job {JobId} attempt {Attempt}.", candidate.JobId, candidate.Attempt);
                 }
             }
 
             metrics.RecordSnapshot(await queue.GetOperationalSnapshotAsync(now, cancellationToken), now);
             nextRecoveryAt = now.AddMinutes(1);
         }
-
         else
         {
             metrics.RecordIteration(now);

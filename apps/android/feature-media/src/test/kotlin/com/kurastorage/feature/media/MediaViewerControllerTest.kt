@@ -20,11 +20,11 @@ import com.kurastorage.core.model.media.MediaJobSnapshot
 import com.kurastorage.core.model.media.MediaJobStatus
 import com.kurastorage.core.model.media.MediaKind
 import com.kurastorage.core.model.media.MediaLoadState
-import com.kurastorage.core.model.media.MediaQuality
 import com.kurastorage.core.model.media.MediaUiError
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.NetworkQualityContext
 import com.kurastorage.core.model.media.OriginalMetadata
+import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.model.media.QualityPreferences
 import com.kurastorage.core.model.media.VariantMetadata
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,10 +46,10 @@ class MediaViewerControllerTest {
         runTest {
             val preferences =
                 QualityPreferences(
-                    localDirect = MediaQuality.ORIGINAL,
-                    registeredRemoteWifi = MediaQuality.MEDIUM,
-                    unregisteredRemoteWifi = MediaQuality.ORIGINAL,
-                    remoteMobile = MediaQuality.LOW,
+                    localDirect = PhotoDisplayMode.FAST,
+                    registeredRemoteWifi = PhotoDisplayMode.FAST,
+                    unregisteredRemoteWifi = PhotoDisplayMode.ORIGINAL,
+                    remoteMobile = PhotoDisplayMode.ORIGINAL,
                 )
             val cases =
                 listOf(
@@ -65,7 +65,7 @@ class MediaViewerControllerTest {
                         NetworkTransport.WIFI,
                         true,
                         NetworkQualityContext.REGISTERED_REMOTE_WIFI,
-                        MediaVariant.IMAGE_MEDIUM,
+                        MediaVariant.IMAGE_LOW,
                     ),
                     NetworkCase(
                         ConnectionRoute.REMOTE_SECURE,
@@ -124,12 +124,12 @@ class MediaViewerControllerTest {
                     repository,
                     ConnectionRoute.REMOTE_SECURE,
                     backgroundScope,
-                    preferences = QualityPreferences(remoteMobile = MediaQuality.LOW),
+                    preferences = QualityPreferences(remoteMobile = PhotoDisplayMode.FAST),
                 )
 
             controller.start("video", 4, MediaKind.VIDEO)
 
-            assertEquals(MediaQuality.ORIGINAL, controller.state.value?.quality)
+            assertEquals(PhotoDisplayMode.ORIGINAL, controller.state.value?.quality)
             assertEquals(MediaVariant.ORIGINAL, controller.state.value?.requestedVariant)
             assertTrue(controller.state.value?.loadState is MediaLoadState.ConfirmingTransfer)
             assertNull(controller.requestTicket())
@@ -261,13 +261,16 @@ class MediaViewerControllerTest {
             val low = controller.requestTicket()!!
             assertEquals(MediaVariant.IMAGE_LOW, low.source.variant)
 
-            controller.selectQuality(MediaQuality.MEDIUM)
-            val medium = controller.requestTicket()!!
+            controller.selectQuality(PhotoDisplayMode.ORIGINAL)
+            assertTrue(controller.state.value?.loadState is MediaLoadState.ConfirmingTransfer)
+            assertNull(controller.requestTicket())
+            controller.confirmOriginal()
+            val original = controller.requestTicket()!!
             controller.contentReady(low)
             assertTrue(controller.state.value?.loadState is MediaLoadState.Loading)
-            controller.contentReady(medium)
+            controller.contentReady(original)
             val ready = controller.state.value?.loadState as MediaLoadState.Ready
-            assertEquals(MediaVariant.IMAGE_MEDIUM, ready.source.variant)
+            assertEquals(MediaVariant.ORIGINAL, ready.source.variant)
         }
 
     @Test
@@ -276,7 +279,7 @@ class MediaViewerControllerTest {
             val repository =
                 FakeRepository().apply {
                     variantSizes[MediaVariant.IMAGE_LOW] = 1_024
-                    variantSizes[MediaVariant.IMAGE_MEDIUM] = 2_048
+                    variantSizes[MediaVariant.ORIGINAL] = 2_048
                 }
             val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
             controller.start("file", 4, MediaKind.IMAGE)
@@ -290,8 +293,10 @@ class MediaViewerControllerTest {
             )
             assertEquals("1 KB", controller.state.value?.displayedSizeLabel)
 
-            controller.selectQuality(MediaQuality.MEDIUM)
-            val medium = controller.requestTicket()!!
+            controller.selectQuality(PhotoDisplayMode.ORIGINAL)
+            assertTrue(controller.state.value?.loadState is MediaLoadState.ConfirmingTransfer)
+            controller.confirmOriginal()
+            val original = controller.requestTicket()!!
             assertEquals(
                 MediaVariant.IMAGE_LOW,
                 controller.state.value
@@ -314,9 +319,9 @@ class MediaViewerControllerTest {
                     ?.displayedSource
                     ?.variant,
             )
-            controller.contentReady(medium)
+            controller.contentReady(original)
             assertEquals(
-                MediaVariant.IMAGE_MEDIUM,
+                MediaVariant.ORIGINAL,
                 controller.state.value
                     ?.displayedSource
                     ?.variant,
@@ -369,7 +374,7 @@ class MediaViewerControllerTest {
 
             assertEquals(1, repository.retryRequests)
             assertTrue(controller.state.value?.loadState is MediaLoadState.Generating)
-            assertEquals(MediaQuality.LOW, controller.state.value?.quality)
+            assertEquals(PhotoDisplayMode.FAST, controller.state.value?.quality)
         }
 
     @Test
@@ -398,12 +403,12 @@ class MediaViewerControllerTest {
             val repository = FakeRepository()
             val controller = controller(repository, ConnectionRoute.REMOTE_SECURE, backgroundScope)
             controller.start("audio", 1, MediaKind.AUDIO)
-            assertEquals(MediaQuality.ORIGINAL, controller.state.value?.quality)
+            assertEquals(PhotoDisplayMode.ORIGINAL, controller.state.value?.quality)
             controller.cancelOriginalConfirmation()
             assertTrue(controller.state.value?.loadState is MediaLoadState.Idle)
             assertNull(controller.requestTicket())
 
-            controller.selectQuality(MediaQuality.ORIGINAL)
+            controller.selectQuality(PhotoDisplayMode.ORIGINAL)
             controller.confirmOriginal()
             val stale = checkNotNull(controller.requestTicket())
             controller.start("replacement", 2, MediaKind.IMAGE)
@@ -528,7 +533,7 @@ class MediaViewerControllerTest {
 
         override suspend fun update(
             context: com.kurastorage.core.model.media.NetworkQualityContext,
-            quality: MediaQuality,
+            quality: PhotoDisplayMode,
         ) = Unit
     }
 

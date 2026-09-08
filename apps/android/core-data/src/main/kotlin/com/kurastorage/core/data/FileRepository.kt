@@ -7,9 +7,11 @@ import com.kurastorage.core.model.FileEntry
 import com.kurastorage.core.model.FileEntryStatus
 import com.kurastorage.core.model.FileEntryType
 import com.kurastorage.core.model.FilePage
+import com.kurastorage.core.model.KuraStorageException
 import com.kurastorage.core.model.OwnerSummary
 import com.kurastorage.core.model.PermissionSource
 import com.kurastorage.core.model.SharePermission
+import com.kurastorage.core.model.StorageCapacityStatus
 import com.kurastorage.core.model.TrashPurgeRunSummary
 import com.kurastorage.core.model.UserRole
 import com.kurastorage.core.network.AdminStorageApi
@@ -19,6 +21,8 @@ import com.kurastorage.core.network.FileApi
 import com.kurastorage.core.network.FileEntryDto
 import com.kurastorage.core.network.FileEntryPageDto
 import com.kurastorage.core.network.NetworkCallResult
+import com.kurastorage.core.network.StorageCapacityApi
+import com.kurastorage.core.network.StorageCapacityStatusDto
 import com.kurastorage.core.network.UpdateFileRequestDto
 import java.time.Instant
 
@@ -135,6 +139,24 @@ interface AdminStorageRepository {
     suspend fun get(): AdminStorageStatus?
 }
 
+interface StorageCapacityRepository {
+    suspend fun get(): StorageCapacityStatus
+}
+
+class DefaultStorageCapacityRepository(
+    private val api: StorageCapacityApi,
+    private val executor: AuthenticatedRequestExecutor,
+) : StorageCapacityRepository {
+    override suspend fun get(): StorageCapacityStatus =
+        executor
+            .execute { token ->
+                when (val result = api.getStorageCapacity(token)) {
+                    is NetworkCallResult.Success -> AuthenticatedCallResult.Success(result.value)
+                    NetworkCallResult.Unauthorized -> AuthenticatedCallResult.Unauthorized
+                }
+            }.toModel()
+}
+
 class DefaultAdminStorageRepository(
     private val api: AdminStorageApi,
     private val executor: AuthenticatedRequestExecutor,
@@ -164,9 +186,10 @@ class FilePager(
         val existing = current ?: return refresh()
         if (!existing.hasNextPage) return existing
         val next = loadPage(existing.page + 1)
+        if (next.page != existing.page + 1) throw KuraStorageException.InvalidServerResponse()
         return existing
             .copy(
-                items = existing.items + next.items,
+                items = (existing.items + next.items).distinctBy(FileEntry::id),
                 page = next.page,
                 totalCount = next.totalCount,
             ).also { current = it }
@@ -222,3 +245,25 @@ internal fun AdminStorageStatusDto.toModel() =
                 )
             },
     )
+
+internal fun StorageCapacityStatusDto.toModel(): StorageCapacityStatus {
+    val responseTotalBytes = totalBytes
+    val responseUsedBytes = usedBytes
+    val responseAvailableBytes = availableBytes
+    val responseValues = listOf(responseTotalBytes, responseUsedBytes, responseAvailableBytes)
+    val allValuesAreNonNegative = responseValues.all { it != null && it >= 0 }
+    val valid =
+        when (storage) {
+            "AVAILABLE" ->
+                allValuesAreNonNegative &&
+                    checkNotNull(responseUsedBytes) <= checkNotNull(responseTotalBytes) &&
+                    checkNotNull(responseAvailableBytes) <= checkNotNull(responseTotalBytes) &&
+                    checkNotNull(responseUsedBytes) == checkNotNull(responseTotalBytes) -
+                    checkNotNull(responseAvailableBytes)
+            "UNAVAILABLE" ->
+                responseTotalBytes == null && responseUsedBytes == null && responseAvailableBytes == null
+            else -> false
+        }
+    if (!valid) throw KuraStorageException.InvalidServerResponse()
+    return StorageCapacityStatus(storage, responseTotalBytes, responseUsedBytes, responseAvailableBytes)
+}
