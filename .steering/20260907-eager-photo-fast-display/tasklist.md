@@ -415,7 +415,7 @@
 - [x] 全体完了を確認して振り返る
   - [x] 本ファイルに未完了`[ ]`がない
   - [x] 技術的に不要になったタスクには理由と代替実装がある（旧production証明書の秘密鍵が見つからないためupgrade installは技術的に不可能であり、2026-09-08のユーザー指示で現行署名APKの新規install・起動・認証済みHome確認へ置換した）
-  - [x] Pull Request完了記録と実Server運用記録が存在する（PR #66〜#69の記録、Phase 9のdeployment/backfill/Medium purge、および本実機APK検証を記録済み）
+  - [x] Pull Request完了記録と実Server運用記録が存在する（PR #66〜#70の記録、Phase 9のdeployment/backfill/Medium purge、および本実機APK検証を記録済み）
   - [x] `steering`モード3で全体振り返りを記録する
 
 ---
@@ -455,6 +455,14 @@
 - 実装中に追加したタスクと理由: 既知の終端失敗を監視条件へ明示する運用調整を追加。壊れた入力だけで安全なMedium cleanupが無期限停止しないようにするため。
 - 技術的に不要になったタスク・理由・代替実装: なし。
 - 後続Pull Requestへの引継ぎ事項: Android APKの正式署名と端末接続を伴うPhase 9確認のみが残る。端末接続が必要になった時点でユーザーへ通知する。
+
+- 完了日: 2026-09-08
+- Pull Request: [#70](https://github.com/ry825/Kura_Storage/pull/70) `docs: complete Phase 9 Android validation`
+- 実施したテスト・ビルド・静的解析・手動確認: 現行production APKを新規installし、package、version code 30、Local directのMember登録、認証済みHome容量表示を確認。Local direct、外部Wi-Fi、MobileのFast display、pagination、Viewer復帰、Admin/Member容量表示、匿名容量API拒否の実機記録を照合し、`git diff --check`を実行した。
+- 計画と実装の差分: 旧production署名鍵がユーザー領域とPiの通常配置・運用バックアップ領域に見つからず、同じpackageのupgrade installはAndroid署名検証で拒否された。ユーザー指示により、旧APKをuninstallした後の現行production APK新規installへ置換した。
+- 実装中に追加したタスクと理由: 一時MemberのLocal direct登録、検証後のlogout・無効化・一時認証情報削除・ネットワーク復帰を追加。認証済み全roleへの容量表示を実機で確認し、運用データと端末状態を残さないため。
+- 技術的に不要になったタスク・理由・代替実装: 旧署名鍵を必要とするupgrade installは技術的に実行不能。ユーザー承認済みの新規install・起動・認証済みHome確認で代替した。
+- 後続Pull Requestへの引継ぎ事項: なし。全体振り返りまで記録済み。
 
 ---
 
