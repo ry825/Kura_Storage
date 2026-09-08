@@ -93,6 +93,7 @@ public sealed class IndexEventService(
             {
                 await using var mutationLock = await mutationRepository.AcquireMutationLocksAsync(
                     [existing.Id], cancellationToken);
+                await using var transaction = await mutationRepository.BeginTransactionAsync(cancellationToken);
                 existing = await catalog.FindEntryByPathAsync(
                     observed.OwnerUserId, observed.RelativePath.Value, cancellationToken);
                 if (existing is null || existing.EntryType != observed.EntryType ||
@@ -128,6 +129,7 @@ public sealed class IndexEventService(
                         existing, MediaJobOrigin.Ingest, clock.UtcNow, cancellationToken);
                 }
                 await catalog.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
             }
             else
             {

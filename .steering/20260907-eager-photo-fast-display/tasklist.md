@@ -375,13 +375,14 @@
 
 > 単一Pull RequestがMergeされた後、ユーザーの続行指示と実行時確認を得て実施する。Source変更用の追加Pull Requestは通常作成しない。
 
-- [ ] 展開前Gateを確認する
-  - [ ] Pull Requestが`main`へMerge済みである
-  - [ ] Server/Database backupの直近成功を確認する
-  - [ ] Storage identity、read/write、atomic rename、空き容量、保護領域を確認する
-  - [ ] 実Serverが対象KuraStorage instanceであることを確認する
+- [x] 展開前Gateを確認する
+  - [x] Pull Requestが`main`へMerge済みである（PR #66 は 2026-09-08 02:55:45 UTC に `main` へMerge済み、全4 CI checkは成功）
+  - [x] Server/Database backupの直近成功を確認する（2026-09-08にmigration前のcustom-format PostgreSQL backupを作成し、SHA-256検証成功。73,983 bytes）
+  - [x] Storage identity、read/write、atomic rename、空き容量、保護領域を確認する（PiのexFAT Storage ID一致、read/write、同一filesystem rename成功、空き約760 GBを確認）
+  - [x] 実Serverが対象KuraStorage instanceであることを確認する（LAN `192.168.1.112`、`raspberrypi`、API/Worker/Nginx/PostgreSQL稼働、既存release `0.16.0-upload-media-backup-rc1`を確認）
 
 - [ ] Server展開とBackfillを完了する
+  - [ ] Backfill競合修正PRを作成・Merge・再展開する（実運用の小batchで`ux_file_derivatives_logical_key`競合を検出したため追加）
   - [ ] migration適用後にhealthと通常機能を確認する
   - [ ] dry-runで対象、再利用、容量予測を記録する
   - [ ] 小batchで開始しAPI/Upload/Backup/CPU/HDD IO/DB負荷を確認する
