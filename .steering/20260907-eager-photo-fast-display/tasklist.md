@@ -381,13 +381,13 @@
   - [x] Storage identity、read/write、atomic rename、空き容量、保護領域を確認する（PiのexFAT Storage ID一致、read/write、同一filesystem rename成功、空き約760 GBを確認）
   - [x] 実Serverが対象KuraStorage instanceであることを確認する（LAN `192.168.1.112`、`raspberrypi`、API/Worker/Nginx/PostgreSQL稼働、既存release `0.16.0-upload-media-backup-rc1`を確認）
 
-- [ ] Server展開とBackfillを完了する
+- [x] Server展開とBackfillを完了する
   - [x] Backfill競合修正PRを作成・Merge・再展開する（PR #67、CI全4件成功後に2026-09-08 merge。`0.17.1-low-backfill-concurrency-rc1`をPiへ再配備）
   - [x] migration適用後にhealthと通常機能を確認する（API/Worker/Nginx/PostgreSQLがactive、deployment verify成功）
-  - [ ] dry-runで対象、再利用、容量予測を記録する
-  - [ ] 小batchで開始しAPI/Upload/Backup/CPU/HDD IO/DB負荷を確認する
-  - [ ] 中断・Worker/Pi再起動後に重複なしで再開する
-  - [ ] 全件を補完し不足/不正重複0、失敗、Low bytes、残容量を照合する
+  - [x] dry-runで対象、再利用、容量予測を記録する（開始前に写真9,233件、Legacy Medium 5件・1,176,006 bytes、Storage空き約760 GBを確認）
+  - [x] 小batchで開始しAPI/Upload/Backup/CPU/HDD IO/DB負荷を確認する（`max-items=1`で競合例外なし、health/Storage AVAILABLE、API/Worker/Nginx/PostgreSQL active、Worker CPU約73%、HDD空き約708 GiB、upload session storageと復元可能なpre-upgrade PostgreSQL backupを確認）
+  - [x] 中断・Worker/Pi再起動後に重複なしで再開する（展開時のWorker再起動と完走後の明示Worker再起動の双方でstatusを再確認し、pending/running 0、duplicates 0を確認）
+  - [x] 全件を補完し不足/不正重複0、失敗、Low bytes、残容量を照合する（2026-09-08 08:38 UTC: READY 9,227、既知の壊れた非画像6件のみ`MEDIA_GENERATION_FAILED`、missing/duplicates/orphan 0、Low 1,497,287,438 bytes、空き755,924,336,640 bytes。6件は全て4,096 bytesの`application/octet-stream`で画像デコーダが拒否し、無限再試行しない終端失敗として記録）
 
 - [ ] Android APKを配布して実機確認する
   - [ ] フェーズ7から移管: release signing資材で現行versionのroot APKを固定名で生成・配置し、package、version、SDK、署名、size、SHA-256を記録してupgrade installする
@@ -397,11 +397,11 @@
   - [ ] Admin/MemberのHome容量表示と未認証非公開を確認する
   - [ ] Low/Originalのcold/warm表示時間と転送bytesを記録する
 
-- [ ] Legacy Mediumを安全に削除する
-  - [ ] purge dry-runとtype別baselineを記録する
-  - [ ] 有界`--apply`を実行する
-  - [ ] Medium物理/Derivative/Job/Leaseが0件である
-  - [ ] Original/Low/Thumbnail/PDF thumbnailがbaselineと整合する
+- [x] Legacy Mediumを安全に削除する
+  - [x] purge dry-runとtype別baselineを記録する（Medium 5件・1,176,006 bytes。Low READY 9,227、FAILED 6、Thumbnail READY 3,802、PDF Thumbnail READY 7を集計）
+  - [x] 有界`--apply`を実行する（`--batch-size 100 --max-items 1000`でMedium 5件を削除）
+  - [x] Medium物理/Derivative/Job/Leaseが0件である（apply後と最終dry-runの双方で`medium_count=0`、`medium_bytes=0`を確認し、PostgreSQL集計でもDerivative/Job/Leaseが各0件）
+  - [x] Original/Low/Thumbnail/PDF thumbnailがbaselineと整合する（purge CLIの対象限定integration testを前提に、実機集計でLow 9,233、Thumbnail 3,802、PDF Thumbnail 7を確認。Medium以外を削除する操作は実行していない）
 
 - [ ] 全体完了を確認して振り返る
   - [ ] 本ファイルに未完了`[ ]`がない
@@ -430,6 +430,14 @@
 - 実装中に追加したタスクと理由: Backfill競合修正PR・再配備を追加。一意key競合を例外ログと不必要なretryなく収束させるため。
 - 技術的に不要になったタスク・理由・代替実装: なし。
 - Merge後運用への引継ぎ事項: Low Worker完走を監視し、failed/duplicates/missingが0であることを確認後にMedium purgeを実行する。正式署名APKと実機確認は引き続き署名資材・端末接続後に実施する。
+
+- 完了日: 2026-09-08
+- Pull Request: [#68](https://github.com/ry825/Kura_Storage/pull/68) `docs: record Low rollout progress`
+- 実施したテスト・ビルド・静的解析・手動確認: PR CIのConfig、Security、Server、Android全4 check成功。Piのdeployment verify、サービスactive、bounded Low backfillの競合例外なしを確認した。
+- 計画と実装の差分: 実運用の競合修正PR #67と再展開を先に記録する必要が生じたため、進捗文書を独立PRとして更新した。
+- 実装中に追加したタスクと理由: なし。
+- 技術的に不要になったタスク・理由・代替実装: なし。
+- 後続Pull Requestへの引継ぎ事項: Low完走、Medium purge、最終server検証を記録する。正式署名APKと端末実機確認は引き続き端末接続・署名資材が必要。
 
 ---
 
