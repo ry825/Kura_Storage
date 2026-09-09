@@ -213,5 +213,4 @@ private val DECODER_ERROR_CODES =
         PlaybackException.ERROR_CODE_DECODING_FAILED,
     )
 
-private fun PlayerFailure?.isCodecUnsupported(): Boolean =
-    this == PlayerFailure.UNSUPPORTED_CODEC || this == PlayerFailure.DECODER
+private fun PlayerFailure?.isCodecUnsupported(): Boolean = this == PlayerFailure.UNSUPPORTED_CODEC || this == PlayerFailure.DECODER
