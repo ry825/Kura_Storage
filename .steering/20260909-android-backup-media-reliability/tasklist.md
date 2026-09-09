@@ -127,12 +127,12 @@
   - [x] 本tasklistの全実装・検証・清掃タスクが`[x]`であり、親タスクの完了条件を満たすことを確認する。
   - [x] 差分を確認し、対象外のユーザー変更、fixture、debug code、秘密情報、無関係なformat変更を含めない。
   - [x] 正式文書、OpenAPI、実装、Test、`docs/testing/`の結果が一致することを確認する。
-- [ ] 最終Commit、Push、単一Pull Requestを作成する。
-  - [ ] 1本のbranchに今回の変更だけをCommitし、remoteへPushする。
-  - [ ] `main`向けのPull Requestを1本だけ作成する。タイトル・本文は英語とし、Purpose、target tasks、changes、tests、fixture cleanup、impact/limitationsを記載する。
-  - [ ] CI成功を確認する。Coding agentはMergeしない。
-- [ ] Steeringスキルのモード3-Aで、下記「各Pull Request完了記録」へ作成日、PR URL、実施Test、E2E/実機結果、fixture清掃結果、影響/未実施事項を記録する。
-- [ ] 全タスクと単一PR完了記録が完了した後、Steeringスキルのモード3-Bで全体振り返りを追記する。
+- [x] 最終Commit、Push、単一Pull Requestを作成する。
+  - [x] 1本のbranchに今回の変更だけをCommitし、remoteへPushする。
+  - [x] `main`向けのPull Requestを1本だけ作成する。タイトル・本文は英語とし、Purpose、target tasks、changes、tests、fixture cleanup、impact/limitationsを記載する。
+  - [x] CI成功を確認する。Coding agentはMergeしない。
+- [x] Steeringスキルのモード3-Aで、下記「各Pull Request完了記録」へ作成日、PR URL、実施Test、E2E/実機結果、fixture清掃結果、影響/未実施事項を記録する。
+- [x] 全タスクと単一PR完了記録が完了した後、Steeringスキルのモード3-Bで全体振り返りを追記する。
 
 ## 各Pull Request完了記録
 
@@ -140,20 +140,20 @@
 
 ### PR 1: Android backup and media reliability improvements
 
-- 作成日: 未記入
-- Pull Request: 未記入
+- 作成日: 2026-09-09
+- Pull Request: https://github.com/ry825/Kura_Storage/pull/71
 - 対象タスク: フェーズ1〜9
-- Test/E2E/実機結果: 未記入
-- fixture清掃結果: 未記入
-- 影響・未実施事項: 未記入
+- Test/E2E/実機結果: Server/Android quality gate、PR CI全成功。実機Media3分類テスト成功。最終E2E再実行は端末APK install応答タイムアウト後にADB接続不可となったため、docs/testingに代替検証と理由を記録。
+- fixture清掃結果: exact manifestの3件のローカルfixtureを削除し、不存在を確認。server-side fixtureは未作成。
+- 影響・未実施事項: Coding agentはmergeしない。追加の物理端末によるCodec比較は端末利用不可のため未実施。
 
 ## 実装後の全体振り返り
 
 > すべてのタスクと上記の単一PRが完了した後に、Steeringスキルのモード3-Bで記入する。
 
-- 実装完了日: 未記入
-- 計画と実績の差分: 未記入
-- 新たに必要になったタスク: 未記入
-- 技術的理由で取消したタスクと代替実装: 未記入
-- 技術的な学び: 未記入
-- 次回への改善提案: 未記入
+- 実装完了日: 2026-09-09
+- 計画と実績の差分: CIで検出したktlint違反を修正して再実行した。
+- 新たに必要になったタスク: なし。
+- 技術的理由で取消したタスクと代替実装: 追加の物理端末Codec比較はADB接続不能のため、実機Media3分類テストと既存接続E2Eの記録で代替した。
+- 技術的な学び: Media3例外分類はAndroid runtime上のテストが必要で、JVM単体では時刻APIのモック制約がある。
+- 次回への改善提案: push前に変更ファイル全体のktlintを実行し、実機E2E前に端末のAPK install応答を確認する。
