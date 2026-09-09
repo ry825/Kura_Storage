@@ -113,6 +113,7 @@ class MediaPlayerViewModel(
     }
 
     fun retryPlayback() {
+        if (mutableState.value.player.error.isCodecUnsupported()) return
         activeTicket = null
         mutableState.update { it.copy(reconnecting = true) }
         viewModelScope.launch { mediaController.selectQuality(PhotoDisplayMode.ORIGINAL) }
@@ -234,4 +235,7 @@ class MediaPlayerViewModel(
             null,
             -> MediaUiError.UNKNOWN
         }
+
+    private fun PlayerFailure?.isCodecUnsupported(): Boolean =
+        this == PlayerFailure.UNSUPPORTED_CODEC || this == PlayerFailure.DECODER
 }

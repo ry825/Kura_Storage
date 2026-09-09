@@ -17,6 +17,28 @@ public sealed class MediaApiTests(PostgreSqlAuthFlowFixture fixture)
     : IClassFixture<PostgreSqlAuthFlowFixture>
 {
     [Fact]
+    public async Task RetryableThumbnailJobs_RequiresAuthenticationAndReturnsOnlyOpaqueJobFields()
+    {
+        var authenticated = await fixture.CreateAuthenticatedClientAsync(
+            $"thumbnail-retryable-{Guid.NewGuid():N}", "thumbnail-retryable-password");
+        using var client = authenticated.Client;
+
+        using (var response = await client.GetAsync("/api/v1/media/thumbnail-jobs/retryable"))
+        {
+            response.EnsureSuccessStatusCode();
+            using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+            Assert.Equal(JsonValueKind.Array, json.RootElement.ValueKind);
+            Assert.Empty(json.RootElement.EnumerateArray());
+        }
+
+        using var anonymous = fixture.Factory.CreateClient();
+        using var unauthorized = await anonymous.GetAsync("/api/v1/media/thumbnail-jobs/retryable");
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+        using var unauthorizedJson = await JsonDocument.ParseAsync(await unauthorized.Content.ReadAsStreamAsync());
+        Assert.Equal("AUTHENTICATION_REQUIRED", unauthorizedJson.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task ThumbnailJobSummary_RequiresAuthenticationReturnsOnlyCountsAndUsesErrorEnvelope()
     {
         var authenticated = await fixture.CreateAuthenticatedClientAsync(

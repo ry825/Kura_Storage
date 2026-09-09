@@ -728,6 +728,8 @@ interface BackupReceipt {
 
 `BackupReceipt`は`(userId, deviceId, localDocumentKey)`を一意にし、同じUserの別Deviceと端末文書Key空間を共有しない。UserとDeviceはAccess TokenとServer側Sessionから導出し、Client指定値をReceiptの認可根拠にしない。
 
+再インストールなどで現在DeviceにReceiptがない候補は、認証済みUser、現在の保存先Folder、同一`relativePath`、`ACTIVE`なRemote File、Size・更新時刻・SHA-256を照合する。異なるRemote Fileが複数残る場合、checksumが得られないまたは一致しない場合、現在のEdit権限がない場合は再関連付けしない。Remote Fileが一意で内容一致する場合だけ、Compareの同一transactionで現在Device／`localDocumentKey`のReceiptを作成して`ALREADY_UPLOADED`を返す。Compare結果はUploadの認可根拠にせず、Upload開始・完了時には現在の権限・状態・Versionを再検証する。
+
 ### 5.7 MVP後: 最近使用したファイル
 
 ```typescript
@@ -1921,6 +1923,12 @@ Content-Disposition: attachment; filename*=UTF-8''%E6%B2%96%E7%B8%84%E6%97%85%E8
 - Androidは失敗数を表示したまま利用者が当該バナーをDismissできる。待機中・生成中の件数がある場合は情報表示を継続し、`failedCount=0`を受けた後の新規失敗は再度案内する。
 - File ID、File名、Job ID、他Userの情報は返さない。認証・Session失効は共通`401`、予期しないServer障害は共通`500 INTERNAL_ERROR`のError envelopeを使用する。
 
+#### `GET /api/v1/media/thumbnail-jobs/retryable`
+
+- 明示 retry coordinator 専用に、認証済み利用者が現在閲覧できる最新の`FAILED`かつretry可能な`THUMBNAIL`または`PDF_THUMBNAIL` Jobを最大32件返す。
+- 応答は不透明な`jobId`、`retryAfterSeconds`、`retryable`だけとし、File ID、File名、Path、エラー詳細、Tokenは返さない。Job IDは画面表示、ログ、永続化キーに使用しない。
+- 各IDは既存の`POST /api/v1/media-jobs/{jobId}/retry`であらためて閲覧権限とVersionを検証する。取得結果はServer権限の代替ではない。
+
 #### `HEAD /api/v1/files/{fileId}/content?variant={variant}`
 
 `original`と`image-low`について、そのvariant自身のファイルサイズ、MIMEタイプ、Range対応を本文なしで確認する。完成済みの場合は`200`と`Content-Length`、`Content-Type`、`Accept-Ranges: bytes`を返す。派生データが未生成または生成中の場合は`202`と`X-Kura-Media-Job-Id`、`Location`、`Retry-After`を返し、元FileのSizeで代用しない。認証・認可・存在秘匿と生成失敗はGETと同じ型付きError契約を使用する。
@@ -2174,20 +2182,29 @@ Tags画面はServer順の本人Tag一覧、作成、名前変更、削除確認�
 
 ```json
 {
-  "uploadRequired": [
+  "items": [
     {
-      "localDocumentKey": "opaque-key",
-      "reason": "NEW",
-      "remoteFileId": null
+      "localDocumentKey": "uuid",
+      "decision": "ALREADY_UPLOADED",
+      "remoteFileId": "uuid",
+      "expectedRemoteFileVersion": 1,
+      "errorCode": null
     }
-  ],
-  "alreadyUploaded": []
+  ]
 }
 ```
 
 アップロード本体は通常のUpload Sessionを再利用し、開始Requestの`backup`へ
 `localDocumentKey`、`relativePath`、`modifiedAt`を付加する。UserとDeviceはAccess Tokenおよび
 サーバー側Sessionから取得し、クライアントが任意指定した`userId`や`deviceId`を信用しない。
+
+現在DeviceのReceiptがない再インストール候補は、認証済みUser、現在の保存先Folder、同一
+`relativePath`、`ACTIVE`なRemote File、現在のEdit権限、Size、更新時刻、SHA-256をCompare
+transaction内で再評価する。これらが一致するRemote Fileがちょうど1件の場合だけ、現在Deviceと
+`localDocumentKey`のReceiptを同じtransactionで確定して`ALREADY_UPLOADED`を返す。候補が複数、
+checksum不一致または不足、Trash/MISSING、権限消失の場合は既存File・Receiptを変更せず、通常の
+`NEW`または`BLOCKED_CURRENT_STATE`判断へ戻す。Compare応答はUpload権限を与えず、Upload開始・
+完了時にFolder権限、File状態、Version、Deviceを改めて検証する。
 
 ```json
 {

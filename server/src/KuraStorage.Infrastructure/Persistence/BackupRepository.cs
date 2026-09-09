@@ -1,6 +1,7 @@
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Backup;
 using KuraStorage.Domain.Backup;
+using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Identity;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -52,6 +53,30 @@ public sealed class BackupRepository(KuraStorageDbContext dbContext) : IBackupRe
             StringComparer.Ordinal);
     }
 
+    public async Task<IReadOnlyList<BackupReassociationCandidate>> ListReassociationCandidatesAsync(
+        Guid userId,
+        Guid destinationFolderId,
+        string relativePath,
+        CancellationToken cancellationToken)
+    {
+        var rows = await dbContext.BackupReceipts
+            .AsNoTracking()
+            .Where(receipt => receipt.UserId == userId && receipt.RelativePath == relativePath)
+            .Join(
+                dbContext.FileEntries.AsNoTracking(),
+                receipt => receipt.RemoteFileId,
+                entry => entry.Id,
+                (receipt, entry) => new { Receipt = receipt, Entry = entry })
+            .Where(row => row.Entry.ParentId == destinationFolderId &&
+                          row.Entry.EntryType == FileEntryType.File)
+            .Select(row => new BackupReassociationCandidate(
+                row.Receipt,
+                row.Entry.Status,
+                row.Entry.FileVersion))
+            .ToListAsync(cancellationToken);
+        return rows;
+    }
+
     public Task<BackupReceipt?> FindReceiptAsync(
         Guid userId,
         Guid deviceId,
@@ -73,6 +98,7 @@ public sealed class BackupRepository(KuraStorageDbContext dbContext) : IBackupRe
         catch (DbUpdateException exception)
             when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
+            dbContext.ChangeTracker.Clear();
             throw new FilePersistenceConflictException(exception);
         }
     }

@@ -2,6 +2,8 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using KuraStorage.Application.Abstractions;
+using KuraStorage.Application.Files;
+using KuraStorage.Application.Media;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Media;
 using Microsoft.EntityFrameworkCore;
@@ -198,6 +200,40 @@ public sealed class PostgreSqlMediaRepository(KuraStorageDbContext database) :
         var source = await database.FileEntries.AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == derivative.SourceFileId, cancellationToken);
         return source is null ? null : new MediaRequestSnapshot(source, derivative, job);
+    }
+
+    public async Task<IReadOnlyList<MediaRequestSnapshot>> FindRetryableThumbnailJobsAsync(
+        CancellationToken cancellationToken)
+    {
+        string[] retryableCodes =
+        {
+            FileErrorCodes.StorageUnavailable,
+            MediaErrorCodes.ToolUnavailable,
+            MediaErrorCodes.WorkerUnavailable,
+            MediaErrorCodes.CompletionUnknown,
+            "MEDIA_WORKER_STOPPED",
+            "MEDIA_WORKER_STALE",
+        };
+
+        // A bounded candidate set avoids exposing or scanning an unbounded job history.  The
+        // application service performs the per-user authorization check before returning IDs.
+        return await (
+            from job in database.MediaJobs.AsNoTracking()
+            join derivative in database.FileDerivatives.AsNoTracking() on job.DerivativeId equals derivative.Id
+            join source in database.FileEntries.AsNoTracking() on derivative.SourceFileId equals source.Id
+            where job.Status == MediaJobStatus.Failed &&
+                  (job.JobType == DerivativeType.Thumbnail || job.JobType == DerivativeType.PdfThumbnail) &&
+                  retryableCodes.Contains(job.ErrorCode!) &&
+                  source.Status == FileEntryStatus.Active &&
+                  source.FileVersion == derivative.SourceVersion &&
+                  !database.MediaJobs.Any(other =>
+                      other.DerivativeId == job.DerivativeId &&
+                      (other.UpdatedAt > job.UpdatedAt ||
+                       (other.UpdatedAt == job.UpdatedAt && other.Id.CompareTo(job.Id) > 0)))
+            orderby job.UpdatedAt, job.Id
+            select new MediaRequestSnapshot(source, derivative, job))
+            .Take(256)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<MediaGenerationContext?> TryAcquireGenerationAsync(

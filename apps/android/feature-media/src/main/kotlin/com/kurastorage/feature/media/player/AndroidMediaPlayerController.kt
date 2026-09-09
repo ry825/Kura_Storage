@@ -79,13 +79,15 @@ class AndroidMediaPlayerController(
 
                 override fun onPlayerError(error: PlaybackException) {
                     val generating = error.findCause<MediaGeneratingIOException>()
+                    val failure = error.takeIf { generating == null }?.let(::classifyPlaybackFailure)
                     mutableStates.value =
                         snapshot.copy(
                             phase = PlayerPhase.FAILED,
-                            error = if (generating == null) error.toFailure() else null,
+                            error = failure,
                             generatingJob = generating?.job,
                             playWhenReady = false,
                         )
+                    if (failure.isCodecUnsupported()) close()
                 }
             },
         )
@@ -165,33 +167,6 @@ class AndroidMediaPlayerController(
         return displayed.takeIf { it.isFinite() && it > 0f } ?: snapshot.videoAspectRatio
     }
 
-    private fun PlaybackException.toFailure(): PlayerFailure {
-        val dataError = findCause<MediaDataSourceIOException>()
-        return when {
-            dataError is MediaDataSourceIOException.Http && dataError.statusCode == 401 -> PlayerFailure.AUTHENTICATION
-            dataError is MediaDataSourceIOException.Http && dataError.statusCode in setOf(403, 404) -> PlayerFailure.PERMISSION
-            dataError is MediaDataSourceIOException.Http && dataError.statusCode == 409 -> PlayerFailure.FILE_CHANGED
-            dataError is MediaDataSourceIOException.Http && dataError.statusCode == 416 -> PlayerFailure.RANGE
-            dataError is MediaDataSourceIOException.InvalidRange -> PlayerFailure.RANGE
-            dataError is MediaDataSourceIOException.Network -> PlayerFailure.NETWORK
-            dataError is MediaDataSourceIOException.Incomplete -> PlayerFailure.INCOMPLETE
-            dataError is MediaDataSourceIOException.Http -> PlayerFailure.SERVER
-            errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> PlayerFailure.UNSUPPORTED_CODEC
-            errorCode in DECODER_ERROR_CODES -> PlayerFailure.DECODER
-            findCause<DataSourceException>() != null -> PlayerFailure.NETWORK
-            else -> PlayerFailure.UNKNOWN
-        }
-    }
-
-    private inline fun <reified T : Throwable> Throwable.findCause(): T? {
-        var current: Throwable? = this
-        while (current != null) {
-            if (current is T) return current
-            current = current.cause
-        }
-        return null
-    }
-
     private companion object {
         val PLAYER_URI: Uri = Uri.parse("kurastorage-media://selected")
         const val WIFI_MIN_BUFFER_MS = 15_000
@@ -201,11 +176,42 @@ class AndroidMediaPlayerController(
         const val PLAYBACK_BUFFER_MS = 1_500
         const val REBUFFER_MS = 3_000
         const val PROGRESS_TICK_MS = 500L
-        val DECODER_ERROR_CODES =
-            setOf(
-                PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-                PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
-                PlaybackException.ERROR_CODE_DECODING_FAILED,
-            )
     }
 }
+
+internal fun classifyPlaybackFailure(error: PlaybackException): PlayerFailure {
+    val dataError = error.findCause<MediaDataSourceIOException>()
+    return when {
+        dataError is MediaDataSourceIOException.Http && dataError.statusCode == 401 -> PlayerFailure.AUTHENTICATION
+        dataError is MediaDataSourceIOException.Http && dataError.statusCode in setOf(403, 404) -> PlayerFailure.PERMISSION
+        dataError is MediaDataSourceIOException.Http && dataError.statusCode == 409 -> PlayerFailure.FILE_CHANGED
+        dataError is MediaDataSourceIOException.Http && dataError.statusCode == 416 -> PlayerFailure.RANGE
+        dataError is MediaDataSourceIOException.InvalidRange -> PlayerFailure.RANGE
+        dataError is MediaDataSourceIOException.Network -> PlayerFailure.NETWORK
+        dataError is MediaDataSourceIOException.Incomplete -> PlayerFailure.INCOMPLETE
+        dataError is MediaDataSourceIOException.Http -> PlayerFailure.SERVER
+        error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> PlayerFailure.UNSUPPORTED_CODEC
+        error.errorCode in DECODER_ERROR_CODES -> PlayerFailure.DECODER
+        error.findCause<DataSourceException>() != null -> PlayerFailure.NETWORK
+        else -> PlayerFailure.UNKNOWN
+    }
+}
+
+private inline fun <reified T : Throwable> Throwable.findCause(): T? {
+    var current: Throwable? = this
+    while (current != null) {
+        if (current is T) return current
+        current = current.cause
+    }
+    return null
+}
+
+private val DECODER_ERROR_CODES =
+    setOf(
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED,
+    )
+
+private fun PlayerFailure?.isCodecUnsupported(): Boolean =
+    this == PlayerFailure.UNSUPPORTED_CODEC || this == PlayerFailure.DECODER

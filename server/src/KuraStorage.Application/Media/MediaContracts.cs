@@ -111,6 +111,8 @@ public sealed record ThumbnailJobSummaryView(
     long FailedCount,
     DateTimeOffset ObservedAt);
 
+public sealed record RetryableThumbnailJobView(Guid JobId, int RetryAfterSeconds, bool Retryable);
+
 public static class MediaContractRules
 {
     private static readonly Meter ContractMeter = new("KuraStorage.Media.Contracts");

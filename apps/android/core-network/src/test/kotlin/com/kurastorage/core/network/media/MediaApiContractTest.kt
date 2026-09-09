@@ -181,6 +181,21 @@ class MediaApiContractTest {
         }
 
     @Test
+    fun `retryable thumbnail jobs use the authenticated opaque retry endpoint`() =
+        runTest {
+            server.enqueue(jsonResponse("[{\"jobId\":\"$JOB_ID\",\"retryable\":true,\"retryAfterSeconds\":2}]"))
+
+            val result = api.retryableThumbnailJobs("retry-token") as NetworkCallResult.Success
+
+            assertEquals(1, result.value.size)
+            assertEquals(JOB_ID, result.value.single().jobId)
+            val request = server.takeRequest()
+            assertEquals("GET", request.method)
+            assertEquals("/api/v1/media/thumbnail-jobs/retryable", request.path)
+            assertEquals("Bearer retry-token", request.getHeader("Authorization"))
+        }
+
+    @Test
     fun `content request encodes identifiers and sends only selected variant and range`() {
         val call = api.contentRequest("token", "file/segment", MediaVariant.VIDEO_LOW, "bytes=10-19")
         val request = call.request()

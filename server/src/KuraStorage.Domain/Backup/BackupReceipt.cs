@@ -66,6 +66,12 @@ public sealed class BackupReceipt
         Size == metadata.Size && SourceModifiedAt == metadata.SourceModifiedAt &&
         (metadata.Checksum is null || string.Equals(Checksum, metadata.Checksum, StringComparison.Ordinal));
 
+    public bool MatchesContent(BackupDocumentMetadata metadata) =>
+        string.Equals(RelativePath, metadata.RelativePath, StringComparison.Ordinal) &&
+        Size == metadata.Size && SourceModifiedAt == metadata.SourceModifiedAt &&
+        metadata.Checksum is not null && Checksum is not null &&
+        string.Equals(Checksum, metadata.Checksum, StringComparison.Ordinal);
+
     public void UpdateCompletion(
         Guid remoteFileId,
         string relativePath,

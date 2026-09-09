@@ -93,7 +93,7 @@ public sealed class BackupCompareService(
         {
             if (!states.TryGetValue(item.LocalDocumentKey, out var state))
             {
-                results.Add(new BackupCompareItem(item.LocalDocumentKey, BackupCompareDecision.New, null, null, null));
+                results.Add(await ReassociateOrCreateAsync(command, item, cancellationToken));
                 continue;
             }
 
@@ -134,6 +134,71 @@ public sealed class BackupCompareService(
                 new KeyValuePair<string, object?>("decision", group.Key.ToString().ToLowerInvariant()));
         }
         return FileResult<BackupCompareResult>.Success(new BackupCompareResult(results));
+    }
+
+    private async Task<BackupCompareItem> ReassociateOrCreateAsync(
+        BackupCompareCommand command,
+        BackupDocumentMetadata item,
+        CancellationToken cancellationToken)
+    {
+        var candidates = await repository.ListReassociationCandidatesAsync(
+            command.UserId,
+            command.DestinationFolderId,
+            item.RelativePath,
+            cancellationToken);
+        var matching = candidates
+            .Where(candidate => candidate.RemoteFileStatus == FileEntryStatus.Active &&
+                                candidate.RemoteFileVersion == candidate.Receipt.RemoteFileVersion &&
+                                candidate.Receipt.MatchesContent(item))
+            .GroupBy(candidate => candidate.Receipt.RemoteFileId)
+            .Select(group => group.First())
+            .ToArray();
+        if (matching.Length != 1)
+        {
+            return new BackupCompareItem(item.LocalDocumentKey, BackupCompareDecision.New, null, null, null);
+        }
+
+        var candidate = matching[0];
+        var permission = await authorization.ResolveAsync(
+            command.UserId,
+            candidate.Receipt.RemoteFileId,
+            cancellationToken);
+        if (!permission.Allows(ShareOperation.Edit))
+        {
+            return new BackupCompareItem(item.LocalDocumentKey, BackupCompareDecision.New, null, null, null);
+        }
+
+        repository.Add(new BackupReceipt(
+            Guid.NewGuid(),
+            command.UserId,
+            command.DeviceId,
+            item.LocalDocumentKey,
+            candidate.Receipt.RemoteFileId,
+            item.RelativePath,
+            item.Size,
+            item.SourceModifiedAt,
+            item.Checksum,
+            candidate.RemoteFileVersion,
+            DateTimeOffset.UtcNow));
+        try
+        {
+            await repository.SaveChangesAsync(cancellationToken);
+        }
+        catch (FilePersistenceConflictException)
+        {
+            var raced = await repository.FindReceiptAsync(command.UserId, command.DeviceId, item.LocalDocumentKey, cancellationToken);
+            if (raced is null || raced.RemoteFileId != candidate.Receipt.RemoteFileId ||
+                raced.RemoteFileVersion != candidate.RemoteFileVersion || !raced.MatchesContent(item))
+            {
+                return new BackupCompareItem(item.LocalDocumentKey, BackupCompareDecision.New, null, null, null);
+            }
+        }
+        return new BackupCompareItem(
+            item.LocalDocumentKey,
+            BackupCompareDecision.AlreadyUploaded,
+            candidate.Receipt.RemoteFileId,
+            candidate.RemoteFileVersion,
+            null);
     }
 
     private static FileResult<BackupCompareResult> Invalid()

@@ -233,6 +233,54 @@ class FileBrowserScreenTest {
     }
 
     @Test
+    fun trashSelectionShowsCountConfirmationAndAccessibleControls() {
+        val document = file().copy(id = "document")
+        val album = folder("album", null, "Album")
+        var state by mutableStateOf(FileBrowserState(loading = false, entries = listOf(document, album)))
+        var submitted = 0
+        compose.setContent {
+            FileBrowserScreen(
+                state = state,
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onToggleTrashSelection = { entry ->
+                    state =
+                        state.copy(
+                            selectedForTrashIds =
+                                if (entry.id in state.selectedForTrashIds) {
+                                    state.selectedForTrashIds - entry.id
+                                } else {
+                                    state.selectedForTrashIds + entry.id
+                                },
+                        )
+                },
+                onTrashSelected = { submitted++ },
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithTag("trash-selection-document").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("trash-selection-album").assertIsDisplayed().performClick()
+        compose.onNodeWithText("2 selected for trash").assertIsDisplayed()
+        compose.onNodeWithTag("move-selection-to-trash").performClick()
+        compose.onNodeWithText("Move 2 item(s) to trash?").assertIsDisplayed()
+        compose.onNodeWithTag("confirm-trash-selection").performClick()
+        compose.runOnIdle { assertEquals(1, submitted) }
+    }
+
+    @Test
     fun uploadActionOffersFilesAndFolderChoices() {
         var choseFiles = false
         var choseFolder = false
@@ -1574,6 +1622,95 @@ class FileBrowserScreenTest {
         thumbnails.set(0)
         compose.onNodeWithContentDescription("Show as list").performClick()
         compose.runOnIdle { assertTrue(thumbnails.get() < 250) }
+    }
+
+    @Test
+    fun folderListShowsAccessibleScrollToTopOnlyAfterScrollingAndReturnsToFirstItem() {
+        val currentFolder = folder("album", null, "Album")
+        val entries = (0 until 80).map { index -> file().copy(id = "file-$index", name = "item-$index") }
+        compose.setContent {
+            FileBrowserScreen(
+                state =
+                    FileBrowserState(
+                        loading = false,
+                        entries = entries,
+                        locations =
+                            listOf(
+                                FolderLocation(null, "My files"),
+                                FolderLocation(currentFolder.id, currentFolder.name, currentFolder),
+                            ),
+                    ),
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onAllNodesWithTag("scroll-to-top").assertCountEquals(0)
+        compose.onNodeWithContentDescription("Show as list").performClick()
+        compose.onNodeWithTag("file-list").performScrollToIndex(40)
+        compose.onNodeWithContentDescription("Scroll to top").assertIsDisplayed().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("item-0").assertIsDisplayed()
+        compose.onAllNodesWithTag("scroll-to-top").assertCountEquals(0)
+    }
+
+    @Test
+    fun scrollToTopIsHiddenWhenTheCurrentFolderChanges() {
+        val firstFolder = folder("first", null, "First")
+        val secondFolder = folder("second", null, "Second")
+        val entries = (0 until 80).map { index -> file().copy(id = "file-$index", name = "item-$index") }
+        var state by
+            mutableStateOf(
+                FileBrowserState(
+                    loading = false,
+                    entries = entries,
+                    locations = listOf(FolderLocation(null, "My files"), FolderLocation(firstFolder.id, firstFolder.name, firstFolder)),
+                ),
+            )
+        compose.setContent {
+            FileBrowserScreen(
+                state = state,
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithContentDescription("Show as list").performClick()
+        compose.onNodeWithTag("file-list").performScrollToIndex(40)
+        compose.onNodeWithTag("scroll-to-top").assertIsDisplayed()
+        compose.runOnIdle {
+            state =
+                state.copy(
+                    locations = listOf(FolderLocation(null, "My files"), FolderLocation(secondFolder.id, secondFolder.name, secondFolder)),
+                )
+        }
+        compose.onAllNodesWithTag("scroll-to-top").assertCountEquals(0)
     }
 
     private fun sharedControlState(

@@ -81,11 +81,15 @@ class BackupTransferRepositoryTest {
 
             assertEquals(2, outcome.completedCount)
             assertEquals(5, outcome.transferredBytes)
-            assertEquals(SyncLifecycleState.COMPLETED, store.items.getValue(first.id).lifecycleState)
+            val reassociated = store.items.getValue(first.id)
+            assertEquals(SyncLifecycleState.COMPLETED, reassociated.lifecycleState)
+            assertEquals(remote.decisions.getValue(first.localDocumentKey).remoteFileId, reassociated.remoteFileId)
+            assertEquals(remote.decisions.getValue(first.localDocumentKey).expectedRemoteFileVersion, reassociated.remoteFileVersion)
             val uploaded = store.items.getValue(second.id)
             assertEquals(SyncLifecycleState.COMPLETED, uploaded.lifecycleState)
             assertEquals(5, uploaded.confirmedOffset)
             assertNotNull(uploaded.uploadSessionId)
+            assertEquals(1, remote.createdSessions)
             assertEquals(listOf(0L, 2L, 4L), remote.uploadedOffsets)
             assertTrue(metrics.all { it.toString().contains("first").not() && it.toString().contains("second").not() })
         }

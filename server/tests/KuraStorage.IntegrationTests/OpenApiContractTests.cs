@@ -25,6 +25,7 @@ public sealed class OpenApiContractTests
             "  /media-jobs/{jobId}:",
             "  /media-jobs/{jobId}/retry:",
             "  /media/thumbnail-jobs/summary:",
+            "  /media/thumbnail-jobs/retryable:",
             "  /trash:",
             "  /trash/{fileId}:",
             "  /files/{fileId}/restore:",
@@ -64,6 +65,8 @@ public sealed class OpenApiContractTests
         Assert.Contains("MediaJob:", contract, StringComparison.Ordinal);
         Assert.Contains("ThumbnailJobSummary:", contract, StringComparison.Ordinal);
         Assert.Contains("operationId: getThumbnailJobSummary", contract, StringComparison.Ordinal);
+        Assert.Contains("operationId: listRetryableThumbnailJobs", contract, StringComparison.Ordinal);
+        Assert.Contains("RetryableThumbnailJob:", contract, StringComparison.Ordinal);
         Assert.Contains("        retryable:", contract, StringComparison.Ordinal);
         Assert.Contains(
             "enum: [original, thumbnail, image-low]",

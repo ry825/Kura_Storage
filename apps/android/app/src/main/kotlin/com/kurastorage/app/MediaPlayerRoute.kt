@@ -9,14 +9,18 @@
 package com.kurastorage.app
 
 import android.content.pm.ActivityInfo
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -38,6 +42,7 @@ import com.kurastorage.feature.media.player.MediaPlayerScreen
 import com.kurastorage.feature.media.player.MediaPlayerViewModel
 import com.kurastorage.feature.media.player.MediaVideoSurface
 import com.kurastorage.feature.media.player.RepositoryMediaReadinessProbe
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun MediaPlayerRoute(
@@ -70,6 +75,18 @@ internal fun MediaPlayerRoute(
         )
     val state by playerViewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val downloadScope = rememberCoroutineScope()
+    val originalDownloadPicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(kind.downloadMimeType())) { uri ->
+            if (uri != null) {
+                downloadScope.launch {
+                    current.media.originalDownloader.download(
+                        fileId,
+                        ContentResolverPlayerDownloadTarget(context, uri),
+                    )
+                }
+            }
+        }
     val activity = context as? ComponentActivity
     val lifecycleOwner = LocalLifecycleOwner.current
     val mobile =
@@ -142,6 +159,10 @@ internal fun MediaPlayerRoute(
         onConfirmOriginal = playerViewModel::confirmOriginal,
         onCancelOriginal = playerViewModel::cancelOriginal,
         onRetryPlayback = playerViewModel::retryPlayback,
+        onDownloadOriginal = {
+            val file = state.file ?: return@MediaPlayerScreen
+            originalDownloadPicker.launch(file.name)
+        },
         onFullscreen = {
             if (fullscreen) {
                 exitFullscreen()
@@ -155,3 +176,20 @@ internal fun MediaPlayerRoute(
         },
     )
 }
+
+private class ContentResolverPlayerDownloadTarget(
+    private val context: android.content.Context,
+    private val destination: Uri,
+) : com.kurastorage.core.data.media.MediaDownloadTarget {
+    override fun openOutputStream() = context.contentResolver.openOutputStream(destination, "w")
+
+    override fun delete(): Boolean = context.contentResolver.delete(destination, null, null) > 0
+}
+
+private fun MediaKind.downloadMimeType(): String =
+    when (this) {
+        MediaKind.VIDEO -> "video/*"
+        MediaKind.AUDIO -> "audio/*"
+        MediaKind.IMAGE -> "image/*"
+        MediaKind.PDF -> "application/pdf"
+    }

@@ -88,6 +88,7 @@ fun MediaPlayerScreen(
     onConfirmOriginal: () -> Unit,
     onCancelOriginal: () -> Unit,
     onRetryPlayback: () -> Unit,
+    onDownloadOriginal: () -> Unit = {},
     onFullscreen: () -> Unit,
     fullscreen: Boolean = false,
     videoSurface: @Composable () -> Unit = {},
@@ -191,7 +192,7 @@ fun MediaPlayerScreen(
                     Text("Quality: Original")
                 }
 
-                PlayerStatus(state, load, onRetryPlayback)
+                PlayerStatus(state, load, onRetryPlayback, onDownloadOriginal)
 
                 if (state.kind != MediaKind.VIDEO) {
                     PlayerControls(state.player, onPlay, onPause, onSeek, onSkipBack, onSkipForward, onRate, onSeeking = {})
@@ -381,6 +382,7 @@ private fun PlayerStatus(
     state: MediaPlayerUiState,
     load: MediaLoadState?,
     onRetryPlayback: () -> Unit,
+    onDownloadOriginal: () -> Unit,
 ) {
     when (load) {
         MediaLoadState.Idle, MediaLoadState.Loading ->
@@ -400,11 +402,16 @@ private fun PlayerStatus(
                 "Media unavailable",
                 load.error.userMessage(),
                 KuraStatus.ERROR,
-                action = {
-                    Column(verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs)) {
-                        OutlinedButton(onClick = onRetryPlayback) { Text("Reconnect") }
-                    }
-                },
+                action =
+                    if (state.player.error.isCodecUnsupported()) {
+                        null
+                    } else {
+                        {
+                            Column(verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs)) {
+                                OutlinedButton(onClick = onRetryPlayback) { Text("Reconnect") }
+                            }
+                        }
+                    },
             )
         else -> Unit
     }
@@ -413,7 +420,19 @@ private fun PlayerStatus(
         PlayerPhase.ENDED -> KuraStatusPanel("Playback ended", "Replay starts from the beginning.", KuraStatus.NEUTRAL)
         else -> Unit
     }
-    state.player.error?.let { KuraStatusPanel("Playback stopped", it.userMessage(), KuraStatus.ERROR) }
+    state.player.error?.let { failure ->
+        KuraStatusPanel(
+            "Playback stopped",
+            failure.userMessage(),
+            KuraStatus.ERROR,
+            action =
+                if (failure.isCodecUnsupported()) {
+                    { OutlinedButton(onClick = onDownloadOriginal) { Text("Download original") } }
+                } else {
+                    null
+                },
+        )
+    }
     state.error?.let { KuraStatusPanel("Cannot play this file", it.userMessage(), KuraStatus.ERROR) }
 }
 
@@ -564,6 +583,8 @@ private fun PlayerFailure.userMessage(): String =
         PlayerFailure.UNSUPPORTED_CODEC, PlayerFailure.DECODER -> "This codec is not supported on this device. Automatic retry is disabled."
         PlayerFailure.UNKNOWN -> "Playback stopped safely because of an unexpected error."
     }
+
+private fun PlayerFailure?.isCodecUnsupported(): Boolean = this == PlayerFailure.UNSUPPORTED_CODEC || this == PlayerFailure.DECODER
 
 private fun formatDuration(milliseconds: Long): String {
     val seconds = milliseconds.coerceAtLeast(0) / 1_000

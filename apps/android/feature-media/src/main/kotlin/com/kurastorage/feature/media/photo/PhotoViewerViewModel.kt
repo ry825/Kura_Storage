@@ -13,6 +13,7 @@ import com.kurastorage.core.model.media.SupportedMediaMimeTypes
 import com.kurastorage.feature.media.MediaRequestTicket
 import com.kurastorage.feature.media.MediaViewerController
 import com.kurastorage.feature.media.MediaViewerState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,6 +45,7 @@ class PhotoViewerViewModel(
     private val candidates = orderedFileIds.distinct().ifEmpty { listOf(initialFileId) }
     private val mutableState = MutableStateFlow(PhotoViewerUiState())
     private var currentIndex = candidates.indexOf(initialFileId).coerceAtLeast(0)
+    private var navigationJob: Job? = null
     private var displayedSource: com.kurastorage.core.model.media.ReadyMediaSource? = null
 
     val state: StateFlow<PhotoViewerUiState> = mutableState.asStateFlow()
@@ -102,24 +104,26 @@ class PhotoViewerViewModel(
     fun next() = move(1)
 
     private fun move(delta: Int) {
-        viewModelScope.launch {
-            var target = currentIndex + delta
-            while (target in candidates.indices) {
-                val file = runCatching { files.detail(candidates[target]) }.getOrNull()
-                if (file?.isViewablePhoto() == true) {
-                    currentIndex = target
-                    show(file)
-                    return@launch
+        navigationJob?.cancel()
+        navigationJob =
+            viewModelScope.launch {
+                var target = currentIndex + delta
+                while (target in candidates.indices) {
+                    val file = runCatching { files.detail(candidates[target]) }.getOrNull()
+                    if (file?.isViewablePhoto() == true) {
+                        currentIndex = target
+                        show(file)
+                        return@launch
+                    }
+                    target += delta
                 }
-                target += delta
+                mutableState.update {
+                    it.copy(
+                        canGoPrevious = if (delta < 0) false else it.canGoPrevious,
+                        canGoNext = if (delta > 0) false else it.canGoNext,
+                    )
+                }
             }
-            mutableState.update {
-                it.copy(
-                    canGoPrevious = if (delta < 0) false else it.canGoPrevious,
-                    canGoNext = if (delta > 0) false else it.canGoNext,
-                )
-            }
-        }
     }
 
     private fun load(fileId: String) {

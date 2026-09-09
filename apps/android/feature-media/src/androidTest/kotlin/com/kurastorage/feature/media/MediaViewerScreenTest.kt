@@ -337,6 +337,8 @@ class MediaViewerScreenTest {
     @Test
     fun darkThemeLargeTextKeepsPrimaryPhotoOperationsReachable() {
         val photo = file("accessible", "image/jpeg")
+        var favoriteToggles = 0
+        var downloads = 0
         loader = imageLoader()
         val media =
             MediaViewerState(
@@ -371,8 +373,10 @@ class MediaViewerScreenTest {
                             onNext = {},
                             onZoom = {},
                             onDetails = {},
-                            onDownloadOriginal = {},
+                            onDownloadOriginal = { downloads++ },
                             onBack = {},
+                            organization = PhotoOrganizationUiState(loading = false, canAttach = true),
+                            onToggleFavorite = { favoriteToggles++ },
                         )
                     }
                 }
@@ -395,6 +399,13 @@ class MediaViewerScreenTest {
             .assertIsEnabled()
         compose.onNodeWithContentDescription("Full screen").performScrollTo().performClick()
         compose.onNodeWithTag("photo-fullscreen").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Add to favorites").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Manage photo tags").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Download original").assertIsDisplayed().performClick()
+        compose.runOnIdle {
+            assertEquals(1, favoriteToggles)
+            assertEquals(1, downloads)
+        }
         compose.onNodeWithContentDescription("Exit full screen").assertIsDisplayed().performClick()
         compose.onNodeWithTag("photo-fullscreen").assertDoesNotExist()
     }

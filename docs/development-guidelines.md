@@ -68,6 +68,8 @@
 - Backup APIのUserとDeviceはAccess TokenとServer側Sessionから導出し、Client指定のUser、Device、Owner、Remote File、完了時刻を認可やReceipt確定の根拠にしない。
 - `BackupReceipt`は`(user_id, device_id, local_document_key)`のDB一意制約で収束させる。`localDocumentKey`、相対Path、File名をLog、Metric label、例外detailへ出力しない。
 - Backup Compareは読取り処理とし、省略候補や端末削除からFileEntry・Receiptの削除を推測しない。Request件数、各文字列、総metadata量、重複Keyを境界で検証する。
+- 再インストール相当でReceipt未登録のCompare候補は、認証済みUser、現在Device、保存先Folder、同一相対Path、`ACTIVE` File、現在権限、Size・更新時刻・SHA-256を検証し、Remote Fileが一意なときだけ新Receiptをtransaction内で確定できる。候補の複数、checksum不一致・不足、Trash/MISSING、権限不成立では既存File・Receiptを変更しない。
+- Receipt未登録候補の照合と新Receipt確定は同じtransactionで行い、`(user_id, device_id, local_document_key)`の競合は既存Receiptを再読込して同じ結果へ収束させる。Compare結果をUploadの認可根拠にせず、Upload開始・完了時に現在のFolder権限、File状態、Version、Deviceを再評価する。
 - Backup付きUploadはCompare結果を権限根拠にせず、Session開始と完了の両方でFolder権限、File状態、期待Version、Device、Sessionを再検証する。同じ端末文書の保留SessionはDB一意制約で1件へ収束させる。
 - `NEW`のFileEntry公開と`CHANGED`のatomic replaceは、FileOperation、Version、UserActivity、Receiptを同じ確定境界へ参加させる。取消、未完了、Checksum失敗でReceiptを進めず、通信結果不明の再送でFileやVersionを増やさない。
 
@@ -526,11 +528,13 @@ sealed interface FileListUiState {
 - 401は既存の単一Flight Token refresh後に1回だけ再試行する。再発、Device／Session失効、権限消失では表示・再生を停止する。
 - 別HostへのRedirectへAuthorizationを転送しない。Media URLはClientが固定API Hostと型付きIDから組み立てる。
 - 一覧Thumbnailと写真LOW／MEDIUMの失敗時に元Fileを自動取得しない。
+- thumbnail failure dismissはSessionとfailure summary generationで型付けし、File名、Path、Job ID、例外detailをnotice、dismiss key、Log、metric labelへ含めない。retryable Jobはkeyごとにcoalesceし、指数backoff、回数上限、Serverの`Retry-After`を適用する。terminal failureまたは上限到達後は自動retryせず、明示Retryだけを既存の冪等APIへ送る。
 - 元写真はHEAD後に接続別初期品質として確認Dialogなしで取得できる。元動画はCellularの1 MiB以上またはSize不明、元音声とPDF本文は既定の通信量確認が完了するまでContent Requestを開始しない。
 - Coil Cache keyへSession scope、File ID、File Version、Variantを含め、Logout、Session失効、接続Route変更時にSession cacheを破棄する。
 - PDFはApp private cacheへ64KiB bufferでStreamingし、1 File 256MiB、Session合計512MiB、空き容量`Content-Length + 64MiB`、未参照TTL 1時間を強制する。部分File、Page、Bitmap、FileDescriptorを所有Lifecycleで閉じる。
 - 写真とPDFの表示Bitmapは1枚32MiB、長辺4096pxを上限とし、DecodeとRenderをMain threadで行わない。
 - Media3は1 Player／1 itemとし、動画・音声の3秒／10秒移動、0.5〜3.0倍速、単一Range Seekを実装する。Mobileの最大Bufferは15秒とし、次Mediaを自動準備しない。
+- Media3のdecoder/format failureは`CodecUnsupported`へ型変換し、network、Range、401/403、コンテンツ破損と混同しない。CodecUnsupportedではPlayerを停止・解放し、Server Media Job retryや自動再生retryを起動しない。外部IntentへToken、Authorization header、署名付きURLを渡さず、既存の認可済みDownload結果またはTokenなしの対応アプリIntentだけを使う。
 - 動画ContentのGET／Rangeを開始する前にOriginalのHEAD metadataとactive networkを確定し、Cellular上の1 MiB以上またはSize不明では明示確認を必須とする。PlayerはFile/versionが同じ再Compositionで再作成・再prepareせず、Lifecycle停止時にのみ適切に中断・破棄する。
 - 写真の品質変更は旧Sourceを新Sourceの準備完了まで保持し、失敗時は旧Sourceへ戻して元画質へFallbackしない。動画はOriginal固定で品質変更stateを持たない。
 - 動画Full screenは通常画面の`verticalScroll`から分離し、`fillMaxSize`のSurfaceとoverlayだけで構成する。system BackはFull screen解除を優先し、TalkBack focus、seek drag、一時停止、buffering、error中は必要な操作を勝手に隠さない。
@@ -789,6 +793,7 @@ Media派生処理ではPostgreSQLをJob状態の正とし、同一派生デー�
 
 - E2E開始前に既存User、File、Folder、Tag、Favorite、Share、Recent、Activity、Backup、Media job／派生データ、端末一時Fileの保護対象をread-onlyで記録する。
 - 作業固有run IDを使い、今回作成したresourceは作成直後にexact IDと種別だけをRepository外manifestへ追記する。Token、Password、SSID／BSSID、物理Path、本文、個人的なFile名をmanifestや証跡へ残さない。
+- fixtureは既存resourceを転用せず、正常・失敗・再試行の各状態を今回のrun IDで作成する。Codec非対応MP4を生成できない環境では、利用可能な隔離fixtureと端末decoder一覧で代替根拠を記録し、未対応形式を対応形式と偽って扱わない。
 - 清掃はmanifest membershipとexact IDを必須とし、wildcard、部分一致、親Folder全体、全件削除を禁止する。依存関係の逆順で削除し、各削除後に再取得して不存在を確認する。
 - 清掃後はbaselineの件数・ID・必要なchecksumと比較し、既存データ、未追跡データ、Server storage、端末private cacheに差分がないことを記録する。清掃失敗はテスト成功と分けて未完了として扱う。
 

@@ -189,6 +189,17 @@ data class ThumbnailJobSummary(
     }
 }
 
+/** Opaque server job identity used only by the in-memory thumbnail retry coordinator. */
+data class RetryableThumbnailJob(
+    val jobId: String,
+    val retryAfterSeconds: Int,
+) {
+    init {
+        require(jobId.isNotBlank())
+        require(retryAfterSeconds in 0..MAX_RETRY_AFTER_SECONDS)
+    }
+}
+
 data class OriginalMetadata(
     val size: ByteCount,
     val mimeType: String,

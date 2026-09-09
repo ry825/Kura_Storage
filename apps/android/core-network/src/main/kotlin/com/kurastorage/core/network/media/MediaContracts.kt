@@ -42,3 +42,10 @@ data class ThumbnailJobSummaryDto(
     val failedCount: Long,
     val observedAt: String,
 )
+
+@Serializable
+data class RetryableThumbnailJobDto(
+    val jobId: String,
+    val retryable: Boolean,
+    val retryAfterSeconds: Int,
+)

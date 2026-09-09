@@ -4,9 +4,11 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using KuraStorage.Domain.Transfers;
+using KuraStorage.Domain.Backup;
 using KuraStorage.Domain.Files;
 using KuraStorage.Domain.Indexing;
 using KuraStorage.Domain.Media;
+using KuraStorage.Domain.Sharing;
 using KuraStorage.Application.Abstractions;
 using KuraStorage.Application.Indexing;
 using KuraStorage.Application.Transfers;
@@ -166,6 +168,51 @@ public sealed class BackupApiTests(PostgreSqlAuthFlowFixture fixture)
         Assert.Contains("BACKUP_INVALID_REQUEST", body, StringComparison.Ordinal);
         Assert.DoesNotContain(key, body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("secret-name", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Compare_ReassociatesMatchingReceiptlessDocumentFromAnotherDeviceWithoutUpload()
+    {
+        var username = $"backup-reinstall-{Guid.NewGuid():N}";
+        var firstDevice = await fixture.CreateAuthenticatedClientAsync(username, "backup-password");
+        using var firstClient = firstDevice.Client;
+        var rootId = await GetRootIdAsync(firstClient);
+        var originalKey = Guid.NewGuid().ToString("D");
+        var content = new byte[] { 1, 2, 3, 4 };
+        var modifiedAt = new DateTimeOffset(2026, 9, 9, 0, 0, 0, TimeSpan.Zero);
+        var session = await CreateBackupSessionAsync(
+            firstClient, rootId, "reinstall.jpg", originalKey, "Photos/photo.jpg", content,
+            modifiedAt, "NEW", null, null);
+        var original = await UploadAndCompleteAsync(firstClient, session, content);
+        var remoteFileId = original.GetProperty("id").GetGuid();
+        await using (var beforeReinstallScope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var beforeReinstallDatabase = beforeReinstallScope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+            var receipt = await beforeReinstallDatabase.BackupReceipts.SingleAsync(item => item.RemoteFileId == remoteFileId);
+            Assert.Equal("Photos/photo.jpg", receipt.RelativePath);
+            Assert.Equal(Sha(content), receipt.Checksum);
+            Assert.Equal(modifiedAt, receipt.SourceModifiedAt);
+            Assert.Equal(rootId, (await beforeReinstallDatabase.FileEntries.SingleAsync(item => item.Id == remoteFileId)).ParentId);
+            var candidates = await beforeReinstallScope.ServiceProvider.GetRequiredService<IBackupRepository>()
+                .ListReassociationCandidatesAsync(receipt.UserId, rootId, receipt.RelativePath, CancellationToken.None);
+            Assert.True(Assert.Single(candidates).Receipt.MatchesContent(
+                new BackupDocumentMetadata(Guid.NewGuid().ToString("D"), receipt.RelativePath, content.LongLength, modifiedAt, Sha(content))));
+            Assert.True((await beforeReinstallScope.ServiceProvider.GetRequiredService<IAuthorizationService>()
+                .ResolveAsync(receipt.UserId, remoteFileId, CancellationToken.None)).Allows(ShareOperation.Edit));
+        }
+
+        var reinstalled = await fixture.CreateAuthenticatedClientAsync(username, "backup-password");
+        using var reinstalledClient = reinstalled.Client;
+        var reinstalledKey = Guid.NewGuid().ToString("D");
+        var compare = await CompareAsync(reinstalledClient, rootId, reinstalledKey, content, modifiedAt);
+
+        Assert.Equal("ALREADY_UPLOADED", compare.GetProperty("decision").GetString());
+        Assert.Equal(remoteFileId, compare.GetProperty("remoteFileId").GetGuid());
+        Assert.Equal(1, compare.GetProperty("expectedRemoteFileVersion").GetInt64());
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<KuraStorageDbContext>();
+        Assert.Equal(2, await database.BackupReceipts.CountAsync(receipt => receipt.RemoteFileId == remoteFileId));
+        Assert.Single(await database.FileEntries.Where(entry => entry.Id == remoteFileId).ToListAsync());
     }
 
     [Fact]
