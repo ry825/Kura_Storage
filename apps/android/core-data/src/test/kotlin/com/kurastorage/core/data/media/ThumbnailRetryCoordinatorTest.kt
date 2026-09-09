@@ -47,14 +47,25 @@ class ThumbnailRetryCoordinatorTest {
         }
 
         override suspend fun retryableThumbnailJobs() =
-            listOf(RetryableThumbnailJob("opaque-job", retryAfterSeconds = 5), RetryableThumbnailJob("opaque-job", 5))
+            listOf(
+                RetryableThumbnailJob("opaque-job", retryAfterSeconds = 5),
+                RetryableThumbnailJob("opaque-job", 5),
+            )
 
-        override suspend fun openContent(fileId: String, variant: MediaVariant, range: String?) = error("not used")
+        override suspend fun openContent(
+            fileId: String,
+            variant: MediaVariant,
+            range: String?,
+        ) = error("not used")
     }
 
-    private class MutableClock(var millis: Long = 0L) : Clock() {
+    private class MutableClock(
+        var millis: Long = 0L,
+    ) : Clock() {
         override fun getZone(): ZoneId = ZoneId.of("UTC")
+
         override fun withZone(zone: ZoneId): Clock = this
+
         override fun instant(): Instant = Instant.ofEpochMilli(millis)
     }
 }
