@@ -149,6 +149,15 @@
 
 PR作成時に記録する。
 
+### PR 1（2026-09-10）
+
+- PR: https://github.com/ry825/Kura_Storage/pull/72
+- 実施内容: 一括選択actionを折返し可能かつ48dp以上に変更し、写真全画面の下部操作へcontrast surfaceとnavigation bar insetを追加した。写真切替で全画面状態を維持し、PDF再オープン時に旧render job・documentを閉じるようにした。
+- 検証: `scripts/ci/verify-android.sh`（JDK 17、Android SDK API 36）成功。実機で一括選択の360dp・文字200%テスト、写真の全画面Swipe保持テスト、feature-media全27件（PDF rendererを含む）に成功。
+- 清掃: テスト専用Android packageを各実行後にアンインストールした。今回新規のUser、File、Folder、Tag、Favorite、Share、Backup、Media job、端末temporary fileは作成していない。既存データの削除は0件。
+- 計画との差分: 実サーバーfixtureを作らず、既存test doubleと端末上のCompose/PdfRenderer testで境界を検証した。サーバーAPI・認可・既存削除契約は変更していない。
+- 追加タスク・不要タスク・後続引継ぎ: なし。
+
 ## 全体振り返り
 
 すべてのタスクとPR完了記録が完了した後に記録する。
