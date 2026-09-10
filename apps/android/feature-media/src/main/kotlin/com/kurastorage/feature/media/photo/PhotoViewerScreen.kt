@@ -39,6 +39,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -146,7 +147,7 @@ fun PhotoViewerScreen(
     val readySource = media?.displayedSource
     var showTags by remember(file?.id) { mutableStateOf(false) }
     var offset by remember(file?.id, readySource) { mutableStateOf(Offset.Zero) }
-    var fullscreen by rememberSaveable(file?.id, file?.fileVersion, readySource) { mutableStateOf(false) }
+    var fullscreen by rememberSaveable { mutableStateOf(false) }
     val transformable =
         rememberTransformableState { zoomChange, panChange, _ ->
             onZoom(state.zoom * zoomChange)
@@ -206,12 +207,12 @@ fun PhotoViewerScreen(
                 onNext,
                 Modifier.fillMaxSize(),
             )
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(KuraTheme.spacing.sm).testTag("photo-fullscreen-actions"),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            ) {
             Row(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(KuraTheme.spacing.sm)
-                        .testTag("photo-fullscreen-actions"),
+                modifier = Modifier.padding(KuraTheme.spacing.xs),
                 horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -234,6 +235,7 @@ fun PhotoViewerScreen(
                         file != null && download.status !in setOf(PhotoDownloadStatus.CHOOSING_DESTINATION, PhotoDownloadStatus.SAVING),
                 ) { Text("↓") }
                 KuraIconButton("Exit full screen", { fullscreen = false }) { Text("×") }
+            }
             }
         }
     } else {

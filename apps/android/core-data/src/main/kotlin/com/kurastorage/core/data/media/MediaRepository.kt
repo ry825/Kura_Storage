@@ -89,13 +89,15 @@ class ReadyMediaContent internal constructor(
     fun copyTo(
         output: OutputStream,
         maximumBytes: Long,
+        bufferSize: Int = COPY_BUFFER_BYTES,
         onChunk: () -> Unit = {},
     ): Long {
         require(maximumBytes >= 0)
+        require(bufferSize > 0)
         val expected = contentLength
         if (expected != null && expected > maximumBytes) invalidResponse()
         var received = 0L
-        val buffer = ByteArray(COPY_BUFFER_BYTES)
+        val buffer = ByteArray(bufferSize)
         body.byteStream().use { input ->
             while (true) {
                 onChunk()
