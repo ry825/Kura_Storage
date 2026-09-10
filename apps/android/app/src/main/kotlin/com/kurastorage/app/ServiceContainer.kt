@@ -38,6 +38,7 @@ import com.kurastorage.core.data.media.MediaRepository
 import com.kurastorage.core.data.media.NetworkQualityContextResolver
 import com.kurastorage.core.data.media.QualityPreferenceStore
 import com.kurastorage.core.data.media.TemporaryPdfStore
+import com.kurastorage.core.data.media.ThumbnailRetryCoordinator
 import com.kurastorage.core.data.media.TransferConfirmationPolicy
 import com.kurastorage.core.database.backup.BackupDatabaseAccess
 import com.kurastorage.core.database.backup.createBackupDatabase
@@ -264,6 +265,7 @@ class ServiceContainer(
             originalDownloader = MediaOriginalDownloadCoordinator(downloader),
             imageLoader = MediaImageLoaderFactory.create(applicationContext, scopeId, repository),
             temporaryPdfStore = TemporaryPdfStore(applicationContext.cacheDir, scopeId, repository),
+            thumbnailRetryCoordinator = ThumbnailRetryCoordinator(repository),
             cleanupImageCache = { MediaImageLoaderFactory.cleanupSession(applicationContext, scopeId) },
         )
     }
@@ -327,6 +329,7 @@ class MediaSessionScope(
     val originalDownloader: MediaOriginalDownloadCoordinator,
     val imageLoader: ImageLoader,
     val temporaryPdfStore: TemporaryPdfStore,
+    val thumbnailRetryCoordinator: ThumbnailRetryCoordinator,
     private val cleanupImageCache: () -> Unit,
 ) : Closeable {
     val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -337,6 +340,7 @@ class MediaSessionScope(
         coroutineScope.cancel()
         imageLoader.shutdown()
         temporaryPdfStore.close()
+        thumbnailRetryCoordinator.clear()
     }
 
     fun clearCache() = cleanupImageCache()

@@ -243,6 +243,7 @@ public static class DependencyInjection
         services.AddScoped<IRequiredPhotoDerivativeProvisioner>(serviceProvider =>
             serviceProvider.GetRequiredService<RequiredPhotoDerivativeProvisioner>());
         services.AddScoped<ThumbnailJobSummaryService>();
+        services.AddScoped<RetryableThumbnailJobService>();
         services.AddScoped<MediaJobRunner>();
         services.AddScoped<IMediaJobRunner>(serviceProvider => serviceProvider.GetRequiredService<MediaJobRunner>());
         services.AddScoped<MediaMaintenanceService>();

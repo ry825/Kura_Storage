@@ -673,6 +673,8 @@ LIMIT 1;
 
 初回基盤は通知を使用せず500ms Pollingを正とする。取得時は安定順の`FOR UPDATE SKIP LOCKED`とTransaction advisory lockを併用し、Thumbnail Jobは設定された共通枠（既定2）までclaimする。写真Low／Medium等の非Thumbnail Media Jobは既定1の専用枠で実行し、動画Low／Medium Jobは新規作成しない。更新結果が不明な場合もJob ID、状態、Worker tokenを条件とする更新を再照会できる形に保つ。stale回収はHeartbeatが120秒を超え、activeな`GENERATION` LeaseがないJobだけを対象とする。
 
+Androidのthumbnail failure noticeはSession、failure summary generation、失敗件数だけをkeyにし、File名、Path、Job IDをkeyや画面表示へ含めない。dismissは同じSession内の同generationだけを抑止し、件数0、Session失効、Logout、File version変更で失効する。retry coordinatorはretryableなServer JobだけをJob key単位でcoalesceし、指数backoff、上限、`Retry-After`を守る。retry専用一覧は認可済みの不透明なJob IDだけを最大32件返せるが、Androidはそれを画面表示・ログ・永続化に使用しない。terminal failureおよび上限到達後はplaceholderを維持し、明示Retry以外でJobを再作成しない。
+
 ---
 
 ## 9. HDDストレージアーキテクチャ
@@ -900,6 +902,7 @@ Androidは`feature-media`、`feature-settings`と既存Core Moduleを使用す�
 - Coilは`scopeId:fileId:fileVersion:variant`をCache keyにした独自認証Fetcherを使用する。Memory cacheはHeapの10%かつ最大64MiB、Disk cacheはSessionごとに最大256MiBとする。
 - 写真の画質変更ではrequest generationを増加させ、現在generationとFile ID、File version、variantが一致する応答だけを表示Stateへ反映する。generationはCoilのCache keyへ含めず、同一Session・File version・variantの有効Cacheを再利用する。
 - Media3はOriginal固定の認証Header付き単一Range DataSourceを使用する。401時は既存の単一Flight Token refresh後に現在位置から1回だけ再構築し、再発時は再生を停止する。Cellularの1 MiB以上またはSize不明ではHEAD完了後の明示確認前にDataSourceをPlayerへ渡さない。
+- Media3のdecoder初期化・format非対応は`CodecUnsupported`として、network、HTTP Range、authentication/authorization、コンテンツ破損と型で区別する。CodecUnsupportedではPlayerを停止・解放し、自動retry、thumbnail retry、Server Media Job retryを始めない。代替導線は認可済みOriginalを既存Download coordinatorで保存するか、Tokenなしの安全な外部対応アプリIntentだけとする。
 - Playerは動画・音声とも3秒／10秒の戻る・進む、0.5〜3.0倍速を提供する。Mobileでは5〜15秒Buffer、Wi-Fiでは15〜50秒Bufferを初期値とし、Playlistは1件だけにする。
 - 動画は品質変更stateを持たずOriginalのFile ID／versionをPlayer identityとする。同一identityの再CompositionでPlayerまたはMediaItemを再生成しない。
 - variant選択と表示中Sourceを別stateとして所有する。各variantのHEAD metadataは`variant + contentLength + contentType + rangeSupport`を一組にし、request generationが一致するREADY結果だけが表示Sourceと表示Sizeをatomicに更新する。202や失敗時にOriginal metadataを代用しない。
@@ -950,6 +953,8 @@ Androidは`core-model`の対応MIME・Text／version Model、`core-network`のOp
 6. 新規内容は新しいFileEntryへ公開し、変更内容は検証済み一時ファイルを既存FileEntryへatomic replaceする。
 7. FileEntry、Upload Session、操作ジャーナル、BackupReceiptを同じDBトランザクションで確定する。
 8. Androidが保留キューを完了へ変更する。
+
+Receipt未登録の再インストール候補はCompare transaction内で、User、保存先Folder、相対Path、`ACTIVE` File、Version、Size、更新時刻、SHA-256を再評価する。候補Remote Fileが一意で同一内容の場合にのみ、`(user_id, device_id, local_document_key)`一意制約で新Receiptを確定して本文なし完了へ収束させる。競合・複数候補・認可消失・不正状態は既存FileとReceiptを変更せず通常Upload判断へ戻す。
 
 新規公開・atomic replace・その復旧のいずれも、物理File公開後に`IManagedFileSystemSnapshotReader.InspectAsync`で実Size、MIME、mtime、source file keyを読み取り、FileEntryと同じ完了transactionへ反映する。mtimeはPostgreSQLのマイクロ秒精度へ正規化し、直後の索引走査がKuraStorage自身の書込みを外部変更として再発行しないようにする。公開後の観測に失敗した場合は完了扱いにせず復旧必要状態に留める。
 

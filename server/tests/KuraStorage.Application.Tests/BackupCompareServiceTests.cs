@@ -127,16 +127,153 @@ public sealed class BackupCompareServiceTests
         Assert.Null(item.ExpectedRemoteFileVersion);
     }
 
+    [Fact]
+    public async Task Compare_ReassociatesOnlyOneAuthorizedMatchingReceiptlessCandidate()
+    {
+        var userId = Guid.NewGuid();
+        var currentDeviceId = Guid.NewGuid();
+        var previousDeviceId = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
+        var item = Candidate();
+        var repository = new FakeBackupRepository(folderId);
+        var remoteFileId = Guid.NewGuid();
+        repository.AddReassociationCandidate(
+            new BackupReceipt(
+                Guid.NewGuid(), userId, previousDeviceId, Guid.NewGuid().ToString("D"), remoteFileId,
+                item.RelativePath, item.Size, item.ModifiedAt, item.Checksum, 3, ModifiedAt),
+            FileEntryStatus.Active,
+            3);
+        var service = new BackupCompareService(repository, new AllowAuthorizationService(), new UploadSessionOptions());
+
+        var result = await service.CompareAsync(
+            new BackupCompareCommand(userId, currentDeviceId, folderId, [item]),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var compared = Assert.Single(result.Value!.Items);
+        Assert.Equal(BackupCompareDecision.AlreadyUploaded, compared.Decision);
+        Assert.Equal(remoteFileId, compared.RemoteFileId);
+        Assert.Equal(3, compared.ExpectedRemoteFileVersion);
+        var reassociated = Assert.Single(repository.AddedReceipts);
+        Assert.Equal(currentDeviceId, reassociated.DeviceId);
+        Assert.Equal(item.LocalDocumentKey, reassociated.LocalDocumentKey);
+        Assert.Equal(remoteFileId, reassociated.RemoteFileId);
+    }
+
+    [Fact]
+    public async Task Compare_DoesNotReassociateAmbiguousReceiptlessCandidates()
+    {
+        var userId = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
+        var item = Candidate();
+        var repository = new FakeBackupRepository(folderId);
+        foreach (var checksum in new[] { item.Checksum, item.Checksum })
+        {
+            repository.AddReassociationCandidate(
+                new BackupReceipt(
+                    Guid.NewGuid(), userId, Guid.NewGuid(), Guid.NewGuid().ToString("D"), Guid.NewGuid(),
+                    item.RelativePath, item.Size, item.ModifiedAt, checksum, 1, ModifiedAt),
+                FileEntryStatus.Active,
+                1);
+        }
+        var service = new BackupCompareService(repository, new AllowAuthorizationService(), new UploadSessionOptions());
+
+        var result = await service.CompareAsync(
+            new BackupCompareCommand(userId, Guid.NewGuid(), folderId, [item]),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(BackupCompareDecision.New, Assert.Single(result.Value!.Items).Decision);
+        Assert.Empty(repository.AddedReceipts);
+    }
+
+    [Fact]
+    public async Task Compare_DoesNotReassociateChecksumMismatchedReceiptlessCandidate()
+    {
+        var userId = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
+        var item = Candidate();
+        var repository = new FakeBackupRepository(folderId);
+        repository.AddReassociationCandidate(
+            new BackupReceipt(
+                Guid.NewGuid(), userId, Guid.NewGuid(), Guid.NewGuid().ToString("D"), Guid.NewGuid(),
+                item.RelativePath, item.Size, item.ModifiedAt, new string('b', 64), 1, ModifiedAt),
+            FileEntryStatus.Active,
+            1);
+        var service = new BackupCompareService(repository, new AllowAuthorizationService(), new UploadSessionOptions());
+
+        var result = await service.CompareAsync(
+            new BackupCompareCommand(userId, Guid.NewGuid(), folderId, [item]),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(BackupCompareDecision.New, Assert.Single(result.Value!.Items).Decision);
+        Assert.Empty(repository.AddedReceipts);
+    }
+
+    [Fact]
+    public async Task Compare_DoesNotReassociateReceiptlessCandidateWithoutChecksum()
+    {
+        var userId = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
+        var item = Candidate() with { Checksum = null };
+        var repository = new FakeBackupRepository(folderId);
+        repository.AddReassociationCandidate(
+            new BackupReceipt(
+                Guid.NewGuid(), userId, Guid.NewGuid(), Guid.NewGuid().ToString("D"), Guid.NewGuid(),
+                item.RelativePath, item.Size, item.ModifiedAt, new string('a', 64), 1, ModifiedAt),
+            FileEntryStatus.Active,
+            1);
+
+        var result = await new BackupCompareService(repository, new AllowAuthorizationService(), new UploadSessionOptions())
+            .CompareAsync(new BackupCompareCommand(userId, Guid.NewGuid(), folderId, [item]), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(BackupCompareDecision.New, Assert.Single(result.Value!.Items).Decision);
+        Assert.Empty(repository.AddedReceipts);
+    }
+
+    [Fact]
+    public async Task Compare_ReassociationConflictRereadsMatchingReceipt()
+    {
+        var userId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
+        var item = Candidate();
+        var remoteFileId = Guid.NewGuid();
+        var repository = new FakeBackupRepository(folderId) { ConflictOnNextSave = true };
+        repository.AddReassociationCandidate(
+            new BackupReceipt(Guid.NewGuid(), userId, Guid.NewGuid(), Guid.NewGuid().ToString("D"), remoteFileId,
+                item.RelativePath, item.Size, item.ModifiedAt, item.Checksum, 2, ModifiedAt),
+            FileEntryStatus.Active,
+            2);
+
+        var result = await new BackupCompareService(repository, new AllowAuthorizationService(), new UploadSessionOptions())
+            .CompareAsync(new BackupCompareCommand(userId, deviceId, folderId, [item]), CancellationToken.None);
+
+        var compared = Assert.Single(result.Value!.Items);
+        Assert.Equal(BackupCompareDecision.AlreadyUploaded, compared.Decision);
+        Assert.Equal(remoteFileId, compared.RemoteFileId);
+    }
+
     private static BackupCompareCandidate Candidate() =>
         new(Guid.NewGuid().ToString("D"), "Photos/file.jpg", 1, ModifiedAt, new string('a', 64));
 
     private sealed class FakeBackupRepository(Guid folderId) : IBackupRepository
     {
         private readonly Dictionary<string, BackupReceiptState> states = [];
+        private readonly List<BackupReassociationCandidate> reassociationCandidates = [];
 
         public Guid FolderId { get; } = folderId;
         public bool DeviceActive { get; set; } = true;
+        public bool ConflictOnNextSave { get; set; }
         public int ReadCount { get; private set; }
+        public List<BackupReceipt> AddedReceipts { get; } = [];
+
+        public void AddReassociationCandidate(
+            BackupReceipt receipt,
+            FileEntryStatus status,
+            long version) => reassociationCandidates.Add(new BackupReassociationCandidate(receipt, status, version));
 
         public void AddState(
             Guid userId,
@@ -185,14 +322,36 @@ public sealed class BackupCompareServiceTests
             CancellationToken cancellationToken) =>
             Task.FromResult(states.TryGetValue(localDocumentKey, out var state) ? state.Receipt : null);
 
-        public void Add(BackupReceipt receipt) => throw new NotSupportedException();
-        public Task SaveChangesAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<BackupReassociationCandidate>> ListReassociationCandidatesAsync(
+            Guid userId,
+            Guid destinationFolderId,
+            string relativePath,
+            CancellationToken cancellationToken)
+        {
+            ReadCount++;
+            return Task.FromResult<IReadOnlyList<BackupReassociationCandidate>>(
+                reassociationCandidates.Where(candidate =>
+                    candidate.Receipt.UserId == userId &&
+                    candidate.Receipt.RelativePath == relativePath).ToArray());
+        }
+
+        public void Add(BackupReceipt receipt) => AddedReceipts.Add(receipt);
+
+        public Task SaveChangesAsync(CancellationToken cancellationToken)
+        {
+            if (!ConflictOnNextSave) return Task.CompletedTask;
+
+            ConflictOnNextSave = false;
+            var receipt = AddedReceipts[^1];
+            states[receipt.LocalDocumentKey] = new BackupReceiptState(receipt, FileEntryStatus.Active, receipt.RemoteFileVersion);
+            throw new FilePersistenceConflictException(new InvalidOperationException("Simulated receipt race."));
+        }
     }
 
     private sealed class AllowAuthorizationService : IAuthorizationService
     {
         public Task<EffectivePermission> ResolveAsync(Guid actorUserId, Guid entryId, CancellationToken cancellationToken) =>
-            Task.FromResult(new EffectivePermission(entryId, EffectivePermissionLevel.Contributor, PermissionSource.Direct, entryId, Guid.NewGuid()));
+            Task.FromResult(new EffectivePermission(entryId, EffectivePermissionLevel.Editor, PermissionSource.Direct, entryId, Guid.NewGuid()));
         public Task<IReadOnlyDictionary<Guid, EffectivePermission>> ResolveBatchAsync(Guid actorUserId, IReadOnlyCollection<Guid> entryIds, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyDictionary<Guid, EffectivePermission>>(entryIds.ToDictionary(
                 entryId => entryId,

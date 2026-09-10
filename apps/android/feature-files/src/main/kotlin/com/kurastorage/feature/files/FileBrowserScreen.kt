@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -41,17 +42,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -89,10 +95,13 @@ import com.kurastorage.core.ui.components.KuraStatusPanel
 import com.kurastorage.core.ui.formatting.formatFileSize
 import com.kurastorage.core.ui.icons.KuraFileType
 import com.kurastorage.core.ui.icons.KuraFileTypeIcon
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.grid.items as gridItems
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun FileBrowserScreen(
     state: FileBrowserState,
     trashMode: Boolean,
@@ -107,6 +116,9 @@ fun FileBrowserScreen(
     onChooseFolderUpload: () -> Unit = {},
     onChooseDownload: (FileEntry) -> Unit,
     onTrash: (FileEntry) -> Unit,
+    onToggleTrashSelection: (FileEntry) -> Unit = {},
+    onClearTrashSelection: () -> Unit = {},
+    onTrashSelected: () -> Unit = {},
     onRestore: (FileEntry) -> Unit,
     onBeginPermanentDelete: (FileEntry) -> Unit = {},
     onConfirmPermanentDelete: () -> Unit = {},
@@ -146,6 +158,7 @@ fun FileBrowserScreen(
     onOrganization: (String) -> Unit = {},
     onOpenMedia: (FileEntry) -> Unit = {},
     onOpenText: (FileEntry) -> Unit = {},
+    onDismissThumbnailFailures: () -> Unit = {},
     onSearch: () -> Unit = {},
     thumbnail: @Composable (FileEntry, Modifier) -> Unit = { entry, modifier ->
         Box(modifier, contentAlignment = Alignment.Center) {
@@ -159,14 +172,12 @@ fun FileBrowserScreen(
     var showCreate by remember { mutableStateOf(false) }
     var showUploadOptions by remember { mutableStateOf(false) }
     var pendingTrash by remember { mutableStateOf<FileEntry?>(null) }
+    var confirmTrashSelection by remember { mutableStateOf(false) }
     var pendingRestore by remember { mutableStateOf<FileEntry?>(null) }
     var displayModeName by rememberSaveable { mutableStateOf(defaultBrowserDisplayMode(trashMode).name) }
-    var dismissedThumbnailFailureCount by rememberSaveable { mutableStateOf<Long?>(null) }
+    var locallyDismissedThumbnailFailureGeneration by remember(state.thumbnailSummary.failureGeneration) { mutableStateOf<Long?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val displayMode = BrowserDisplayMode.valueOf(displayModeName)
-    LaunchedEffect(state.thumbnailSummary.failedCount) {
-        if (state.thumbnailSummary.failedCount == 0L) dismissedThumbnailFailureCount = null
-    }
     LaunchedEffect(state.uploads.completionNotice) {
         val notice = state.uploads.completionNotice ?: return@LaunchedEffect
         val label = if (notice.completedCount == 1) "Upload completed" else "${notice.completedCount} uploads completed"
@@ -209,6 +220,18 @@ fun FileBrowserScreen(
         rememberSaveable(scrollContextKey, saver = LazyGridState.Saver) {
             LazyGridState(initialIndex, initialOffset)
         }
+    val scrollScope = rememberCoroutineScope()
+    var scrollToTopJob by remember { mutableStateOf<Job?>(null) }
+    val showScrollToTop =
+        !trashMode &&
+            currentFolder != null &&
+            (
+                listState.firstVisibleItemIndex >= SCROLL_TO_TOP_MINIMUM_INDEX ||
+                    listState.firstVisibleItemScrollOffset >= SCROLL_TO_TOP_MINIMUM_OFFSET
+            )
+    LaunchedEffect(scrollContextKey) {
+        scrollToTopJob?.cancel()
+    }
     LaunchedEffect(scrollContextKey) {
         val anchor = savedAnchor ?: return@LaunchedEffect
         if (layoutEntryIds.isEmpty()) return@LaunchedEffect
@@ -285,11 +308,32 @@ fun FileBrowserScreen(
             )
         },
         floatingActionButton = {
-            if (!trashMode && currentCapabilities.canCreate) {
-                FloatingActionButton(
-                    onClick = { showUploadOptions = true },
-                    modifier = Modifier.testTag("upload-fab").semantics { contentDescription = "Upload" },
-                ) { Text("↑") }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+            ) {
+                if (showScrollToTop) {
+                    TooltipBox(
+                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                        tooltip = { PlainTooltip { Text("Scroll to top") } },
+                        state = rememberTooltipState(),
+                    ) {
+                        KuraIconButton(
+                            onClick = {
+                                scrollToTopJob?.cancel()
+                                scrollToTopJob = scrollScope.launch { listState.animateScrollToItem(0) }
+                            },
+                            contentDescription = "Scroll to top",
+                            modifier = Modifier.testTag("scroll-to-top").sizeIn(minWidth = 48.dp, minHeight = 48.dp),
+                        ) { Text("↑") }
+                    }
+                }
+                if (!trashMode && currentCapabilities.canCreate) {
+                    FloatingActionButton(
+                        onClick = { showUploadOptions = true },
+                        modifier = Modifier.testTag("upload-fab").semantics { contentDescription = "Upload" },
+                    ) { Text("↑") }
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -306,9 +350,42 @@ fun FileBrowserScreen(
                 ThumbnailSummaryPanel(
                     state = state.thumbnailSummary,
                     failureDismissed =
-                        state.thumbnailSummary.failedCount > 0L &&
-                            dismissedThumbnailFailureCount == state.thumbnailSummary.failedCount,
-                    onDismissFailure = { dismissedThumbnailFailureCount = state.thumbnailSummary.failedCount },
+                        state.thumbnailSummary.failureDismissed ||
+                            locallyDismissedThumbnailFailureGeneration == state.thumbnailSummary.failureGeneration,
+                    onDismissFailure = {
+                        locallyDismissedThumbnailFailureGeneration = state.thumbnailSummary.failureGeneration
+                        onDismissThumbnailFailures()
+                    },
+                )
+            }
+            if (!trashMode && state.selectedForTrashIds.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().testTag("trash-selection-summary"),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("${state.selectedForTrashIds.size} selected for trash")
+                    Row(horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs)) {
+                        TextButton(onClick = onClearTrashSelection, enabled = !state.bulkTrashInProgress) { Text("Clear selection") }
+                        Button(
+                            onClick = { confirmTrashSelection = true },
+                            enabled = !state.bulkTrashInProgress,
+                            modifier = Modifier.testTag("move-selection-to-trash"),
+                        ) { Text("Move to trash") }
+                    }
+                }
+            }
+            state.bulkTrashSummary?.let { summary ->
+                KuraStatusPanel(
+                    title = "Trash result",
+                    message =
+                        if (summary.failedCount == 0) {
+                            "Moved ${summary.trashedCount} item(s) to trash."
+                        } else {
+                            "Moved ${summary.trashedCount} item(s) to trash; ${summary.failedCount} item(s) could not be moved."
+                        },
+                    status = if (summary.failedCount == 0) KuraStatus.SUCCESS else KuraStatus.ERROR,
+                    modifier = Modifier.testTag("trash-selection-result"),
                 )
             }
             if (!trashMode && currentCapabilities.canCreate) {
@@ -376,7 +453,16 @@ fun FileBrowserScreen(
                     horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
                 ) {
                     gridItems(visibleEntries, key = { it.id }) { entry ->
-                        FileGridItem(entry, state.personalRoot, state.currentFolder, onOpen, onShowDetails, thumbnail)
+                        FileGridItem(
+                            entry,
+                            state.personalRoot,
+                            state.currentFolder,
+                            entry.id in state.selectedForTrashIds,
+                            onOpen,
+                            onShowDetails,
+                            onToggleTrashSelection,
+                            thumbnail,
+                        )
                     }
                     if (state.canLoadMore) {
                         item(key = "load-more") {
@@ -403,8 +489,10 @@ fun FileBrowserScreen(
                                 trashMode,
                                 state.personalRoot,
                                 state.currentFolder,
+                                entry.id in state.selectedForTrashIds,
                                 onOpen,
                                 onShowDetails,
+                                onToggleTrashSelection,
                                 thumbnail,
                             )
                         }
@@ -419,8 +507,10 @@ fun FileBrowserScreen(
                                 trashMode,
                                 state.personalRoot,
                                 state.currentFolder,
+                                entry.id in state.selectedForTrashIds,
                                 onOpen,
                                 onShowDetails,
+                                onToggleTrashSelection,
                                 thumbnail,
                             )
                         }
@@ -508,6 +598,25 @@ fun FileBrowserScreen(
             },
         )
     }
+    if (confirmTrashSelection) {
+        AlertDialog(
+            onDismissRequest = { confirmTrashSelection = false },
+            title = { Text("Move ${state.selectedForTrashIds.size} item(s) to trash?") },
+            text = { Text("The selected items will be moved to the trash and can be restored later.") },
+            dismissButton = {
+                TextButton(onClick = { confirmTrashSelection = false }) { Text("Cancel") }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmTrashSelection = false
+                        onTrashSelected()
+                    },
+                    modifier = Modifier.testTag("confirm-trash-selection"),
+                ) { Text("Move to trash") }
+            },
+        )
+    }
     pendingRestore?.let { entry ->
         ConfirmDialog(
             title = "Restore this item?",
@@ -557,6 +666,8 @@ fun FileBrowserScreen(
 }
 
 private const val PAGE_PREFETCH_DISTANCE = 4
+private const val SCROLL_TO_TOP_MINIMUM_INDEX = 3
+private const val SCROLL_TO_TOP_MINIMUM_OFFSET = 160
 
 @Composable
 private fun ThumbnailSummaryPanel(
@@ -910,8 +1021,10 @@ private fun FileListItem(
     trashMode: Boolean,
     personalRoot: Boolean,
     currentFolder: FileEntry?,
+    selectedForTrash: Boolean,
     onOpen: (FileEntry) -> Unit,
     onShowDetails: (FileEntry) -> Unit,
+    onToggleTrashSelection: (FileEntry) -> Unit,
     thumbnail: @Composable (FileEntry, Modifier) -> Unit,
 ) {
     val metadata =
@@ -950,6 +1063,15 @@ private fun FileListItem(
                 }
             }
             if (!trashMode) {
+                if (entry.status == FileEntryStatus.ACTIVE &&
+                    filePermissionCapabilities(entry.permission, entry.permissionSource).canTrash
+                ) {
+                    KuraIconButton(
+                        onClick = { onToggleTrashSelection(entry) },
+                        contentDescription = if (selectedForTrash) "Remove from trash selection" else "Select for trash",
+                        modifier = Modifier.testTag("trash-selection-${entry.id}"),
+                    ) { Text(if (selectedForTrash) "✓" else "□") }
+                }
                 KuraIconButton(
                     onClick = { onShowDetails(entry) },
                     contentDescription = "More actions for ${entry.name}",
@@ -966,8 +1088,10 @@ private fun FileGridItem(
     entry: FileEntry,
     personalRoot: Boolean,
     currentFolder: FileEntry?,
+    selectedForTrash: Boolean,
     onOpen: (FileEntry) -> Unit,
     onShowDetails: (FileEntry) -> Unit,
+    onToggleTrashSelection: (FileEntry) -> Unit,
     thumbnail: @Composable (FileEntry, Modifier) -> Unit,
 ) {
     val metadata =
@@ -993,6 +1117,13 @@ private fun FileGridItem(
                 contentDescription = "More actions for ${entry.name}",
                 modifier = Modifier.align(Alignment.TopEnd),
             ) { Text("⋮") }
+            if (entry.status == FileEntryStatus.ACTIVE && filePermissionCapabilities(entry.permission, entry.permissionSource).canTrash) {
+                KuraIconButton(
+                    onClick = { onToggleTrashSelection(entry) },
+                    contentDescription = if (selectedForTrash) "Remove from trash selection" else "Select for trash",
+                    modifier = Modifier.align(Alignment.TopStart).testTag("trash-selection-${entry.id}"),
+                ) { Text(if (selectedForTrash) "✓" else "□") }
+            }
         }
         Text(entry.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
         Text(metadata.primary, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)

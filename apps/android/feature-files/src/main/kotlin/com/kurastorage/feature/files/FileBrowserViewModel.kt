@@ -14,6 +14,8 @@ import com.kurastorage.core.data.RecentFileRepository
 import com.kurastorage.core.data.TransferRepository
 import com.kurastorage.core.data.UploadSelectionResult
 import com.kurastorage.core.data.media.MediaRepository
+import com.kurastorage.core.data.media.ThumbnailRetryCoordinator
+import com.kurastorage.core.model.BulkTrashSummary
 import com.kurastorage.core.model.DownloadOperation
 import com.kurastorage.core.model.ErrorCategory
 import com.kurastorage.core.model.ErrorCode
@@ -32,12 +34,17 @@ import com.kurastorage.core.model.media.ThumbnailJobSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
@@ -50,6 +57,9 @@ data class FileBrowserState(
     val parentId: String? = null,
     val canLoadMore: Boolean = false,
     val selected: FileEntry? = null,
+    val selectedForTrashIds: Set<String> = emptySet(),
+    val bulkTrashSummary: BulkTrashSummary? = null,
+    val bulkTrashInProgress: Boolean = false,
     val transfer: TransferEvent? = null,
     val uploads: UploadQueueState = UploadQueueState(),
     val scrollAnchors: Map<String, BrowserScrollAnchor> = emptyMap(),
@@ -82,6 +92,9 @@ data class ThumbnailSummaryUiState(
     val observedAt: Instant? = null,
     val loading: Boolean = true,
     val unavailable: Boolean = false,
+    /** Changes only when a new failure population is observed in this authenticated session. */
+    val failureGeneration: Long = 0,
+    val failureDismissed: Boolean = false,
 )
 
 data class FolderLocation(
@@ -173,6 +186,7 @@ class FileBrowserViewModel(
     private val recentFiles: RecentFileRepository? = null,
     savedStateHandle: SavedStateHandle? = null,
     private val media: MediaRepository? = null,
+    private val thumbnailRetryCoordinator: ThumbnailRetryCoordinator? = null,
     private val thumbnailPollDelay: suspend (Long) -> Unit = { delay(it) },
 ) : ViewModel() {
     private var nextPageInFlight = false
@@ -206,6 +220,8 @@ class FileBrowserViewModel(
     private var navigationTargetId: String? = null
     private var thumbnailPollingJob: Job? = null
     private var thumbnailPollingGeneration = 0L
+
+    private var thumbnailRetryJob: Job? = null
 
     init {
         if (initialParentId == null) refresh() else navigateTo(listOf(initialLocation), force = true)
@@ -284,6 +300,14 @@ class FileBrowserViewModel(
         thumbnailPollingGeneration++
         thumbnailPollingJob?.cancel()
         thumbnailPollingJob = null
+        thumbnailRetryJob?.cancel()
+        thumbnailRetryJob = null
+    }
+
+    fun dismissThumbnailFailures() {
+        mutableState.update { state ->
+            state.copy(thumbnailSummary = state.thumbnailSummary.copy(failureDismissed = true))
+        }
     }
 
     private suspend fun pollThumbnailSummary(
@@ -293,6 +317,9 @@ class FileBrowserViewModel(
         try {
             val summary = repository.thumbnailJobSummary()
             if (generation == thumbnailPollingGeneration) applyThumbnailSummary(summary)
+            if (generation == thumbnailPollingGeneration && summary.failedCount > 0) {
+                scheduleRetryableThumbnailJobs(repository)
+            }
             if (summary.queuedCount > 0 || summary.runningCount > 0 || summary.failedCount > 0) {
                 THUMBNAIL_ACTIVE_POLL_MILLISECONDS
             } else {
@@ -309,12 +336,24 @@ class FileBrowserViewModel(
             THUMBNAIL_ERROR_POLL_MILLISECONDS
         }
 
+    private fun scheduleRetryableThumbnailJobs(repository: MediaRepository) {
+        if (thumbnailRetryJob?.isActive == true) return
+        thumbnailRetryJob =
+            viewModelScope.launch {
+                val coordinator = thumbnailRetryCoordinator ?: ThumbnailRetryCoordinator(repository, clock)
+                coordinator.retryEligibleJobs()
+            }
+    }
+
     private fun applyThumbnailSummary(summary: ThumbnailJobSummary) {
         mutableState.update { state ->
             val current = state.thumbnailSummary
             if (current.observedAt != null && summary.observedAt.isBefore(current.observedAt)) {
                 state
             } else {
+                val hasNewFailurePopulation =
+                    summary.failedCount > 0 &&
+                        (current.failedCount == 0L || summary.failedCount > current.failedCount)
                 state.copy(
                     thumbnailSummary =
                         ThumbnailSummaryUiState(
@@ -324,6 +363,10 @@ class FileBrowserViewModel(
                             observedAt = summary.observedAt,
                             loading = false,
                             unavailable = false,
+                            failureGeneration =
+                                if (hasNewFailurePopulation) current.failureGeneration + 1 else current.failureGeneration,
+                            failureDismissed =
+                                if (summary.failedCount == 0L || hasNewFailurePopulation) false else current.failureDismissed,
                         ),
                 )
             }
@@ -464,6 +507,59 @@ class FileBrowserViewModel(
 
     fun trash(entry: FileEntry) {
         if (entry.status == FileEntryStatus.ACTIVE && capabilities(entry).canTrash) mutate { files.trash(entry.id) }
+    }
+
+    fun toggleTrashSelection(entry: FileEntry) {
+        if (entry.status != FileEntryStatus.ACTIVE || !capabilities(entry).canTrash) return
+        mutableState.update { state ->
+            state.copy(
+                selectedForTrashIds =
+                    if (entry.id in state.selectedForTrashIds) {
+                        state.selectedForTrashIds - entry.id
+                    } else {
+                        state.selectedForTrashIds + entry.id
+                    },
+            )
+        }
+    }
+
+    fun clearTrashSelection() {
+        mutableState.update { it.copy(selectedForTrashIds = emptySet()) }
+    }
+
+    fun trashSelected() {
+        val targets =
+            mutableState.value.entries.filter { entry ->
+                entry.id in mutableState.value.selectedForTrashIds &&
+                    entry.status == FileEntryStatus.ACTIVE &&
+                    capabilities(entry).canTrash
+            }
+        if (targets.isEmpty() || mutableState.value.bulkTrashInProgress) return
+        mutableState.update { it.copy(bulkTrashInProgress = true, bulkTrashSummary = null, error = null) }
+        viewModelScope.launch {
+            val outcomes =
+                coroutineScope {
+                    val limiter = Semaphore(BULK_TRASH_CONCURRENCY)
+                    targets
+                        .map { entry ->
+                            async {
+                                entry.id to limiter.withPermit { runCatching { files.trash(entry.id) }.isSuccess }
+                            }
+                        }.awaitAll()
+                }
+            val successfulIds = outcomes.filter { it.second }.map { it.first }.toSet()
+            val summary = BulkTrashSummary(successfulIds.size, targets.size - successfulIds.size)
+            val refreshed = runCatching { pager.refresh() }
+            refreshed.onSuccess(::showPage)
+            mutableState.update {
+                it.copy(
+                    selectedForTrashIds = it.selectedForTrashIds - successfulIds,
+                    bulkTrashInProgress = false,
+                    bulkTrashSummary = summary,
+                    error = refreshed.exceptionOrNull()?.toBrowserError(),
+                )
+            }
+        }
     }
 
     fun recheckMissing(entry: FileEntry) {
@@ -1166,6 +1262,13 @@ class FileBrowserViewModel(
                 parentId = page.parentId,
                 canLoadMore = page.hasNextPage,
                 paginationError = null,
+                selectedForTrashIds =
+                    it.selectedForTrashIds.intersect(
+                        page.items
+                            .filter { entry -> entry.status == FileEntryStatus.ACTIVE && capabilities(entry).canTrash }
+                            .map { entry -> entry.id }
+                            .toSet(),
+                    ),
                 personalRoot = initialParentId == null && it.locations.size == 1,
             )
         }
@@ -1436,6 +1539,7 @@ class FileBrowserViewModel(
         }
 
     private companion object {
+        const val BULK_TRASH_CONCURRENCY = 4
         const val MAX_FILE_NAME_LENGTH = 255
         const val THUMBNAIL_ACTIVE_POLL_MILLISECONDS = 5_000L
         const val THUMBNAIL_ERROR_POLL_MILLISECONDS = 15_000L

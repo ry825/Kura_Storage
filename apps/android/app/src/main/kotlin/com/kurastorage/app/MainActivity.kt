@@ -599,6 +599,7 @@ private fun KuraStorageApp(
                                     recentFiles = current.recentFiles,
                                     savedStateHandle = savedState,
                                     media = current.media.repository,
+                                    thumbnailRetryCoordinator = current.media.thumbnailRetryCoordinator,
                                 )
                             },
                     )
@@ -1504,6 +1505,9 @@ private fun FileRoute(
             downloadPicker.launch(file.name)
         },
         onTrash = viewModel::trash,
+        onToggleTrashSelection = viewModel::toggleTrashSelection,
+        onClearTrashSelection = viewModel::clearTrashSelection,
+        onTrashSelected = viewModel::trashSelected,
         onRestore = viewModel::restore,
         onBeginPermanentDelete = viewModel::beginPermanentDelete,
         onConfirmPermanentDelete = viewModel::confirmPermanentDelete,
@@ -1531,6 +1535,7 @@ private fun FileRoute(
         onRetryUpload = viewModel::retryUpload,
         onDismissUpload = viewModel::dismissUpload,
         onUploadCompletionConsumed = viewModel::consumeUploadCompletionNotice,
+        onDismissThumbnailFailures = viewModel::dismissThumbnailFailures,
         onRetryFolderUpload = viewModel::retryFolderUpload,
         onScrollAnchor = viewModel::recordScrollAnchor,
         returnTargetId = returnTarget?.fileId,

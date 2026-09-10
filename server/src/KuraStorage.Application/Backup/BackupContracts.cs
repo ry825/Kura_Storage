@@ -51,3 +51,8 @@ public sealed record BackupReceiptState(
     BackupReceipt Receipt,
     FileEntryStatus? RemoteFileStatus,
     long? RemoteFileVersion);
+
+public sealed record BackupReassociationCandidate(
+    BackupReceipt Receipt,
+    FileEntryStatus RemoteFileStatus,
+    long RemoteFileVersion);

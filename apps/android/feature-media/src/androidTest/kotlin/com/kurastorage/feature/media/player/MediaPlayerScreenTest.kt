@@ -28,6 +28,7 @@ import com.kurastorage.core.model.media.NetworkQualityContext
 import com.kurastorage.core.model.media.PhotoDisplayMode
 import com.kurastorage.core.model.media.PlaybackRate
 import com.kurastorage.feature.media.MediaViewerState
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -37,6 +38,7 @@ class MediaPlayerScreenTest {
 
     @Test
     fun commonPlayerControlsExposeSeekSkipRateAndCodecErrorSemantics() {
+        var downloads = 0
         compose.setContent {
             MediaPlayerScreen(
                 state =
@@ -61,6 +63,7 @@ class MediaPlayerScreenTest {
                 onConfirmOriginal = {},
                 onCancelOriginal = {},
                 onRetryPlayback = {},
+                onDownloadOriginal = { downloads++ },
                 onFullscreen = {},
             )
         }
@@ -71,6 +74,8 @@ class MediaPlayerScreenTest {
             .performScrollTo()
             .assertIsDisplayed()
             .assertHeightIsEqualTo(48.dp)
+        compose.onNodeWithText("Download original").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, downloads) }
         compose
             .onNodeWithContentDescription("Forward 10 seconds")
             .performScrollTo()

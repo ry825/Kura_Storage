@@ -282,7 +282,7 @@ public sealed class PreviewService(
                 : null);
     }
 
-    private static bool CanRetry(string? errorCode) => errorCode is
+    internal static bool CanRetry(string? errorCode) => errorCode is
         FileErrorCodes.StorageUnavailable or
         MediaErrorCodes.ToolUnavailable or
         MediaErrorCodes.WorkerUnavailable or

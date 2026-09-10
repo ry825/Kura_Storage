@@ -696,6 +696,8 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 - [x] HDD容量不足を理由に30日より前へ保持期間を自動短縮せず、管理者へ容量警告を表示する
 - [x] 権限のないユーザーは削除できない
 - [x] 削除処理中に失敗した場合、実ファイルと管理情報の不整合を通知する
+- [ ] FileとFolderを複数選択してゴミ箱へ移動でき、確認画面で対象件数と「ゴミ箱へ移動」を明示する
+- [ ] 複数削除は項目ごとの成功・失敗を集計し、成功項目だけを一覧から除外して失敗項目を削除済み表示にしない
 
 現在のPhase 1拡張では、手動完全削除を`DELETE /api/v1/trash/{fileId}`として提供する。対象は認証User所有の`TRASHED` Rootだけとし、不可逆操作には必須の`Idempotency-Key`を使用する。物理削除、関連管理情報と`FileEntry`の削除、独立監査、操作ジャーナル完了を復旧可能な順序で確定する。`purgeEligibleAt`はServerが`trashedAt`と30日以上の設定値からUTCで算出する。独立Workerは起動時と設定周期に期限到達RootをBatch処理し、停止Runと未完了操作を次回実行前に回収する。容量・Trash概算・直近RunはAdmin限定`GET /api/v1/admin/storage`で提供し、容量警告によって保持期間を短縮しない。AndroidはFile・Folderの不可逆確認、Server算出の保持期限、通信結果不明時の再取得と同一Key再試行、およびAdmin限定の容量警告を表示する。
 
@@ -731,6 +733,8 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 - [x] Viewer内で現在の写真のお気に入り追加・解除とTag付与・解除を行い、Server応答、処理中、結果不明を反映する
 - [x] 通常表示と全画面表示で元の縦横比を保つ`Fit`を使い、小さい写真を既定状態で元pixel相当以上へ拡大しない
 - [x] File ID、version、表示variantが変わる場合だけzoom／panをresetし、再Compositionでは維持する
+- [ ] zoom/pan中も写真外の明示的なPrevious／Next操作で前後へ移動でき、pan gestureを意図しないnavigationへ変換しない
+- [ ] 前後移動では対象Fileのzoom/panと表示requestを初期化し、古いFile ID、version、variant、request tokenの非同期結果を表示しない
 
 **優先度**: P0（必須）
 
@@ -783,6 +787,8 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 - [x] 全画面中のsystem Backは全画面解除を優先し、Viewer画面から離脱しない
 - [x] 全画面を含む動画面の1回tapで再生操作overlayを切り替え、再生中は無操作で自動的に隠す
 - [x] 同じFile ID・version・routeの再CompositionではPlayerとMediaItemを再生成・再prepareしない
+- [ ] 端末Codec非対応をネットワーク、Range、認証、破損と区別して表示し、Playerを停止・解放して自動retryやServer Media Job retryを開始しない
+- [ ] Codec非対応時は認可済みOriginalのDownloadまたは外部対応アプリの安全な導線だけを提示し、Token付きURLや認証Headerを外部Intentへ渡さない
 
 **優先度**: P0（必須）
 
@@ -1024,6 +1030,8 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 - [x] 双方向同期ではないことをUIに明示する
 - [x] 手動Uploadと自動Backupは端末共通の同時転送上限2を共有し、待機中は手動Uploadを優先する
 - [x] 自動Backupは1 Work内で独立項目を上限付き並列処理し、1件の再試行可能な失敗で他項目を取り消さない
+- [ ] アプリ再インストール後にReceiptを失った場合も、認証済みUser、現在の保存先Folder、同一相対Path、サイズ・更新時刻・必要なSHA-256で一意に検証できる同一内容だけを再関連付けし、本文を再送しない
+- [ ] 再関連付けでは新Device／`localDocumentKey`のReceiptを確定し、候補の複数・checksum不一致・Trash/MISSING・現在の権限不足では既存FileやReceiptを変更しない
 
 **優先度**: P0（必須）
 
@@ -1139,6 +1147,8 @@ MVPのリリース範囲は各節見出しの「MVP」「MVP後」分類を正�
 - [x] 写真・動画・PDFのサムネイルは最初の要求時に必要時生成し、生成済み結果を元ファイルの完全削除まで保持して、容量上限や24時間TTLを適用しない
 - [x] サムネイルは長辺最大512px、WebP品質75、縦横比維持、拡大なしで生成する
 - [x] 元ファイルの内容更新時はサムネイルを再生成し、名前変更または移動だけでは既存サムネイルを再利用する
+- [ ] thumbnail failure noticeのdismissは同一Session・同一failure summary世代で保持し、再訪・再Compositionだけでは再表示しない
+- [ ] retry可能なthumbnail Jobだけをkey単位でcoalesceし、指数backoff、上限、ServerのRetry-Afterを適用する。terminal failureは自動retryせず、明示Retryだけを提供する
 
 **優先度**: P0（必須）
 

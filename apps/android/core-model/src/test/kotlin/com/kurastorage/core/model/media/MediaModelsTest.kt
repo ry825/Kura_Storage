@@ -50,4 +50,16 @@ class MediaModelsTest {
             PlaybackState.entries.map { it.name },
         )
     }
+
+    @Test
+    fun `retryable thumbnail job keeps only an opaque nonempty id and bounded server delay`() {
+        assertEquals(
+            RetryableThumbnailJob("job-opaque", MAX_RETRY_AFTER_SECONDS),
+            RetryableThumbnailJob("job-opaque", MAX_RETRY_AFTER_SECONDS),
+        )
+        assertThrows(IllegalArgumentException::class.java) { RetryableThumbnailJob("", 0) }
+        assertThrows(IllegalArgumentException::class.java) {
+            RetryableThumbnailJob("job-opaque", MAX_RETRY_AFTER_SECONDS + 1)
+        }
+    }
 }

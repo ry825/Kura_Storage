@@ -206,7 +206,35 @@ fun PhotoViewerScreen(
                 onNext,
                 Modifier.fillMaxSize(),
             )
-            KuraIconButton("Exit full screen", { fullscreen = false }, modifier = Modifier.align(Alignment.TopEnd)) { Text("×") }
+            Row(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(KuraTheme.spacing.sm)
+                        .testTag("photo-fullscreen-actions"),
+                horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                KuraIconButton(
+                    if (organization.pendingFavorite) {
+                        "Saving favorite"
+                    } else if (organization.isFavorite) {
+                        "Remove from favorites"
+                    } else {
+                        "Add to favorites"
+                    },
+                    onToggleFavorite,
+                    enabled = !organization.loading && !organization.pendingFavorite && (organization.canAttach || organization.isFavorite),
+                ) { Text(if (organization.isFavorite) "★" else "☆") }
+                KuraIconButton("Manage photo tags", { showTags = true }, enabled = !organization.loading) { Text("#") }
+                KuraIconButton(
+                    "Download original",
+                    onDownloadOriginal,
+                    enabled =
+                        file != null && download.status !in setOf(PhotoDownloadStatus.CHOOSING_DESTINATION, PhotoDownloadStatus.SAVING),
+                ) { Text("↓") }
+                KuraIconButton("Exit full screen", { fullscreen = false }) { Text("×") }
+            }
         }
     } else {
         KuraAppScaffold(

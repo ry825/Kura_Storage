@@ -213,6 +213,10 @@ public interface IMediaRepository
 
     Task<MediaRequestSnapshot?> FindByJobAsync(Guid jobId, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<MediaRequestSnapshot>> FindRetryableThumbnailJobsAsync(
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<MediaRequestSnapshot>>([]);
+
     Task<MediaGenerationContext?> TryAcquireGenerationAsync(
         Guid jobId,
         Guid workerToken,

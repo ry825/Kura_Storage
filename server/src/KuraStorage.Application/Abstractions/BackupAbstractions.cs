@@ -15,6 +15,12 @@ public interface IBackupRepository
         IReadOnlyCollection<string> localDocumentKeys,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<BackupReassociationCandidate>> ListReassociationCandidatesAsync(
+        Guid userId,
+        Guid destinationFolderId,
+        string relativePath,
+        CancellationToken cancellationToken);
+
     Task<BackupReceipt?> FindReceiptAsync(
         Guid userId,
         Guid deviceId,

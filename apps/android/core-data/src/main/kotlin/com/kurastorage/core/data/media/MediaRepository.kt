@@ -10,6 +10,7 @@ import com.kurastorage.core.model.media.MediaJobStatus
 import com.kurastorage.core.model.media.MediaPositionMs
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.OriginalMetadata
+import com.kurastorage.core.model.media.RetryableThumbnailJob
 import com.kurastorage.core.model.media.ThumbnailJobSummary
 import com.kurastorage.core.model.media.VariantMetadata
 import com.kurastorage.core.network.media.MediaAcceptedResponseDto
@@ -17,6 +18,7 @@ import com.kurastorage.core.network.media.MediaApi
 import com.kurastorage.core.network.media.MediaContentNetworkResult
 import com.kurastorage.core.network.media.MediaJobDto
 import com.kurastorage.core.network.media.MediaMetadataNetworkResult
+import com.kurastorage.core.network.media.RetryableThumbnailJobDto
 import com.kurastorage.core.network.media.ThumbnailJobSummaryDto
 import okhttp3.Headers
 import okhttp3.Response
@@ -46,6 +48,8 @@ interface MediaRepository {
     suspend fun thumbnailJobSummary(): ThumbnailJobSummary {
         error("Thumbnail job summary is not implemented by this test double")
     }
+
+    suspend fun retryableThumbnailJobs(): List<RetryableThumbnailJob> = emptyList()
 
     suspend fun openContent(
         fileId: String,
@@ -151,6 +155,14 @@ class DefaultMediaRepository(
             api.thumbnailJobSummary(token).toAuthenticatedResult(ThumbnailJobSummaryDto::toSummary)
         }
 
+    override suspend fun retryableThumbnailJobs(): List<RetryableThumbnailJob> =
+        executor.execute { token ->
+            api.retryableThumbnailJobs(token).toAuthenticatedResult { jobs ->
+                if (jobs.size > MAX_RETRYABLE_THUMBNAIL_JOBS) invalidResponse()
+                jobs.map(RetryableThumbnailJobDto::toRetryableThumbnailJob)
+            }
+        }
+
     override suspend fun openContent(
         fileId: String,
         variant: MediaVariant,
@@ -225,6 +237,11 @@ private fun ThumbnailJobSummaryDto.toSummary(): ThumbnailJobSummary {
     return ThumbnailJobSummary(queuedCount, runningCount, failedCount, observed)
 }
 
+private fun RetryableThumbnailJobDto.toRetryableThumbnailJob(): RetryableThumbnailJob {
+    if (!retryable || jobId.isBlank()) invalidResponse()
+    return RetryableThumbnailJob(jobId, retryAfterSeconds.coerceIn(0, MAX_RETRY_AFTER_SECONDS))
+}
+
 private fun invalidResponse(): Nothing = throw KuraStorageException.InvalidServerResponse()
 
 private val VIDEO_VARIANTS = setOf(MediaVariant.VIDEO_LOW, MediaVariant.VIDEO_MEDIUM)
@@ -233,3 +250,4 @@ private const val VIDEO_RETRY_SECONDS = 3
 private const val COPY_BUFFER_BYTES = 64 * 1024
 private const val MIN_PROGRESS_PERCENT = 0
 private const val MAX_PROGRESS_PERCENT = 100
+private const val MAX_RETRYABLE_THUMBNAIL_JOBS = 32

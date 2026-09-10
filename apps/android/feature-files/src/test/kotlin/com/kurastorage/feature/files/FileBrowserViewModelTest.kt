@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -100,7 +101,15 @@ class FileBrowserViewModelTest {
 
             viewModel.startThumbnailSummaryPolling()
             assertEquals(
-                ThumbnailSummaryUiState(4, 2, 1, Instant.parse("2026-09-06T00:02:00Z"), false, false),
+                ThumbnailSummaryUiState(
+                    4,
+                    2,
+                    1,
+                    Instant.parse("2026-09-06T00:02:00Z"),
+                    false,
+                    false,
+                    failureGeneration = 1,
+                ),
                 viewModel.state.value.thumbnailSummary,
             )
             assertEquals(5_000L, delays.last())
@@ -256,6 +265,62 @@ class FileBrowserViewModelTest {
             assertFalse(viewModel.state.value.loading)
             assertEquals(emptyList<FileEntry>(), viewModel.state.value.entries)
             assertNull(viewModel.state.value.error)
+        }
+
+    @Test
+    fun `trash selection includes only active writable entries and can be cleared`() =
+        runTest(dispatcher) {
+            val viewModel = FileBrowserViewModel(FakeFiles(), FakeTransfers())
+            val selectable = file("selectable")
+            val missing = file("missing").copy(status = FileEntryStatus.MISSING)
+
+            viewModel.toggleTrashSelection(selectable)
+            viewModel.toggleTrashSelection(missing)
+            assertEquals(setOf(selectable.id), viewModel.state.value.selectedForTrashIds)
+
+            viewModel.toggleTrashSelection(selectable)
+            assertTrue(
+                viewModel.state.value.selectedForTrashIds
+                    .isEmpty(),
+            )
+            viewModel.toggleTrashSelection(selectable)
+            viewModel.clearTrashSelection()
+            assertTrue(
+                viewModel.state.value.selectedForTrashIds
+                    .isEmpty(),
+            )
+        }
+
+    @Test
+    fun `selected trash reports partial failures and refreshes only successful items`() =
+        runTest(dispatcher) {
+            val first = file("first")
+            val failed = file("failed")
+            val files = BulkTrashFiles(listOf(first, failed), failingId = failed.id)
+            val viewModel = FileBrowserViewModel(files, FakeTransfers())
+
+            viewModel.toggleTrashSelection(first)
+            viewModel.toggleTrashSelection(failed)
+            viewModel.trashSelected()
+            advanceUntilIdle()
+
+            assertEquals(setOf(first.id, failed.id), files.trashCalls.toSet())
+            assertEquals(
+                1,
+                viewModel.state.value.bulkTrashSummary
+                    ?.trashedCount,
+            )
+            assertEquals(
+                1,
+                viewModel.state.value.bulkTrashSummary
+                    ?.failedCount,
+            )
+            assertEquals(
+                listOf(failed.id),
+                viewModel.state.value.entries
+                    .map { it.id },
+            )
+            assertEquals(setOf(failed.id), viewModel.state.value.selectedForTrashIds)
         }
 
     @Test
@@ -1256,6 +1321,28 @@ class FileBrowserViewModelTest {
                 throw KuraStorageException.Api(ApiError(ErrorCode.FILE_NAME_CONFLICT, null, 409))
             }
             return folder("server-$name", parentId, name).also(created::add)
+        }
+    }
+
+    private class BulkTrashFiles(
+        initial: List<FileEntry>,
+        private val failingId: String,
+    ) : FakeFiles(empty = true) {
+        private val entries = initial.toMutableList()
+        val trashCalls = mutableListOf<String>()
+
+        override suspend fun list(
+            parentId: String?,
+            page: Int,
+            pageSize: Int,
+        ) = FilePage("root", entries.toList(), page, pageSize, entries.size.toLong())
+
+        override suspend fun trash(fileId: String): FileEntry {
+            trashCalls += fileId
+            if (fileId == failingId) throw KuraStorageException.Api(ApiError(ErrorCode.STORAGE_UNAVAILABLE, null, 503))
+            val entry = entries.first { it.id == fileId }
+            entries.remove(entry)
+            return entry
         }
     }
 
