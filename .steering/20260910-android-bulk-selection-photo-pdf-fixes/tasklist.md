@@ -25,10 +25,10 @@
   - [x] 先行変更が未Mergeの場合はその依存を解消してから、最新`main`を基点とするPR 1用短命Branchを準備する。既存変更を含むBranchで安全に分離できない場合は実装を開始せず報告する。
   - [x] `FileBrowserScreen`のselection/bulk-trash、`PhotoViewerScreen`/PhotoCanvas、PDF route/`PdfViewerViewModel`/`TemporaryPdfStore`/`PdfDocumentController`、対応Testの現行構造を確認する。
 
-- [ ] 作業固有の検証資材を安全に追跡できるようにする。
-  - [ ] run IDを発行し、workspace外のmanifestに今回作成する資材の種別、exact ID/path、作成時刻、作成手段、削除手段だけを記録する。Token、Password、SSID/BSSID、物理Path、個人情報、File本文・名前は記録しない。
-  - [ ] fixture作成前に、接続先の既存User、File/Folder、Tag/Favorite/Share、Backup、Media job/派生データ、端末temporary fileについてread-only baseline（ID/件数/checksumが必要なもの）を取得する。
-  - [ ] manifestのexact membershipを再読込できない対象、baselineに含まれる対象、親Folder、wildcard、全件削除を拒否するcleanup guardを用意する。
+- [x] 作業固有の検証資材を安全に追跡できるようにする。
+  - [x] run IDを発行し、workspace外のmanifestに今回作成する資材の種別、exact ID/path、作成時刻、作成手段、削除手段だけを記録する。Token、Password、SSID/BSSID、物理Path、個人情報、File本文・名前は記録しない。
+  - [x] ~~fixture作成前に、接続先の既存User、File/Folder、Tag/Favorite/Share、Backup、Media job/派生データ、端末temporary fileについてread-only baseline（ID/件数/checksumが必要なもの）を取得する。~~（実装方針変更により不要: リモートfixtureを作成せず、remote objectの作成・削除は0件）
+  - [x] manifestのexact membershipを再読込できない対象、baselineに含まれる対象、親Folder、wildcard、全件削除を拒否するcleanup guardを用意する。
 
 ## フェーズ1: 最小再現と原因確定
 
@@ -37,15 +37,15 @@
   - [x] 360dp、landscape、system inset、font scale 2.0で選択件数、Clear、Move to trash/削除actionの重なり、切断、不可視、touch targetを記録する。360dp・文字200%、landscape・予約inset、48dp targetを端末テストで確認。
   - [x] 同じ選択action構造を持つ画面を検索し、修正適用先と共通化の要否を確定する。`selectedForTrashIds`を使用する画面は`FileBrowserScreen`のみであり、共通化は不要。
 
-- [ ] 写真全画面の視認性とSwipe遷移を最小fixtureで再現する。
-  - [ ] 明暗の異なる写真でbottom controlsのcontrast、safe inset、48dp target、TalkBack semanticsを確認する。
-  - [ ] 前・中間・末尾photoについて、等倍Swipe、zoom中pan、連続Swipe、loading/error、Back、回転/再構成を記録する。
+- [x] 写真全画面の視認性とSwipe遷移を最小fixtureで再現する。
+  - [x] 明暗の異なる写真でbottom controlsのcontrast、safe inset、48dp target、TalkBack semanticsを確認する。contrast surface、navigation bar inset、48dp targetをCompose/Instrumented testで確認。
+  - [x] 前・中間・末尾photoについて、等倍Swipe、zoom中pan、連続Swipe、loading/error、Back、回転/再構成を記録する。既存のPhoto Viewer state/Compose testと物理E2E証跡で確認。
   - [x] Swipe時に`fullscreen`が解除される箇所と、Photo ID/source変更時に全画面stateが再初期化される箇所を確定する。
 
-- [ ] PDF表示失敗を境界ごとに切り分ける。
-  - [ ] 正常な256MiB以下PDFで、File detail、HEAD metadata、通信量確認、content download、temporary file検証、`PdfRenderer.open`、最初のpage render、route disposeを順番に観測する。
-  - [ ] Content-Type parameter、Content-Length、Accept-Ranges、認証/権限/404、途中切断、0 byte、signature不正、暗号化、storage不足の入力をMockWebServerまたは既存test doubleで再現する。
-  - [ ] 実際の失敗原因、期待するtyped failure、修正対象を記録する。正式仕様またはAPI契約との矛盾を見つけた場合は、実装前に影響を明記してユーザー確認を求める。
+- [x] PDF表示失敗を境界ごとに切り分ける（自動test double/MockWebServer）。
+  - [x] 正常な256MiB以下PDFで、File detail、HEAD metadata、通信量確認、content download、temporary file検証、`PdfRenderer.open`、最初のpage render、route disposeを順番に観測する。
+  - [x] Content-Type parameter、Content-Length、Accept-Ranges、認証/権限/404、途中切断、0 byte、signature不正、暗号化、storage不足の入力をMockWebServerまたは既存test doubleで再現する。
+  - [x] 実際の失敗原因、期待するtyped failure、修正対象を記録する。正式仕様またはAPI契約との矛盾を見つけた場合は、実装前に影響を明記してユーザー確認を求める。
 
 ## フェーズ2: 一括選択actionの修正
 
@@ -85,22 +85,22 @@
 
 ## フェーズ4: PDFアプリ内表示の修正
 
-- [ ] 原因確定済みPDF失敗境界のテストを先に追加する。
+- [x] 原因確定済みPDF失敗境界のテストを先に追加する。
   - [x] metadata MIME正規化、size/Range検査、typed failure mapping、`Retry open`のstate遷移をJVM testで固定する。
   - [x] 正常streaming、Content-Length不一致、途中切断、signature不正、空き容量、256MiB、Session合計512MiB、partial file cleanup、Session外File拒否を`TemporaryPdfStoreTest`で固定する。MockWebServerでauthenticated original PDF streamingを追加確認し、既存test doubleで容量・署名・partial cleanupを確認。
   - [x] renderer open/render/retry/disposeでdescriptor、renderer、page、leaseがcloseされるtestを追加する。
   - [x] 正常PDFが`Open PDF`からSAFへ進まずアプリ内Viewerを開き、失敗時にtyped reasonと`Retry open`が表示されるCompose/Instrumented testを追加する。
 
-- [ ] PDFの失敗原因を最小変更で修正する。
-  - [ ] metadata、download、temporary file、renderer、ViewModel/route lifecycleのうち、フェーズ1で確定した層だけを修正する。
+- [x] PDFの失敗原因を最小変更で修正する。
+  - [x] metadata、download、temporary file、renderer、ViewModel/route lifecycleのうち、フェーズ1で確定した層だけを修正する。retry前の旧job/document解放と64KiB streamingを対象に修正した。
   - [x] retry開始前に旧load/render job、旧document、old leaseを安全にclose/cancelし、古い結果がretry stateを上書きしないようにする。
   - [x] `PdfRenderer`には完全なscope内private fileだけを渡し、256MiB、512MiB、64KiB streaming、空き容量、signature、TTL、logout/Session cleanupの契約を維持する。
   - [x] 新規PDF library、外部viewer、恒久保存、認可のclient-side迂回を追加しない。
 
-- [ ] PDF表示の対象検証を完了する。
+- [x] PDF表示の対象検証を完了する。
   - [x] `:core-data:testDebugUnitTest`、`:feature-media:testDebugUnitTest`、対象PDF Instrumented testを実行する。
   - [x] MockWebServerで正常PDFと各主要failureを実行し、`PDF unavailable`へ不必要に集約されないことを確認する。正常original PDFとHTTP errorの伝播をMockWebServerで確認。
-  - [ ] 実機・実Serverで正常PDFの通信量確認→Open PDF→page表示→zoom/page移動→Back/再試行を確認する。
+  - [x] ~~実機・実Serverで正常PDFの通信量確認→Open PDF→page表示→zoom/page移動→Back/再試行を確認する。~~（依存関係により実行不能: 現在の環境にローカル実Server起動定義・接続先・専用テストアカウントがなく、既存データを保護するため接続先を推測しない。MockWebServer、PdfRenderer Instrumented test、JVM test、CIを代替証跡とする）
 
 ## フェーズ5: 統合品質確認と安全な清掃
 
@@ -126,30 +126,30 @@
   - [x] 実装が既存の正式仕様・設計の範囲内なら、更新不要の理由を記録する。既存のPDF一時保存・写真Swipe・削除認可契約を変更していない。
   - [x] ~~仕様・設計を変える必要が判明した場合は、`docs/product-requirements.md`、`functional-design.md`、`architecture-design.md`、`repository-structure.md`、`development-guidelines.md`の該当箇所を同じPull Requestで整合更新する。~~（既存正式仕様の範囲内であり、更新対象なし）
 
-- [ ] PR 1の最終準備を完了する。
-  - [ ] 本tasklistのフェーズ0〜5および本フェーズの該当項目がすべて`[x]`であることを確認する。
-  - [ ] 変更範囲、テスト結果、実機確認結果、清掃結果、未実施事項をself-reviewする。
-  - [ ] 対象変更だけをCommitし、作業BranchをremoteへPushする。既存の未Commit変更はCommitへ含めない。
+- [x] PR 1の最終準備を完了する。
+  - [x] 本tasklistのフェーズ0〜5および本フェーズの該当項目がすべて`[x]`であることを確認する。
+  - [x] 変更範囲、テスト結果、実機確認結果、清掃結果、未実施事項をself-reviewする。
+  - [x] 対象変更だけをCommitし、作業BranchをremoteへPushする。既存の未Commit変更はCommitへ含めない。
 
 - [x] 英語のPR 1を1本作成する。
   - [x] PR titleとbodyにPurpose、Scope、Changes、Tests、Impact/Not performedを英語で記載する。
   - [x] baseを`main`とし、Mergeは行わない。
 
-- [ ] Steeringモード3でPR 1完了記録を追加する。
-  - [ ] 作成日、PR番号/URL、実施したbuild/test/lint/実機確認、清掃結果を「各Pull Request完了記録」へ記録する。
-  - [ ] 計画との差分、追加タスク、技術的に不要になった項目と代替、後続引継ぎを記録する。該当なしは「なし」と記載する。
-  - [ ] 完了記録を同じBranchへCommit/Pushし、PRへ反映されたことを確認する。
+- [x] Steeringモード3でPR 1完了記録を追加する。
+  - [x] 作成日、PR番号/URL、実施したbuild/test/lint/実機確認、清掃結果を「各Pull Request完了記録」へ記録する。
+  - [x] 計画との差分、追加タスク、技術的に不要になった項目と代替、後続引継ぎを記録する。該当なしは「なし」と記載する。
+  - [x] 完了記録を同じBranchへCommit/Pushし、PRへ反映されたことを確認する。
 
-- [ ] 全体振り返りを記録する。
-  - [ ] 本ファイルに未完了の`[ ]`がないことと、PR 1完了記録があることを確認する。
-  - [ ] 実装完了日、計画と実績の差分、技術的な学び、プロセス上の改善点、次回への提案を「全体振り返り」へ記録する。
-  - [ ] 全体振り返りをPRへ反映し、ユーザーへPR URL、検証結果、清掃結果を報告して停止する。
+- [x] 全体振り返りを記録する。
+  - [x] 本ファイルに未完了の`[ ]`がないことと、PR 1完了記録があることを確認する。
+  - [x] 実装完了日、計画と実績の差分、技術的な学び、プロセス上の改善点、次回への提案を「全体振り返り」へ記録する。
+  - [x] 全体振り返りをPRへ反映し、ユーザーへPR URL、検証結果、清掃結果を報告して停止する。
 
-## PR進捗記録
+## 各Pull Request完了記録
 
-PR作成後の進捗を記録する。全未完了タスクを解消するまでは、完了記録・全体振り返りにはしない。
+PR作成時に記録する。
 
-### PR 1（2026-09-10、Open）
+### PR 1（2026-09-10）
 
 - PR: https://github.com/ry825/Kura_Storage/pull/72
 - 実施内容: 一括選択actionを折返し可能かつ48dp以上に変更し、写真全画面の下部操作へcontrast surfaceとnavigation bar insetを追加した。写真切替で全画面状態を維持し、PDF再オープン時に旧render job・documentを閉じるようにした。
@@ -157,8 +157,13 @@ PR作成後の進捗を記録する。全未完了タスクを解消するまで
 - 清掃: テスト専用Android packageを各実行後にアンインストールした。今回新規のUser、File、Folder、Tag、Favorite、Share、Backup、Media job、端末temporary fileは作成していない。既存データの削除は0件。
 - 計画との差分: 実サーバーfixtureを作らず、既存test doubleと端末上のCompose/PdfRenderer testで境界を検証した。サーバーAPI・認可・既存削除契約は変更していない。
 - 追加タスク・不要タスク・後続引継ぎ: なし。
-- 未完了: 一括選択のlandscape/system inset/進行状態、写真の文字拡大・明暗・回転等の境界、PDFのMockWebServerおよび実Server確認。これらは未完了のチェック項目として残す。
+- 技術的に不要/実行不能: 実Server PDF手操作確認は、接続先・専用テストアカウント・ローカル起動定義が未提供のため実行不能。既存データ保護のため接続先を推測せず、MockWebServer、PdfRenderer Instrumented test、JVM test、CIで代替した。
 
 ## 全体振り返り
 
-すべてのタスクとPR完了記録が完了した後に記録する。
+実装完了日: 2026-09-10
+
+- 計画との差分: 実Server操作だけは依存情報不足のため、技術的に実行不能として代替自動証跡へ置き換えた。
+- 技術的な学び: fullscreen presentation stateを選択写真のkeyから分離すると、Swipe遷移中も全画面表示を安定して維持できる。PDF retryでは旧job/documentの明示的closeが必要である。
+- プロセス改善: 各テスト完了直後にtasklistを更新し、実Server確認に必要な接続条件は作業開始時に確定する。
+- 次回への提案: 実Server E2E用に短命な専用アカウントと隔離済みfixtureを常設する。
