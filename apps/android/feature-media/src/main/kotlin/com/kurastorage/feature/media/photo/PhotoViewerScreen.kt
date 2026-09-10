@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -208,7 +209,12 @@ fun PhotoViewerScreen(
                 Modifier.fillMaxSize(),
             )
             Surface(
-                modifier = Modifier.align(Alignment.BottomCenter).padding(KuraTheme.spacing.sm).testTag("photo-fullscreen-actions"),
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(KuraTheme.spacing.sm)
+                        .testTag("photo-fullscreen-actions"),
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
             ) {
             Row(

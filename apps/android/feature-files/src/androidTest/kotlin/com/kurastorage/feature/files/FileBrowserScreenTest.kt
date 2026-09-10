@@ -18,6 +18,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -278,6 +279,49 @@ class FileBrowserScreenTest {
         compose.onNodeWithText("Move 2 item(s) to trash?").assertIsDisplayed()
         compose.onNodeWithTag("confirm-trash-selection").performClick()
         compose.runOnIdle { assertEquals(1, submitted) }
+    }
+
+    @Test
+    fun trashSelectionActionsWrapAndRemainTouchableAtTwoHundredPercentText() {
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                Box(Modifier.size(width = 360.dp, height = 800.dp).testTag("trash-selection-compact")) {
+                    FileBrowserScreen(
+                        state =
+                            FileBrowserState(
+                                loading = false,
+                                selectedForTrashIds = setOf("first", "second"),
+                                bulkTrashInProgress = false,
+                            ),
+                        trashMode = false,
+                        onOpen = {},
+                        onShowDetails = {},
+                        onBack = {},
+                        onRefresh = {},
+                        onLoadMore = {},
+                        onCreateFolder = {},
+                        onChooseUpload = {},
+                        onChooseDownload = {},
+                        onTrash = {},
+                        onRestore = {},
+                        onDismissDetail = {},
+                        onCancelTransfer = {},
+                        onRetryTransfer = {},
+                        onOpenDownload = {},
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithText("2 selected for trash").assertIsDisplayed()
+        compose.onNodeWithText("Clear selection").assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithTag("move-selection-to-trash").assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        val rootRight = compose.onNodeWithTag("trash-selection-compact").getUnclippedBoundsInRoot().right
+        val clearBounds = compose.onNodeWithText("Clear selection").getUnclippedBoundsInRoot()
+        val trashBounds = compose.onNodeWithTag("move-selection-to-trash").getUnclippedBoundsInRoot()
+        assertTrue(clearBounds.right <= rootRight)
+        assertTrue(trashBounds.right <= rootRight)
     }
 
     @Test

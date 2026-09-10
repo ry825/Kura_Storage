@@ -97,9 +97,22 @@ class PdfViewerViewModel(
         metadata: OriginalMetadata,
     ) {
         loadJob?.cancel()
+        renderJob?.cancel()
+        renderJob = null
+        document?.close()
+        document = null
         loadJob =
             viewModelScope.launch {
-                mutableState.update { it.copy(loadState = PdfLoadState.DOWNLOADING, failure = null) }
+                mutableState.update {
+                    it.copy(
+                        loadState = PdfLoadState.DOWNLOADING,
+                        bitmap = null,
+                        pageIndex = 0,
+                        pageCount = 0,
+                        zoom = 1f,
+                        failure = null,
+                    )
+                }
                 runCatching {
                     val cached = store.download(file.id, file.fileVersion, metadata)
                     PdfDocumentController.open(store.acquire(cached))

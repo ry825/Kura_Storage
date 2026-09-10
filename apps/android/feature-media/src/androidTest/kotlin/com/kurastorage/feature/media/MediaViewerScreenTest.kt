@@ -443,6 +443,40 @@ class MediaViewerScreenTest {
     }
 
     @Test
+    fun fullscreenPhotoSwipeKeepsFullscreenWhenTheSelectedPhotoChanges() {
+        val first = file("fullscreen-first", "image/jpeg")
+        val second = file("fullscreen-second", "image/jpeg")
+        var state by mutableStateOf(photoState(first).copy(canGoNext = true))
+        loader = imageLoader()
+        compose.setContent {
+            PhotoViewerScreen(
+                state = state,
+                imageLoader = checkNotNull(loader),
+                scopeId = "fullscreen-swipe-scope",
+                requestTicket = { null },
+                onImageReady = {},
+                onGenerating = { _, _ -> },
+                onImageFailed = {},
+                onQuality = {},
+                onPrevious = {},
+                onNext = { state = photoState(second).copy(canGoPrevious = true) },
+                onZoom = { state = state.copy(zoom = it) },
+                onDetails = {},
+                onDownloadOriginal = {},
+                onBack = {},
+            )
+        }
+
+        compose.onNodeWithContentDescription("Full screen").performClick()
+        compose.onNodeWithTag("photo-fullscreen").assertIsDisplayed()
+        compose.onNodeWithTag("photo-fullscreen-actions").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Exit full screen").assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithTag("photo-canvas").performTouchInput { swipeLeft(durationMillis = 300) }
+        compose.runOnIdle { assertEquals(second.id, state.file?.id) }
+        compose.onNodeWithTag("photo-fullscreen").assertIsDisplayed()
+    }
+
+    @Test
     fun photoToolbarAndTagSheetExposeServerBackedOrganizationActions() {
         val photo = file("organized", "image/jpeg")
         val travel = TagItem("travel", "A long travel tag that remains scrollable at large text")
