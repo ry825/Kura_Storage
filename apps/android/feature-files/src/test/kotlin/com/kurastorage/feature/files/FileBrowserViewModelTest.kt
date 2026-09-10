@@ -33,6 +33,7 @@ import com.kurastorage.core.model.UploadState
 import com.kurastorage.core.model.media.MediaJobSnapshot
 import com.kurastorage.core.model.media.MediaVariant
 import com.kurastorage.core.model.media.OriginalMetadata
+import com.kurastorage.core.model.media.RetryableThumbnailJob
 import com.kurastorage.core.model.media.ThumbnailJobSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -155,6 +156,32 @@ class FileBrowserViewModelTest {
             first.complete(summary(8, 8, 8, "2026-09-06T00:01:00Z"))
             assertEquals(2L, viewModel.state.value.thumbnailSummary.runningCount)
             assertEquals(Instant.parse("2026-09-06T00:02:00Z"), viewModel.state.value.thumbnailSummary.observedAt)
+            viewModel.stopThumbnailSummaryPolling()
+        }
+
+    @Test
+    fun `thumbnail retry failure keeps the files screen alive`() =
+        runTest(dispatcher) {
+            val repository = RetryableJobsFailMediaRepository()
+            val viewModel =
+                FileBrowserViewModel(
+                    FakeFiles(),
+                    FakeTransfers(),
+                    media = repository,
+                    thumbnailPollDelay = { awaitCancellation() },
+                )
+
+            viewModel.startThumbnailSummaryPolling()
+            advanceUntilIdle()
+
+            assertEquals(1, repository.retryableJobsCalls)
+            assertFalse(viewModel.state.value.thumbnailSummary.unavailable)
+            assertEquals(1L, viewModel.state.value.thumbnailSummary.failedCount)
+            assertEquals(
+                listOf("file-1"),
+                viewModel.state.value.entries
+                    .map { it.id },
+            )
             viewModel.stopThumbnailSummaryPolling()
         }
 
@@ -1734,6 +1761,17 @@ class FileBrowserViewModelTest {
             } else {
                 summary(0, 2, 0, "2026-09-06T00:02:00Z")
             }
+        }
+    }
+
+    private class RetryableJobsFailMediaRepository : SummaryMediaRepository() {
+        var retryableJobsCalls = 0
+
+        override suspend fun thumbnailJobSummary(): ThumbnailJobSummary = summary(0, 0, 1, "2026-09-06T00:01:00Z")
+
+        override suspend fun retryableThumbnailJobs(): List<RetryableThumbnailJob> {
+            retryableJobsCalls++
+            throw KuraStorageException.Api(ApiError(ErrorCode.UNKNOWN, "thumbnail-retry", 500))
         }
     }
 }

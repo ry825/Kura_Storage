@@ -69,7 +69,12 @@ class TemporaryPdfStore(
                     is MediaContentResult.Ready ->
                         result.content.use { content ->
                             FileOutputStream(partial).use { output ->
-                                val copied = content.copyTo(output, MAX_FILE_BYTES) { downloadContext.ensureActive() }
+                                val copied =
+                                    content.copyTo(
+                                        output = output,
+                                        maximumBytes = MAX_FILE_BYTES,
+                                        bufferSize = PDF_STREAM_BUFFER_BYTES,
+                                    ) { downloadContext.ensureActive() }
                                 if (copied != metadata.size.value) throw IncompletePdfException()
                                 output.fd.sync()
                             }
@@ -178,6 +183,7 @@ class TemporaryPdfStore(
         const val RESERVED_FREE_BYTES = 64L * 1024 * 1024
         val UNREFERENCED_TTL: Duration = Duration.ofHours(1)
         private const val PDF_MIME = "application/pdf"
+        private const val PDF_STREAM_BUFFER_BYTES = 64 * 1024
         private val PDF_SIGNATURE = "%PDF-".toByteArray()
 
         fun cleanupPreviousSessions(cacheRoot: File) {

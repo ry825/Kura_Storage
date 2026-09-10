@@ -128,6 +128,23 @@ class KuraMediaFetcherMockWebServerTest {
             )
         }
 
+    @Test
+    fun `original PDF content is streamed through the authenticated media route`() =
+        runTest {
+            val pdf = "%PDF-1.7\nmock".toByteArray()
+            server.enqueue(MockResponse().setHeader("Content-Type", "application/pdf").setBody(Buffer().write(pdf)))
+
+            val result = repository.openContent(FILE_ID, MediaVariant.ORIGINAL) as MediaContentResult.Ready
+            val output = Buffer()
+            result.content.use { it.copyTo(output.outputStream(), maximumBytes = 1024) }
+
+            assertTrue(output.readByteArray().contentEquals(pdf))
+            assertEquals(
+                "/api/v1/files/$FILE_ID/content?variant=original&disposition=inline",
+                server.takeRequest().path,
+            )
+        }
+
     private fun fetcher(variant: MediaVariant = MediaVariant.THUMBNAIL) =
         KuraMediaFetcher(
             KuraMediaImage("session", FILE_ID, 1, variant),

@@ -22,11 +22,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -39,6 +41,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -146,7 +149,7 @@ fun PhotoViewerScreen(
     val readySource = media?.displayedSource
     var showTags by remember(file?.id) { mutableStateOf(false) }
     var offset by remember(file?.id, readySource) { mutableStateOf(Offset.Zero) }
-    var fullscreen by rememberSaveable(file?.id, file?.fileVersion, readySource) { mutableStateOf(false) }
+    var fullscreen by rememberSaveable { mutableStateOf(false) }
     val transformable =
         rememberTransformableState { zoomChange, panChange, _ ->
             onZoom(state.zoom * zoomChange)
@@ -206,34 +209,43 @@ fun PhotoViewerScreen(
                 onNext,
                 Modifier.fillMaxSize(),
             )
-            Row(
+            Surface(
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
                         .padding(KuraTheme.spacing.sm)
                         .testTag("photo-fullscreen-actions"),
-                horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
             ) {
-                KuraIconButton(
-                    if (organization.pendingFavorite) {
-                        "Saving favorite"
-                    } else if (organization.isFavorite) {
-                        "Remove from favorites"
-                    } else {
-                        "Add to favorites"
-                    },
-                    onToggleFavorite,
-                    enabled = !organization.loading && !organization.pendingFavorite && (organization.canAttach || organization.isFavorite),
-                ) { Text(if (organization.isFavorite) "★" else "☆") }
-                KuraIconButton("Manage photo tags", { showTags = true }, enabled = !organization.loading) { Text("#") }
-                KuraIconButton(
-                    "Download original",
-                    onDownloadOriginal,
-                    enabled =
-                        file != null && download.status !in setOf(PhotoDownloadStatus.CHOOSING_DESTINATION, PhotoDownloadStatus.SAVING),
-                ) { Text("↓") }
-                KuraIconButton("Exit full screen", { fullscreen = false }) { Text("×") }
+                FlowRow(
+                    modifier = Modifier.padding(KuraTheme.spacing.xs),
+                    horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+                ) {
+                    KuraIconButton(
+                        if (organization.pendingFavorite) {
+                            "Saving favorite"
+                        } else if (organization.isFavorite) {
+                            "Remove from favorites"
+                        } else {
+                            "Add to favorites"
+                        },
+                        onToggleFavorite,
+                        enabled =
+                            !organization.loading &&
+                                !organization.pendingFavorite &&
+                                (organization.canAttach || organization.isFavorite),
+                    ) { Text(if (organization.isFavorite) "★" else "☆") }
+                    KuraIconButton("Manage photo tags", { showTags = true }, enabled = !organization.loading) { Text("#") }
+                    KuraIconButton(
+                        "Download original",
+                        onDownloadOriginal,
+                        enabled =
+                            file != null && download.status !in setOf(PhotoDownloadStatus.CHOOSING_DESTINATION, PhotoDownloadStatus.SAVING),
+                    ) { Text("↓") }
+                    KuraIconButton("Exit full screen", { fullscreen = false }) { Text("×") }
+                }
             }
         }
     } else {

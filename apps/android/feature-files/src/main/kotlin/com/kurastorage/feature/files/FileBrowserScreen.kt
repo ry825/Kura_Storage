@@ -359,18 +359,25 @@ fun FileBrowserScreen(
                 )
             }
             if (!trashMode && state.selectedForTrashIds.isNotEmpty()) {
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth().testTag("trash-selection-summary"),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.sm),
+                    itemVerticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("${state.selectedForTrashIds.size} selected for trash")
-                    Row(horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs)) {
-                        TextButton(onClick = onClearTrashSelection, enabled = !state.bulkTrashInProgress) { Text("Clear selection") }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+                        verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
+                    ) {
+                        TextButton(
+                            onClick = onClearTrashSelection,
+                            enabled = !state.bulkTrashInProgress,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text("Clear selection") }
                         Button(
                             onClick = { confirmTrashSelection = true },
                             enabled = !state.bulkTrashInProgress,
-                            modifier = Modifier.testTag("move-selection-to-trash"),
+                            modifier = Modifier.heightIn(min = 48.dp).testTag("move-selection-to-trash"),
                         ) { Text("Move to trash") }
                     }
                 }
