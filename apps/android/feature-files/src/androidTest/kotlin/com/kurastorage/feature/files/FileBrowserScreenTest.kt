@@ -2,6 +2,7 @@ package com.kurastorage.feature.files
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
@@ -322,6 +323,80 @@ class FileBrowserScreenTest {
         val trashBounds = compose.onNodeWithTag("move-selection-to-trash").getUnclippedBoundsInRoot()
         assertTrue(clearBounds.right <= rootRight)
         assertTrue(trashBounds.right <= rootRight)
+    }
+
+    @Test
+    fun trashSelectionActionsRemainVisibleAndDisabledInLandscapeWithReservedInsets() {
+        compose.setContent {
+            Box(
+                Modifier
+                    .size(width = 800.dp, height = 360.dp)
+                    .padding(start = 24.dp, end = 36.dp)
+                    .testTag("trash-selection-landscape"),
+            ) {
+                FileBrowserScreen(
+                    state =
+                        FileBrowserState(
+                            loading = false,
+                            selectedForTrashIds = setOf("first", "second"),
+                            bulkTrashInProgress = true,
+                        ),
+                    trashMode = false,
+                    onOpen = {},
+                    onShowDetails = {},
+                    onBack = {},
+                    onRefresh = {},
+                    onLoadMore = {},
+                    onCreateFolder = {},
+                    onChooseUpload = {},
+                    onChooseDownload = {},
+                    onTrash = {},
+                    onRestore = {},
+                    onDismissDetail = {},
+                    onCancelTransfer = {},
+                    onRetryTransfer = {},
+                    onOpenDownload = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText("2 selected for trash").assertIsDisplayed()
+        compose.onNodeWithText("Clear selection").assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithTag("move-selection-to-trash").assertIsDisplayed().assertIsNotEnabled()
+        val rootRight = compose.onNodeWithTag("trash-selection-landscape").getUnclippedBoundsInRoot().right
+        assertTrue(compose.onNodeWithText("Clear selection").getUnclippedBoundsInRoot().right <= rootRight)
+        assertTrue(compose.onNodeWithTag("move-selection-to-trash").getUnclippedBoundsInRoot().right <= rootRight)
+    }
+
+    @Test
+    fun clearTrashSelectionRemovesTheSingleSelectedItem() {
+        var state by mutableStateOf(FileBrowserState(loading = false, selectedForTrashIds = setOf("only")))
+        compose.setContent {
+            FileBrowserScreen(
+                state = state,
+                trashMode = false,
+                onOpen = {},
+                onShowDetails = {},
+                onBack = {},
+                onRefresh = {},
+                onLoadMore = {},
+                onCreateFolder = {},
+                onChooseUpload = {},
+                onChooseDownload = {},
+                onTrash = {},
+                onClearTrashSelection = { state = state.copy(selectedForTrashIds = emptySet()) },
+                onRestore = {},
+                onDismissDetail = {},
+                onCancelTransfer = {},
+                onRetryTransfer = {},
+                onOpenDownload = {},
+            )
+        }
+
+        compose.onNodeWithText("1 selected for trash").assertIsDisplayed()
+        compose.onNodeWithText("Clear selection").performClick()
+        compose.onAllNodesWithText("1 selected for trash").assertCountEquals(0)
+        compose.onAllNodesWithText("Clear selection").assertCountEquals(0)
     }
 
     @Test

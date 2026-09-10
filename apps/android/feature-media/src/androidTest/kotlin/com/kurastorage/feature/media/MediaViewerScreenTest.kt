@@ -449,25 +449,28 @@ class MediaViewerScreenTest {
         var state by mutableStateOf(photoState(first).copy(canGoNext = true))
         loader = imageLoader()
         compose.setContent {
-            PhotoViewerScreen(
-                state = state,
-                imageLoader = checkNotNull(loader),
-                scopeId = "fullscreen-swipe-scope",
-                requestTicket = { null },
-                onImageReady = {},
-                onGenerating = { _, _ -> },
-                onImageFailed = {},
-                onQuality = {},
-                onPrevious = {},
-                onNext = { state = photoState(second).copy(canGoPrevious = true) },
-                onZoom = { state = state.copy(zoom = it) },
-                onDetails = {},
-                onDownloadOriginal = {},
-                onBack = {},
-            )
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                PhotoViewerScreen(
+                    state = state,
+                    imageLoader = checkNotNull(loader),
+                    scopeId = "fullscreen-swipe-scope",
+                    requestTicket = { null },
+                    onImageReady = {},
+                    onGenerating = { _, _ -> },
+                    onImageFailed = {},
+                    onQuality = {},
+                    onPrevious = {},
+                    onNext = { state = photoState(second).copy(canGoPrevious = true) },
+                    onZoom = { state = state.copy(zoom = it) },
+                    onDetails = {},
+                    onDownloadOriginal = {},
+                    onBack = {},
+                )
+            }
         }
 
-        compose.onNodeWithContentDescription("Full screen").performClick()
+        compose.onNodeWithContentDescription("Full screen").performScrollTo().performClick()
         compose.onNodeWithTag("photo-fullscreen").assertIsDisplayed()
         compose.onNodeWithTag("photo-fullscreen-actions").assertIsDisplayed()
         compose.onNodeWithContentDescription("Exit full screen").assertHeightIsAtLeast(48.dp)

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -217,10 +218,10 @@ fun PhotoViewerScreen(
                         .testTag("photo-fullscreen-actions"),
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
             ) {
-                Row(
+                FlowRow(
                     modifier = Modifier.padding(KuraTheme.spacing.xs),
                     horizontalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(KuraTheme.spacing.xs),
                 ) {
                     KuraIconButton(
                         if (organization.pendingFavorite) {
