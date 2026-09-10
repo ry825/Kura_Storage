@@ -145,6 +145,21 @@
   - [x] 実装完了日、計画と実績の差分、技術的な学び、プロセス上の改善点、次回への提案を「全体振り返り」へ記録する。
   - [x] 全体振り返りをPRへ反映し、ユーザーへPR URL、検証結果、清掃結果を報告して停止する。
 
+## フェーズ7: 0.17.6 Files起動時クラッシュの回帰修正
+
+- [x] 実機クラッシュを再現し、原因をスタックトレースで確定する。
+  - [x] 接続済み端末で `com.kurastorage.app` の AndroidRuntime ログを取得する。
+  - [x] Files を開いた直後の `KuraStorageException.Api` を、失敗サムネイルの自動再試行 coroutine から未捕捉で送出していることを確定する。
+
+- [x] 通信失敗時にFiles画面を維持する修正と回帰テストを実装する。
+  - [x] サムネイル再試行の一覧取得失敗を捕捉し、`CancellationException` は再送出しつつ、それ以外を画面クラッシュへ伝播させない。
+  - [x] 失敗サムネイルがある状態で再試行APIが失敗しても、Files一覧が継続表示されるUnit testを追加する。
+
+- [x] 修正を対象Unit test・実機・release buildで検証する。
+  - [x] `:feature-files:testDebugUnitTest` と静的検査を実行する。
+  - [x] 実機でFilesを開き、通信失敗時にもアプリが終了せず、画面を維持することを確認する（ユーザー確認）。
+  - [x] production署名・現在の接続先設定で、更新用release APKを作成する（`0.17.7` / versionCode 36）。
+
 ## 各Pull Request完了記録
 
 PR作成時に記録する。
@@ -153,6 +168,7 @@ PR作成時に記録する。
 
 - PR: https://github.com/ry825/Kura_Storage/pull/72
 - 実施内容: 一括選択actionを折返し可能かつ48dp以上に変更し、写真全画面の下部操作へcontrast surfaceとnavigation bar insetを追加した。写真切替で全画面状態を維持し、PDF再オープン時に旧render job・documentを閉じるようにした。
+- 追加対応（2026-09-10）: 0.17.6でFilesを開いた際に、失敗サムネイルの自動再試行API例外が未捕捉でアプリを終了させる回帰を修正した。非キャンセル例外を補助処理内で捕捉し、Files一覧を維持するUnit testを追加した。production署名の0.17.7（versionCode 36）を作成し、同一署名の0.17.6からデータ保持更新を実施した。
 - 検証: `scripts/ci/verify-android.sh`（JDK 17、Android SDK API 36）成功。実機で一括選択の360dp・文字200%テスト、写真の全画面Swipe保持テスト、feature-media全27件（PDF rendererを含む）に成功。
 - 清掃: テスト専用Android packageを各実行後にアンインストールした。今回新規のUser、File、Folder、Tag、Favorite、Share、Backup、Media job、端末temporary fileは作成していない。既存データの削除は0件。
 - 計画との差分: 実サーバーfixtureを作らず、既存test doubleと端末上のCompose/PdfRenderer testで境界を検証した。サーバーAPI・認可・既存削除契約は変更していない。

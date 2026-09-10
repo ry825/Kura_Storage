@@ -341,7 +341,13 @@ class FileBrowserViewModel(
         thumbnailRetryJob =
             viewModelScope.launch {
                 val coordinator = thumbnailRetryCoordinator ?: ThumbnailRetryCoordinator(repository, clock)
-                coordinator.retryEligibleJobs()
+                try {
+                    coordinator.retryEligibleJobs()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Thumbnail retry is opportunistic. Its failure must not terminate the Files screen.
+                }
             }
     }
 
